@@ -110,6 +110,34 @@ it("creates a tab before starting Pi in its root pane", async () => {
   expect(createdAgent).toMatchObject({ name: "fix-auth", tab_label: "Authentication" });
 });
 
+it("lets Herdr choose default agent and tab names", async () => {
+  const request = vi.fn(async <T>(method: string, _params: unknown, schema: z.ZodType<T>) => {
+    if (method === "tab.create") {
+      return schema.parse({
+        type: "tab_created",
+        tab: { label: "2", tab_id: "w1:t2", workspace_id: "w1" },
+        root_pane: { pane_id: "w1:p2", revision: 0 },
+      });
+    }
+
+    return schema.parse({ type: "agent_started", agent: { ...agent, name: "pi" } });
+  });
+  const service = new HerdrService({ request } as unknown as HerdrClient);
+
+  await service.createPiAgent("w1");
+
+  expect(request.mock.calls[0]).toEqual([
+    "tab.create",
+    { workspace_id: "w1", focus: false },
+    expect.anything(),
+  ]);
+  expect(request.mock.calls[1]).toEqual([
+    "agent.start",
+    { kind: "pi", pane_id: "w1:p2", timeout_ms: 30_000 },
+    expect.anything(),
+  ]);
+});
+
 it("creates an unfocused workspace in the requested directory", async () => {
   const request = vi.fn(async <T>(_method: string, _params: unknown, schema: z.ZodType<T>) =>
     schema.parse({

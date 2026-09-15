@@ -51,12 +51,24 @@ export const agentsResponseSchema = z.object({
   workspaces: z.array(workspaceSchema),
 });
 
-export const createAgentRequestSchema = z.object({
-  name: z
+export const optionalAgentNameSchema = z.preprocess(
+  (value) => (typeof value === "string" && value.trim() === "" ? undefined : value),
+  z
     .string()
     .trim()
-    .regex(/^[a-z][a-z0-9_-]{0,31}$/),
-  tabLabel: z.string().trim().min(1).max(80),
+    .regex(/^[a-z][a-z0-9_-]{0,31}$/, {
+      message:
+        "Start with a lowercase letter and use only lowercase letters, numbers, dashes, or underscores.",
+    })
+    .optional(),
+);
+
+export const createAgentRequestSchema = z.object({
+  name: optionalAgentNameSchema,
+  tabLabel: z.preprocess(
+    (value) => (typeof value === "string" && value.trim() === "" ? undefined : value),
+    z.string().trim().max(80).optional(),
+  ),
   workspaceId: z
     .string()
     .min(1)

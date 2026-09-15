@@ -103,16 +103,16 @@ export class HerdrService {
     };
   }
 
-  async createPiAgent(workspaceId: string, name: string, tabLabel: string) {
+  async createPiAgent(workspaceId: string, name?: string, tabLabel?: string) {
     const createdTab = await this.client.request(
       "tab.create",
-      { workspace_id: workspaceId, label: tabLabel, focus: false },
+      { workspace_id: workspaceId, ...(tabLabel ? { label: tabLabel } : {}), focus: false },
       tabCreatedResultSchema,
     );
     const startedAgent = await this.client.request(
       "agent.start",
       {
-        name,
+        ...(name ? { name } : {}),
         kind: "pi",
         pane_id: createdTab.root_pane.pane_id,
         timeout_ms: 30_000,
