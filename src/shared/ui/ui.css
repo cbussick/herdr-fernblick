@@ -1,0 +1,312 @@
+.button {
+  display: inline-flex;
+  min-height: var(--control-height);
+  align-items: center;
+  justify-content: center;
+  gap: var(--space-2);
+  padding: 0 var(--space-4);
+  color: var(--color-on-accent);
+  font-weight: 700;
+  background: var(--color-accent);
+  border: 1px solid transparent;
+  border-radius: var(--radius-sm);
+}
+
+.button:hover {
+  background: var(--color-accent-hover);
+}
+
+.button--secondary {
+  color: var(--color-text);
+  background: var(--color-surface-subtle);
+  border-color: var(--color-border-strong);
+}
+
+.button--secondary:hover {
+  background: var(--color-surface-hover);
+}
+
+.button--danger {
+  color: var(--color-danger);
+  background: var(--color-danger-soft);
+  border-color: color-mix(in srgb, var(--color-danger) 30%, transparent);
+}
+
+.button--small {
+  min-height: 2.25rem;
+  padding-inline: var(--space-3);
+  font-size: 0.75rem;
+}
+
+.icon-button {
+  display: grid;
+  width: 2.75rem;
+  height: 2.75rem;
+  padding: 0;
+  place-items: center;
+  color: var(--color-text);
+  background: transparent;
+  border: 0;
+  border-radius: 50%;
+}
+
+.icon-button:hover {
+  background: var(--color-surface-subtle);
+}
+
+.icon-button svg {
+  width: 1.25rem;
+  height: 1.25rem;
+}
+
+.status-indicator {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.375rem;
+  color: var(--color-text-secondary);
+  font-size: 0.75rem;
+  font-weight: 650;
+  white-space: nowrap;
+}
+
+.status-indicator__dot {
+  position: relative;
+  width: 0.5rem;
+  height: 0.5rem;
+  border-radius: 50%;
+  background: var(--status-color, var(--color-neutral));
+}
+
+.status-indicator--working .status-indicator__dot::after {
+  position: absolute;
+  inset: 0;
+  content: "";
+  background: var(--status-color);
+  border-radius: inherit;
+  animation: working-pulse 1600ms var(--ease-out) infinite;
+}
+
+@keyframes working-pulse {
+  from {
+    opacity: 0.55;
+    transform: scale(1);
+  }
+
+  to {
+    opacity: 0;
+    transform: scale(2.4);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .status-indicator--working .status-indicator__dot::after {
+    animation: none;
+  }
+}
+
+.status-indicator--blocked {
+  --status-color: var(--color-danger);
+
+  color: var(--color-danger);
+}
+
+.status-indicator--working {
+  --status-color: var(--color-warning);
+
+  color: #8b5b0e;
+}
+
+.status-indicator--done {
+  --status-color: var(--color-success);
+
+  color: #246e49;
+}
+
+.status-indicator--idle,
+.status-indicator--unknown {
+  --status-color: var(--color-neutral);
+}
+
+.tab-kind-icon {
+  display: grid;
+  width: 2.5rem;
+  height: 2.5rem;
+  flex: 0 0 auto;
+  place-items: center;
+  color: var(--color-accent);
+  font: 700 1rem/1 var(--font-mono);
+  background: var(--color-accent-soft);
+  border-radius: var(--radius-md);
+}
+
+.tab-kind-icon--shell {
+  color: #31536a;
+  background: #dce9f3;
+  font-size: 0.7rem;
+}
+
+.segmented-tabs {
+  display: grid;
+  grid-template-columns: repeat(var(--tab-count), 1fr);
+  gap: 0.25rem;
+  padding: 0.25rem;
+  background: var(--color-surface-subtle);
+  border: 1px solid var(--color-border-strong);
+  border-radius: var(--radius-md);
+}
+
+.segmented-tabs button {
+  min-height: 2.375rem;
+  padding: 0 var(--space-3);
+  color: var(--color-text-secondary);
+  font-size: 0.8125rem;
+  font-weight: 700;
+  background: transparent;
+  border: 0;
+  border-radius: 0.5rem;
+}
+
+.segmented-tabs button[aria-selected="true"] {
+  color: var(--color-on-accent);
+  background: var(--color-accent);
+  box-shadow: 0 2px 7px rgb(74 42 126 / 20%);
+}
+
+.search-field {
+  position: relative;
+  display: block;
+}
+
+.search-field svg {
+  position: absolute;
+  top: 50%;
+  left: 0.875rem;
+  width: 1rem;
+  height: 1rem;
+  color: var(--color-text-tertiary);
+  transform: translateY(-50%);
+}
+
+.search-field input {
+  width: 100%;
+  min-height: 2.75rem;
+  padding: 0 var(--space-4) 0 2.5rem;
+  color: var(--color-text);
+  background: var(--color-surface-subtle);
+  border: 1px solid transparent;
+  border-radius: var(--radius-md);
+}
+
+.search-field input::placeholder {
+  color: var(--color-text-tertiary);
+}
+
+.search-field input:focus {
+  background: var(--color-surface);
+  border-color: var(--color-border-strong);
+  outline: none;
+}
+
+.speed-dial {
+  position: absolute;
+  right: var(--space-5);
+  bottom: var(--space-5);
+  z-index: 4;
+}
+
+.speed-dial__trigger {
+  display: grid;
+  width: 3.25rem;
+  height: 3.25rem;
+  padding: 0;
+  place-items: center;
+  color: var(--color-on-accent);
+  background: var(--color-accent);
+  border: 0;
+  border-radius: 50%;
+  box-shadow: var(--shadow-fab);
+}
+
+.speed-dial__trigger svg {
+  width: 1.35rem;
+  height: 1.35rem;
+}
+
+.speed-dial__menu {
+  position: absolute;
+  right: 0;
+  bottom: 4rem;
+  width: 13.5rem;
+  overflow: hidden;
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-menu);
+}
+
+.speed-dial__item {
+  display: grid;
+  width: 100%;
+  grid-template-columns: 2.25rem 1fr;
+  align-items: center;
+  gap: var(--space-3);
+  padding: var(--space-3);
+  color: var(--color-text);
+  text-align: left;
+  background: transparent;
+  border: 0;
+  border-bottom: 1px solid var(--color-border);
+}
+
+.speed-dial__item:last-child {
+  border: 0;
+}
+
+.speed-dial__item:hover {
+  background: var(--color-surface-hover);
+}
+
+.speed-dial__item strong,
+.speed-dial__item small {
+  display: block;
+}
+
+.speed-dial__item strong {
+  font-size: 0.8125rem;
+}
+
+.speed-dial__item small {
+  margin-top: 0.125rem;
+  color: var(--color-text-tertiary);
+  font-size: 0.6875rem;
+}
+
+.form-field {
+  display: grid;
+  gap: 0.375rem;
+}
+
+.form-field label {
+  color: var(--color-text-secondary);
+  font-size: 0.75rem;
+  font-weight: 700;
+}
+
+.form-field :where(input, select, textarea) {
+  width: 100%;
+  min-height: var(--control-height);
+  padding: 0.75rem;
+  color: var(--color-text);
+  background: var(--color-surface);
+  border: 1px solid var(--color-border-strong);
+  border-radius: var(--radius-sm);
+}
+
+.form-field small {
+  color: var(--color-text-tertiary);
+  font-size: 0.6875rem;
+}
+
+.form-field [role="alert"] {
+  color: var(--color-danger);
+}

@@ -1,0 +1,10 @@
+body {
+  margin: 0;
+  padding: 1.5rem;
+  background: var(--color-canvas);
+  color: var(--color-text);
+  font-family: var(--font-sans);
+}
+.sb-show-main.sb-main-padded {
+  padding: 1.5rem;
+}
