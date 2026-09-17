@@ -6,7 +6,7 @@ import {
   workspaceSchema,
   type KeyName,
 } from "../../src/shared/api/contracts.js";
-import { HerdrClient } from "./HerdrClient.js";
+import { HerdrClient, HerdrRequestError } from "./HerdrClient.js";
 import { readPiTranscript } from "../pi/readPiTranscript.js";
 
 const tabSchema = z.object({
@@ -40,6 +40,11 @@ const agentReadResultSchema = z.object({
 const agentPromptResultSchema = z.object({
   agent: agentSchema,
   type: z.literal("agent_prompted"),
+});
+
+const agentInfoResultSchema = z.object({
+  agent: agentSchema,
+  type: z.literal("agent_info"),
 });
 
 const okResultSchema = z.object({ type: z.literal("ok") });
@@ -109,10 +114,13 @@ export class HerdrService {
       { workspace_id: workspaceId, ...(tabLabel ? { label: tabLabel } : {}), focus: false },
       tabCreatedResultSchema,
     );
+    const agentName =
+      name ??
+      `pi-${createdTab.root_pane.pane_id.replace(/[^a-z0-9_-]/gi, "-").toLowerCase()}`.slice(0, 32);
     const startedAgent = await this.client.request(
       "agent.start",
       {
-        ...(name ? { name } : {}),
+        name: agentName,
         kind: "pi",
         pane_id: createdTab.root_pane.pane_id,
         timeout_ms: 30_000,
@@ -120,7 +128,7 @@ export class HerdrService {
       agentStartedResultSchema,
     );
 
-    return { ...startedAgent.agent, tab_label: createdTab.tab.label };
+    return { ...startedAgent.agent, agent: "pi", tab_label: createdTab.tab.label };
   }
 
   async createWorkspace(label: string, cwd: string) {
@@ -187,13 +195,30 @@ export class HerdrService {
   }
 
   async readAgentTranscript(target: string) {
-    const dashboard = await this.getDashboard();
-    const agent = dashboard.agents.find(
-      (candidate) => candidate.name === target || candidate.pane_id === target,
-    );
-    if (!agent) throw new Error("Agent not found");
-    if (agent.agent !== "pi" || agent.agent_session?.kind !== "path") {
+    let agent: z.infer<typeof agentSchema>;
+    try {
+      ({ agent } = await this.client.request("agent.get", { target }, agentInfoResultSchema));
+    } catch (error) {
+      if (error instanceof HerdrRequestError) {
+        return {
+          messages: [],
+          status: { cwd: "Unknown directory", totalTokens: 0, cost: 0 },
+        };
+      }
+      throw error;
+    }
+    if (agent.agent && agent.agent !== "pi") {
       throw new Error("A structured transcript is not available for this agent");
+    }
+    if (agent.agent_session?.kind !== "path") {
+      return {
+        messages: [],
+        status: {
+          cwd: agent.foreground_cwd ?? agent.cwd ?? "Unknown directory",
+          totalTokens: 0,
+          cost: 0,
+        },
+      };
     }
     const [transcript, visible] = await Promise.all([
       readPiTranscript(

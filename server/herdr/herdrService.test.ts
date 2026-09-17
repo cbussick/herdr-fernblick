@@ -81,6 +81,21 @@ it("adds workspace and tab labels to agents from the session snapshot", async ()
   expect(request).toHaveBeenCalledWith("session.snapshot", {}, expect.anything());
 });
 
+it("returns an empty transcript while a Pi session is initializing", async () => {
+  const request = vi.fn(async <T>(_method: string, _params: unknown, schema: z.ZodType<T>) =>
+    schema.parse({ type: "agent_info", agent }),
+  );
+  const service = new HerdrService({ request } as unknown as HerdrClient);
+
+  const transcript = await service.readAgentTranscript("w1:p2");
+
+  expect(transcript).toEqual({
+    messages: [],
+    status: { cwd: "Unknown directory", totalTokens: 0, cost: 0 },
+  });
+  expect(request).toHaveBeenCalledTimes(1);
+});
+
 it("creates a tab before starting Pi in its root pane", async () => {
   const request = vi.fn(async <T>(method: string, _params: unknown, schema: z.ZodType<T>) => {
     if (method === "tab.create") {
@@ -107,10 +122,14 @@ it("creates a tab before starting Pi in its root pane", async () => {
     { name: "fix-auth", kind: "pi", pane_id: "w1:p2", timeout_ms: 30_000 },
     expect.anything(),
   ]);
-  expect(createdAgent).toMatchObject({ name: "fix-auth", tab_label: "Authentication" });
+  expect(createdAgent).toMatchObject({
+    agent: "pi",
+    name: "fix-auth",
+    tab_label: "Authentication",
+  });
 });
 
-it("lets Herdr choose default agent and tab names", async () => {
+it("generates a valid default agent name while letting Herdr choose the tab name", async () => {
   const request = vi.fn(async <T>(method: string, _params: unknown, schema: z.ZodType<T>) => {
     if (method === "tab.create") {
       return schema.parse({
@@ -133,7 +152,7 @@ it("lets Herdr choose default agent and tab names", async () => {
   ]);
   expect(request.mock.calls[1]).toEqual([
     "agent.start",
-    { kind: "pi", pane_id: "w1:p2", timeout_ms: 30_000 },
+    { name: "pi-w1-p2", kind: "pi", pane_id: "w1:p2", timeout_ms: 30_000 },
     expect.anything(),
   ]);
 });

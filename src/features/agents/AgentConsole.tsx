@@ -53,6 +53,7 @@ export function AgentConsole({ agent, onBack }: AgentConsoleProps) {
   const [attachments, setAttachments] = useState<PendingAttachment[]>([]);
   const [elapsedNow, setElapsedNow] = useState(() => Date.now());
   const [lightboxImage, setLightboxImage] = useState<string | null>(null);
+  const transcriptInitializing = agent.agent === "pi" && !agent.agent_session;
   const lightboxRef = useRef<HTMLDialogElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const outputRef = useRef<HTMLElement>(null);
@@ -65,7 +66,7 @@ export function AgentConsole({ agent, onBack }: AgentConsoleProps) {
   const transcriptQuery = useQuery({
     queryKey: ["agent-transcript", target],
     queryFn: () => getAgentTranscript(target),
-    enabled: view === "chat",
+    enabled: view === "chat" && !transcriptInitializing,
     refetchInterval: 1000,
   });
   useEffect(() => {
@@ -149,7 +150,13 @@ export function AgentConsole({ agent, onBack }: AgentConsoleProps) {
   };
   const content =
     view === "chat" ? (
-      transcriptQuery.isPending ? (
+      transcriptInitializing ? (
+        <div className="terminal-state transcript-initializing" role="status" aria-live="polite">
+          <span className="transcript-initializing__spinner" aria-hidden="true" />
+          <span>Starting chat…</span>
+          <small>The conversation will appear when the agent is ready.</small>
+        </div>
+      ) : transcriptQuery.isPending ? (
         <div className="terminal-state" aria-busy="true">
           Reading conversation…
         </div>
