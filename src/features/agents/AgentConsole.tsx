@@ -9,6 +9,7 @@ import {
   uploadImage,
   sendAgentKey,
 } from "../../shared/api/apiClient";
+import { ChatMessageText } from "./ChatMessageText";
 import { CloseTabButton } from "./CloseTabButton";
 import { BackIcon, CloseIcon, ImageIcon, SendIcon } from "../../shared/ui/Icons";
 import { IconButton, StatusIndicator, TabKindIcon } from "../../shared/ui";
@@ -180,7 +181,7 @@ export function AgentConsole({ agent, onBack }: AgentConsoleProps) {
               ) : (
                 <article className={`chat-message chat-message--${message.role}`} key={message.id}>
                   <span>{message.role === "user" ? "You" : getAgentTabLabel(agent)}</span>
-                  {message.text ? <p>{message.text}</p> : null}
+                  {message.text ? <ChatMessageText text={message.text} /> : null}
                   {message.attachments?.length ? (
                     <div className="chat-message__attachments">
                       {message.attachments.map((url) => (

@@ -260,6 +260,23 @@
   border-radius: var(--radius-md);
 }
 
+.chat-message p a {
+  color: var(--color-accent);
+  text-decoration-line: underline;
+  text-decoration-thickness: 0.08em;
+  text-underline-offset: 0.16em;
+}
+
+.chat-message p a:hover {
+  text-decoration-thickness: 0.12em;
+}
+
+.chat-message p a:focus-visible {
+  border-radius: var(--radius-sm);
+  outline: 2px solid var(--color-accent);
+  outline-offset: 2px;
+}
+
 .chat-message--user {
   justify-self: end;
 }
