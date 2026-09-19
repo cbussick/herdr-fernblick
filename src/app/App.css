@@ -546,8 +546,13 @@
   padding: 0.4rem;
 }
 
+.prompt-composer__row--shell {
+  grid-template-columns: minmax(0, 1fr) auto;
+}
+
 .prompt-composer textarea {
   width: 100%;
+  min-width: 0;
   min-height: 2.5rem;
   max-height: 8rem;
   field-sizing: content;

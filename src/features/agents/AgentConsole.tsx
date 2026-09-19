@@ -37,6 +37,23 @@ function ChatAttachment({ url, onOpen }: { url: string; onOpen: () => void }) {
   );
 }
 
+function ElapsedTime({ since }: { since?: number }) {
+  const [now, setNow] = useState(() => Date.now());
+
+  useEffect(() => {
+    const interval = window.setInterval(() => setNow(Date.now()), 1000);
+    return () => window.clearInterval(interval);
+  }, []);
+
+  const seconds = since ? Math.max(0, Math.floor((now - since) / 1000)) : 0;
+  const label =
+    seconds >= 3600
+      ? `${Math.floor(seconds / 3600)}:${String(Math.floor((seconds % 3600) / 60)).padStart(2, "0")}:${String(seconds % 60).padStart(2, "0")}`
+      : `${Math.floor(seconds / 60)}:${String(seconds % 60).padStart(2, "0")}`;
+
+  return <span className="chat-working__elapsed">[{label}]</span>;
+}
+
 const keyControls: { key: KeyName; label: string }[] = [
   { key: "esc", label: "Esc" },
   { key: "ctrl+c", label: "Ctrl+C" },
@@ -51,7 +68,6 @@ export function AgentConsole({ agent, onBack }: AgentConsoleProps) {
   const [prompt, setPrompt] = useState("");
   const [view, setView] = useState<AgentView>("chat");
   const [attachments, setAttachments] = useState<PendingAttachment[]>([]);
-  const [elapsedNow, setElapsedNow] = useState(() => Date.now());
   const [lightboxImage, setLightboxImage] = useState<string | null>(null);
   const transcriptInitializing = agent.agent === "pi" && !agent.agent_session;
   const lightboxRef = useRef<HTMLDialogElement>(null);
@@ -74,12 +90,6 @@ export function AgentConsole({ agent, onBack }: AgentConsoleProps) {
       lightboxRef.current.showModal();
     }
   }, [lightboxImage]);
-  useEffect(() => {
-    if (agent.agent_status !== "working") return;
-    setElapsedNow(Date.now());
-    const interval = window.setInterval(() => setElapsedNow(Date.now()), 1000);
-    return () => window.clearInterval(interval);
-  }, [agent.agent_status]);
   const promptMutation = useMutation({
     mutationFn: async ({ text, files }: { text: string; files: File[] }) => {
       const uploaded = await Promise.all(files.map(uploadImage));
@@ -135,14 +145,6 @@ export function AgentConsole({ agent, onBack }: AgentConsoleProps) {
     ]);
     if (fileInputRef.current) fileInputRef.current.value = "";
   }
-  const workingSince = transcriptQuery.data?.status.workingSince;
-  const elapsedSeconds = workingSince
-    ? Math.max(0, Math.floor((elapsedNow - workingSince) / 1000))
-    : 0;
-  const elapsedLabel =
-    elapsedSeconds >= 3600
-      ? `${Math.floor(elapsedSeconds / 3600)}:${String(Math.floor((elapsedSeconds % 3600) / 60)).padStart(2, "0")}:${String(elapsedSeconds % 60).padStart(2, "0")}`
-      : `${Math.floor(elapsedSeconds / 60)}:${String(elapsedSeconds % 60).padStart(2, "0")}`;
   const trackScroll = () => {
     const output = outputRef.current;
     if (output)
@@ -205,7 +207,7 @@ export function AgentConsole({ agent, onBack }: AgentConsoleProps) {
           {agent.agent_status === "working" ? (
             <div className="chat-working" role="status" aria-live="polite">
               <StatusIndicator status="working" label="Working" />
-              <span className="chat-working__elapsed">[{elapsedLabel}]</span>
+              <ElapsedTime since={transcriptQuery.data.status.workingSince} />
               <button
                 type="button"
                 disabled={keyMutation.isPending}

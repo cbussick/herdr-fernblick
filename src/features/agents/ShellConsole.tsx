@@ -103,23 +103,25 @@ export function ShellConsole({ tab, onBack }: ShellConsoleProps) {
         <label htmlFor="shell-command" className="sr-only">
           Shell command
         </label>
-        <div className="prompt-composer__row">
-          <textarea
-            id="shell-command"
-            value={command}
-            onChange={(event) => setCommand(event.target.value)}
-            placeholder="Enter a shell command…"
-            rows={2}
-            maxLength={32000}
-            disabled={inputMutation.isPending}
-          />
-          <button
-            type="submit"
-            aria-label="Run command"
-            disabled={!command.trim() || inputMutation.isPending}
-          >
-            <SendIcon />
-          </button>
+        <div className="prompt-composer__surface">
+          <div className="prompt-composer__row prompt-composer__row--shell">
+            <textarea
+              id="shell-command"
+              value={command}
+              onChange={(event) => setCommand(event.target.value)}
+              placeholder="Enter a shell command…"
+              rows={1}
+              maxLength={32000}
+              disabled={inputMutation.isPending}
+            />
+            <button
+              type="submit"
+              aria-label="Run command"
+              disabled={!command.trim() || inputMutation.isPending}
+            >
+              <SendIcon />
+            </button>
+          </div>
         </div>
         {inputMutation.isError ? <p role="alert">{inputMutation.error.message}</p> : null}
         {keyMutation.isError ? <p role="alert">{keyMutation.error.message}</p> : null}
