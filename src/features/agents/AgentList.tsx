@@ -60,7 +60,7 @@ export function AgentList({
     <nav className="agent-list" aria-label="Herdr Web overview">
       <header className="overview-header">
         <div className="overview-header__title">
-          <h1>Herdr Web</h1>
+          <h1>Fernblick</h1>
           <span className="connection-state">
             <i />
             Connected
