@@ -1,11 +1,13 @@
 import { useRef, useState, type FormEvent } from "react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
-import { closeTab, renameAgent, renameTab } from "../../shared/api/apiClient";
-import { PencilIcon, TrashIcon } from "../../shared/ui/Icons";
+import { closeTab, renameAgent, renameTab, restartAgent } from "../../shared/api/apiClient";
+import type { AgentStatus } from "../../shared/api/contracts";
+import { PencilIcon, RestartIcon, TrashIcon } from "../../shared/ui/Icons";
 
 interface CloseTabButtonProps {
   agentRunning: boolean;
   agentName?: string | null;
+  agentStatus?: AgentStatus;
   agentTarget?: string;
   label: string;
   onClosed: () => void;
@@ -15,6 +17,7 @@ const agentNamePattern = /^[a-z][a-z0-9_-]{0,31}$/;
 export function CloseTabButton({
   agentRunning,
   agentName,
+  agentStatus,
   agentTarget,
   label,
   onClosed,
@@ -24,7 +27,7 @@ export function CloseTabButton({
   const queryClient = useQueryClient();
   const [tabLabel, setTabLabel] = useState(label);
   const [nextAgentName, setNextAgentName] = useState(agentName ?? "");
-  const [confirmingDelete, setConfirmingDelete] = useState(false);
+  const [confirmation, setConfirmation] = useState<"delete" | "restart" | null>(null);
   const saveMutation = useMutation({
     mutationFn: async () => {
       const updates: Promise<void>[] = [];
@@ -38,6 +41,16 @@ export function CloseTabButton({
       dialogRef.current?.close();
     },
   });
+  const restartMutation = useMutation({
+    mutationFn: () => restartAgent(agentTarget!),
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: ["agents"] });
+      void queryClient.invalidateQueries({ queryKey: ["agent-output", agentTarget] });
+      void queryClient.invalidateQueries({ queryKey: ["agent-transcript", agentTarget] });
+      void queryClient.invalidateQueries({ queryKey: ["agent-tree", agentTarget] });
+      dialogRef.current?.close();
+    },
+  });
   const closeMutation = useMutation({
     mutationFn: () => closeTab(tabId),
     onSuccess: () => {
@@ -48,8 +61,9 @@ export function CloseTabButton({
   function open() {
     setTabLabel(label);
     setNextAgentName(agentName ?? "");
-    setConfirmingDelete(false);
+    setConfirmation(null);
     saveMutation.reset();
+    restartMutation.reset();
     closeMutation.reset();
     dialogRef.current?.showModal();
   }
@@ -73,12 +87,13 @@ export function CloseTabButton({
         ref={dialogRef}
         className="edit-tab-dialog"
         onClose={() => {
-          setConfirmingDelete(false);
+          setConfirmation(null);
           saveMutation.reset();
+          restartMutation.reset();
           closeMutation.reset();
         }}
       >
-        {confirmingDelete ? (
+        {confirmation === "delete" ? (
           <form
             onSubmit={(event) => {
               event.preventDefault();
@@ -96,7 +111,7 @@ export function CloseTabButton({
             </p>
             {closeMutation.isError ? <p role="alert">{closeMutation.error.message}</p> : null}
             <div className="edit-tab-dialog__actions">
-              <button type="button" onClick={() => setConfirmingDelete(false)}>
+              <button type="button" onClick={() => setConfirmation(null)}>
                 Back
               </button>
               <button
@@ -105,6 +120,31 @@ export function CloseTabButton({
                 disabled={closeMutation.isPending}
               >
                 {closeMutation.isPending ? "Closing…" : "Close tab"}
+              </button>
+            </div>
+          </form>
+        ) : confirmation === "restart" ? (
+          <form
+            onSubmit={(event) => {
+              event.preventDefault();
+              restartMutation.mutate();
+            }}
+          >
+            <div className="edit-tab-dialog__icon">
+              <RestartIcon />
+            </div>
+            <h2>Restart this agent session?</h2>
+            <p>
+              Pi will close and reopen in the same terminal with this conversation and its branches
+              preserved.
+            </p>
+            {restartMutation.isError ? <p role="alert">{restartMutation.error.message}</p> : null}
+            <div className="edit-tab-dialog__actions">
+              <button type="button" onClick={() => setConfirmation(null)}>
+                Back
+              </button>
+              <button type="submit" disabled={restartMutation.isPending}>
+                {restartMutation.isPending ? "Restarting…" : "Restart session"}
               </button>
             </div>
           </form>
@@ -138,10 +178,26 @@ export function CloseTabButton({
               />
             </label>
             {saveMutation.isError ? <p role="alert">{saveMutation.error.message}</p> : null}
+            {agentRunning && agentTarget ? (
+              <button
+                type="button"
+                className="edit-restart-button"
+                disabled={agentStatus !== "idle" && agentStatus !== "done"}
+                title={
+                  agentStatus === "idle" || agentStatus === "done"
+                    ? "Restart agent session"
+                    : "Wait for the agent to finish before restarting"
+                }
+                onClick={() => setConfirmation("restart")}
+              >
+                <RestartIcon />
+                Restart agent session
+              </button>
+            ) : null}
             <button
               type="button"
               className="edit-remove-button"
-              onClick={() => setConfirmingDelete(true)}
+              onClick={() => setConfirmation("delete")}
             >
               <TrashIcon />
               Close this tab
