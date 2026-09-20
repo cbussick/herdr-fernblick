@@ -14,6 +14,7 @@ import { CloseTabButton } from "./CloseTabButton";
 import { BackIcon, BranchIcon, CloseIcon, ImageIcon, SendIcon } from "../../shared/ui/Icons";
 import { IconButton, StatusIndicator, TabKindIcon } from "../../shared/ui";
 import { ConversationTreeDialog } from "./ConversationTreeDialog";
+import { RestartAgentButton } from "./RestartAgentButton";
 
 interface AgentConsoleProps {
   agent: Agent;
@@ -260,6 +261,9 @@ export function AgentConsole({ agent, onBack }: AgentConsoleProps) {
           tabId={agent.tab_id}
           onClosed={onBack}
         />
+        {agent.agent === "pi" && agent.agent_session?.kind === "path" ? (
+          <RestartAgentButton status={agent.agent_status} target={target} />
+        ) : null}
         <button
           type="button"
           className="agent-view-toggle"

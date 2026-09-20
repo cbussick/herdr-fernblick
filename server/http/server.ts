@@ -112,7 +112,7 @@ class HttpError extends Error {
 
 function getAgentRoute(pathname: string) {
   const match = pathname.match(
-    /^\/api\/agents\/([^/]+)(?:\/(output|transcript|prompt|keys|tree|tree-navigation))?$/,
+    /^\/api\/agents\/([^/]+)(?:\/(output|transcript|prompt|keys|restart|tree|tree-navigation))?$/,
   );
   if (!match) return null;
 
@@ -262,6 +262,12 @@ async function handleApi(
 
   if (request.method === "GET" && route.action === "tree") {
     sendJson(response, 200, await service.readAgentTree(route.target));
+    return true;
+  }
+
+  if (request.method === "POST" && route.action === "restart") {
+    requireSameOrigin(request);
+    sendJson(response, 200, { agent: await service.restartPiAgent(route.target) });
     return true;
   }
 

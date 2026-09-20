@@ -94,6 +94,13 @@ export async function closeTab(tabId: string) {
   await request(`/api/tabs/${encodeURIComponent(tabId)}`, { method: "DELETE" });
 }
 
+export async function restartAgent(target: string) {
+  const body = (await request(`/api/agents/${encodeURIComponent(target)}/restart`, {
+    method: "POST",
+  })) as { agent: Agent };
+  return body.agent;
+}
+
 export async function getPaneOutput(paneId: string) {
   const body = await request(`/api/panes/${encodeURIComponent(paneId)}/output?lines=600`);
   return terminalOutputSchema.parse(body);

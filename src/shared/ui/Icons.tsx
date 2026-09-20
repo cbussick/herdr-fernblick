@@ -75,6 +75,15 @@ export function TrashIcon(props: IconProps) {
   );
 }
 
+export function RestartIcon(props: IconProps) {
+  return (
+    <IconBase {...props}>
+      <path d="M20 6v5h-5" />
+      <path d="M18.5 15a7 7 0 1 1-1.6-8.7L20 9" />
+    </IconBase>
+  );
+}
+
 export function BranchIcon(props: IconProps) {
   return (
     <IconBase {...props}>

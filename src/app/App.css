@@ -101,7 +101,7 @@
 .console-header {
   display: grid;
   min-height: var(--header-height);
-  grid-template-columns: auto auto minmax(0, auto) auto auto minmax(0, 1fr);
+  grid-template-columns: auto auto minmax(0, auto) auto auto auto minmax(0, 1fr);
   align-items: center;
   gap: var(--space-3);
   padding: var(--space-3) var(--space-5);
@@ -149,6 +149,30 @@
   font-size: 0.75rem;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+.restart-agent-button {
+  display: inline-flex;
+  min-height: 1.875rem;
+  align-items: center;
+  gap: var(--space-1);
+  padding: 0 var(--space-2);
+  color: var(--color-text-secondary);
+  font-size: 0.6875rem;
+  font-weight: 750;
+  background: var(--color-surface-subtle);
+  border: 1px solid var(--color-border-strong);
+  border-radius: var(--radius-round);
+}
+
+.restart-agent-button svg {
+  width: 0.8rem;
+}
+
+.restart-agent-button:disabled {
+  color: var(--color-text-tertiary);
+  cursor: not-allowed;
+  opacity: 0.65;
 }
 
 .agent-view-toggle {
@@ -1010,6 +1034,20 @@
   padding: var(--space-6);
 }
 
+.confirm-dialog__icon {
+  display: grid;
+  width: 2.5rem;
+  height: 2.5rem;
+  place-items: center;
+  color: var(--color-accent);
+  background: var(--color-accent-soft);
+  border-radius: var(--radius-round);
+}
+
+.confirm-dialog__icon svg {
+  width: 1.1rem;
+}
+
 .confirm-dialog h2,
 .edit-tab-dialog h2,
 .new-agent-form h2 {
@@ -1241,7 +1279,7 @@
 
   .console-header {
     min-height: 3.5rem;
-    grid-template-columns: auto auto minmax(0, auto) auto auto minmax(0, 1fr);
+    grid-template-columns: auto auto minmax(0, auto) auto auto auto minmax(0, 1fr);
     padding: var(--space-2) var(--space-3) var(--space-1);
   }
 

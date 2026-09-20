@@ -169,6 +169,51 @@ it("generates a valid default agent name while letting Herdr choose the tab name
   ]);
 });
 
+it("gracefully restarts Pi in the same pane and session", async () => {
+  const sessionPath = "/root/.pi/agent/sessions/project/session.jsonl";
+  const restartableAgent = {
+    ...agent,
+    agent_session: { agent: "pi", kind: "path", source: "herdr:pi", value: sessionPath },
+  };
+  const request = vi.fn(async <T>(method: string, _params: unknown, schema: z.ZodType<T>) => {
+    if (method === "agent.get")
+      return schema.parse({ type: "agent_info", agent: restartableAgent });
+    if (method === "session.snapshot") {
+      return schema.parse({
+        type: "session_snapshot",
+        snapshot: { agents: [], panes: [], tabs: [], workspaces: [] },
+      });
+    }
+    if (method === "agent.start") {
+      return schema.parse({ type: "agent_started", agent: restartableAgent });
+    }
+    return schema.parse({ type: "ok" });
+  });
+  const service = new HerdrService({ request } as unknown as HerdrClient);
+
+  await service.restartPiAgent("fix-auth");
+
+  expect(request).toHaveBeenCalledWith(
+    "pane.send_input",
+    { pane_id: "w1:p2", text: "/quit", keys: ["enter"] },
+    expect.anything(),
+  );
+  expect(request).toHaveBeenCalledWith(
+    "agent.start",
+    expect.objectContaining({
+      name: "fix-auth",
+      pane_id: "w1:p2",
+      agent_args: [
+        "--session",
+        sessionPath,
+        "--extension",
+        expect.stringContaining("fernblickPiExtension"),
+      ],
+    }),
+    expect.anything(),
+  );
+});
+
 it("creates an unfocused workspace in the requested directory", async () => {
   const request = vi.fn(async <T>(_method: string, _params: unknown, schema: z.ZodType<T>) =>
     schema.parse({

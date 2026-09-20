@@ -15,6 +15,7 @@ import { readPiTree } from "../pi/readPiTree.js";
 const extensionJsPath = fileURLToPath(new URL("../pi/fernblickPiExtension.js", import.meta.url));
 const extensionTsPath = fileURLToPath(new URL("../pi/fernblickPiExtension.ts", import.meta.url));
 const fernblickExtensionPath = existsSync(extensionJsPath) ? extensionJsPath : extensionTsPath;
+const delay = (milliseconds: number) => new Promise((resolve) => setTimeout(resolve, milliseconds));
 
 const tabSchema = z.object({
   label: z.string(),
@@ -165,6 +166,53 @@ export class HerdrService {
 
   async renameAgent(target: string, name: string) {
     await this.client.request("agent.rename", { target, name }, z.unknown());
+  }
+
+  async restartPiAgent(target: string) {
+    const { agent } = await this.client.request("agent.get", { target }, agentInfoResultSchema);
+    if (agent.agent !== "pi" || agent.agent_session?.kind !== "path") {
+      throw new Error("Only Pi agents with a saved session can be restarted");
+    }
+    if (agent.agent_status !== "idle" && agent.agent_status !== "done") {
+      throw new HerdrRequestError(
+        "agent_busy",
+        "Wait for the agent to finish before restarting it",
+      );
+    }
+
+    const name =
+      agent.name ?? `pi-${agent.pane_id.replace(/[^a-z0-9_-]/gi, "-").toLowerCase()}`.slice(0, 32);
+    await this.client.request(
+      "pane.send_input",
+      { pane_id: agent.pane_id, text: "/quit", keys: ["enter"] },
+      okResultSchema,
+    );
+
+    const deadline = Date.now() + 10_000;
+    let exited = false;
+    while (Date.now() < deadline) {
+      await delay(100);
+      const dashboard = await this.getDashboard();
+      if (!dashboard.agents.some((candidate) => candidate.pane_id === agent.pane_id)) {
+        exited = true;
+        break;
+      }
+    }
+    if (!exited) throw new HerdrRequestError("restart_timeout", "Pi did not exit in time");
+
+    await delay(150);
+    const restarted = await this.client.request(
+      "agent.start",
+      {
+        name,
+        kind: "pi",
+        pane_id: agent.pane_id,
+        timeout_ms: 30_000,
+        agent_args: ["--session", agent.agent_session.value, "--extension", fernblickExtensionPath],
+      },
+      agentStartedResultSchema,
+    );
+    return restarted.agent;
   }
 
   async renameTab(tabId: string, label: string) {
