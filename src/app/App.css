@@ -1399,31 +1399,17 @@
     padding-inline: var(--space-3);
   }
 
-  .conversation-tree__list .conversation-tree__list {
-    padding-left: 0;
-    margin-left: 0;
+  .conversation-tree-dialog__body > .conversation-tree__list {
+    width: max-content;
+    min-width: 100%;
   }
 
-  .conversation-tree__list .conversation-tree__list::before,
-  .conversation-tree__list .conversation-tree__list > li::before {
-    display: none;
+  .conversation-tree__list .conversation-tree__list {
+    margin-left: var(--space-5);
   }
 
   .conversation-tree__row {
-    width: 100%;
-    grid-template-columns: 0.75rem 4.4rem minmax(0, 1fr);
-    gap: var(--space-2);
-  }
-
-  .conversation-tree__row > button {
-    width: 100%;
-    max-width: 100%;
-    overflow: hidden;
-  }
-
-  .conversation-tree__row > small {
-    grid-column: 3;
-    padding: 0 var(--space-3) var(--space-2);
+    width: calc(100dvw - 1.5rem);
   }
 
   .conversation-tree-dialog__footer {
