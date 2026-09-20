@@ -11,6 +11,8 @@ interface CloseTabButtonProps {
   agentTarget?: string;
   label: string;
   onClosed: () => void;
+  onShowThinkingChange?: (show: boolean) => void;
+  showThinking?: boolean;
   tabId: string;
 }
 const agentNamePattern = /^[a-z][a-z0-9_-]{0,31}$/;
@@ -21,12 +23,15 @@ export function CloseTabButton({
   agentTarget,
   label,
   onClosed,
+  onShowThinkingChange,
+  showThinking = true,
   tabId,
 }: CloseTabButtonProps) {
   const dialogRef = useRef<HTMLDialogElement>(null);
   const queryClient = useQueryClient();
   const [tabLabel, setTabLabel] = useState(label);
   const [nextAgentName, setNextAgentName] = useState(agentName ?? "");
+  const [nextShowThinking, setNextShowThinking] = useState(showThinking);
   const [confirmation, setConfirmation] = useState<"delete" | "restart" | null>(null);
   const saveMutation = useMutation({
     mutationFn: async () => {
@@ -38,6 +43,7 @@ export function CloseTabButton({
     },
     onSuccess: () => {
       void queryClient.invalidateQueries({ queryKey: ["agents"] });
+      onShowThinkingChange?.(nextShowThinking);
       dialogRef.current?.close();
     },
   });
@@ -61,6 +67,7 @@ export function CloseTabButton({
   function open() {
     setTabLabel(label);
     setNextAgentName(agentName ?? "");
+    setNextShowThinking(showThinking);
     setConfirmation(null);
     saveMutation.reset();
     restartMutation.reset();
@@ -177,6 +184,20 @@ export function CloseTabButton({
                 required
               />
             </label>
+            {agentRunning ? (
+              <label className="edit-thinking-toggle">
+                <span>
+                  Show thinking chips
+                  <small>Display Pi’s brief progress notes in Fernblick.</small>
+                </span>
+                <input
+                  type="checkbox"
+                  checked={nextShowThinking}
+                  onChange={(event) => setNextShowThinking(event.target.checked)}
+                />
+                <i aria-hidden="true" />
+              </label>
+            ) : null}
             {saveMutation.isError ? <p role="alert">{saveMutation.error.message}</p> : null}
             {agentRunning && agentTarget ? (
               <button

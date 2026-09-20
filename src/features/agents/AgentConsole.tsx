@@ -11,7 +11,14 @@ import {
 } from "../../shared/api/apiClient";
 import { ChatMessageText } from "./ChatMessageText";
 import { CloseTabButton } from "./CloseTabButton";
-import { BackIcon, BranchIcon, CloseIcon, ImageIcon, SendIcon } from "../../shared/ui/Icons";
+import {
+  BackIcon,
+  BranchIcon,
+  CloseIcon,
+  ImageIcon,
+  LightbulbIcon,
+  SendIcon,
+} from "../../shared/ui/Icons";
 import { IconButton, StatusIndicator, TabKindIcon } from "../../shared/ui";
 import { ConversationTreeDialog } from "./ConversationTreeDialog";
 
@@ -21,6 +28,19 @@ interface AgentConsoleProps {
 }
 type AgentView = "chat" | "terminal";
 type PendingAttachment = { file: File; previewUrl: string };
+const showThinkingStorageKey = "fernblick.showThinking";
+
+function initialShowThinking() {
+  try {
+    return window.localStorage.getItem(showThinkingStorageKey) !== "false";
+  } catch {
+    return true;
+  }
+}
+function thinkingText(text: string) {
+  return text.replace(/^\*\*(.+)\*\*$/s, "$1");
+}
+
 function ChatAttachment({ url, onOpen }: { url: string; onOpen: () => void }) {
   const [unavailable, setUnavailable] = useState(false);
   if (unavailable) {
@@ -71,6 +91,7 @@ export function AgentConsole({ agent, onBack }: AgentConsoleProps) {
   const [attachments, setAttachments] = useState<PendingAttachment[]>([]);
   const [lightboxImage, setLightboxImage] = useState<string | null>(null);
   const [treeOpen, setTreeOpen] = useState(false);
+  const [showThinking, setShowThinking] = useState(initialShowThinking);
   const transcriptInitializing = agent.agent === "pi" && !agent.agent_session;
   const lightboxRef = useRef<HTMLDialogElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -176,33 +197,48 @@ export function AgentConsole({ agent, onBack }: AgentConsoleProps) {
           onScroll={trackScroll}
         >
           {transcriptQuery.data.messages.length ? (
-            transcriptQuery.data.messages.map((message) =>
-              message.role === "status" ? (
-                <div className="chat-status" role="status" key={message.id}>
-                  {message.text}
-                </div>
-              ) : message.role === "tool" ? (
-                <details
-                  className={`chat-tool${message.isError ? " chat-tool--error" : ""}`}
-                  key={message.id}
-                >
-                  <summary>{message.toolName}</summary>
-                  <pre>{message.text}</pre>
-                </details>
-              ) : (
-                <article className={`chat-message chat-message--${message.role}`} key={message.id}>
-                  <span>{message.role === "user" ? "You" : getAgentTabLabel(agent)}</span>
-                  {message.text ? <ChatMessageText text={message.text} /> : null}
-                  {message.attachments?.length ? (
-                    <div className="chat-message__attachments">
-                      {message.attachments.map((url) => (
-                        <ChatAttachment key={url} url={url} onOpen={() => setLightboxImage(url)} />
-                      ))}
-                    </div>
-                  ) : null}
-                </article>
-              ),
-            )
+            transcriptQuery.data.messages
+              .filter((message) => showThinking || message.role !== "thinking")
+              .map((message) =>
+                message.role === "status" ? (
+                  <div className="chat-status" role="status" key={message.id}>
+                    {message.text}
+                  </div>
+                ) : message.role === "thinking" ? (
+                  <div className="chat-thinking" key={message.id}>
+                    <LightbulbIcon />
+                    <span className="sr-only">Thinking: </span>
+                    <ChatMessageText text={thinkingText(message.text)} />
+                  </div>
+                ) : message.role === "tool" ? (
+                  <details
+                    className={`chat-tool${message.isError ? " chat-tool--error" : ""}`}
+                    key={message.id}
+                  >
+                    <summary>{message.toolName}</summary>
+                    <pre>{message.text}</pre>
+                  </details>
+                ) : (
+                  <article
+                    className={`chat-message chat-message--${message.role}`}
+                    key={message.id}
+                  >
+                    <span>{message.role === "user" ? "You" : getAgentTabLabel(agent)}</span>
+                    {message.text ? <ChatMessageText text={message.text} /> : null}
+                    {message.attachments?.length ? (
+                      <div className="chat-message__attachments">
+                        {message.attachments.map((url) => (
+                          <ChatAttachment
+                            key={url}
+                            url={url}
+                            onOpen={() => setLightboxImage(url)}
+                          />
+                        ))}
+                      </div>
+                    ) : null}
+                  </article>
+                ),
+              )
           ) : (
             <div className="terminal-state">No messages yet.</div>
           )}
@@ -260,6 +296,15 @@ export function AgentConsole({ agent, onBack }: AgentConsoleProps) {
           tabId={agent.tab_id}
           onClosed={onBack}
           agentStatus={agent.agent_status}
+          showThinking={showThinking}
+          onShowThinkingChange={(show) => {
+            setShowThinking(show);
+            try {
+              window.localStorage.setItem(showThinkingStorageKey, String(show));
+            } catch {
+              // The preference remains active for this page when storage is unavailable.
+            }
+          }}
         />
         <button
           type="button"

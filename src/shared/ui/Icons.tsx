@@ -113,3 +113,14 @@ export function SendIcon(props: IconProps) {
     </IconBase>
   );
 }
+
+export function LightbulbIcon(props: IconProps) {
+  return (
+    <IconBase {...props}>
+      <path d="M9 18h6" />
+      <path d="M10 22h4" />
+      <path d="M9 14h6" />
+      <path d="M15.1 14c.2-.7.6-1.2 1.1-1.8A6 6 0 1 0 7.8 12.2c.5.6.9 1.1 1.1 1.8" />
+    </IconBase>
+  );
+}

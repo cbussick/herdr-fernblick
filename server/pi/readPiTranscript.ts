@@ -17,21 +17,22 @@ interface Entry {
   modelId?: string;
   message?: Record<string, unknown>;
 }
-function textContent(content: unknown): string {
-  if (typeof content === "string") return content;
-  if (!Array.isArray(content)) return "";
-  return content
-    .flatMap((block) =>
-      typeof block === "object" &&
-      block &&
-      "type" in block &&
-      block.type === "text" &&
-      "text" in block &&
-      typeof block.text === "string"
-        ? [block.text]
-        : [],
-    )
-    .join("\n");
+export function contentBlocks(content: unknown, type: "text" | "thinking"): string[] {
+  if (type === "text" && typeof content === "string") return [content];
+  if (!Array.isArray(content)) return [];
+  return content.flatMap((block) => {
+    if (typeof block !== "object" || !block || !("type" in block) || block.type !== type) return [];
+    const field = type === "text" ? "text" : "thinking";
+    if (!(field in block) || typeof block[field] !== "string") return [];
+    return type === "thinking"
+      ? block[field]
+          .split(/\n+/)
+          .map((line) => line.trim())
+          .filter(Boolean)
+      : block[field]
+        ? [block[field]]
+        : [];
+  });
 }
 function number(value: unknown) {
   return typeof value === "number" && Number.isFinite(value) ? value : 0;
@@ -93,7 +94,8 @@ export async function readPiTranscript(
     const message = entry.message;
     const role = message.role;
     if (role === "user") workingSince = number(message.timestamp) || undefined;
-    const rawText = textContent(message.content);
+    const rawText = contentBlocks(message.content, "text").join("\n");
+    const thinkingBlocks = role === "assistant" ? contentBlocks(message.content, "thinking") : [];
     const attachmentPattern = /\/tmp\/fernblick\/([0-9a-f-]{36}\.(?:png|jpg|gif|webp))/g;
     const attachments =
       role === "user"
@@ -125,24 +127,34 @@ export async function readPiTranscript(
       });
       continue;
     }
-    if (!text && !attachments.length) continue;
-    if (role === "user" || role === "assistant")
+    const timestamp = number(message.timestamp) || undefined;
+    thinkingBlocks.forEach((thinking, index) =>
       messages.push({
-        id: entry.id!,
-        role,
-        text,
-        timestamp: number(message.timestamp) || undefined,
-        attachments: attachments.length ? attachments : undefined,
-      });
-    else if (role === "toolResult")
-      messages.push({
-        id: entry.id!,
-        role: "tool",
-        text,
-        toolName: typeof message.toolName === "string" ? message.toolName : "Tool",
-        isError: message.isError === true,
-        timestamp: number(message.timestamp) || undefined,
-      });
+        id: `${entry.id!}-thinking-${index}`,
+        role: "thinking",
+        text: thinking,
+        timestamp,
+      }),
+    );
+    if (text || attachments.length) {
+      if (role === "user" || role === "assistant")
+        messages.push({
+          id: entry.id!,
+          role,
+          text,
+          timestamp,
+          attachments: attachments.length ? attachments : undefined,
+        });
+      else if (role === "toolResult")
+        messages.push({
+          id: entry.id!,
+          role: "tool",
+          text,
+          toolName: typeof message.toolName === "string" ? message.toolName : "Tool",
+          isError: message.isError === true,
+          timestamp,
+        });
+    }
   }
   return agentTranscriptSchema.parse({
     messages,

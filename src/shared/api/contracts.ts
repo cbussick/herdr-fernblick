@@ -130,7 +130,7 @@ export const imageUploadSchema = z.object({
 
 export const chatMessageSchema = z.object({
   id: z.string(),
-  role: z.enum(["user", "assistant", "tool", "status"]),
+  role: z.enum(["user", "assistant", "thinking", "tool", "status"]),
   text: z.string(),
   toolName: z.string().optional(),
   isError: z.boolean().optional(),
