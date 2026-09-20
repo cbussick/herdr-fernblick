@@ -1020,9 +1020,13 @@
 .edit-tab-dialog p,
 .new-agent-form__header p {
   margin-top: var(--space-1);
+  overflow: visible;
   color: var(--color-text-secondary);
   font-size: 0.8125rem;
   line-height: 1.5;
+  text-overflow: clip;
+  white-space: normal;
+  overflow-wrap: anywhere;
 }
 
 .confirm-dialog__actions,
