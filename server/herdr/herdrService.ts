@@ -132,7 +132,7 @@ export class HerdrService {
         kind: "pi",
         pane_id: createdTab.root_pane.pane_id,
         timeout_ms: 30_000,
-        agent_args: ["--extension", fernblickExtensionPath],
+        args: ["--extension", fernblickExtensionPath],
       },
       agentStartedResultSchema,
     );
@@ -208,7 +208,7 @@ export class HerdrService {
         kind: "pi",
         pane_id: agent.pane_id,
         timeout_ms: 30_000,
-        agent_args: ["--session", agent.agent_session.value, "--extension", fernblickExtensionPath],
+        args: ["--session", agent.agent_session.value, "--extension", fernblickExtensionPath],
       },
       agentStartedResultSchema,
     );

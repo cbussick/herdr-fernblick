@@ -124,7 +124,7 @@ it("creates a tab before starting Pi in its root pane", async () => {
       kind: "pi",
       pane_id: "w1:p2",
       timeout_ms: 30_000,
-      agent_args: ["--extension", expect.stringContaining("fernblickPiExtension")],
+      args: ["--extension", expect.stringContaining("fernblickPiExtension")],
     },
     expect.anything(),
   ]);
@@ -163,7 +163,7 @@ it("generates a valid default agent name while letting Herdr choose the tab name
       kind: "pi",
       pane_id: "w1:p2",
       timeout_ms: 30_000,
-      agent_args: ["--extension", expect.stringContaining("fernblickPiExtension")],
+      args: ["--extension", expect.stringContaining("fernblickPiExtension")],
     },
     expect.anything(),
   ]);
@@ -203,7 +203,7 @@ it("gracefully restarts Pi in the same pane and session", async () => {
     expect.objectContaining({
       name: "fix-auth",
       pane_id: "w1:p2",
-      agent_args: [
+      args: [
         "--session",
         sessionPath,
         "--extension",
