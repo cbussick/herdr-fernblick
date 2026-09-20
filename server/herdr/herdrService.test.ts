@@ -119,7 +119,13 @@ it("creates a tab before starting Pi in its root pane", async () => {
   ]);
   expect(request.mock.calls[1]).toEqual([
     "agent.start",
-    { name: "fix-auth", kind: "pi", pane_id: "w1:p2", timeout_ms: 30_000 },
+    {
+      name: "fix-auth",
+      kind: "pi",
+      pane_id: "w1:p2",
+      timeout_ms: 30_000,
+      agent_args: ["--extension", expect.stringContaining("fernblickPiExtension")],
+    },
     expect.anything(),
   ]);
   expect(createdAgent).toMatchObject({
@@ -152,7 +158,13 @@ it("generates a valid default agent name while letting Herdr choose the tab name
   ]);
   expect(request.mock.calls[1]).toEqual([
     "agent.start",
-    { name: "pi-w1-p2", kind: "pi", pane_id: "w1:p2", timeout_ms: 30_000 },
+    {
+      name: "pi-w1-p2",
+      kind: "pi",
+      pane_id: "w1:p2",
+      timeout_ms: 30_000,
+      agent_args: ["--extension", expect.stringContaining("fernblickPiExtension")],
+    },
     expect.anything(),
   ]);
 });

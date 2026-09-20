@@ -7,6 +7,7 @@ import {
   createTabRequestSchema,
   createWorkspaceRequestSchema,
   keyRequestSchema,
+  navigateTreeRequestSchema,
   paneInputRequestSchema,
   promptRequestSchema,
   renameAgentRequestSchema,
@@ -110,7 +111,9 @@ class HttpError extends Error {
 }
 
 function getAgentRoute(pathname: string) {
-  const match = pathname.match(/^\/api\/agents\/([^/]+)(?:\/(output|transcript|prompt|keys))?$/);
+  const match = pathname.match(
+    /^\/api\/agents\/([^/]+)(?:\/(output|transcript|prompt|keys|tree|tree-navigation))?$/,
+  );
   if (!match) return null;
 
   const target = targetSchema.safeParse(decodeURIComponent(match[1]));
@@ -254,6 +257,18 @@ async function handleApi(
   if (request.method === "GET" && route.action === "output") {
     const lines = linesSchema.parse(url.searchParams.get("lines") ?? undefined);
     sendJson(response, 200, await service.readAgent(route.target, lines));
+    return true;
+  }
+
+  if (request.method === "GET" && route.action === "tree") {
+    sendJson(response, 200, await service.readAgentTree(route.target));
+    return true;
+  }
+
+  if (request.method === "POST" && route.action === "tree-navigation") {
+    requireSameOrigin(request);
+    const body = navigateTreeRequestSchema.parse(await readJson(request));
+    sendJson(response, 200, { agent: await service.navigateAgentTree(route.target, body.entryId) });
     return true;
   }
 

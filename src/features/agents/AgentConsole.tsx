@@ -11,8 +11,9 @@ import {
 } from "../../shared/api/apiClient";
 import { ChatMessageText } from "./ChatMessageText";
 import { CloseTabButton } from "./CloseTabButton";
-import { BackIcon, CloseIcon, ImageIcon, SendIcon } from "../../shared/ui/Icons";
+import { BackIcon, BranchIcon, CloseIcon, ImageIcon, SendIcon } from "../../shared/ui/Icons";
 import { IconButton, StatusIndicator, TabKindIcon } from "../../shared/ui";
+import { ConversationTreeDialog } from "./ConversationTreeDialog";
 
 interface AgentConsoleProps {
   agent: Agent;
@@ -69,6 +70,7 @@ export function AgentConsole({ agent, onBack }: AgentConsoleProps) {
   const [view, setView] = useState<AgentView>("chat");
   const [attachments, setAttachments] = useState<PendingAttachment[]>([]);
   const [lightboxImage, setLightboxImage] = useState<string | null>(null);
+  const [treeOpen, setTreeOpen] = useState(false);
   const transcriptInitializing = agent.agent === "pi" && !agent.agent_session;
   const lightboxRef = useRef<HTMLDialogElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -345,6 +347,17 @@ export function AgentConsole({ agent, onBack }: AgentConsoleProps) {
             >
               <ImageIcon />
             </button>
+            {agent.agent === "pi" && agent.agent_session?.kind === "path" ? (
+              <button
+                type="button"
+                className="prompt-composer__tree"
+                aria-label="Open conversation paths"
+                title="Conversation paths"
+                onClick={() => setTreeOpen(true)}
+              >
+                <BranchIcon />
+              </button>
+            ) : null}
             <textarea
               id="agent-prompt"
               value={prompt}
@@ -387,6 +400,12 @@ export function AgentConsole({ agent, onBack }: AgentConsoleProps) {
           )}
         </div>
       ) : null}
+      <ConversationTreeDialog
+        open={treeOpen}
+        target={target}
+        onClose={() => setTreeOpen(false)}
+        onRestorePrompt={setPrompt}
+      />
       {lightboxImage ? (
         <dialog
           ref={lightboxRef}

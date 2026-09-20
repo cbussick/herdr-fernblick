@@ -1,3 +1,5 @@
+import { existsSync } from "node:fs";
+import { fileURLToPath } from "node:url";
 import { z } from "zod";
 import {
   agentSchema,
@@ -8,6 +10,11 @@ import {
 } from "../../src/shared/api/contracts.js";
 import { HerdrClient, HerdrRequestError } from "./HerdrClient.js";
 import { readPiTranscript } from "../pi/readPiTranscript.js";
+import { readPiTree } from "../pi/readPiTree.js";
+
+const extensionJsPath = fileURLToPath(new URL("../pi/fernblickPiExtension.js", import.meta.url));
+const extensionTsPath = fileURLToPath(new URL("../pi/fernblickPiExtension.ts", import.meta.url));
+const fernblickExtensionPath = existsSync(extensionJsPath) ? extensionJsPath : extensionTsPath;
 
 const tabSchema = z.object({
   label: z.string(),
@@ -124,6 +131,7 @@ export class HerdrService {
         kind: "pi",
         pane_id: createdTab.root_pane.pane_id,
         timeout_ms: 30_000,
+        agent_args: ["--extension", fernblickExtensionPath],
       },
       agentStartedResultSchema,
     );
@@ -243,6 +251,27 @@ export class HerdrService {
       .filter(Boolean);
     const nativeLines = renderedFooter.some((line) => line.endsWith("...")) ? [] : renderedFooter;
     return { ...transcript, status: { ...transcript.status, nativeLines } };
+  }
+
+  async readAgentTree(target: string) {
+    const { agent } = await this.client.request("agent.get", { target }, agentInfoResultSchema);
+    if (agent.agent !== "pi" || agent.agent_session?.kind !== "path") {
+      throw new Error("A conversation tree is not available for this agent");
+    }
+    return readPiTree(agent.agent_session.value);
+  }
+
+  async navigateAgentTree(target: string, entryId: string) {
+    const tree = await this.readAgentTree(target);
+    const containsEntry = (nodes: typeof tree.roots): boolean =>
+      nodes.some((node) => node.id === entryId || containsEntry(node.children));
+    if (!containsEntry(tree.roots)) throw new Error("Conversation entry was not found");
+    const result = await this.client.request(
+      "agent.prompt",
+      { target, text: `/fernblick-navigate ${entryId}` },
+      agentPromptResultSchema,
+    );
+    return result.agent;
   }
 
   async readAgent(target: string, lines: number) {

@@ -152,6 +152,39 @@ export const agentTranscriptSchema = z.object({
   }),
 });
 
+export type PiTreeNode = {
+  id: string;
+  parentId: string | null;
+  role: "user" | "assistant";
+  text: string;
+  timestamp?: string;
+  label?: string;
+  isActivePath: boolean;
+  children: PiTreeNode[];
+};
+
+export const piTreeNodeSchema: z.ZodType<PiTreeNode> = z.lazy(() =>
+  z.object({
+    id: z.string(),
+    parentId: z.string().nullable(),
+    role: z.enum(["user", "assistant"]),
+    text: z.string(),
+    timestamp: z.string().optional(),
+    label: z.string().optional(),
+    isActivePath: z.boolean(),
+    children: z.array(piTreeNodeSchema),
+  }),
+);
+
+export const piTreeResponseSchema = z.object({
+  roots: z.array(piTreeNodeSchema),
+  leafId: z.string().nullable(),
+});
+
+export const navigateTreeRequestSchema = z.object({
+  entryId: z.string().regex(/^[A-Za-z0-9_-]{1,128}$/),
+});
+
 export const promptRequestSchema = z
   .object({
     text: z.string().trim().max(32_000),
@@ -189,5 +222,6 @@ export type CreateWorkspaceRequest = z.infer<typeof createWorkspaceRequestSchema
 export type CreateTabRequest = z.infer<typeof createTabRequestSchema>;
 export type KeyName = z.infer<typeof keyNameSchema>;
 export type TerminalOutput = z.infer<typeof terminalOutputSchema>;
+export type PiTreeResponse = z.infer<typeof piTreeResponseSchema>;
 export type ShellTab = z.infer<typeof shellTabSchema>;
 export type Workspace = z.infer<typeof workspaceSchema>;

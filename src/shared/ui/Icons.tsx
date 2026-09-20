@@ -75,6 +75,17 @@ export function TrashIcon(props: IconProps) {
   );
 }
 
+export function BranchIcon(props: IconProps) {
+  return (
+    <IconBase {...props}>
+      <circle cx="6" cy="5" r="2" />
+      <circle cx="18" cy="8" r="2" />
+      <circle cx="18" cy="18" r="2" />
+      <path d="M6 7v7a4 4 0 0 0 4 4h6M8 8h8" />
+    </IconBase>
+  );
+}
+
 export function ImageIcon(props: IconProps) {
   return (
     <IconBase {...props}>

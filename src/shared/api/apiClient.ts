@@ -2,6 +2,8 @@ import {
   agentsResponseSchema,
   agentTranscriptSchema,
   imageUploadSchema,
+  navigateTreeRequestSchema,
+  piTreeResponseSchema,
   createAgentRequestSchema,
   createAgentResponseSchema,
   createWorkspaceRequestSchema,
@@ -117,6 +119,21 @@ export async function getAgentTranscript(target: string) {
   return agentTranscriptSchema.parse(
     await request(`/api/agents/${encodeURIComponent(target)}/transcript`),
   );
+}
+
+export async function getAgentTree(target: string) {
+  return piTreeResponseSchema.parse(
+    await request(`/api/agents/${encodeURIComponent(target)}/tree`),
+  );
+}
+
+export async function navigateAgentTree(target: string, entryId: string) {
+  const body = (await request(`/api/agents/${encodeURIComponent(target)}/tree-navigation`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(navigateTreeRequestSchema.parse({ entryId })),
+  })) as { agent: Agent };
+  return body.agent;
 }
 
 export async function getAgentOutput(target: string) {
