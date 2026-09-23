@@ -1333,7 +1333,8 @@
   border-radius: var(--radius-sm);
 }
 
-@media (width <= 45rem) {
+/* A portrait tablet needs the same single-pane navigation as a phone. */
+@media (width < 64rem) {
   .workspace {
     display: block;
   }
