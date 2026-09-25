@@ -114,6 +114,14 @@ export function AgentConsole({ agent, onBack }: AgentConsoleProps) {
     refetchInterval: 1000,
   });
   useEffect(() => {
+    if (!queued.length) return;
+    const warnBeforeUnload = (event: BeforeUnloadEvent) => {
+      event.preventDefault();
+    };
+    window.addEventListener("beforeunload", warnBeforeUnload);
+    return () => window.removeEventListener("beforeunload", warnBeforeUnload);
+  }, [queued.length]);
+  useEffect(() => {
     if (lightboxImage && lightboxRef.current && !lightboxRef.current.open) {
       lightboxRef.current.showModal();
     }
@@ -145,26 +153,30 @@ export function AgentConsole({ agent, onBack }: AgentConsoleProps) {
       void queryClient.invalidateQueries({ queryKey: ["agents"] });
     },
   });
+  const { mutate: sendPrompt, isPending: sendingPrompt } = promptMutation;
   useEffect(() => {
     if (agent.agent_status !== "idle" && agent.agent_status !== "done") return;
-    if (promptMutation.isPending || queuePaused || !queued.length) return;
+    if (sendingPrompt || queuePaused || !queued.length) return;
     const next = queued[0];
     if (next.id === editingId) return;
-    setQueued((current) => current.slice(1));
-    promptMutation.mutate(
-      {
-        text: next.text,
-        files: next.attachments.map((attachment) => attachment.file),
-        previews: next.attachments,
-      },
-      {
-        onError: () => {
-          setQueuePaused(true);
-          setQueued((current) => [next, ...current]);
+    const timer = window.setTimeout(() => {
+      setQueued((current) => current.slice(1));
+      sendPrompt(
+        {
+          text: next.text,
+          files: next.attachments.map((attachment) => attachment.file),
+          previews: next.attachments,
         },
-      },
-    );
-  }, [agent.agent_status, queued, promptMutation.isPending, editingId, queuePaused]);
+        {
+          onError: () => {
+            setQueuePaused(true);
+            setQueued((current) => [next, ...current]);
+          },
+        },
+      );
+    }, 0);
+    return () => window.clearTimeout(timer);
+  }, [agent.agent_status, queued, sendingPrompt, editingId, queuePaused, sendPrompt]);
   const keyMutation = useMutation({
     mutationFn: (key: KeyName) => sendAgentKey(target, key),
     onSuccess: () => {
@@ -394,8 +406,11 @@ export function AgentConsole({ agent, onBack }: AgentConsoleProps) {
         </div>
       ) : null}
       {queued.length ? (
-        <section className="queued-prompts" aria-label="Queued messages">
-          <strong>Queued · {queued.length}</strong>
+        <section className="queued-prompts" aria-label="Fernblick queued messages">
+          <strong>Fernblick queue · {queued.length}</strong>
+          <small>
+            Keep this conversation open until these messages send. They are not in Pi’s queue.
+          </small>
           {queuePaused ? (
             <button type="button" onClick={() => setQueuePaused(false)}>
               Retry sending
@@ -457,6 +472,20 @@ export function AgentConsole({ agent, onBack }: AgentConsoleProps) {
                       setAttachments((current) =>
                         current.filter((candidate) => candidate !== attachment),
                       );
+                      if (editingId) {
+                        setQueued((current) =>
+                          current.map((item) =>
+                            item.id === editingId
+                              ? {
+                                  ...item,
+                                  attachments: item.attachments.filter(
+                                    (candidate) => candidate !== attachment,
+                                  ),
+                                }
+                              : item,
+                          ),
+                        );
+                      }
                     }}
                   >
                     <CloseIcon />

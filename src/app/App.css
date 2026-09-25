@@ -565,6 +565,12 @@
   font-size: 0.75rem;
 }
 
+.queued-prompts small {
+  display: block;
+  margin-top: var(--space-1);
+  color: var(--color-text-tertiary);
+}
+
 .queued-prompts ul {
   display: grid;
   gap: var(--space-1);
