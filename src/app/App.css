@@ -13,7 +13,8 @@
 }
 
 .app-shell {
-  height: 100dvh;
+  position: fixed;
+  inset: 0;
   overflow: clip;
   background: var(--color-canvas);
 }
