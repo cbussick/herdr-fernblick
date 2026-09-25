@@ -28,6 +28,7 @@ interface AgentConsoleProps {
 }
 type AgentView = "chat" | "terminal";
 type PendingAttachment = { file: File; previewUrl: string };
+type QueuedPrompt = { id: string; text: string; attachments: PendingAttachment[] };
 const showThinkingStorageKey = "fernblick.showThinking";
 
 function initialShowThinking() {
@@ -89,6 +90,9 @@ export function AgentConsole({ agent, onBack }: AgentConsoleProps) {
   const [prompt, setPrompt] = useState("");
   const [view, setView] = useState<AgentView>("chat");
   const [attachments, setAttachments] = useState<PendingAttachment[]>([]);
+  const [queued, setQueued] = useState<QueuedPrompt[]>([]);
+  const [editingId, setEditingId] = useState<string | null>(null);
+  const [queuePaused, setQueuePaused] = useState(false);
   const [lightboxImage, setLightboxImage] = useState<string | null>(null);
   const [treeOpen, setTreeOpen] = useState(false);
   const [showThinking, setShowThinking] = useState(initialShowThinking);
@@ -114,7 +118,14 @@ export function AgentConsole({ agent, onBack }: AgentConsoleProps) {
     }
   }, [lightboxImage]);
   const promptMutation = useMutation({
-    mutationFn: async ({ text, files }: { text: string; files: File[] }) => {
+    mutationFn: async ({
+      text,
+      files,
+    }: {
+      text: string;
+      files: File[];
+      previews?: PendingAttachment[];
+    }) => {
       const uploaded = await Promise.all(files.map(uploadImage));
       return promptAgent(
         target,
@@ -122,11 +133,10 @@ export function AgentConsole({ agent, onBack }: AgentConsoleProps) {
         uploaded.map((image) => image.id),
       );
     },
-    onSuccess: () => {
-      setPrompt("");
-      setAttachments((current) => {
-        current.forEach((attachment) => URL.revokeObjectURL(attachment.previewUrl));
-        return [];
+    onSuccess: (_result, sent) => {
+      sent.files.forEach((file) => {
+        const attachment = sent.previews?.find((candidate) => candidate.file === file);
+        if (attachment) URL.revokeObjectURL(attachment.previewUrl);
       });
       shouldFollowRef.current = true;
       void queryClient.invalidateQueries({ queryKey: ["agent-output", target] });
@@ -134,6 +144,26 @@ export function AgentConsole({ agent, onBack }: AgentConsoleProps) {
       void queryClient.invalidateQueries({ queryKey: ["agents"] });
     },
   });
+  useEffect(() => {
+    if (agent.agent_status !== "idle" && agent.agent_status !== "done") return;
+    if (promptMutation.isPending || queuePaused || !queued.length) return;
+    const next = queued[0];
+    if (next.id === editingId) return;
+    setQueued((current) => current.slice(1));
+    promptMutation.mutate(
+      {
+        text: next.text,
+        files: next.attachments.map((attachment) => attachment.file),
+        previews: next.attachments,
+      },
+      {
+        onError: () => {
+          setQueuePaused(true);
+          setQueued((current) => [next, ...current]);
+        },
+      },
+    );
+  }, [agent.agent_status, queued, promptMutation.isPending, editingId, queuePaused]);
   const keyMutation = useMutation({
     mutationFn: (key: KeyName) => sendAgentKey(target, key),
     onSuccess: () => {
@@ -149,10 +179,20 @@ export function AgentConsole({ agent, onBack }: AgentConsoleProps) {
   }, [agent.agent_status, outputQuery.data?.revision, transcriptQuery.data?.messages.length, view]);
   function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    promptMutation.mutate({
-      text: prompt,
-      files: attachments.map((attachment) => attachment.file),
-    });
+    if (!prompt.trim() && !attachments.length) return;
+    if (editingId) {
+      setQueued((current) =>
+        current.map((item) =>
+          item.id === editingId ? { ...item, text: prompt, attachments } : item,
+        ),
+      );
+      setEditingId(null);
+    } else {
+      setQueued((current) => [...current, { id: crypto.randomUUID(), text: prompt, attachments }]);
+    }
+    setQueuePaused(false);
+    setPrompt("");
+    setAttachments([]);
   }
   function selectImages(files: FileList | null) {
     if (!files) return;
@@ -349,6 +389,55 @@ export function AgentConsole({ agent, onBack }: AgentConsoleProps) {
           ))}
         </div>
       ) : null}
+      {queued.length ? (
+        <section className="queued-prompts" aria-label="Queued messages">
+          <strong>Queued · {queued.length}</strong>
+          {queuePaused ? (
+            <button type="button" onClick={() => setQueuePaused(false)}>
+              Retry sending
+            </button>
+          ) : null}
+          <ul>
+            {queued.map((item) => (
+              <li key={item.id}>
+                <button
+                  type="button"
+                  className="queued-prompts__edit"
+                  onClick={() => {
+                    if (editingId) return;
+                    setEditingId(item.id);
+                    setPrompt(item.text);
+                    setAttachments(item.attachments);
+                  }}
+                  aria-label={`Edit queued message: ${item.text || "image"}`}
+                >
+                  {item.text || `${item.attachments.length} image(s)`}
+                  {item.attachments.length && item.text
+                    ? ` · ${item.attachments.length} image(s)`
+                    : ""}
+                </button>
+                <button
+                  type="button"
+                  aria-label="Remove queued message"
+                  onClick={() => {
+                    item.attachments.forEach((attachment) =>
+                      URL.revokeObjectURL(attachment.previewUrl),
+                    );
+                    setQueued((current) => current.filter((candidate) => candidate.id !== item.id));
+                    if (editingId === item.id) {
+                      setEditingId(null);
+                      setPrompt("");
+                      setAttachments([]);
+                    }
+                  }}
+                >
+                  <CloseIcon />
+                </button>
+              </li>
+            ))}
+          </ul>
+        </section>
+      ) : null}
       <form className="prompt-composer" onSubmit={submit}>
         <div className="prompt-composer__surface">
           {attachments.length ? (
@@ -388,7 +477,7 @@ export function AgentConsole({ agent, onBack }: AgentConsoleProps) {
               type="button"
               className="prompt-composer__attach"
               aria-label="Attach images"
-              disabled={attachments.length >= 4 || promptMutation.isPending}
+              disabled={attachments.length >= 4}
               onClick={() => fileInputRef.current?.click()}
             >
               <ImageIcon />
@@ -411,12 +500,11 @@ export function AgentConsole({ agent, onBack }: AgentConsoleProps) {
               placeholder={`Send to ${getAgentTabLabel(agent)}…`}
               rows={1}
               maxLength={32000}
-              disabled={promptMutation.isPending}
             />
             <button
               type="submit"
-              aria-label="Send message"
-              disabled={(!prompt.trim() && !attachments.length) || promptMutation.isPending}
+              aria-label={editingId ? "Save queued message" : "Send message"}
+              disabled={!prompt.trim() && !attachments.length}
             >
               <SendIcon />
             </button>
