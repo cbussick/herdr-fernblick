@@ -97,6 +97,7 @@ export function AgentConsole({ agent, onBack }: AgentConsoleProps) {
   const [treeOpen, setTreeOpen] = useState(false);
   const [showThinking, setShowThinking] = useState(initialShowThinking);
   const transcriptInitializing = agent.agent === "pi" && !agent.agent_session;
+  const nextQueuedId = useRef(0);
   const lightboxRef = useRef<HTMLDialogElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const outputRef = useRef<HTMLElement>(null);
@@ -188,7 +189,10 @@ export function AgentConsole({ agent, onBack }: AgentConsoleProps) {
       );
       setEditingId(null);
     } else {
-      setQueued((current) => [...current, { id: crypto.randomUUID(), text: prompt, attachments }]);
+      setQueued((current) => [
+        ...current,
+        { id: String(++nextQueuedId.current), text: prompt, attachments },
+      ]);
     }
     setQueuePaused(false);
     setPrompt("");
