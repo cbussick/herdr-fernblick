@@ -60,7 +60,11 @@ export function App() {
             onSelectTab={(tab: ShellTab) => setSelectedPaneId(tab.pane_id)}
           />
           {selectedAgent ? (
-            <AgentConsole agent={selectedAgent} onBack={() => setSelectedPaneId(null)} />
+            <AgentConsole
+              key={selectedAgent.pane_id}
+              agent={selectedAgent}
+              onBack={() => setSelectedPaneId(null)}
+            />
           ) : selectedTab ? (
             <ShellConsole tab={selectedTab} onBack={() => setSelectedPaneId(null)} />
           ) : (
