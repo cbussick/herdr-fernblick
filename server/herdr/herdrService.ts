@@ -314,12 +314,18 @@ export class HerdrService {
     const containsEntry = (nodes: typeof tree.roots): boolean =>
       nodes.some((node) => node.id === entryId || containsEntry(node.children));
     if (!containsEntry(tree.roots)) throw new Error("Conversation entry was not found");
-    const result = await this.client.request(
-      "agent.prompt",
-      { target, text: `/fernblick-navigate ${entryId}` },
-      agentPromptResultSchema,
+    // agent.prompt submits text to the model, bypassing Pi's interactive slash-command handler.
+    // Deliver the command to the validated agent's pane instead.
+    const { agent } = await this.client.request("agent.get", { target }, agentInfoResultSchema);
+    if (agent.agent !== "pi" || agent.agent_session?.kind !== "path") {
+      throw new Error("A conversation tree is not available for this agent");
+    }
+    await this.client.request(
+      "pane.send_input",
+      { pane_id: agent.pane_id, text: `/fernblick-navigate ${entryId}`, keys: ["enter"] },
+      okResultSchema,
     );
-    return result.agent;
+    return agent;
   }
 
   async readAgent(target: string, lines: number) {

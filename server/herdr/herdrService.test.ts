@@ -2,6 +2,9 @@ import { expect, it, vi } from "vitest";
 import type { z } from "zod";
 import type { HerdrClient } from "./HerdrClient.js";
 import { HerdrService } from "./herdrService.js";
+import { readPiTree } from "../pi/readPiTree.js";
+
+vi.mock("../pi/readPiTree.js", () => ({ readPiTree: vi.fn() }));
 
 const agent = {
   agent: "pi",
@@ -13,6 +16,45 @@ const agent = {
   tab_id: "w1:t2",
   workspace_id: "w1",
 };
+
+it("navigates the Pi tree through the interactive command rather than a chat prompt", async () => {
+  vi.mocked(readPiTree).mockResolvedValue({
+    roots: [
+      {
+        id: "entry-1",
+        parentId: null,
+        role: "user",
+        text: "hello",
+        isActivePath: true,
+        children: [],
+      },
+    ],
+    leafId: "entry-1",
+  });
+  const request = vi.fn(async <T>(method: string, _params: unknown, schema: z.ZodType<T>) =>
+    schema.parse(
+      method === "agent.get"
+        ? {
+            type: "agent_info",
+            agent: {
+              ...agent,
+              agent_session: { agent: "pi", source: "pi", kind: "path", value: "/session.jsonl" },
+            },
+          }
+        : { type: "ok" },
+    ),
+  );
+  const service = new HerdrService({ request } as unknown as HerdrClient);
+
+  await service.navigateAgentTree("w1:p2", "entry-1");
+
+  expect(request).toHaveBeenCalledWith(
+    "pane.send_input",
+    { pane_id: "w1:p2", text: "/fernblick-navigate entry-1", keys: ["enter"] },
+    expect.anything(),
+  );
+  expect(request).not.toHaveBeenCalledWith("agent.prompt", expect.anything(), expect.anything());
+});
 
 it("uses the raw protocol spelling for recent unwrapped output", async () => {
   const request = vi.fn(

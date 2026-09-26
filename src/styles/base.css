@@ -4,13 +4,15 @@
 
 html {
   min-width: 20rem;
+  overflow: hidden;
   background: var(--color-canvas);
 }
 
 body {
   min-width: 20rem;
-  min-height: 100dvh;
+  height: 100dvh;
   margin: 0;
+  overflow: hidden;
   background: var(--color-canvas);
 }
 
