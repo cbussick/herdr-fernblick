@@ -589,6 +589,7 @@
 .queued-prompts li {
   display: flex;
   align-items: center;
+  flex-wrap: wrap;
   gap: var(--space-2);
   min-width: 0;
   padding: var(--space-1) var(--space-2);
@@ -598,7 +599,7 @@
 }
 
 .queued-prompts__edit {
-  flex: 1;
+  flex: 1 1 10rem;
   min-width: 0;
   padding: var(--space-2);
   overflow: hidden;
@@ -610,7 +611,7 @@
   border: 0;
 }
 
-.queued-prompts li button:last-child {
+.queued-prompts li .queued-prompts__remove {
   display: grid;
   flex: none;
   width: 2.5rem;
@@ -621,6 +622,26 @@
   background: transparent;
   border: 0;
   border-radius: var(--radius-sm);
+}
+
+.queued-prompts li button:not(.queued-prompts__edit, .queued-prompts__remove) {
+  flex: none;
+  padding: var(--space-1) var(--space-2);
+  color: var(--color-text);
+  background: var(--color-surface);
+  border: 1px solid var(--color-border-strong);
+  border-radius: var(--radius-sm);
+}
+
+.queued-prompts__state {
+  flex: none;
+  font-size: 0.7rem;
+  text-transform: capitalize;
+}
+
+.queued-prompts li > small {
+  flex-basis: 100%;
+  color: var(--color-danger);
 }
 
 .queued-prompts li svg {
@@ -639,6 +660,16 @@
   background: var(--color-surface);
   border: 1px solid var(--color-border-strong);
   border-radius: var(--radius-lg);
+}
+
+.prompt-composer .queued-prompts__cancel {
+  display: block;
+  width: auto;
+  height: auto;
+  padding: var(--space-2);
+  margin: var(--space-1);
+  color: var(--color-text-secondary);
+  background: transparent;
 }
 
 .prompt-composer__row {

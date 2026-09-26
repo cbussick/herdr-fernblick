@@ -10,6 +10,8 @@ import {
   navigateTreeRequestSchema,
   paneInputRequestSchema,
   promptRequestSchema,
+  queuedMessageInputSchema,
+  queuedMessageCreateSchema,
   renameAgentRequestSchema,
   renameTabRequestSchema,
 } from "../../src/shared/api/contracts.js";
@@ -22,6 +24,7 @@ import {
   uploadIdPattern,
 } from "../uploads/imageUploads.js";
 import type { HerdrService } from "../herdr/herdrService.js";
+import type { QueueStore } from "../queue/queueStore.js";
 
 const MAX_BODY_BYTES = 40_000;
 const MAX_IMAGE_BYTES = 10 * 1024 * 1024;
@@ -142,6 +145,7 @@ async function handleApi(
   request: IncomingMessage,
   response: ServerResponse,
   service: HerdrService,
+  queue: QueueStore,
 ) {
   const url = new URL(request.url ?? "/", `http://${request.headers.host ?? "localhost"}`);
 
@@ -238,6 +242,62 @@ async function handleApi(
     return true;
   }
 
+  const queueMatch = url.pathname.match(
+    /^\/api\/agents\/([^/]+)\/queue(?:\/([^/]+))?(?:\/(retry|ack))?$/,
+  );
+  if (queueMatch) {
+    const target = targetSchema.parse(decodeURIComponent(queueMatch[1]));
+    const id = queueMatch[2] ? z.string().uuid().parse(queueMatch[2]) : null;
+    const agent = (await service.getDashboard()).agents.find(
+      (candidate) => candidate.pane_id === target || candidate.name === target,
+    );
+    if (!agent?.agent_session?.value || agent.agent !== "pi")
+      throw new HttpError(404, "Pi session not found");
+    const { pane_id: paneId } = agent;
+    const session = agent.agent_session.value;
+    if (request.method === "GET" && !id) {
+      sendJson(response, 200, { messages: queue.listForPane(paneId) });
+      return true;
+    }
+    if (request.method !== "GET") requireSameOrigin(request);
+    if (request.method === "POST" && !id) {
+      const body = queuedMessageCreateSchema.parse(await readJson(request));
+      const message = queue.create(paneId, session, body);
+      if (!message) throw new HttpError(409, "Request ID was already used for a different message");
+      sendJson(response, 201, { message });
+      return true;
+    }
+    const existing = id ? queue.getForPane(paneId, id) : null;
+    if (request.method === "PATCH" && id && !queueMatch[3]) {
+      if (existing?.session !== session)
+        throw new HttpError(409, "Message belongs to a previous session");
+      const body = queuedMessageInputSchema.parse(await readJson(request));
+      if (!queue.update(paneId, session, id, body))
+        throw new HttpError(409, "Message is no longer editable");
+      sendJson(response, 200, { message: queue.get(paneId, session, id) });
+      return true;
+    }
+    if (request.method === "DELETE" && id && !queueMatch[3]) {
+      if (!existing || !queue.remove(paneId, existing.session, id))
+        throw new HttpError(409, "Message is no longer removable");
+      sendJson(response, 200, { ok: true });
+      return true;
+    }
+    if (request.method === "POST" && id && queueMatch[3] === "retry") {
+      if (existing?.session !== session || !queue.retry(paneId, session, id))
+        throw new HttpError(409, "Message cannot be retried");
+      sendJson(response, 200, { ok: true });
+      return true;
+    }
+    if (request.method === "POST" && id && queueMatch[3] === "ack") {
+      if (!existing || !queue.acknowledge(paneId, existing.session, id))
+        throw new HttpError(409, "Message cannot be acknowledged");
+      sendJson(response, 200, { ok: true });
+      return true;
+    }
+    return false;
+  }
+
   const route = getAgentRoute(url.pathname);
   if (!route) return false;
 
@@ -318,13 +378,13 @@ function serveStatic(request: IncomingMessage, response: ServerResponse, publicD
   return true;
 }
 
-export function createHttpServer(service: HerdrService, publicDir: string) {
+export function createHttpServer(service: HerdrService, publicDir: string, queue: QueueStore) {
   return createServer(async (request, response) => {
     setSecurityHeaders(response);
 
     try {
       const handled = request.url?.startsWith("/api/")
-        ? await handleApi(request, response, service)
+        ? await handleApi(request, response, service, queue)
         : serveStatic(request, response, publicDir);
 
       if (!handled) sendJson(response, 404, { error: "Not found" });

@@ -5,7 +5,12 @@ import { getAgentTabLabel, getAgentTarget, getStatusLabel } from "./agentPresent
 import {
   getAgentOutput,
   getAgentTranscript,
-  promptAgent,
+  getQueuedMessages,
+  queueMessage,
+  editQueuedMessage,
+  removeQueuedMessage,
+  retryQueuedMessage,
+  acknowledgeQueuedMessage,
   uploadImage,
   sendAgentKey,
 } from "../../shared/api/apiClient";
@@ -28,7 +33,6 @@ interface AgentConsoleProps {
 }
 type AgentView = "chat" | "terminal";
 type PendingAttachment = { file: File; previewUrl: string };
-type QueuedPrompt = { id: string; text: string; attachments: PendingAttachment[] };
 const showThinkingStorageKey = "fernblick.showThinking";
 
 function initialShowThinking() {
@@ -90,18 +94,18 @@ export function AgentConsole({ agent, onBack }: AgentConsoleProps) {
   const [prompt, setPrompt] = useState("");
   const [view, setView] = useState<AgentView>("chat");
   const [attachments, setAttachments] = useState<PendingAttachment[]>([]);
-  const [queued, setQueued] = useState<QueuedPrompt[]>([]);
   const [editingId, setEditingId] = useState<string | null>(null);
-  const [queuePaused, setQueuePaused] = useState(false);
+  const [editingAttachments, setEditingAttachments] = useState<string[]>([]);
   const [lightboxImage, setLightboxImage] = useState<string | null>(null);
   const [treeOpen, setTreeOpen] = useState(false);
   const [showThinking, setShowThinking] = useState(initialShowThinking);
   const transcriptInitializing = agent.agent === "pi" && !agent.agent_session;
-  const nextQueuedId = useRef(0);
   const lightboxRef = useRef<HTMLDialogElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const outputRef = useRef<HTMLElement>(null);
   const shouldFollowRef = useRef(true);
+  const requestIdRef = useRef<string | null>(null);
+  const uploadedIdsRef = useRef(new Map<File, string>());
   const outputQuery = useQuery({
     queryKey: ["agent-output", target],
     queryFn: () => getAgentOutput(target),
@@ -113,70 +117,65 @@ export function AgentConsole({ agent, onBack }: AgentConsoleProps) {
     enabled: view === "chat" && !transcriptInitializing,
     refetchInterval: 1000,
   });
-  useEffect(() => {
-    if (!queued.length) return;
-    const warnBeforeUnload = (event: BeforeUnloadEvent) => {
-      event.preventDefault();
-    };
-    window.addEventListener("beforeunload", warnBeforeUnload);
-    return () => window.removeEventListener("beforeunload", warnBeforeUnload);
-  }, [queued.length]);
+  const queueKey = ["agent-queue", agent.pane_id, agent.agent_session?.value];
+  const queueQuery = useQuery({
+    queryKey: queueKey,
+    queryFn: () => getQueuedMessages(target),
+    enabled: Boolean(agent.agent_session?.value),
+    refetchInterval: 1000,
+  });
+  const queued = queueQuery.data ?? [];
+  const refreshQueue = () => void queryClient.invalidateQueries({ queryKey: queueKey });
   useEffect(() => {
     if (lightboxImage && lightboxRef.current && !lightboxRef.current.open) {
       lightboxRef.current.showModal();
     }
   }, [lightboxImage]);
-  const promptMutation = useMutation({
+  const queueMutation = useMutation({
     mutationFn: async ({
+      id,
       text,
       files,
+      existing,
     }: {
+      id: string | null;
       text: string;
       files: File[];
-      previews?: PendingAttachment[];
+      existing: string[];
     }) => {
-      const uploaded = await Promise.all(files.map(uploadImage));
-      return promptAgent(
-        target,
-        text,
-        uploaded.map((image) => image.id),
+      const uploaded = await Promise.all(
+        files.map(async (file) => {
+          const known = uploadedIdsRef.current.get(file);
+          if (known) return known;
+          const image = await uploadImage(file);
+          uploadedIdsRef.current.set(file, image.id);
+          return image.id;
+        }),
       );
+      const input = { text, attachments: [...existing, ...uploaded] };
+      return id
+        ? editQueuedMessage(target, id, input)
+        : queueMessage(target, { ...input, requestId: requestIdRef.current! });
     },
-    onSuccess: (_result, sent) => {
-      sent.files.forEach((file) => {
-        const attachment = sent.previews?.find((candidate) => candidate.file === file);
-        if (attachment) URL.revokeObjectURL(attachment.previewUrl);
-      });
-      shouldFollowRef.current = true;
-      void queryClient.invalidateQueries({ queryKey: ["agent-output", target] });
-      void queryClient.invalidateQueries({ queryKey: ["agent-transcript", target] });
-      void queryClient.invalidateQueries({ queryKey: ["agents"] });
+    onSuccess: () => {
+      attachments.forEach((attachment) => URL.revokeObjectURL(attachment.previewUrl));
+      setAttachments([]);
+      setEditingAttachments([]);
+      setEditingId(null);
+      setPrompt("");
+      requestIdRef.current = null;
+      uploadedIdsRef.current.clear();
+      refreshQueue();
     },
   });
-  const { mutate: sendPrompt, isPending: sendingPrompt } = promptMutation;
-  useEffect(() => {
-    if (agent.agent_status !== "idle" && agent.agent_status !== "done") return;
-    if (sendingPrompt || queuePaused || !queued.length) return;
-    const next = queued[0];
-    if (next.id === editingId) return;
-    const timer = window.setTimeout(() => {
-      setQueued((current) => current.slice(1));
-      sendPrompt(
-        {
-          text: next.text,
-          files: next.attachments.map((attachment) => attachment.file),
-          previews: next.attachments,
-        },
-        {
-          onError: () => {
-            setQueuePaused(true);
-            setQueued((current) => [next, ...current]);
-          },
-        },
-      );
-    }, 0);
-    return () => window.clearTimeout(timer);
-  }, [agent.agent_status, queued, sendingPrompt, editingId, queuePaused, sendPrompt]);
+  const queueAction = useMutation({
+    mutationFn: async ({ id, action }: { id: string; action: "remove" | "retry" | "ack" }) => {
+      if (action === "remove") await removeQueuedMessage(target, id);
+      else if (action === "retry") await retryQueuedMessage(target, id);
+      else await acknowledgeQueuedMessage(target, id);
+    },
+    onSuccess: refreshQueue,
+  });
   const keyMutation = useMutation({
     mutationFn: (key: KeyName) => sendAgentKey(target, key),
     onSuccess: () => {
@@ -192,23 +191,22 @@ export function AgentConsole({ agent, onBack }: AgentConsoleProps) {
   }, [agent.agent_status, outputQuery.data?.revision, transcriptQuery.data?.messages.length, view]);
   function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    if (!prompt.trim() && !attachments.length) return;
-    if (editingId) {
-      setQueued((current) =>
-        current.map((item) =>
-          item.id === editingId ? { ...item, text: prompt, attachments } : item,
-        ),
-      );
-      setEditingId(null);
-    } else {
-      setQueued((current) => [
-        ...current,
-        { id: String(++nextQueuedId.current), text: prompt, attachments },
-      ]);
+    if (
+      (!prompt.trim() && !attachments.length && !editingAttachments.length) ||
+      queueMutation.isPending
+    )
+      return;
+    if (!editingId && !requestIdRef.current) {
+      requestIdRef.current = Array.from(crypto.getRandomValues(new Uint8Array(16)), (byte) =>
+        byte.toString(16).padStart(2, "0"),
+      ).join("");
     }
-    setQueuePaused(false);
-    setPrompt("");
-    setAttachments([]);
+    queueMutation.mutate({
+      id: editingId,
+      text: prompt,
+      files: attachments.map((attachment) => attachment.file),
+      existing: editingAttachments,
+    });
   }
   function selectImages(files: FileList | null) {
     if (!files) return;
@@ -217,10 +215,12 @@ export function AgentConsole({ agent, onBack }: AgentConsoleProps) {
       .filter((file) => file.size <= 10 * 1024 * 1024);
     setAttachments((current) => [
       ...current,
-      ...accepted.slice(0, Math.max(0, 4 - current.length)).map((file) => ({
-        file,
-        previewUrl: URL.createObjectURL(file),
-      })),
+      ...accepted
+        .slice(0, Math.max(0, 4 - current.length - editingAttachments.length))
+        .map((file) => ({
+          file,
+          previewUrl: URL.createObjectURL(file),
+        })),
     ]);
     if (fileInputRef.current) fileInputRef.current.value = "";
   }
@@ -405,53 +405,104 @@ export function AgentConsole({ agent, onBack }: AgentConsoleProps) {
           ))}
         </div>
       ) : null}
+      {queueQuery.isError ? (
+        <p role="alert" className="queued-prompts">
+          Queue unavailable: {queueQuery.error.message}
+        </p>
+      ) : null}
       {queued.length ? (
         <section className="queued-prompts" aria-label="Fernblick queued messages">
           <strong>Fernblick queue · {queued.length}</strong>
           <small>
-            Keep this conversation open until these messages send. They are not in Pi’s queue.
+            Stored on this server, not in Pi’s queue. Resolve failed or uncertain messages to
+            continue; temporary images may expire.
           </small>
-          {queuePaused ? (
-            <button type="button" onClick={() => setQueuePaused(false)}>
-              Retry sending
-            </button>
-          ) : null}
-          <ul>
+          <ul role="list">
             {queued.map((item) => (
               <li key={item.id}>
-                <button
-                  type="button"
-                  className="queued-prompts__edit"
-                  onClick={() => {
-                    if (editingId) return;
-                    setEditingId(item.id);
-                    setPrompt(item.text);
-                    setAttachments(item.attachments);
-                  }}
-                  aria-label={`Edit queued message: ${item.text || "image"}`}
-                >
-                  {item.text || `${item.attachments.length} image(s)`}
-                  {item.attachments.length && item.text
-                    ? ` · ${item.attachments.length} image(s)`
-                    : ""}
-                </button>
-                <button
-                  type="button"
-                  aria-label="Remove queued message"
-                  onClick={() => {
-                    item.attachments.forEach((attachment) =>
-                      URL.revokeObjectURL(attachment.previewUrl),
-                    );
-                    setQueued((current) => current.filter((candidate) => candidate.id !== item.id));
-                    if (editingId === item.id) {
-                      setEditingId(null);
-                      setPrompt("");
-                      setAttachments([]);
-                    }
-                  }}
-                >
-                  <CloseIcon />
-                </button>
+                {item.state === "queued" && item.session === agent.agent_session?.value ? (
+                  <button
+                    type="button"
+                    className="queued-prompts__edit"
+                    disabled={Boolean(editingId)}
+                    onClick={() => {
+                      setEditingId(item.id);
+                      setPrompt(item.text);
+                      setEditingAttachments(item.attachments);
+                    }}
+                    aria-label={`Edit queued message: ${item.text || "image"}`}
+                  >
+                    {item.text || `${item.attachments.length} image(s)`}
+                    {item.text && item.attachments.length
+                      ? ` · ${item.attachments.length} image(s)`
+                      : ""}
+                  </button>
+                ) : (
+                  <span className="queued-prompts__edit">
+                    {item.text || `${item.attachments.length} image(s)`}
+                  </span>
+                )}
+                {item.state !== "queued" ? (
+                  <span className="queued-prompts__state">{item.state}</span>
+                ) : null}
+                {item.session !== agent.agent_session?.value ? (
+                  <small>Previous Pi session — this message will not be sent automatically.</small>
+                ) : null}
+                {item.error ? <small role="alert">{item.error}</small> : null}
+                {(item.state === "failed" || item.state === "uncertain") &&
+                item.session === agent.agent_session?.value ? (
+                  <button
+                    type="button"
+                    disabled={queueAction.isPending}
+                    onClick={() => {
+                      if (
+                        item.state === "uncertain" &&
+                        !window.confirm(
+                          "The agent may already have received this message. Retry anyway?",
+                        )
+                      )
+                        return;
+                      queueAction.mutate({ id: item.id, action: "retry" });
+                    }}
+                  >
+                    Retry
+                  </button>
+                ) : null}
+                {item.state === "submitted" || item.state === "uncertain" ? (
+                  <button
+                    type="button"
+                    disabled={queueAction.isPending}
+                    onClick={() => {
+                      if (
+                        window.confirm(
+                          "Only clear this message if you verified it was delivered in the agent conversation. Continue?",
+                        )
+                      ) {
+                        queueAction.mutate({ id: item.id, action: "ack" });
+                      }
+                    }}
+                  >
+                    Mark delivered
+                  </button>
+                ) : null}
+                {item.state === "queued" || item.state === "failed" ? (
+                  <button
+                    type="button"
+                    className="queued-prompts__remove"
+                    aria-label={`Remove queued message: ${item.text || "image"}`}
+                    disabled={queueAction.isPending}
+                    onClick={() => {
+                      if (editingId === item.id) {
+                        setEditingId(null);
+                        setEditingAttachments([]);
+                        setPrompt("");
+                      }
+                      queueAction.mutate({ id: item.id, action: "remove" });
+                    }}
+                  >
+                    <CloseIcon />
+                  </button>
+                ) : null}
               </li>
             ))}
           </ul>
@@ -459,8 +510,24 @@ export function AgentConsole({ agent, onBack }: AgentConsoleProps) {
       ) : null}
       <form className="prompt-composer" onSubmit={submit}>
         <div className="prompt-composer__surface">
-          {attachments.length ? (
+          {editingAttachments.length || attachments.length ? (
             <div className="prompt-attachments" aria-label="Image attachments">
+              {editingAttachments.map((id) => (
+                <div className="prompt-attachment" key={id}>
+                  <img src={`/api/uploads/${id}`} alt="Queued image" />
+                  <button
+                    type="button"
+                    aria-label="Remove queued image"
+                    onClick={() =>
+                      setEditingAttachments((current) =>
+                        current.filter((candidate) => candidate !== id),
+                      )
+                    }
+                  >
+                    <CloseIcon />
+                  </button>
+                </div>
+              ))}
               {attachments.map((attachment) => (
                 <div className="prompt-attachment" key={attachment.previewUrl}>
                   <img src={attachment.previewUrl} alt={attachment.file.name} />
@@ -472,20 +539,6 @@ export function AgentConsole({ agent, onBack }: AgentConsoleProps) {
                       setAttachments((current) =>
                         current.filter((candidate) => candidate !== attachment),
                       );
-                      if (editingId) {
-                        setQueued((current) =>
-                          current.map((item) =>
-                            item.id === editingId
-                              ? {
-                                  ...item,
-                                  attachments: item.attachments.filter(
-                                    (candidate) => candidate !== attachment,
-                                  ),
-                                }
-                              : item,
-                          ),
-                        );
-                      }
                     }}
                   >
                     <CloseIcon />
@@ -493,6 +546,21 @@ export function AgentConsole({ agent, onBack }: AgentConsoleProps) {
                 </div>
               ))}
             </div>
+          ) : null}
+          {editingId ? (
+            <button
+              type="button"
+              className="queued-prompts__cancel"
+              onClick={() => {
+                attachments.forEach((attachment) => URL.revokeObjectURL(attachment.previewUrl));
+                setAttachments([]);
+                setEditingAttachments([]);
+                setEditingId(null);
+                setPrompt("");
+              }}
+            >
+              Cancel editing
+            </button>
           ) : null}
           <label htmlFor="agent-prompt" className="sr-only">
             Message {getAgentTabLabel(agent)}
@@ -510,7 +578,9 @@ export function AgentConsole({ agent, onBack }: AgentConsoleProps) {
               type="button"
               className="prompt-composer__attach"
               aria-label="Attach images"
-              disabled={attachments.length >= 4}
+              disabled={
+                attachments.length + editingAttachments.length >= 4 || queueMutation.isPending
+              }
               onClick={() => fileInputRef.current?.click()}
             >
               <ImageIcon />
@@ -529,6 +599,7 @@ export function AgentConsole({ agent, onBack }: AgentConsoleProps) {
             <textarea
               id="agent-prompt"
               value={prompt}
+              disabled={queueMutation.isPending}
               onChange={(event) => setPrompt(event.target.value)}
               placeholder={`Send to ${getAgentTabLabel(agent)}…`}
               rows={1}
@@ -537,13 +608,17 @@ export function AgentConsole({ agent, onBack }: AgentConsoleProps) {
             <button
               type="submit"
               aria-label={editingId ? "Save queued message" : "Send message"}
-              disabled={!prompt.trim() && !attachments.length}
+              disabled={
+                (!prompt.trim() && !attachments.length && !editingAttachments.length) ||
+                queueMutation.isPending
+              }
             >
               <SendIcon />
             </button>
           </div>
         </div>
-        {promptMutation.isError ? <p role="alert">{promptMutation.error.message}</p> : null}
+        {queueMutation.isError ? <p role="alert">{queueMutation.error.message}</p> : null}
+        {queueAction.isError ? <p role="alert">{queueAction.error.message}</p> : null}
         {keyMutation.isError ? <p role="alert">{keyMutation.error.message}</p> : null}
       </form>
       {view === "chat" && transcriptQuery.data ? (
