@@ -11,6 +11,12 @@ import {
   createTabRequestSchema,
   createTabResponseSchema,
   terminalOutputSchema,
+  queuedMessageInputSchema,
+  queuedMessageCreateSchema,
+  queuedMessageResponseSchema,
+  queuedMessagesResponseSchema,
+  type QueuedMessageInput,
+  type QueuedMessageCreate,
   type Agent,
   type CreateAgentRequest,
   type CreateWorkspaceRequest,
@@ -165,6 +171,44 @@ export async function promptAgent(target: string, text: string, attachments: str
     body: JSON.stringify({ text, attachments }),
   })) as { agent: Agent };
   return body.agent;
+}
+
+const queueUrl = (target: string) => `/api/agents/${encodeURIComponent(target)}/queue`;
+
+export async function getQueuedMessages(target: string) {
+  return queuedMessagesResponseSchema.parse(await request(queueUrl(target))).messages;
+}
+
+export async function queueMessage(target: string, input: QueuedMessageCreate) {
+  return queuedMessageResponseSchema.parse(
+    await request(queueUrl(target), {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(queuedMessageCreateSchema.parse(input)),
+    }),
+  ).message;
+}
+
+export async function editQueuedMessage(target: string, id: string, input: QueuedMessageInput) {
+  return queuedMessageResponseSchema.parse(
+    await request(`${queueUrl(target)}/${encodeURIComponent(id)}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(queuedMessageInputSchema.parse(input)),
+    }),
+  ).message;
+}
+
+export async function removeQueuedMessage(target: string, id: string) {
+  await request(`${queueUrl(target)}/${encodeURIComponent(id)}`, { method: "DELETE" });
+}
+
+export async function retryQueuedMessage(target: string, id: string) {
+  await request(`${queueUrl(target)}/${encodeURIComponent(id)}/retry`, { method: "POST" });
+}
+
+export async function acknowledgeQueuedMessage(target: string, id: string) {
+  await request(`${queueUrl(target)}/${encodeURIComponent(id)}/ack`, { method: "POST" });
 }
 
 export async function sendAgentKey(target: string, key: KeyName) {

@@ -1,0 +1,95 @@
+import { access } from "node:fs/promises";
+import type { HerdrService } from "../herdr/herdrService.js";
+import { getImageUploadPath } from "../uploads/imageUploads.js";
+import type { QueueStore } from "./queueStore.js";
+
+export class QueueDispatcher {
+  private running = false;
+  constructor(
+    private readonly store: QueueStore,
+    private readonly service: Pick<HerdrService, "getDashboard" | "promptAgent">,
+  ) {}
+
+  async tick() {
+    if (this.running || !this.store.hasWork()) return;
+    this.running = true;
+    try {
+      this.store.expireLostClaims();
+      const { agents } = await this.service.getDashboard();
+      for (const agent of agents) {
+        const session = agent.agent_session?.value;
+        if (!session || agent.agent !== "pi") continue;
+        const sequence = agent.state_change_seq ?? 0;
+        this.store.completeSubmitted(agent.pane_id, session, sequence);
+        if (agent.agent_status !== "idle" && agent.agent_status !== "done") continue;
+        const item = this.store.claim(agent.pane_id, session, sequence);
+        if (!item) continue;
+        console.info(JSON.stringify({ event: "queue_claimed", messageId: item.id }));
+        let text: string;
+        try {
+          await Promise.all(item.attachments.map((id) => access(getImageUploadPath(id))));
+          text = [item.text, ...item.attachments.map(getImageUploadPath)]
+            .filter(Boolean)
+            .join("\n");
+        } catch {
+          this.store.transition(
+            item.id,
+            "sending",
+            "failed",
+            "A temporary image is missing. Delete this message and queue it again without the image.",
+          );
+          console.warn(
+            JSON.stringify({ event: "queue_failed", messageId: item.id, reason: "missing_image" }),
+          );
+          continue;
+        }
+        try {
+          const fresh = (await this.service.getDashboard()).agents.find(
+            (candidate) => candidate.pane_id === agent.pane_id,
+          );
+          if (fresh?.agent_session?.value !== session) {
+            this.store.transition(
+              item.id,
+              "sending",
+              "failed",
+              "Agent session changed before delivery.",
+            );
+            console.warn(
+              JSON.stringify({
+                event: "queue_failed",
+                messageId: item.id,
+                reason: "session_changed",
+              }),
+            );
+            continue;
+          }
+          if (fresh.agent_status !== "idle" && fresh.agent_status !== "done") {
+            this.store.transition(item.id, "sending", "queued");
+            continue;
+          }
+          this.store.updateClaimSequence(item.id, fresh.state_change_seq ?? 0);
+          // Herdr does not offer an idempotency key: a lost response is NOT safe to retry.
+          await this.service.promptAgent(agent.pane_id, text);
+          this.store.transition(item.id, "sending", "submitted");
+          console.info(JSON.stringify({ event: "queue_submitted", messageId: item.id }));
+        } catch (error) {
+          this.store.transition(
+            item.id,
+            "sending",
+            "uncertain",
+            "Delivery could not be confirmed. Check the agent before retrying.",
+          );
+          console.error(
+            JSON.stringify({
+              event: "queue_uncertain",
+              messageId: item.id,
+              reason: error instanceof Error ? error.name : "unknown",
+            }),
+          );
+        }
+      }
+    } finally {
+      this.running = false;
+    }
+  }
+}

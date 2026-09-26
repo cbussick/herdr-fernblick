@@ -197,6 +197,32 @@ export const promptRequestSchema = z
     message: "A message or attachment is required",
   });
 
+export const queuedMessageInputSchema = promptRequestSchema;
+export const queuedMessageCreateSchema = z
+  .object({
+    text: z.string().trim().max(32_000),
+    attachments: z.array(imageUploadSchema.shape.id).max(4).default([]),
+    requestId: z.string().regex(/^[a-f0-9]{32}$/),
+  })
+  .refine((value) => value.text.length > 0 || value.attachments.length > 0);
+export type QueuedMessageCreate = z.infer<typeof queuedMessageCreateSchema>;
+export const queuedMessageSchema = z.object({
+  id: z.string().uuid(),
+  paneId: z.string(),
+  session: z.string(),
+  text: z.string(),
+  attachments: z.array(imageUploadSchema.shape.id),
+  state: z.enum(["queued", "sending", "submitted", "uncertain", "failed", "delivered"]),
+  error: z.string().nullable(),
+  createdAt: z.number(),
+  statusSequence: z.number(),
+  claimedAt: z.number().nullable(),
+});
+export const queuedMessagesResponseSchema = z.object({ messages: z.array(queuedMessageSchema) });
+export const queuedMessageResponseSchema = z.object({ message: queuedMessageSchema });
+export type QueuedMessage = z.infer<typeof queuedMessageSchema>;
+export type QueuedMessageInput = z.infer<typeof queuedMessageInputSchema>;
+
 export const keyNameSchema = z.enum([
   "esc",
   "ctrl+c",
