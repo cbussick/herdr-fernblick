@@ -11,7 +11,7 @@ export class QueueDispatcher {
     private readonly store: QueueStore,
     private readonly service: Pick<
       HerdrService,
-      "getDashboard" | "promptAgent" | "readAgentTranscript"
+      "getDashboard" | "promptAgentGuarded" | "readAgentTranscript"
     >,
   ) {}
 
@@ -56,12 +56,8 @@ export class QueueDispatcher {
         const item = this.store.claim(agent.pane_id, session, sequence);
         if (!item) continue;
         console.info(JSON.stringify({ event: "queue_claimed", messageId: item.id }));
-        let text: string;
         try {
           await Promise.all(item.attachments.map((id) => access(getImageUploadPath(id))));
-          text = [item.text, ...item.attachments.map(getImageUploadPath)]
-            .filter(Boolean)
-            .join("\n");
         } catch {
           this.store.transition(
             item.id,
@@ -100,7 +96,9 @@ export class QueueDispatcher {
           }
           this.store.updateClaimSequence(item.id, fresh.state_change_seq ?? 0);
           // Herdr does not offer an idempotency key: a lost response is NOT safe to retry.
-          await this.service.promptAgent(agent.pane_id, text);
+          if (this.store.path === ":memory:")
+            throw new Error("Queue database is not accessible to Pi");
+          await this.service.promptAgentGuarded(agent.pane_id, session, item.id, this.store.path);
           this.store.transition(item.id, "sending", "submitted");
           console.info(JSON.stringify({ event: "queue_submitted", messageId: item.id }));
         } catch (error) {

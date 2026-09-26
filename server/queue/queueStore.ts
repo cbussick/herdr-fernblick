@@ -1,6 +1,6 @@
 import { chmodSync, mkdirSync, statSync } from "node:fs";
 import { homedir } from "node:os";
-import { dirname, join } from "node:path";
+import { dirname, join, resolve } from "node:path";
 import { randomUUID } from "node:crypto";
 import { DatabaseSync } from "node:sqlite";
 import type { QueuedMessageCreate, QueuedMessageInput } from "../../src/shared/api/contracts.js";
@@ -50,8 +50,10 @@ function decode(row: Row): QueueItem {
 export class QueueStore {
   private readonly db: DatabaseSync;
   constructor(
-    path = process.env.FERNBLICK_DB_PATH ?? join(homedir(), ".local/share/fernblick/queue.sqlite"),
+    readonly path = process.env.FERNBLICK_DB_PATH ??
+      join(homedir(), ".local/share/fernblick/queue.sqlite"),
   ) {
+    this.path = path === ":memory:" ? path : resolve(path);
     if (path !== ":memory:") {
       mkdirSync(dirname(path), { recursive: true, mode: 0o700 });
       if (statSync(dirname(path)).mode & 0o077) {

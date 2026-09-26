@@ -97,7 +97,7 @@ it("requires matching Pi transcript evidence before releasing the next message",
           : [],
         status: { cwd: "/tmp", totalTokens: 0, cost: 0 },
       }),
-      promptAgent: async () => agent("session-a", "working", sends),
+      promptAgentGuarded: async () => agent("session-a", "working", sends),
     });
     await dispatcher.tick();
     await dispatcher.tick();
@@ -126,7 +126,7 @@ it("requeues safely if the agent starts working before dispatch", async () => {
         tabs: [],
         workspaces: [],
       }),
-      promptAgent: async () => {
+      promptAgentGuarded: async () => {
         sent++;
         return agent("session-a", "working", 3);
       },
@@ -156,8 +156,8 @@ it("holds an unconfirmed send without retrying and fails missing temp images bef
         tabs: [],
         workspaces: [],
       }),
-      promptAgent: async (_target, text) => {
-        sent.push(text);
+      promptAgentGuarded: async (_target, _session, id) => {
+        sent.push(id);
         throw new Error("lost response");
       },
     });
@@ -172,7 +172,7 @@ it("holds an unconfirmed send without retrying and fails missing temp images bef
     const message = create(store, "w1:p1", "session-a", input);
     await dispatcher.tick();
     await dispatcher.tick();
-    expect(sent).toEqual(["Hello"]);
+    expect(sent).toEqual([message.id]);
     expect(other.get("w1:p1", "session-a", message.id)?.state).toBe("uncertain");
     status = "working";
     seq = 2;
@@ -199,7 +199,7 @@ it("two dispatchers sharing SQLite never send the same prompt concurrently", asy
         tabs: [],
         workspaces: [],
       }),
-      promptAgent: async () => {
+      promptAgentGuarded: async () => {
         sends++;
         await pause;
         return agent("session-a", "working", 2);
@@ -235,7 +235,7 @@ it("waits for a prompt in flight before shutting down its SQLite connection", as
         tabs: [],
         workspaces: [],
       }),
-      promptAgent: async () => {
+      promptAgentGuarded: async () => {
         entered();
         await pending;
         return agent("session-a", "working", 2);
@@ -289,13 +289,13 @@ it("dispatches a queued prompt after a server restart", async () => {
         tabs: [],
         workspaces: [],
       }),
-      promptAgent: async (_target, text) => {
-        sent.push(text);
+      promptAgentGuarded: async (_target, _session, id) => {
+        sent.push(id);
         return agent("session-a", "working", 8);
       },
     });
     await dispatcher.tick();
-    expect(sent).toEqual(["Hello"]);
+    expect(sent).toEqual([message.id]);
     expect(observer.get("w1:p1", "session-a", message.id)?.state).toBe("submitted");
   } finally {
     observer.close();
@@ -343,7 +343,7 @@ it("rechecks session identity immediately before prompting", async () => {
         tabs: [],
         workspaces: [],
       }),
-      promptAgent: async () => {
+      promptAgentGuarded: async () => {
         sent = true;
         return agent("replacement", "working", 3);
       },
@@ -368,7 +368,7 @@ it("will not dispatch to a replacement session on the same pane", async () => {
         tabs: [],
         workspaces: [],
       }),
-      promptAgent: async () => {
+      promptAgentGuarded: async () => {
         called = true;
         return agent("new-session", "working", 4);
       },

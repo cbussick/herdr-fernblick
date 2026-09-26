@@ -11,6 +11,7 @@ import {
 import { HerdrClient, HerdrRequestError } from "./HerdrClient.js";
 import { readPiTranscript } from "../pi/readPiTranscript.js";
 import { readPiTree } from "../pi/readPiTree.js";
+import { encodeGuardedPrompt } from "../pi/guardedPrompt.js";
 
 const extensionJsPath = fileURLToPath(new URL("../pi/fernblickPiExtension.js", import.meta.url));
 const extensionTsPath = fileURLToPath(new URL("../pi/fernblickPiExtension.ts", import.meta.url));
@@ -350,6 +351,20 @@ export class HerdrService {
       agentPromptResultSchema,
     );
     return result.agent;
+  }
+
+  async promptAgentGuarded(paneId: string, expectedSession: string, id: string, dbPath: string) {
+    // agent.prompt bypasses Pi's interactive slash-command handler.
+    // Send this guarded command through the same interactive path as tree navigation.
+    await this.client.request(
+      "pane.send_input",
+      {
+        pane_id: paneId,
+        text: encodeGuardedPrompt({ id, expectedSession, dbPath }),
+        keys: ["enter"],
+      },
+      okResultSchema,
+    );
   }
 
   async sendKey(target: string, key: KeyName) {
