@@ -1,4 +1,4 @@
-import { readFile, realpath } from "node:fs/promises";
+import { readFile, realpath, stat } from "node:fs/promises";
 import { homedir } from "node:os";
 import { resolve, sep } from "node:path";
 import {
@@ -60,8 +60,12 @@ export async function readPiTranscript(
   }
   if (!resolved.startsWith(`${allowedRoot}${sep}`))
     throw new Error("Agent session is outside the Pi session directory");
+  // Keep a ceiling on memory use, but allow long-lived Pi sessions to remain readable.
+  const maxSessionBytes = 100_000_000;
+  if ((await stat(resolved)).size > maxSessionBytes)
+    throw new Error("Agent session is too large to display");
   const source = await readFile(resolved, "utf8");
-  if (Buffer.byteLength(source) > 25_000_000)
+  if (Buffer.byteLength(source) > maxSessionBytes)
     throw new Error("Agent session is too large to display");
   const entries = source
     .split("\n")

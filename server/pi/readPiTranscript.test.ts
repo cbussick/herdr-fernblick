@@ -1,5 +1,26 @@
+import { mkdtemp, rm, writeFile } from "node:fs/promises";
+import { homedir } from "node:os";
+import { join } from "node:path";
 import { describe, expect, it } from "vitest";
-import { contentBlocks } from "./readPiTranscript.js";
+import { contentBlocks, readPiTranscript } from "./readPiTranscript.js";
+
+describe("readPiTranscript", () => {
+  it("displays a Pi session larger than 25 MB", async () => {
+    const dir = await mkdtemp(join(homedir(), ".pi/agent/sessions/fernblick-test-"));
+    const file = join(dir, "large.jsonl");
+    try {
+      const padding = "x".repeat(26_000_000);
+      await writeFile(
+        file,
+        `${JSON.stringify({ type: "session", cwd: "/tmp", padding })}\n${JSON.stringify({ id: "user-1", parentId: null, type: "message", message: { role: "user", content: "Hello" } })}\n`,
+      );
+      const transcript = await readPiTranscript(file);
+      expect(transcript.messages).toMatchObject([{ role: "user", text: "Hello" }]);
+    } finally {
+      await rm(dir, { recursive: true, force: true });
+    }
+  });
+});
 
 describe("contentBlocks", () => {
   it("preserves separate thinking blocks", () => {
