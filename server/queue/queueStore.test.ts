@@ -39,6 +39,7 @@ it("persists and scopes messages across two connections and enforces edit/delete
     const message = create(a, "w1:p1", "session-a", input);
     expect(b.list("w1:p1", "session-a")).toHaveLength(1);
     expect(b.list("w1:p1", "session-b")).toEqual([]);
+    expect(b.listForPane("w1:p1")).toHaveLength(1);
     expect(b.update("w1:p1", "session-b", message.id, { text: "wrong", attachments: [] })).toBe(
       false,
     );
@@ -68,13 +69,47 @@ it("claims each item at most once across servers, blocks later work, and never r
     expect(b.retry("w1:p1", "session-a", first.id)).toBe(true);
     expect(a.claim("w1:p1", "session-a", 4)?.id).toBe(first.id);
     expect(a.transition(first.id, "sending", "submitted")).toBe(true);
-    b.completeSubmitted("w1:p1", "session-a", 4);
     expect(b.claim("w1:p1", "session-a", 4)).toBeNull();
-    b.completeSubmitted("w1:p1", "session-a", 5);
+    b.confirmObserved("w1:p1", "session-a", first.id);
     expect(b.claim("w1:p1", "session-a", 5)?.text).toBe("Later");
   } finally {
     a.close();
     b.close();
+  }
+});
+
+it("requires matching Pi transcript evidence before releasing the next message", async () => {
+  const [store, observer] = stores();
+  try {
+    const first = create(store, "w1:p1", "session-a", input);
+    const second = create(store, "w1:p1", "session-a", { text: "Second", attachments: [] });
+    let observed = false;
+    let sends = 0;
+    const dispatcher = new QueueDispatcher(store, {
+      getDashboard: async () => ({
+        agents: [agent("session-a", "idle", ++sends)],
+        tabs: [],
+        workspaces: [],
+      }),
+      readAgentTranscript: async () => ({
+        messages: observed
+          ? [{ id: "pi-user", role: "user", text: "Hello", timestamp: Date.now() + 10 }]
+          : [],
+        status: { cwd: "/tmp", totalTokens: 0, cost: 0 },
+      }),
+      promptAgent: async () => agent("session-a", "working", sends),
+    });
+    await dispatcher.tick();
+    await dispatcher.tick();
+    expect(observer.get("w1:p1", "session-a", first.id)?.state).toBe("submitted");
+    expect(observer.get("w1:p1", "session-a", second.id)?.state).toBe("queued");
+    observed = true;
+    await dispatcher.tick();
+    expect(observer.get("w1:p1", "session-a", first.id)?.state).toBe("delivered");
+    expect(observer.get("w1:p1", "session-a", second.id)?.state).toBe("submitted");
+  } finally {
+    store.close();
+    observer.close();
   }
 });
 
@@ -182,6 +217,48 @@ it("two dispatchers sharing SQLite never send the same prompt concurrently", asy
   }
 });
 
+it("waits for a prompt in flight before shutting down its SQLite connection", async () => {
+  const [store, other] = stores();
+  try {
+    create(store, "w1:p1", "session-a", input);
+    let release!: () => void;
+    let entered!: () => void;
+    const pending = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    const started = new Promise<void>((resolve) => {
+      entered = resolve;
+    });
+    const dispatcher = new QueueDispatcher(store, {
+      getDashboard: async () => ({
+        agents: [agent("session-a", "idle", 1)],
+        tabs: [],
+        workspaces: [],
+      }),
+      promptAgent: async () => {
+        entered();
+        await pending;
+        return agent("session-a", "working", 2);
+      },
+    });
+    const tick = dispatcher.tick();
+    await started;
+    let stopped = false;
+    const shutdown = dispatcher.stop().then(() => {
+      stopped = true;
+    });
+    expect(stopped).toBe(false);
+    release();
+    await Promise.all([tick, shutdown]);
+    expect(stopped).toBe(true);
+    expect(other.list("w1:p1", "session-a")[0].state).toBe("submitted");
+    await dispatcher.tick();
+    store.close();
+  } finally {
+    other.close();
+  }
+});
+
 it("deduplicates retries across processes even after delivery", () => {
   const [a, b] = stores();
   try {
@@ -191,7 +268,7 @@ it("deduplicates retries across processes even after delivery", () => {
     expect(b.create("w1:p1", "session-a", { ...request, text: "different" })).toBeNull();
     expect(a.claim("w1:p1", "session-a", 1)?.id).toBe(first.id);
     a.transition(first.id, "sending", "submitted");
-    b.completeSubmitted("w1:p1", "session-a", 2);
+    b.confirmObserved("w1:p1", "session-a", first.id);
     expect(a.list("w1:p1", "session-a")).toEqual([]);
     expect(b.create("w1:p1", "session-a", request)?.state).toBe("delivered");
   } finally {
@@ -233,6 +310,21 @@ it("moves abandoned claims to uncertain without redelivering", () => {
     b.expireLostClaims(claimed.claimedAt! + 120_001);
     expect(b.get("w1:p1", "session-a", message.id)?.state).toBe("uncertain");
     expect(a.claim("w1:p1", "session-a", 2)).toBeNull();
+  } finally {
+    a.close();
+    b.close();
+  }
+});
+
+it("moves unobserved submitted messages to uncertain rather than trusting status changes", () => {
+  const [a, b] = stores();
+  try {
+    const item = create(a, "w1:p1", "session-a", input);
+    const claimed = a.claim("w1:p1", "session-a", 0)!;
+    a.transition(item.id, "sending", "submitted");
+    b.expireLostClaims(claimed.claimedAt! + 120_001);
+    expect(b.get("w1:p1", "session-a", item.id)?.state).toBe("uncertain");
+    expect(a.claim("w1:p1", "session-a", 42)).toBeNull();
   } finally {
     a.close();
     b.close();

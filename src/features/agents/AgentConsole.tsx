@@ -420,7 +420,7 @@ export function AgentConsole({ agent, onBack }: AgentConsoleProps) {
           <ul role="list">
             {queued.map((item) => (
               <li key={item.id}>
-                {item.state === "queued" ? (
+                {item.state === "queued" && item.session === agent.agent_session?.value ? (
                   <button
                     type="button"
                     className="queued-prompts__edit"
@@ -445,8 +445,12 @@ export function AgentConsole({ agent, onBack }: AgentConsoleProps) {
                 {item.state !== "queued" ? (
                   <span className="queued-prompts__state">{item.state}</span>
                 ) : null}
+                {item.session !== agent.agent_session?.value ? (
+                  <small>Previous Pi session — this message will not be sent automatically.</small>
+                ) : null}
                 {item.error ? <small role="alert">{item.error}</small> : null}
-                {item.state === "failed" || item.state === "uncertain" ? (
+                {(item.state === "failed" || item.state === "uncertain") &&
+                item.session === agent.agent_session?.value ? (
                   <button
                     type="button"
                     disabled={queueAction.isPending}

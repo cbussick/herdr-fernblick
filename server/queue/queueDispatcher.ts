@@ -5,13 +5,26 @@ import type { QueueStore } from "./queueStore.js";
 
 export class QueueDispatcher {
   private running = false;
+  private stopped = false;
+  private done: (() => void) | null = null;
   constructor(
     private readonly store: QueueStore,
-    private readonly service: Pick<HerdrService, "getDashboard" | "promptAgent">,
+    private readonly service: Pick<
+      HerdrService,
+      "getDashboard" | "promptAgent" | "readAgentTranscript"
+    >,
   ) {}
 
+  async stop() {
+    this.stopped = true;
+    if (this.running)
+      await new Promise<void>((resolve) => {
+        this.done = resolve;
+      });
+  }
+
   async tick() {
-    if (this.running || !this.store.hasWork()) return;
+    if (this.stopped || this.running || !this.store.hasWork()) return;
     this.running = true;
     try {
       this.store.expireLostClaims();
@@ -20,7 +33,25 @@ export class QueueDispatcher {
         const session = agent.agent_session?.value;
         if (!session || agent.agent !== "pi") continue;
         const sequence = agent.state_change_seq ?? 0;
-        this.store.completeSubmitted(agent.pane_id, session, sequence);
+        const submitted = this.store.submitted(agent.pane_id, session);
+        if (submitted.length) {
+          try {
+            const transcript = await this.service.readAgentTranscript(agent.pane_id);
+            for (const item of submitted) {
+              const observed = transcript.messages.some(
+                (message) =>
+                  message.role === "user" &&
+                  message.text === item.text &&
+                  (message.timestamp ?? 0) >= (item.claimedAt ?? 0) &&
+                  JSON.stringify(message.attachments ?? []) ===
+                    JSON.stringify(item.attachments.map((id) => `/api/uploads/${id}`)),
+              );
+              if (observed) this.store.confirmObserved(agent.pane_id, session, item.id);
+            }
+          } catch {
+            // An unreadable transcript cannot prove delivery; the timeout moves it to uncertain.
+          }
+        }
         if (agent.agent_status !== "idle" && agent.agent_status !== "done") continue;
         const item = this.store.claim(agent.pane_id, session, sequence);
         if (!item) continue;
@@ -90,6 +121,8 @@ export class QueueDispatcher {
       }
     } finally {
       this.running = false;
+      this.done?.();
+      this.done = null;
     }
   }
 }

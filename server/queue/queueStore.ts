@@ -87,6 +87,16 @@ export class QueueStore {
     ).map(decode);
   }
 
+  listForPane(paneId: string): QueueItem[] {
+    return (
+      this.db
+        .prepare(
+          `SELECT ${columns} FROM queued_messages WHERE pane_id=? AND state != 'delivered' ORDER BY created_at, rowid`,
+        )
+        .all(paneId) as Row[]
+    ).map(decode);
+  }
+
   create(paneId: string, session: string, input: QueuedMessageCreate): QueueItem | null {
     const id = randomUUID();
     this.db
@@ -119,6 +129,13 @@ export class QueueStore {
     const row = this.db
       .prepare(`SELECT ${columns} FROM queued_messages WHERE pane_id=? AND session=? AND id=?`)
       .get(paneId, session, id) as Row | undefined;
+    return row ? decode(row) : null;
+  }
+
+  getForPane(paneId: string, id: string): QueueItem | null {
+    const row = this.db
+      .prepare(`SELECT ${columns} FROM queued_messages WHERE pane_id=? AND id=?`)
+      .get(paneId, id) as Row | undefined;
     return row ? decode(row) : null;
   }
 
@@ -178,19 +195,30 @@ export class QueueStore {
     );
   }
 
-  // A different server can observe the completed agent status change and release the claim.
-  completeSubmitted(paneId: string, session: string, statusSequence: number) {
-    this.db
-      .prepare(
-        "UPDATE queued_messages SET state='delivered' WHERE pane_id=? AND session=? AND state='submitted' AND status_sequence < ?",
-      )
-      .run(paneId, session, statusSequence);
+  submitted(paneId: string, session: string): QueueItem[] {
+    return (
+      this.db
+        .prepare(
+          `SELECT ${columns} FROM queued_messages WHERE pane_id=? AND session=? AND state='submitted'`,
+        )
+        .all(paneId, session) as Row[]
+    ).map(decode);
+  }
+
+  confirmObserved(paneId: string, session: string, id: string): boolean {
+    return (
+      this.db
+        .prepare(
+          "UPDATE queued_messages SET state='delivered' WHERE id=? AND pane_id=? AND session=? AND state='submitted'",
+        )
+        .run(id, paneId, session).changes === 1
+    );
   }
 
   expireLostClaims(now = Date.now()) {
     this.db
       .prepare(
-        "UPDATE queued_messages SET state='uncertain', error='Delivery confirmation timed out. Check the agent before retrying.' WHERE state='sending' AND claimed_at < ?",
+        "UPDATE queued_messages SET state='uncertain', error='Delivery confirmation timed out. Check the agent before retrying.' WHERE state IN ('sending','submitted') AND claimed_at < ?",
       )
       .run(now - 120_000);
   }

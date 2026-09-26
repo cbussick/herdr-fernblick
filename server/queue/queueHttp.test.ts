@@ -50,6 +50,17 @@ it("persists a queue via HTTP across server restarts and enforces state transiti
             })
           ).status,
         ).toBe(200);
+        agent.agent_session.value = "replacement-session";
+        expect((await (await fetch(url)).json()).messages).toHaveLength(1);
+        expect(
+          (
+            await fetch(`${url}/${id}`, {
+              method: "PATCH",
+              headers,
+              body: JSON.stringify({ text: "wrong session", attachments: [] }),
+            })
+          ).status,
+        ).toBe(409);
         expect((await fetch(`${url}/${id}`, { method: "DELETE", headers })).status).toBe(200);
         expect((await (await fetch(url)).json()).messages).toEqual([]);
       }

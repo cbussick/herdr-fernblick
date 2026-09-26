@@ -256,7 +256,7 @@ async function handleApi(
     const { pane_id: paneId } = agent;
     const session = agent.agent_session.value;
     if (request.method === "GET" && !id) {
-      sendJson(response, 200, { messages: queue.list(paneId, session) });
+      sendJson(response, 200, { messages: queue.listForPane(paneId) });
       return true;
     }
     if (request.method !== "GET") requireSameOrigin(request);
@@ -267,7 +267,10 @@ async function handleApi(
       sendJson(response, 201, { message });
       return true;
     }
+    const existing = id ? queue.getForPane(paneId, id) : null;
     if (request.method === "PATCH" && id && !queueMatch[3]) {
+      if (existing?.session !== session)
+        throw new HttpError(409, "Message belongs to a previous session");
       const body = queuedMessageInputSchema.parse(await readJson(request));
       if (!queue.update(paneId, session, id, body))
         throw new HttpError(409, "Message is no longer editable");
@@ -275,18 +278,19 @@ async function handleApi(
       return true;
     }
     if (request.method === "DELETE" && id && !queueMatch[3]) {
-      if (!queue.remove(paneId, session, id))
+      if (!existing || !queue.remove(paneId, existing.session, id))
         throw new HttpError(409, "Message is no longer removable");
       sendJson(response, 200, { ok: true });
       return true;
     }
     if (request.method === "POST" && id && queueMatch[3] === "retry") {
-      if (!queue.retry(paneId, session, id)) throw new HttpError(409, "Message cannot be retried");
+      if (existing?.session !== session || !queue.retry(paneId, session, id))
+        throw new HttpError(409, "Message cannot be retried");
       sendJson(response, 200, { ok: true });
       return true;
     }
     if (request.method === "POST" && id && queueMatch[3] === "ack") {
-      if (!queue.acknowledge(paneId, session, id))
+      if (!existing || !queue.acknowledge(paneId, existing.session, id))
         throw new HttpError(409, "Message cannot be acknowledged");
       sendJson(response, 200, { ok: true });
       return true;

@@ -26,7 +26,7 @@ const poll = () =>
 const interval = setInterval(poll, 1000);
 server.on("close", () => {
   clearInterval(interval);
-  queue.close();
+  void dispatcher.stop().then(() => queue.close());
 });
 poll();
 
