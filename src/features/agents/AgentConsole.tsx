@@ -170,6 +170,7 @@ export function AgentConsole({ agent, onBack }: AgentConsoleProps) {
     setSubmission(undefined);
     resetSend();
   }, [submission, snapshot, resetSend]);
+  const composerSending = send.isPending || Boolean(submission && !send.isError);
   const canSend = Boolean(
     snapshot &&
     snapshot.version === 2 &&
@@ -365,7 +366,6 @@ export function AgentConsole({ agent, onBack }: AgentConsoleProps) {
                 {stop.isSuccess ? <span>Abort invoked; waiting for Pi events.</span> : null}
               </div>
             ) : null}
-            {snapshot.sendPending ? <p role="status">Sending to Pi…</p> : null}
           </div>
         )}
       </section>
@@ -384,7 +384,7 @@ export function AgentConsole({ agent, onBack }: AgentConsoleProps) {
           {keyMutation.isError ? <p role="alert">{keyMutation.error.message}</p> : null}
         </div>
       ) : (
-        <form className="prompt-composer" onSubmit={submit}>
+        <form className="prompt-composer" aria-busy={composerSending} onSubmit={submit}>
           <div className="prompt-composer__surface">
             {attachments.length ? (
               <div className="prompt-attachments" aria-label="Image attachments">
@@ -396,7 +396,7 @@ export function AgentConsole({ agent, onBack }: AgentConsoleProps) {
                     />
                     <button
                       type="button"
-                      disabled={send.isPending}
+                      disabled={composerSending}
                       aria-label={`Remove image ${i + 1}`}
                       onClick={() => {
                         if (send.isError) {
@@ -426,12 +426,13 @@ export function AgentConsole({ agent, onBack }: AgentConsoleProps) {
                 type="file"
                 accept="image/png,image/jpeg,image/gif,image/webp"
                 multiple
+                disabled={composerSending}
                 onChange={(event) => selectImages(event.target.files)}
               />
               <button
                 type="button"
                 className="prompt-composer__attach"
-                disabled={send.isPending || attachments.length >= 4}
+                disabled={composerSending || attachments.length >= 4}
                 title="Attach images"
                 aria-label="Attach images"
                 onClick={() => fileInputRef.current?.click()}
@@ -443,7 +444,7 @@ export function AgentConsole({ agent, onBack }: AgentConsoleProps) {
                 className="prompt-composer__tree"
                 aria-label="Open conversation paths"
                 title="Conversation paths"
-                disabled={!snapshot || Boolean(live.error) || send.isPending}
+                disabled={!snapshot || Boolean(live.error) || composerSending}
                 onClick={() => snapshot && setTreeTarget(targetOf(snapshot))}
               >
                 <BranchIcon />
@@ -451,7 +452,7 @@ export function AgentConsole({ agent, onBack }: AgentConsoleProps) {
               <textarea
                 id="agent-prompt"
                 value={prompt}
-                disabled={send.isPending}
+                disabled={composerSending}
                 onChange={(event) => {
                   if (send.isError) {
                     setSubmission(undefined);
@@ -463,15 +464,21 @@ export function AgentConsole({ agent, onBack }: AgentConsoleProps) {
                 rows={1}
                 maxLength={32000}
               />
-              <button type="submit" aria-label="Send message" disabled={!canSend}>
-                <SendIcon />
+              <button
+                type="submit"
+                aria-label="Send message"
+                aria-busy={composerSending}
+                disabled={!canSend}
+              >
+                {composerSending ? (
+                  <span className="prompt-composer__spinner" aria-hidden="true" />
+                ) : (
+                  <SendIcon />
+                )}
               </button>
             </div>
           </div>
           {attachmentError ? <p role="alert">{attachmentError}</p> : null}
-          {submission && send.isSuccess ? (
-            <p role="status">Waiting for Pi to receive your message…</p>
-          ) : null}
           {send.isError ? (
             <p role="alert">{send.error.message} Draft retained; check Pi before retrying.</p>
           ) : null}
@@ -494,7 +501,7 @@ export function AgentConsole({ agent, onBack }: AgentConsoleProps) {
           open
           target={agent.pane_id}
           identity={treeTarget}
-          busy={!snapshot || snapshot.busy || snapshot.sendPending || send.isPending}
+          busy={!snapshot || snapshot.busy || snapshot.sendPending || composerSending}
           onClose={() => setTreeTarget(null)}
           onRestorePrompt={(text, ids) => {
             setSubmission(undefined);

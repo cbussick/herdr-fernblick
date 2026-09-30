@@ -178,6 +178,54 @@ it("ignores a receipt from a replaced Pi runtime", async () => {
   await act(async () => renderer.update(render()));
   expect(renderer.root.findByType("textarea").props.value).toBe("original draft");
 });
+it("shows a button spinner and locks the composer throughout upload and receipt waiting", async () => {
+  let finishUpload!: (value: { id: string }) => void;
+  mocks.upload.mockImplementationOnce(
+    () =>
+      new Promise((done) => {
+        finishUpload = done;
+      }),
+  );
+  const file = new File(["image"], "image.png", { type: "image/png" });
+  await act(async () => {
+    renderer.root.findByType("textarea").props.onChange({ target: { value: "hello" } });
+    renderer.root.findByProps({ type: "file" }).props.onChange({ target: { files: [file] } });
+  });
+  await act(async () => renderer.root.findByType("form").props.onSubmit({ preventDefault() {} }));
+  await flush();
+  const assertWaiting = () => {
+    const form = renderer.root.findByType("form");
+    expect(form.props["aria-busy"]).toBe(true);
+    for (const button of form.findAllByType("button")) expect(button.props.disabled).toBe(true);
+    expect(form.findByType("textarea").props.disabled).toBe(true);
+    expect(form.findByProps({ type: "file" }).props.disabled).toBe(true);
+    expect(form.findAllByProps({ className: "prompt-composer__spinner" })).toHaveLength(1);
+    expect(JSON.stringify(renderer.toJSON())).not.toContain("Waiting for Pi to receive");
+    expect(JSON.stringify(renderer.toJSON())).not.toContain("Sending to Pi");
+  };
+  assertWaiting();
+  expect(mocks.command).not.toHaveBeenCalled();
+  await act(async () => finishUpload({ id: `${randomUUID()}.png` }));
+  await flush();
+  mocks.live.snapshot = { ...mocks.live.snapshot!, seq: 2, sendPending: true };
+  await act(async () => renderer.update(render()));
+  assertWaiting();
+  const id = mocks.command.mock.calls[0][5];
+  mocks.live.snapshot = {
+    ...mocks.live.snapshot!,
+    seq: 3,
+    busy: true,
+    sendPending: false,
+    receivedSendIds: [id],
+  };
+  await act(async () => renderer.update(render()));
+  expect(renderer.root.findByType("form").props["aria-busy"]).toBe(false);
+  expect(renderer.root.findByType("textarea").props.disabled).toBe(false);
+  expect(renderer.root.findByProps({ type: "file" }).props.disabled).toBe(false);
+  expect(renderer.root.findByProps({ "aria-label": "Attach images" }).props.disabled).toBe(false);
+  expect(renderer.root.findAllByProps({ className: "prompt-composer__spinner" })).toHaveLength(0);
+  expect(renderer.root.findByProps({ "aria-label": "Send message" }).props.disabled).toBe(true);
+});
 it("preserves text and attachments when delivery fails without a receipt", async () => {
   mocks.command.mockRejectedValue(new Error("Connection lost"));
   const file = new File(["image"], "image.png", { type: "image/png" });
@@ -190,4 +238,7 @@ it("preserves text and attachments when delivery fails without a receipt", async
   expect(renderer.root.findByType("textarea").props.value).toBe("keep me");
   expect(renderer.root.findAllByProps({ "aria-label": "Image attachments" })).toHaveLength(1);
   expect(mocks.command).toHaveBeenCalledOnce();
+  expect(renderer.root.findByType("textarea").props.disabled).toBe(false);
+  expect(renderer.root.findByProps({ "aria-label": "Attach images" }).props.disabled).toBe(false);
+  expect(renderer.root.findAllByProps({ className: "prompt-composer__spinner" })).toHaveLength(0);
 });
