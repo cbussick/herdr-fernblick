@@ -15,6 +15,7 @@ import {
   type KeyName,
 } from "./contracts";
 import {
+  ackSchema,
   treeResponseSchema,
   navigationResponseSchema,
   type Target,
@@ -166,11 +167,28 @@ export async function chatCommand(
   attachments: string[] = [],
   requestId?: string,
 ) {
-  return request(`/api/agents/${encodeURIComponent(target)}/${action}`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ target: identity, text, attachments, requestId }),
-  });
+  let body: unknown;
+  try {
+    body = await request(`/api/agents/${encodeURIComponent(target)}/${action}`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ target: identity, text, attachments, requestId }),
+      signal: AbortSignal.timeout(15_000),
+    });
+  } catch (error) {
+    if (error instanceof ApiError) throw error;
+    throw new Error(
+      "Forwarding failed or timed out; delivery uncertain. Check Pi before retrying.",
+      { cause: error },
+    );
+  }
+  const ack = ackSchema.safeParse(body);
+  if (!ack.success || (requestId && ack.data.id !== requestId))
+    throw new Error(
+      "Invalid forwarding acknowledgement; delivery uncertain. Check Pi before retrying.",
+    );
+  if (ack.data.outcome !== "invoked") throw new Error(ack.data.reason ?? "Pi rejected the command");
+  return ack.data;
 }
 
 export async function sendAgentKey(target: string, key: KeyName) {

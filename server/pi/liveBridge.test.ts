@@ -179,7 +179,7 @@ it("rejects invalid protocol and out-of-order sequences", async () => {
   await vi.waitFor(() => expect(socket.destroyed).toBe(true));
   await expect(bridge.resolve(agent)).rejects.toThrow("unavailable");
 });
-it("carries the browser request ID through HTTP and refuses receipt-based sends to legacy extensions", async () => {
+it("carries the browser request ID through HTTP and requires the current send bridge", async () => {
   const p = await peer();
   const service = { getAgent: vi.fn(async () => agent) } as unknown as HerdrService;
   const server = createHttpServer(service, dir, bridge);

@@ -77,7 +77,7 @@ afterEach(async () => {
   client.clear();
   vi.unstubAllGlobals();
 });
-it("clears a received text-and-image message, removes the manual reset button, and allows the next send", async () => {
+it("clears an acknowledged text-and-image send without waiting for any Pi event", async () => {
   const file = new File(["image"], "image.png", { type: "image/png" });
   await act(async () => {
     renderer.root.findByType("textarea").props.onChange({ target: { value: "hello" } });
@@ -86,18 +86,11 @@ it("clears a received text-and-image message, removes the manual reset button, a
   await act(async () => renderer.root.findByType("form").props.onSubmit({ preventDefault() {} }));
   await flush();
   expect(mocks.command).toHaveBeenCalledOnce();
-  const id = mocks.command.mock.calls[0][5] ?? randomUUID();
-  mocks.live.snapshot = {
-    ...mocks.live.snapshot!,
-    seq: 2,
-    busy: true,
-    sendPending: false,
-    receivedSendIds: [id, randomUUID()],
-  } as Snapshot;
-  await act(async () => renderer.update(render()));
+  expect(renderer.root.findByType("textarea").props.disabled).toBe(false);
   expect(renderer.root.findByType("textarea").props.value).toBe("");
   expect(renderer.root.findAllByProps({ "aria-label": "Image attachments" })).toHaveLength(0);
   expect(JSON.stringify(renderer.toJSON())).not.toContain("Clear draft / new message");
+  expect(client.getMutationCache().getAll()).toHaveLength(0);
   mocks.live.snapshot = { ...mocks.live.snapshot!, seq: 3, busy: false };
   await act(async () => renderer.update(render()));
   await act(async () =>
@@ -105,7 +98,7 @@ it("clears a received text-and-image message, removes the manual reset button, a
   );
   expect(renderer.root.findByProps({ "aria-label": "Send message" }).props.disabled).toBe(false);
 });
-it("clears an image-only message even if its HTTP ACK was lost", async () => {
+it("keeps an image-only draft when the forwarding ACK is lost", async () => {
   mocks.command.mockRejectedValue(new Error("Connection lost"));
   const file = new File(["image"], "image.png", { type: "image/png" });
   await act(async () =>
@@ -113,24 +106,21 @@ it("clears an image-only message even if its HTTP ACK was lost", async () => {
   );
   await act(async () => renderer.root.findByType("form").props.onSubmit({ preventDefault() {} }));
   await flush();
-  const id = mocks.command.mock.calls[0][5];
-  expect(id).toEqual(expect.any(String));
-  mocks.live.snapshot = { ...mocks.live.snapshot!, seq: 2, busy: true, receivedSendIds: [id] };
-  await act(async () => renderer.update(render()));
-  expect(renderer.root.findAllByProps({ "aria-label": "Image attachments" })).toHaveLength(0);
-  expect(JSON.stringify(renderer.toJSON())).not.toContain("Connection lost");
+  expect(renderer.root.findAllByProps({ "aria-label": "Image attachments" })).toHaveLength(1);
+  expect(renderer.root.findByType("textarea").props.disabled).toBe(false);
+  expect(JSON.stringify(renderer.toJSON())).toContain("Connection lost");
+  expect(mocks.command).toHaveBeenCalledOnce();
 });
-it("does not erase a newer draft when a delayed receipt arrives", async () => {
+it("does not erase a newer draft when Pi sends more chat updates", async () => {
   await act(async () =>
     renderer.root.findByType("textarea").props.onChange({ target: { value: "old" } }),
   );
   await act(async () => renderer.root.findByType("form").props.onSubmit({ preventDefault() {} }));
   await flush();
-  const id = mocks.command.mock.calls[0][5];
   await act(async () =>
     renderer.root.findByType("textarea").props.onChange({ target: { value: "new draft" } }),
   );
-  mocks.live.snapshot = { ...mocks.live.snapshot!, seq: 2, busy: true, receivedSendIds: [id] };
+  mocks.live.snapshot = { ...mocks.live.snapshot!, seq: 2, busy: true };
   await act(async () => renderer.update(render()));
   expect(renderer.root.findByType("textarea").props.value).toBe("new draft");
 });
@@ -163,22 +153,37 @@ it("requires reloading a legacy extension instead of accepting an unconfirmable 
   expect(renderer.root.findByProps({ "aria-label": "Send message" }).props.disabled).toBe(true);
   expect(JSON.stringify(renderer.toJSON())).toContain("Run /reload in Pi");
 });
-it("ignores a receipt from a replaced Pi runtime", async () => {
+it("keeps an unacknowledged draft across a Pi restart", async () => {
+  let failForward!: (error: Error) => void;
+  mocks.command.mockImplementationOnce(
+    () =>
+      new Promise((_done, reject) => {
+        failForward = reject;
+      }),
+  );
   await act(async () =>
     renderer.root.findByType("textarea").props.onChange({ target: { value: "original draft" } }),
   );
   await act(async () => renderer.root.findByType("form").props.onSubmit({ preventDefault() {} }));
   await flush();
-  const id = mocks.command.mock.calls[0][5];
   mocks.live.snapshot = {
     ...mocks.live.snapshot!,
     identity: { ...mocks.live.snapshot!.identity, runtime: randomUUID() },
-    receivedSendIds: [id],
   };
   await act(async () => renderer.update(render()));
+  await act(async () => failForward(new Error("Pi connection lost; delivery uncertain")));
+  await flush();
   expect(renderer.root.findByType("textarea").props.value).toBe("original draft");
+  expect(renderer.root.findByType("textarea").props.disabled).toBe(false);
 });
-it("shows a button spinner and locks the composer throughout upload and receipt waiting", async () => {
+it("locks the composer only through upload and forwarding, then uses Pi busy/idle to gate sending", async () => {
+  let acknowledge!: (value: { type: string; id: string; outcome: string }) => void;
+  mocks.command.mockImplementationOnce(
+    () =>
+      new Promise((done) => {
+        acknowledge = done;
+      }),
+  );
   let finishUpload!: (value: { id: string }) => void;
   mocks.upload.mockImplementationOnce(
     () =>
@@ -211,13 +216,9 @@ it("shows a button spinner and locks the composer throughout upload and receipt 
   await act(async () => renderer.update(render()));
   assertWaiting();
   const id = mocks.command.mock.calls[0][5];
-  mocks.live.snapshot = {
-    ...mocks.live.snapshot!,
-    seq: 3,
-    busy: true,
-    sendPending: false,
-    receivedSendIds: [id],
-  };
+  await act(async () => acknowledge({ type: "ack", id, outcome: "invoked" }));
+  await flush();
+  mocks.live.snapshot = { ...mocks.live.snapshot!, seq: 3, busy: true, sendPending: false };
   await act(async () => renderer.update(render()));
   expect(renderer.root.findByType("form").props["aria-busy"]).toBe(false);
   expect(renderer.root.findByType("textarea").props.disabled).toBe(false);
@@ -226,7 +227,7 @@ it("shows a button spinner and locks the composer throughout upload and receipt 
   expect(renderer.root.findAllByProps({ className: "prompt-composer__spinner" })).toHaveLength(0);
   expect(renderer.root.findByProps({ "aria-label": "Send message" }).props.disabled).toBe(true);
 });
-it("preserves text and attachments when delivery fails without a receipt", async () => {
+it("preserves text and attachments when forwarding fails", async () => {
   mocks.command.mockRejectedValue(new Error("Connection lost"));
   const file = new File(["image"], "image.png", { type: "image/png" });
   await act(async () => {

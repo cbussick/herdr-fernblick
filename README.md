@@ -60,9 +60,10 @@ TCP port is opened. [Protocol, safety, and limitations](docs/pi-live-chat.md).
 Chat uses public Pi branch history and live events, **not JSONL files, pane text,
 or footer scraping**. Busy/concurrent sends are rejected; there is no queue.
 An ACK means only that Pi's void send method was invoked, not guaranteed
-acceptance. A matching Pi user-message event confirms receipt and automatically
-clears the submitted text and images. Unconfirmed drafts are retained; sends are
-never automatically retried.
+acceptance. The browser clears text and images when forwarding is acknowledged,
+without waiting for a Pi receipt or comparing message text. Failed or uncertain
+forwarding keeps the visible draft; there is no hidden recovery copy or automatic
+retry. Pi's working/idle state gates the next send independently.
 Stop invokes Pi's abort method and then observes events. Attach up to four PNG,
 JPEG, GIF or WebP images (10 MiB each), including image-only messages. Conversation
 paths restore search, filters, labels, active-branch display and edit-and-branch,

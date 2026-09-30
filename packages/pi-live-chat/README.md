@@ -100,13 +100,15 @@ unavailable; no automatic retry or send occurs.
 - Browser sends require idle Pi, no pending native messages/UI prompt, and no
   unresolved Fernblick invocation. `pi.sendUserMessage` returns **void**.
   ACK means **invoked**, never guaranteed accepted; input hooks or asynchronous
-  runtime failures can prevent a turn. A matching user-message start publishes
-  `receivedSendIds` (last 128 commands), releasing the invocation latch and clearing the submitted
-  browser text and images, without overwriting a newer draft. The receipt survives
-  socket reconnects; a lost HTTP ACK does not prevent confirmation. Unconfirmed
-  drafts remain available on error; editing them allows a deliberate new send.
-  No reconnect retry, durable delivery, or native queue is implemented. Busy Pi
-  still rejects sends; the next send becomes available when Pi is idle.
+  runtime failures can prevent a turn. The browser clears text and images on a
+  validated forwarding ACK, without any Pi receipt or text comparison. Failed or
+  uncertain forwarding preserves the visible draft and unlocks editing. HTTP
+  forwarding waits at most 15 seconds. There is no hidden recovery copy, reconnect
+  retry, durable delivery, or native queue. Working/idle events gate subsequent
+  sends independently. A 15-second handoff guard prevents rapid double submission
+  during async Pi preflight, clears on `agent_start` or `agent_settled`, and expires
+  without retry if no run begins. Expiry never overrides native busy/UI-prompt or
+  pending-message checks.
 - Stop invokes void `ctx.abort()`. Working/stopped state comes from later Pi
   events, not the ACK or Herdr status. `agent_end` alone is not final settlement.
 - Conversation paths are requested on open from public `getTree()/getLeafId()`,
