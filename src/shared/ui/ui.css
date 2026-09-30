@@ -5,8 +5,8 @@
   place-items: center;
   justify-self: center;
   margin-bottom: var(--space-4);
-  color: var(--color-accent);
-  background: var(--color-accent-soft);
+  color: var(--state-icon-color, var(--color-accent));
+  background: var(--state-icon-background, var(--color-accent-soft));
   border-radius: var(--radius-lg);
 }
 

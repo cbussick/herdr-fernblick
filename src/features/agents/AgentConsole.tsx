@@ -315,6 +315,7 @@ export function AgentConsole({ agent, onBack }: AgentConsoleProps) {
           <div
             ref={outputRef as RefObject<HTMLDivElement>}
             className="chat-transcript"
+            data-empty={!snapshot.messages.length || undefined}
             tabIndex={0}
             onScroll={trackScroll}
           >

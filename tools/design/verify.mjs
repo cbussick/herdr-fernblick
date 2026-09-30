@@ -119,8 +119,59 @@ for (const [name, engine] of Object.entries({ chromium, webkit })) {
       await page.evaluate(() => document.documentElement.scrollWidth > innerWidth),
       false,
     );
+    await page.locator(".terminal-state--error svg").waitFor();
+    const errorColors = await page.locator(".terminal-state--error").evaluate((el) => ({
+      icon: getComputedStyle(el.querySelector("svg")).color,
+      text: getComputedStyle(el.querySelector("p")).color,
+      danger: getComputedStyle(el).getPropertyValue("--color-danger").trim(),
+    }));
+    assert.equal(errorColors.icon, errorColors.text, "Error icon must match the red message text");
+    assert.equal(errorColors.icon, "rgb(198, 74, 59)");
     await page.getByRole("button", { name: "Back to overview" }).click();
     assert.equal(await page.locator(".agent-list").isVisible(), true);
+    await page.addInitScript(() => {
+      const snapshot = {
+        type: "snapshot",
+        version: 2,
+        identity: {
+          runtime: "a0000000-0000-4000-8000-000000000001",
+          pid: 123,
+          processStart: "fixture",
+          pane: "w1:p1",
+          herdrSocket: "/fixtures/herdr.sock",
+          sessionId: "fixture",
+          sessionFile: "/fixtures/session.jsonl",
+        },
+        epoch: "a0000000-0000-4000-8000-000000000002",
+        seq: 1,
+        busy: false,
+        sendPending: false,
+        truncated: false,
+        messages: [],
+        status: { cwd: "/fixtures", totalTokens: 0, cost: 0 },
+      };
+      window.EventSource = class {
+        constructor() {
+          this.timer = setTimeout(() => this.onmessage?.({ data: JSON.stringify(snapshot) }), 10);
+        }
+        close() {
+          clearTimeout(this.timer);
+        }
+      };
+    });
+    await page.goto(app);
+    await page.getByRole("tab", { name: "Agents", exact: true }).click();
+    await page.locator(".pane-row").click();
+    await page.locator(".chat-transcript[data-empty]").waitFor();
+    await page.evaluate(() => document.fonts.ready);
+    const panel = await page.locator(".output-panel--chat").boundingBox();
+    const emptyIcon = await page.locator(".chat-transcript [data-state-kind=empty]").boundingBox();
+    const emptyText = await page.getByText("No messages yet.", { exact: true }).boundingBox();
+    const groupCenter = (emptyIcon.y + emptyText.y + emptyText.height) / 2;
+    assert.ok(
+      Math.abs(groupCenter - (panel.y + panel.height / 2)) < 2,
+      `${name} ${width}: Empty conversation must be vertically centered`,
+    );
     assert.deepEqual(errors, []);
     console.log(
       `${name}: ${width}px gallery, lightbox, filters, navigation and touch targets passed`,
