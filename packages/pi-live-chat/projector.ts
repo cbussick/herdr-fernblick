@@ -4,7 +4,7 @@ type RecordValue = Record<string, unknown>;
 function record(value: unknown): RecordValue {
   return value && typeof value === "object" ? (value as RecordValue) : {};
 }
-export function messageKey(value: unknown) {
+function messageKey(value: unknown) {
   const m = record(value);
   return m.role === "toolResult"
     ? `tool:${String(m.toolCallId)}`
@@ -76,11 +76,9 @@ export function projectMessage(value: unknown, id: string): ChatMessage[] {
         });
       }
   }
-  const attachments = blocks
-    .map(imageUrl)
-    .filter((s): s is string => Boolean(s))
-    .slice(0, 4);
-  const omitted = blocks.some((b) => b.type === "image" && !imageUrl(b));
+  const images = blocks.filter((b) => b.type === "image").map(imageUrl);
+  const attachments = images.filter((s): s is string => Boolean(s)).slice(0, 4);
+  const omitted = images.some((url) => !url);
   if (body || attachments.length || omitted || m.role === "toolResult")
     rows.push({
       id: m.role === "toolResult" ? messageKey(m).slice(0, 256) : id,

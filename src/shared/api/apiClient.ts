@@ -1,6 +1,5 @@
 import {
   agentsResponseSchema,
-  imageUploadSchema,
   createAgentRequestSchema,
   createAgentResponseSchema,
   createWorkspaceRequestSchema,
@@ -122,16 +121,6 @@ export async function sendPaneKey(paneId: string, key: KeyName) {
 export async function getAgentOutput(target: string) {
   const body = await request(`/api/agents/${encodeURIComponent(target)}/output?lines=600`);
   return terminalOutputSchema.parse(body);
-}
-
-export async function uploadImage(file: File) {
-  return imageUploadSchema.parse(
-    await request("/api/uploads/images", {
-      method: "POST",
-      headers: { "Content-Type": file.type },
-      body: file,
-    }),
-  );
 }
 
 export async function chatCommand(

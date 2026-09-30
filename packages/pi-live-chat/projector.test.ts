@@ -89,9 +89,15 @@ describe("shared history/live projector", () => {
     expect(imageUrl({ ...image, mimeType: "image/svg+xml" })).toBeUndefined();
     expect(imageUrl({ ...image, data: "not an image" })).toBeUndefined();
     expect(imageUrl({ ...image, data: "A".repeat(180000) })).toBeUndefined();
-    expect(
-      projectMessage({ role: "user", content: [{ ...image, data: "bad" }] }, "u")[0].text,
-    ).toContain("Image omitted");
+    const [message] = projectMessage(
+      {
+        role: "user",
+        content: [{ type: "text", text: "look" }, image, { ...image, data: "bad" }],
+      },
+      "u",
+    );
+    expect(message.text).toBe("look\n[Image omitted: unsupported or over 128 KiB]");
+    expect(message.attachments).toEqual([imageUrl(image)]);
   });
   it("bounds history, every live frame and long-running turns", () => {
     const p = new TranscriptProjector();

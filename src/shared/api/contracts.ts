@@ -122,12 +122,6 @@ export const terminalOutputSchema = z.object({
   workspace_id: z.string(),
 });
 
-export const imageUploadSchema = z.object({
-  id: z.string().regex(/^[0-9a-f-]{36}\.(?:png|jpg|gif|webp)$/),
-  path: z.string(),
-  url: z.string(),
-});
-
 export const keyNameSchema = z.enum([
   "esc",
   "ctrl+c",
