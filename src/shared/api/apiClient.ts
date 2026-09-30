@@ -1,5 +1,6 @@
 import {
   agentsResponseSchema,
+  imageUploadSchema,
   createAgentRequestSchema,
   createAgentResponseSchema,
   createWorkspaceRequestSchema,
@@ -13,6 +14,11 @@ import {
   type CreateTabRequest,
   type KeyName,
 } from "./contracts";
+import {
+  treeResponseSchema,
+  navigationResponseSchema,
+  type Target,
+} from "../../../packages/pi-live-chat/protocol";
 
 export class ApiError extends Error {
   readonly status: number;
@@ -123,16 +129,46 @@ export async function getAgentOutput(target: string) {
   return terminalOutputSchema.parse(body);
 }
 
+export async function uploadImage(file: File) {
+  return imageUploadSchema.parse(
+    await request("/api/uploads/images", {
+      method: "POST",
+      headers: { "Content-Type": file.type },
+      body: file,
+    }),
+  );
+}
+export async function getAgentTree(pane: string, target: Target) {
+  const response = treeResponseSchema.parse(
+    await request(`/api/agents/${encodeURIComponent(pane)}/tree`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ target }),
+    }),
+  );
+  return { ...response.tree, target: response.target };
+}
+export async function navigateAgentTree(pane: string, target: Target, entryId: string) {
+  return navigationResponseSchema.parse(
+    await request(`/api/agents/${encodeURIComponent(pane)}/tree-navigation`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ target, entryId }),
+    }),
+  );
+}
+
 export async function chatCommand(
   target: string,
-  identity: import("../../../packages/pi-live-chat/protocol").Target,
+  identity: Target,
   action: "prompt" | "stop",
   text?: string,
+  attachments: string[] = [],
 ) {
   return request(`/api/agents/${encodeURIComponent(target)}/${action}`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ target: identity, text }),
+    body: JSON.stringify({ target: identity, text, attachments }),
   });
 }
 

@@ -23,15 +23,16 @@ import { LiveBridge, LiveChatError } from "../pi/liveBridge.js";
 import { liveEvents } from "../pi/liveEvents.js";
 import {
   targetSchema as chatTargetSchema,
-  MAX_TEXT,
+  sendInputSchema,
+  MAX_IMAGE_BYTES,
 } from "../../packages/pi-live-chat/protocol.js";
-const chatCommandSchema = z.object({
+const chatCommandSchema = sendInputSchema.safeExtend({ target: chatTargetSchema });
+const treeRequestSchema = z.object({
   target: chatTargetSchema,
-  text: z.string().trim().min(1).max(MAX_TEXT).optional(),
+  entryId: z.string().min(1).max(256).optional(),
 });
 
 const MAX_BODY_BYTES = 40_000;
-const MAX_IMAGE_BYTES = 10 * 1024 * 1024;
 const targetSchema = z
   .string()
   .min(1)
@@ -119,7 +120,7 @@ class HttpError extends Error {
 
 function getAgentRoute(pathname: string) {
   const match = pathname.match(
-    /^\/api\/agents\/([^/]+)(?:\/(output|chat|prompt|stop|keys|restart))?$/,
+    /^\/api\/agents\/([^/]+)(?:\/(output|chat|prompt|stop|tree|tree-navigation|keys|restart))?$/,
   );
   if (!match) return null;
 
@@ -277,22 +278,30 @@ async function handleApi(
     return true;
   }
 
-  if (request.method === "POST" && (route.action === "prompt" || route.action === "stop")) {
+  if (
+    request.method === "POST" &&
+    ["prompt", "stop", "tree", "tree-navigation"].includes(route.action)
+  ) {
     requireSameOrigin(request);
-    const body = chatCommandSchema.parse(await readJson(request));
-    if (route.action === "prompt" && !body.text)
-      throw new HttpError(400, "Message text is required");
-    const ack = await bridge.command(
-      await service.getAgent(route.target),
-      body.target,
-      route.action === "prompt" ? "send" : "stop",
-      body.text,
-    );
-    sendJson(
-      response,
-      ack.outcome === "rejected" ? 409 : 200,
-      ack.outcome === "rejected" ? { error: ack.reason } : ack,
-    );
+    const raw = await readJson(request);
+    let input: Parameters<LiveBridge["request"]>[2];
+    let target: z.infer<typeof chatTargetSchema>;
+    if (route.action === "prompt") {
+      const body = chatCommandSchema.parse(raw);
+      target = body.target;
+      input = { action: "send", text: body.text, attachments: body.attachments };
+    } else {
+      const body = treeRequestSchema.parse(raw);
+      target = body.target;
+      if (route.action === "tree-navigation") {
+        if (!body.entryId) throw new HttpError(400, "Entry ID required");
+        input = { action: "navigate", entryId: body.entryId };
+      } else input = { action: route.action as "tree" | "stop" };
+    }
+    const reply = await bridge.request(await service.getAgent(route.target), target, input);
+    if (reply.type === "ack" && reply.outcome === "rejected")
+      sendJson(response, 409, { error: reply.reason });
+    else sendJson(response, 200, reply);
     return true;
   }
 

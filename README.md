@@ -61,9 +61,11 @@ Chat uses public Pi branch history and live events, **not JSONL files, pane text
 or footer scraping**. Busy/concurrent sends are rejected; there is no queue.
 An ACK means only that Pi's void send method was invoked, not guaranteed
 acceptance. Drafts remain until explicitly cleared; check Pi before retrying.
-Stop invokes Pi's abort method and then observes events. Images can appear in
-history within limits; sending attachments and tree navigation are deferred to
-Pi's terminal.
+Stop invokes Pi's abort method and then observes events. Attach up to four PNG,
+JPEG, GIF or WebP images (10 MiB each), including image-only messages. Conversation
+paths restore search, filters, labels, active-branch display and edit-and-branch,
+including available images from a restored prompt. Tree data and navigation use
+the direct Pi bridge, never session-file reads or terminal command injection.
 
 ### Removed legacy queue
 
@@ -85,13 +87,14 @@ The HTTP API does not expose a shell or arbitrary Herdr method proxy. Access to 
 
 ## Configuration
 
-| Variable              | Default                                 | Purpose                                                             |
-| --------------------- | --------------------------------------- | ------------------------------------------------------------------- |
-| `HOST`                | `127.0.0.1`                             | Address for the HTTP server                                         |
-| `PORT`                | `8787`                                  | HTTP port                                                           |
-| `HERDR_SOCKET_PATH`   | `~/.config/herdr/herdr.sock`            | Herdr session socket                                                |
-| `FERNBLICK_PI_SOCKET` | `~/.local/share/fernblick/live/pi.sock` | Private Pi bridge socket (also configure Pi)                        |
-| `FERNBLICK_PI_GLOBAL` | unset                                   | Set to `1` to use a globally installed extension for created agents |
+| Variable               | Default                                 | Purpose                                                               |
+| ---------------------- | --------------------------------------- | --------------------------------------------------------------------- |
+| `HOST`                 | `127.0.0.1`                             | Address for the HTTP server                                           |
+| `PORT`                 | `8787`                                  | HTTP port                                                             |
+| `HERDR_SOCKET_PATH`    | `~/.config/herdr/herdr.sock`            | Herdr session socket                                                  |
+| `FERNBLICK_PI_SOCKET`  | `~/.local/share/fernblick/live/pi.sock` | Private Pi bridge socket (also configure Pi)                          |
+| `FERNBLICK_UPLOAD_DIR` | `/tmp/fernblick`                        | Shared private upload directory; configure backend and Pi identically |
+| `FERNBLICK_PI_GLOBAL`  | unset                                   | Set to `1` to use a globally installed extension for created agents   |
 
 ## Checks
 

@@ -4,10 +4,11 @@ import { connect, createServer, type Socket } from "node:net";
 import { resolve } from "node:path";
 import type { Agent } from "../../src/shared/api/contracts.js";
 import {
-  ackSchema,
+  responseSchema,
+  commandSchema,
   matchesTarget,
   snapshotSchema,
-  type Ack,
+  type BridgeResponse,
   type Command,
   type Snapshot,
   type Target,
@@ -33,7 +34,8 @@ interface Peer {
 }
 interface Pending {
   peer: Peer;
-  resolve: (ack: Ack) => void;
+  resolve: (response: BridgeResponse) => void;
+  command: Command;
   reject: (error: Error) => void;
   timer: ReturnType<typeof setTimeout>;
 }
@@ -136,13 +138,32 @@ export class LiveBridge {
       this.notify(peer.snapshot?.identity.pane);
     });
     receiveFrames(socket, (raw) => {
-      const ack = ackSchema.safeParse(raw);
-      if (ack.success) {
-        const pending = this.pending.get(ack.data.id);
+      const reply = responseSchema.safeParse(raw);
+      if (reply.success) {
+        const pending = this.pending.get(reply.data.id);
         if (pending?.peer === peer) {
+          const response = reply.data;
+          const validType =
+            response.type === "ack"
+              ? response.outcome === "rejected" ||
+                pending.command.action === "send" ||
+                pending.command.action === "stop"
+              : response.type === "tree"
+                ? pending.command.action === "tree"
+                : pending.command.action === "navigate";
+          const validTarget =
+            response.type === "ack" ||
+            (response.target.runtime === pending.command.target.runtime &&
+              response.target.sessionId === pending.command.target.sessionId &&
+              (response.type === "navigated" ||
+                response.target.epoch === pending.command.target.epoch));
+          if (!validType || !validTarget) {
+            socket.destroy();
+            return;
+          }
           clearTimeout(pending.timer);
-          this.pending.delete(ack.data.id);
-          pending.resolve(ack.data);
+          this.pending.delete(response.id);
+          pending.resolve(response);
         }
         return;
       }
@@ -210,7 +231,28 @@ export class LiveBridge {
       throw new LiveChatError(409, "Pi process mapping is stale or not foreground");
     return peer as Peer & { snapshot: Snapshot };
   }
-  async command(agent: Agent, target: Target, action: "send" | "stop", text?: string) {
+  async command(
+    agent: Agent,
+    target: Target,
+    action: "send" | "stop",
+    text?: string,
+    attachments: string[] = [],
+  ) {
+    return this.request(
+      agent,
+      target,
+      action === "send" ? { action, text: text ?? "", attachments } : { action },
+    );
+  }
+  async request(
+    agent: Agent,
+    target: Target,
+    input:
+      | { action: "send"; text: string; attachments: string[] }
+      | { action: "stop" | "tree" }
+      | { action: "navigate"; entryId: string },
+  ) {
+    const command = commandSchema.parse({ ...input, type: "command", id: randomUUID(), target });
     const peer = await this.resolve(agent);
     if (!matchesTarget(peer.snapshot, target))
       throw new LiveChatError(
@@ -219,14 +261,13 @@ export class LiveBridge {
       );
     if ([...this.pending.values()].some((p) => p.peer === peer))
       throw new LiveChatError(409, "A command is already in flight");
-    if (action === "send" && (peer.snapshot.busy || peer.snapshot.sendPending))
+    if (
+      (command.action === "send" || command.action === "navigate") &&
+      (peer.snapshot.busy || peer.snapshot.sendPending)
+    )
       throw new LiveChatError(409, "Pi is busy or a previous send is unresolved");
-    const id = randomUUID();
-    const command: Command =
-      action === "send"
-        ? { type: "command", id, target, action, text: text! }
-        : { type: "command", id, target, action };
-    return new Promise<Ack>((done, reject) => {
+    const id = command.id;
+    return new Promise<BridgeResponse>((done, reject) => {
       const timer = setTimeout(() => {
         this.pending.delete(id);
         reject(
@@ -239,7 +280,7 @@ export class LiveBridge {
         peer.socket.destroy();
       }, 5000);
       timer.unref();
-      this.pending.set(id, { peer, resolve: done, reject, timer });
+      this.pending.set(id, { peer, command, resolve: done, reject, timer });
       if (!writeFrame(peer.socket, command)) {
         clearTimeout(timer);
         this.pending.delete(id);

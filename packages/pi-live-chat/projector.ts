@@ -39,7 +39,7 @@ export function imageUrl(value: unknown): string | undefined {
             : false;
   if (valid) return `data:${b.mimeType};base64,${b.data}`;
 }
-export function projectMessage(value: unknown, id: string): ChatMessage[] {
+export function projectMessage(value: unknown, id: string, resolveImage = imageUrl): ChatMessage[] {
   const m = record(value);
   if (m.role !== "user" && m.role !== "assistant" && m.role !== "toolResult") return [];
   const blocks =
@@ -76,7 +76,7 @@ export function projectMessage(value: unknown, id: string): ChatMessage[] {
         });
       }
   }
-  const images = blocks.filter((b) => b.type === "image").map(imageUrl);
+  const images = blocks.filter((b) => b.type === "image").map(resolveImage);
   const attachments = images.filter((s): s is string => Boolean(s)).slice(0, 4);
   const omitted = images.some((url) => !url);
   if (body || attachments.length || omitted || m.role === "toolResult")
@@ -101,6 +101,7 @@ export function projectMessage(value: unknown, id: string): ChatMessage[] {
 }
 
 export class TranscriptProjector {
+  constructor(private readonly resolveImage = imageUrl) {}
   private history: ChatMessage[] = [];
   private live = new Map<string, ChatMessage[]>();
   private persisted = new Set<string>();
@@ -121,7 +122,7 @@ export class TranscriptProjector {
       if (entry.type !== "message") continue;
       const m = record(entry.message);
       this.persisted.add(messageKey(m));
-      for (const row of projectMessage(m, String(entry.id).slice(0, 200))) {
+      for (const row of projectMessage(m, String(entry.id).slice(0, 200), this.resolveImage)) {
         this.history.push(row);
         historyBytes += Buffer.byteLength(JSON.stringify(row));
         while (historyBytes > MAX_SNAPSHOT || this.history.length > MAX_MESSAGES) {
@@ -140,7 +141,7 @@ export class TranscriptProjector {
   message(value: unknown) {
     const key = messageKey(value);
     if (this.persisted.has(key)) return;
-    this.put(key, projectMessage(value, `live:${key}`.slice(0, 200)));
+    this.put(key, projectMessage(value, `live:${key}`.slice(0, 200), this.resolveImage));
   }
   tool(event: {
     toolCallId: string;
@@ -161,6 +162,7 @@ export class TranscriptProjector {
         isError: event.isError,
       },
       key,
+      this.resolveImage,
     );
     this.put(key, rows);
   }

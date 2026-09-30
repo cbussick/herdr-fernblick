@@ -1,13 +1,21 @@
 import { useEffect, useRef, useState, type FormEvent, type RefObject } from "react";
 import { useMutation, useQuery } from "@tanstack/react-query";
 import type { Agent, KeyName } from "../../shared/api/contracts";
-import { targetOf } from "../../../packages/pi-live-chat/protocol";
+import { targetOf, type Target } from "../../../packages/pi-live-chat/protocol";
 import { getAgentTabLabel, getAgentTarget, getStatusLabel } from "./agentPresentation";
-import { getAgentOutput, sendAgentKey, chatCommand } from "../../shared/api/apiClient";
+import { getAgentOutput, sendAgentKey, chatCommand, uploadImage } from "../../shared/api/apiClient";
 import { useLiveChat } from "./useLiveChat";
 import { ChatMessageText } from "./ChatMessageText";
 import { CloseTabButton } from "./CloseTabButton";
-import { BackIcon, CloseIcon, ImageIcon, LightbulbIcon, SendIcon } from "../../shared/ui/Icons";
+import { ConversationTreeDialog } from "./ConversationTreeDialog";
+import {
+  BackIcon,
+  BranchIcon,
+  CloseIcon,
+  ImageIcon,
+  LightbulbIcon,
+  SendIcon,
+} from "../../shared/ui/Icons";
 import { IconButton, StatusIndicator, TabKindIcon } from "../../shared/ui";
 
 interface AgentConsoleProps {
@@ -15,6 +23,7 @@ interface AgentConsoleProps {
   onBack: () => void;
 }
 type AgentView = "chat" | "terminal";
+type Attachment = { file?: File; id?: string; previewUrl: string };
 const showThinkingStorageKey = "fernblick.showThinking";
 function initialShowThinking() {
   try {
@@ -51,6 +60,12 @@ const keyControls: { key: KeyName; label: string }[] = [
 export function AgentConsole({ agent, onBack }: AgentConsoleProps) {
   const target = getAgentTarget(agent);
   const [prompt, setPrompt] = useState("");
+  const [attachments, setAttachments] = useState<Attachment[]>([]);
+  const [attachmentError, setAttachmentError] = useState("");
+  const [treeTarget, setTreeTarget] = useState<Target | null>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+  const uploadedIds = useRef(new Map<File, string>());
+  const previews = useRef(new Set<string>());
   const [view, setView] = useState<AgentView>("chat");
   const [showThinking, setShowThinking] = useState(initialShowThinking);
   const [lightboxImage, setLightboxImage] = useState<string | null>(null);
@@ -66,9 +81,22 @@ export function AgentConsole({ agent, onBack }: AgentConsoleProps) {
     refetchInterval: view === "terminal" ? 1000 : false,
   });
   const send = useMutation({
-    mutationFn: () => {
+    mutationFn: async () => {
       if (!snapshot) throw new Error("Live chat unavailable");
-      return chatCommand(agent.pane_id, targetOf(snapshot), "prompt", prompt);
+      const identity = targetOf(snapshot);
+      const ids: string[] = [];
+      for (const attachment of attachments) {
+        if (attachment.id) ids.push(attachment.id);
+        else if (attachment.file) {
+          let id = uploadedIds.current.get(attachment.file);
+          if (!id) {
+            id = (await uploadImage(attachment.file)).id;
+            uploadedIds.current.set(attachment.file, id);
+          }
+          ids.push(id);
+        }
+      }
+      return chatCommand(agent.pane_id, identity, "prompt", prompt, ids);
     },
     retry: false,
     // ACK only means the void Pi method was invoked. Keep the draft even on ACK.
@@ -85,6 +113,12 @@ export function AgentConsole({ agent, onBack }: AgentConsoleProps) {
     retry: false,
   });
   useEffect(() => {
+    const urls = previews.current;
+    return () => {
+      for (const url of urls) URL.revokeObjectURL(url);
+    };
+  }, []);
+  useEffect(() => {
     if (lightboxImage && lightboxRef.current && !lightboxRef.current.open)
       lightboxRef.current.showModal();
   }, [lightboxImage]);
@@ -100,10 +134,39 @@ export function AgentConsole({ agent, onBack }: AgentConsoleProps) {
     snapshot &&
     !snapshot.busy &&
     !snapshot.sendPending &&
-    prompt.trim() &&
+    (prompt.trim() || attachments.length) &&
     !send.isPending &&
     !send.isSuccess,
   );
+  function clearAttachments() {
+    for (const url of previews.current) URL.revokeObjectURL(url);
+    previews.current.clear();
+    uploadedIds.current.clear();
+    setAttachments([]);
+    setAttachmentError("");
+  }
+  function selectImages(files: FileList | null) {
+    if (!files) return;
+    const selected = Array.from(files);
+    const valid = selected.filter(
+      (file) =>
+        ["image/png", "image/jpeg", "image/gif", "image/webp"].includes(file.type) &&
+        file.size > 0 &&
+        file.size <= 10 * 1024 * 1024,
+    );
+    setAttachmentError(
+      valid.length !== selected.length || selected.length + attachments.length > 4
+        ? "Choose up to four PNG, JPEG, GIF or WebP images, at most 10 MiB each."
+        : "",
+    );
+    const additions = valid.slice(0, 4 - attachments.length).map((file) => {
+      const previewUrl = URL.createObjectURL(file);
+      previews.current.add(previewUrl);
+      return { file, previewUrl };
+    });
+    setAttachments((current) => [...current, ...additions]);
+    if (fileInputRef.current) fileInputRef.current.value = "";
+  }
   function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     if (canSend) send.mutate();
@@ -274,18 +337,63 @@ export function AgentConsole({ agent, onBack }: AgentConsoleProps) {
       ) : (
         <form className="prompt-composer" onSubmit={submit}>
           <div className="prompt-composer__surface">
+            {attachments.length ? (
+              <div className="prompt-attachments" aria-label="Image attachments">
+                {attachments.map((attachment, i) => (
+                  <div className="prompt-attachment" key={attachment.previewUrl}>
+                    <img
+                      src={attachment.previewUrl}
+                      alt={attachment.file?.name ?? "Restored image attachment"}
+                    />
+                    <button
+                      type="button"
+                      disabled={send.isPending}
+                      aria-label={`Remove image ${i + 1}`}
+                      onClick={() => {
+                        if (previews.current.delete(attachment.previewUrl))
+                          URL.revokeObjectURL(attachment.previewUrl);
+                        setAttachments((current) =>
+                          current.filter((value) => value !== attachment),
+                        );
+                      }}
+                    >
+                      <CloseIcon />
+                    </button>
+                  </div>
+                ))}
+              </div>
+            ) : null}
             <label htmlFor="agent-prompt" className="sr-only">
               Message {getAgentTabLabel(agent)}
             </label>
             <div className="prompt-composer__row">
+              <input
+                ref={fileInputRef}
+                className="sr-only"
+                type="file"
+                accept="image/png,image/jpeg,image/gif,image/webp"
+                multiple
+                onChange={(event) => selectImages(event.target.files)}
+              />
               <button
                 type="button"
                 className="prompt-composer__attach"
-                disabled
-                title="Sending image attachments is deferred; use Pi's terminal"
-                aria-label="Image attachments unavailable"
+                disabled={send.isPending || attachments.length >= 4}
+                title="Attach images"
+                aria-label="Attach images"
+                onClick={() => fileInputRef.current?.click()}
               >
                 <ImageIcon />
+              </button>
+              <button
+                type="button"
+                className="prompt-composer__tree"
+                aria-label="Open conversation paths"
+                title="Conversation paths"
+                disabled={!snapshot || send.isPending}
+                onClick={() => snapshot && setTreeTarget(targetOf(snapshot))}
+              >
+                <BranchIcon />
               </button>
               <textarea
                 id="agent-prompt"
@@ -301,9 +409,7 @@ export function AgentConsole({ agent, onBack }: AgentConsoleProps) {
               </button>
             </div>
           </div>
-          <small>
-            Text-only live chat. No queue. Images and tree navigation: use Pi’s terminal.
-          </small>
+          {attachmentError ? <p role="alert">{attachmentError}</p> : null}
           {send.isSuccess ? (
             <p role="status">
               Send invoked, not guaranteed accepted. Draft retained—verify the conversation before
@@ -319,6 +425,7 @@ export function AgentConsole({ agent, onBack }: AgentConsoleProps) {
             disabled={send.isPending}
             onClick={() => {
               setPrompt("");
+              clearAttachments();
               send.reset();
             }}
           >
@@ -336,6 +443,21 @@ export function AgentConsole({ agent, onBack }: AgentConsoleProps) {
             {snapshot.status.cost.toFixed(2)} · {snapshot.status.provider}
           </span>
         </div>
+      ) : null}
+      {treeTarget ? (
+        <ConversationTreeDialog
+          open
+          target={agent.pane_id}
+          identity={treeTarget}
+          busy={!snapshot || snapshot.busy || snapshot.sendPending || send.isPending}
+          onClose={() => setTreeTarget(null)}
+          onRestorePrompt={(text, ids) => {
+            clearAttachments();
+            setPrompt(text);
+            setAttachments(ids.map((id) => ({ id, previewUrl: `/api/uploads/${id}` })));
+            send.reset();
+          }}
+        />
       ) : null}
       {lightboxImage ? (
         <dialog
