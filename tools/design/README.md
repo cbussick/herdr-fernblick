@@ -18,7 +18,7 @@ The plan deliberately avoids metrics tiles, a decorative gradient hero, and dash
 
 ## Captures
 
-43 screens/states at each of these sizes:
+52 screens/states at each of these sizes:
 
 | Device        | CSS pixels  |
 | ------------- | ----------- |
@@ -26,11 +26,13 @@ The plan deliberately avoids metrics tiles, a decorative gradient hero, and dash
 | iPad portrait | 834 × 1194  |
 | Desktop       | 1440 × 1000 |
 
-129 baseline screenshots and 129 proposal screenshots are grouped into 129 before/after comparisons. Includes overview/search/empty states, create menu and forms, conversation/status/tool/images/composer, terminals, edit/restart/close/context actions, conversation paths and filters, loading and recovery states. These are the reachable screens and representative state variants, not every possible combination of arbitrary content and errors.
+156 baseline screenshots and 156 proposal screenshots are grouped into 156 before/after comparisons. Includes overview/search/empty states, create menu and forms, conversation/status/tool/images/composer, terminals, edit/restart/close/context actions, conversation paths and filters, loading and recovery states. These are the reachable screens and representative state variants, not every possible combination of arbitrary content and errors.
 
 `capture.mjs` renders the actual app, drives its controls, intercepts **all** `/api/` traffic and replaces EventSource with deterministic fixtures. It never uses the real Herdr socket, launches an agent, sends a real prompt, or exposes private session content. Baseline is commit `2695548`. Baseline phone header controls overlap; baseline-only synthetic click dispatch permits capture of the obscured screens. Proposal controls are exercised with normal pointer clicks.
 
-Generated images, manifests and the served HTML are in ignored `design-gallery/`. The gallery supports viewport/search filters, side-by-side lightboxes, after-only inspection, native-resolution zoom, previous/next buttons, arrow keys and Escape. Before-only gallery: <http://100.71.229.1:5197/?phase=before>.
+Generated images, manifests and the served HTML are in ignored `design-gallery/`. Standalone loading, unavailable and empty states share a blue icon surface above their text. In-content chat notices (reconnect, sending, waiting for receipt, transcript notices and failures) use compact inline icons to preserve conversation space. Icons are decorative and hidden from assistive technology; existing status/alert and busy semantics are preserved. No new animation was added.
+
+The gallery supports viewport/search filters, side-by-side lightboxes, after-only inspection, native-resolution zoom, previous/next buttons, arrow keys and Escape. Before-only gallery: <http://100.71.229.1:5197/?phase=before>.
 
 ## Reproduce
 

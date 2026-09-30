@@ -11,7 +11,7 @@ for (const [name, engine] of Object.entries({ chromium, webkit })) {
     page.on("pageerror", (e) => errors.push(e.message));
     await page.goto(gallery);
     await page.locator(".card").first().waitFor();
-    assert.equal(await page.locator(".card").count(), 43);
+    assert.equal(await page.locator(".card").count(), 52);
     await page.getByRole("button", { name: "Compare Agent conversation", exact: true }).click();
     assert.equal(await page.locator("dialog[open] img").count(), 2);
     await page
@@ -26,9 +26,9 @@ for (const [name, engine] of Object.entries({ chromium, webkit })) {
     await page.keyboard.press("Escape");
     assert.equal(await page.locator("dialog[open]").count(), 0);
     await page.getByRole("button", { name: /iPad ·/ }).click();
-    assert.equal(await page.locator(".card").count(), 43);
+    assert.equal(await page.locator(".card").count(), 52);
     await page.getByRole("searchbox").fill("paths");
-    assert.equal(await page.locator(".card").count(), 6);
+    assert.equal(await page.locator(".card").count(), 7);
     assert.equal(
       await page.evaluate(() => document.documentElement.scrollWidth > innerWidth),
       false,

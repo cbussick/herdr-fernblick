@@ -119,6 +119,8 @@ const scenarios = [
   ["chat-empty", "Empty conversation", "States"],
   ["chat-connecting", "Connecting to Pi", "States"],
   ["chat-unavailable", "Chat unavailable", "States"],
+  ["chat-reconnecting", "Reconnecting with conversation history", "States"],
+  ["chat-status", "Conversation status notice", "States"],
   ["chat-legacy", "Extension needs reload", "States"],
   ["chat-truncated", "Bounded transcript notice", "States"],
   ["tool-open", "Expanded tool output", "Conversation"],
@@ -126,10 +128,16 @@ const scenarios = [
   ["image-preview", "Attachment lightbox", "Conversation"],
   ["draft-image", "Composer with image", "Conversation"],
   ["send-pending", "Sending message", "States"],
+  ["send-waiting", "Waiting for message receipt", "States"],
   ["send-error", "Send failure / retained draft", "States"],
   ["terminal", "Agent terminal", "Terminal"],
   ["terminal-error", "Terminal read failure", "States"],
+  ["terminal-empty", "Empty agent terminal", "States"],
+  ["terminal-loading", "Reading agent terminal", "States"],
   ["shell", "Shell terminal", "Terminal"],
+  ["shell-empty", "Empty shell terminal", "States"],
+  ["shell-loading", "Reading shell terminal", "States"],
+  ["shell-error", "Shell unavailable", "States"],
   ["edit-agent", "Edit agent settings", "Manage"],
   ["restart", "Restart confirmation", "Manage"],
   ["close-agent", "Close agent confirmation", "Manage"],
@@ -142,6 +150,7 @@ const scenarios = [
   ["paths-labels", "Paths / labels filter", "Paths"],
   ["paths-empty", "Paths / no matches", "Paths"],
   ["paths-error", "Paths / load failure", "States"],
+  ["paths-loading", "Reading conversation paths", "States"],
   ["paths-branch", "Edit and branch selection", "Paths"],
   ["loading", "Loading overview", "States"],
   ["offline", "Herdr unavailable", "States"],
@@ -201,6 +210,12 @@ for (const size of sizes)
           text: "I’ll use the pale-blue canvas with darker text and white conversation surfaces.",
         },
       ];
+    if (id === "chat-status")
+      snapshot.messages.push({
+        id: "status",
+        role: "status",
+        text: "Conversation restored. Continue from this point.",
+      });
     await page.addInitScript(
       ({ snapshot, id }) => {
         class FixtureEvents {
@@ -218,6 +233,7 @@ for (const size of sizes)
                       : snapshot,
                   ),
                 });
+              if (id === "chat-reconnecting") this.onerror?.();
             }, 50);
           }
           close() {
@@ -245,6 +261,9 @@ for (const size of sizes)
                 ? { agents: [], tabs: [], workspaces: [] }
                 : { agents, tabs, workspaces },
           });
+        if (url.endsWith("/tree") && id === "paths-loading") return;
+        if (url.endsWith("/prompt") && id === "send-waiting")
+          return route.fulfill({ json: { type: "ack", id: target.runtime, outcome: "invoked" } });
         if (url.endsWith("/tree"))
           return route.fulfill(
             id === "paths-error"
@@ -254,9 +273,10 @@ for (const size of sizes)
                 }
               : { json: { type: "tree", id: target.runtime, target, tree } },
           );
+        if (url.includes("/output?") && ["terminal-loading", "shell-loading"].includes(id)) return;
         if (url.includes("/output?"))
           return route.fulfill(
-            id === "terminal-error"
+            ["terminal-error", "shell-error"].includes(id)
               ? {
                   status: 503,
                   json: { error: "Terminal output unavailable. Check the Herdr connection." },
@@ -270,7 +290,9 @@ for (const size of sizes)
                     revision: 1,
                     source: "fixture",
                     truncated: false,
-                    text: "~/projects/fernblick $ npm run check\n\n> fernblick@0.1.0 check\n> format · lint · typecheck · test · build\n\n✓ Formatting\n✓ No lint errors\n✓ TypeScript\n\n Test Files  16 passed (16)\n      Tests  92 passed (92)\n\n✓ built in 1.42s\n\nAll checks passed.\n\n~/projects/fernblick $",
+                    text: ["terminal-empty", "shell-empty"].includes(id)
+                      ? ""
+                      : "~/projects/fernblick $ npm run check\n\n> fernblick@0.1.0 check\n> format · lint · typecheck · test · build\n\n✓ Formatting\n✓ No lint errors\n✓ TypeScript\n\n Test Files  16 passed (16)\n      Tests  92 passed (92)\n\n✓ built in 1.42s\n\nAll checks passed.\n\n~/projects/fernblick $",
                   },
                 },
           );
@@ -297,6 +319,9 @@ for (const size of sizes)
           "context-edit",
           "context-close",
           "shell",
+          "shell-empty",
+          "shell-loading",
+          "shell-error",
           "edit-shell",
         ].includes(id)
       )
@@ -351,7 +376,7 @@ for (const size of sizes)
         "offline",
       ].includes(id);
       if (detail) {
-        if (["shell", "edit-shell"].includes(id))
+        if (id.startsWith("shell") || id === "edit-shell")
           await page.getByRole("button", { name: /Development server Shell terminal/ }).click();
         else {
           await page.getByRole("tab", { name: "Agents", exact: true }).click();
@@ -368,9 +393,12 @@ for (const size of sizes)
             .click();
         }
         await page.locator(".console").waitFor();
-        if (!["shell", "edit-shell", "chat-connecting", "chat-unavailable"].includes(id))
+        if (
+          !id.startsWith("shell") &&
+          !["edit-shell", "chat-connecting", "chat-unavailable"].includes(id)
+        )
           await page.locator(".chat-transcript").waitFor();
-        if (["terminal", "terminal-error"].includes(id)) {
+        if (id.startsWith("terminal")) {
           const toggle = page.getByRole("button", { name: "Switch to Terminal view" });
           if (phase === "before") await toggle.dispatchEvent("click");
           else await toggle.click();
@@ -382,7 +410,7 @@ for (const size of sizes)
           await page.locator("input[type=file]").setInputFiles(imagePath);
           await page.locator("#agent-prompt").fill("Here is the visual direction I have in mind.");
         }
-        if (id === "send-error") {
+        if (["send-error", "send-waiting"].includes(id)) {
           await page.locator("#agent-prompt").fill("Please apply the blue design.");
           await page.getByRole("button", { name: "Send message" }).click();
         }
@@ -406,7 +434,36 @@ for (const size of sizes)
             await page.locator(".conversation-tree__row button").first().click();
         }
       }
-      await page.waitForTimeout(id === "offline" ? 8000 : 220);
+      if (id === "offline") await page.locator(".page-state[role=alert]").waitFor();
+      if (["terminal-error", "shell-error"].includes(id))
+        await page.locator(".output-panel [role=alert]").waitFor();
+      await page.waitForTimeout(220);
+      if (
+        phase === "after" &&
+        [
+          "loading",
+          "offline",
+          "chat-empty",
+          "chat-connecting",
+          "chat-unavailable",
+          "chat-reconnecting",
+          "chat-status",
+          "chat-legacy",
+          "chat-truncated",
+          "send-pending",
+          "send-waiting",
+          "send-error",
+          "terminal-empty",
+          "terminal-loading",
+          "terminal-error",
+          "shell-empty",
+          "shell-loading",
+          "shell-error",
+          "paths-loading",
+          "paths-error",
+        ].includes(id)
+      )
+        await page.locator("[data-state-kind] svg").first().waitFor();
       await page.evaluate(() => document.fonts.ready);
       await page.screenshot({ path: `${out}/${phase}/${size.id}-${id}.png` });
       const overflow = await page.evaluate(() => document.documentElement.scrollWidth > innerWidth);

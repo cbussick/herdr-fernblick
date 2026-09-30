@@ -516,7 +516,15 @@
 .terminal-state {
   display: grid;
   place-content: center;
+  justify-items: center;
+  text-align: center;
+  font-family: var(--font-sans);
+  white-space: normal;
   color: var(--color-text-tertiary);
+}
+
+.terminal-state p {
+  max-width: 32rem;
 }
 
 .terminal-state--error {
@@ -608,6 +616,10 @@
   align-self: center;
   padding: var(--space-2) var(--space-4) max(var(--space-3), env(safe-area-inset-bottom));
   background: var(--color-canvas);
+}
+
+.prompt-composer > .state-notice {
+  margin-top: var(--space-2);
 }
 
 .prompt-composer__surface {
@@ -1008,7 +1020,8 @@
   font-size: 0.73rem;
 }
 
-.conversation-tree-dialog__footer > p {
+.conversation-tree-dialog__footer > p,
+.conversation-tree-dialog__footer > .state-notice {
   grid-column: 1 / -1;
   margin: 0;
   color: var(--color-danger);
@@ -1378,6 +1391,12 @@
   padding: var(--space-6);
   color: var(--color-text-secondary);
   text-align: center;
+}
+
+.page-state p {
+  max-width: 32rem;
+  line-height: 1.7;
+  overflow-wrap: anywhere;
 }
 
 .page-state h1 {

@@ -9,6 +9,7 @@ import { NewWorkspaceDialog } from "../features/agents/NewWorkspaceDialog";
 import { NewTabDialog } from "../features/agents/NewTabDialog";
 import { ShellConsole } from "../features/agents/ShellConsole";
 import { FernblickMark } from "../shared/ui/FernblickMark";
+import { StateIcon } from "../shared/ui/StateFeedback";
 import "./App.css";
 
 export function App() {
@@ -37,10 +38,12 @@ export function App() {
 
       {agentsQuery.isPending ? (
         <div className="page-state" aria-busy="true">
-          Loading agents…
+          <StateIcon kind="loading" />
+          <p>Loading agents…</p>
         </div>
       ) : agentsQuery.isError ? (
         <div className="page-state page-state--error" role="alert">
+          <StateIcon kind="unavailable" />
           <h1>Cannot reach Herdr</h1>
           <p>{agentsQuery.error.message}</p>
           <button type="button" onClick={() => void agentsQuery.refetch()}>

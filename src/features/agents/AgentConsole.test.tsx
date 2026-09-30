@@ -191,3 +191,45 @@ it("preserves text and attachments when delivery fails without a receipt", async
   expect(renderer.root.findAllByProps({ "aria-label": "Image attachments" })).toHaveLength(1);
   expect(mocks.command).toHaveBeenCalledOnce();
 });
+
+it("shows a decorative icon in connecting and unavailable chat placeholders", async () => {
+  mocks.live = {};
+  await act(async () => renderer.update(render()));
+  expect(
+    renderer.root.findByProps({ "data-state-kind": "loading" }).findByType("svg").props[
+      "aria-hidden"
+    ],
+  ).toBe("true");
+  mocks.live = { error: "Cannot reach Pi" };
+  await act(async () => renderer.update(render()));
+  expect(renderer.root.findByProps({ role: "alert" }).findByType("svg").props["aria-hidden"]).toBe(
+    "true",
+  );
+  expect(JSON.stringify(renderer.toJSON())).toContain("Cannot reach Pi");
+});
+
+it("adds an icon to sending notices without enabling another send", async () => {
+  mocks.live.snapshot = { ...mocks.live.snapshot!, sendPending: true };
+  await act(async () => renderer.update(render()));
+  const notice = renderer.root.findByProps({ "data-state-kind": "sending" });
+  expect(notice.props.role).toBe("status");
+  expect(notice.findByType("svg").props["aria-hidden"]).toBe("true");
+  expect(JSON.stringify(renderer.toJSON())).toContain("Sending to Pi");
+  expect(renderer.root.findByProps({ "aria-label": "Send message" }).props.disabled).toBe(true);
+});
+
+it("shows an icon while waiting for receipt and keeps the submitted draft", async () => {
+  await act(async () =>
+    renderer.root
+      .findByType("textarea")
+      .props.onChange({ target: { value: "keep until received" } }),
+  );
+  await act(async () => renderer.root.findByType("form").props.onSubmit({ preventDefault() {} }));
+  await flush();
+  expect(
+    renderer.root.findByProps({ "data-state-kind": "sending" }).findByType("svg").props[
+      "aria-hidden"
+    ],
+  ).toBe("true");
+  expect(renderer.root.findByType("textarea").props.value).toBe("keep until received");
+});

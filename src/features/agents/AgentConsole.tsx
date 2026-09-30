@@ -14,10 +14,10 @@ import {
   CloseIcon,
   ImageIcon,
   LightbulbIcon,
-  MessageIcon,
   SendIcon,
 } from "../../shared/ui/Icons";
 import { IconButton, StatusIndicator, TabKindIcon } from "../../shared/ui";
+import { StateIcon, StateNotice } from "../../shared/ui/StateFeedback";
 
 interface AgentConsoleProps {
   agent: Agent;
@@ -276,9 +276,20 @@ export function AgentConsole({ agent, onBack }: AgentConsoleProps) {
               <span>ANSI</span>
             </div>
             {outputQuery.isPending ? (
-              <div className="terminal-state">Reading agent output…</div>
+              <div className="terminal-state" aria-busy="true">
+                <StateIcon kind="loading" />
+                <p>Reading agent output…</p>
+              </div>
             ) : outputQuery.isError ? (
-              <div role="alert">{outputQuery.error.message}</div>
+              <div className="terminal-state terminal-state--error" role="alert">
+                <StateIcon kind="unavailable" />
+                <p>{outputQuery.error.message}</p>
+              </div>
+            ) : !outputQuery.data.text ? (
+              <div className="terminal-state">
+                <StateIcon kind="terminal" />
+                <p>No agent output yet.</p>
+              </div>
             ) : (
               <pre
                 ref={outputRef as RefObject<HTMLPreElement>}
@@ -286,17 +297,19 @@ export function AgentConsole({ agent, onBack }: AgentConsoleProps) {
                 tabIndex={0}
                 onScroll={trackScroll}
               >
-                {outputQuery.data.text || "No agent output yet."}
+                {outputQuery.data.text}
               </pre>
             )}
           </>
         ) : live.error && !snapshot ? (
           <div className="terminal-state terminal-state--error" role="alert">
-            {live.error}
+            <StateIcon kind="unavailable" />
+            <p>{live.error}</p>
           </div>
         ) : !snapshot ? (
           <div className="terminal-state" aria-busy="true">
-            Connecting to Pi live chat…
+            <StateIcon kind="loading" />
+            <p>Connecting to Pi live chat…</p>
           </div>
         ) : (
           <div
@@ -305,20 +318,24 @@ export function AgentConsole({ agent, onBack }: AgentConsoleProps) {
             tabIndex={0}
             onScroll={trackScroll}
           >
-            {live.error ? <p role="status">{live.error}</p> : null}
+            {live.error ? <StateNotice kind="unavailable">{live.error}</StateNotice> : null}
             {snapshot.version !== 2 ? (
-              <p role="status">Run /reload in Pi to update the chat connection.</p>
+              <StateNotice kind="info">
+                Run /reload in Pi to update the chat connection.
+              </StateNotice>
             ) : null}
             {snapshot.truncated ? (
-              <div role="status">Showing a bounded recent transcript; some content is omitted.</div>
+              <StateNotice kind="info">
+                Showing a bounded recent transcript; some content is omitted.
+              </StateNotice>
             ) : null}
             {snapshot.messages
               .filter((message) => showThinking || message.role !== "thinking")
               .map((message) =>
                 message.role === "status" ? (
-                  <div className="chat-status" role="status" key={message.id}>
+                  <StateNotice kind="info" key={message.id}>
                     {message.text}
-                  </div>
+                  </StateNotice>
                 ) : message.role === "thinking" ? (
                   <div className="chat-thinking" key={message.id}>
                     <LightbulbIcon />
@@ -352,9 +369,7 @@ export function AgentConsole({ agent, onBack }: AgentConsoleProps) {
               )}
             {!snapshot.messages.length ? (
               <div className="terminal-state">
-                <span className="empty-state-icon">
-                  <MessageIcon />
-                </span>
+                <StateIcon kind="empty" />
                 <p>No messages yet.</p>
               </div>
             ) : null}
@@ -371,7 +386,7 @@ export function AgentConsole({ agent, onBack }: AgentConsoleProps) {
                 {stop.isSuccess ? <span>Abort invoked; waiting for Pi events.</span> : null}
               </div>
             ) : null}
-            {snapshot.sendPending ? <p role="status">Sending to Pi…</p> : null}
+            {snapshot.sendPending ? <StateNotice kind="sending">Sending to Pi…</StateNotice> : null}
           </div>
         )}
       </section>
@@ -387,7 +402,11 @@ export function AgentConsole({ agent, onBack }: AgentConsoleProps) {
               {control.label}
             </button>
           ))}
-          {keyMutation.isError ? <p role="alert">{keyMutation.error.message}</p> : null}
+          {keyMutation.isError ? (
+            <StateNotice kind="unavailable" role="alert">
+              {keyMutation.error.message}
+            </StateNotice>
+          ) : null}
         </div>
       ) : (
         <form className="prompt-composer" onSubmit={submit}>
@@ -474,14 +493,24 @@ export function AgentConsole({ agent, onBack }: AgentConsoleProps) {
               </button>
             </div>
           </div>
-          {attachmentError ? <p role="alert">{attachmentError}</p> : null}
+          {attachmentError ? (
+            <StateNotice kind="info" role="alert">
+              {attachmentError}
+            </StateNotice>
+          ) : null}
           {submission && send.isSuccess ? (
-            <p role="status">Waiting for Pi to receive your message…</p>
+            <StateNotice kind="sending">Waiting for Pi to receive your message…</StateNotice>
           ) : null}
           {send.isError ? (
-            <p role="alert">{send.error.message} Draft retained; check Pi before retrying.</p>
+            <StateNotice kind="unavailable" role="alert">
+              {send.error.message} Draft retained; check Pi before retrying.
+            </StateNotice>
           ) : null}
-          {stop.isError ? <p role="alert">{stop.error.message}</p> : null}
+          {stop.isError ? (
+            <StateNotice kind="unavailable" role="alert">
+              {stop.error.message}
+            </StateNotice>
+          ) : null}
         </form>
       )}
       {view === "chat" && snapshot ? (

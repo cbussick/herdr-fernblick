@@ -5,6 +5,7 @@ import { getPaneOutput, sendPaneInput, sendPaneKey } from "../../shared/api/apiC
 import { CloseTabButton } from "./CloseTabButton";
 import { BackIcon, SendIcon } from "../../shared/ui/Icons";
 import { IconButton, TabKindIcon } from "../../shared/ui";
+import { StateIcon, StateNotice } from "../../shared/ui/StateFeedback";
 interface ShellConsoleProps {
   tab: ShellTab;
   onBack: () => void;
@@ -75,15 +76,22 @@ export function ShellConsole({ tab, onBack }: ShellConsoleProps) {
         </div>
         {outputQuery.isPending ? (
           <div className="terminal-state" aria-busy="true">
-            Reading terminal…
+            <StateIcon kind="loading" />
+            <p>Reading terminal…</p>
           </div>
         ) : outputQuery.isError ? (
           <div className="terminal-state terminal-state--error" role="alert">
-            Could not read this tab. {outputQuery.error.message}
+            <StateIcon kind="unavailable" />
+            <p>Could not read this tab. {outputQuery.error.message}</p>
+          </div>
+        ) : !outputQuery.data.text ? (
+          <div className="terminal-state">
+            <StateIcon kind="terminal" />
+            <p>No terminal output yet.</p>
           </div>
         ) : (
           <pre ref={outputRef} className="terminal-output" tabIndex={0}>
-            {outputQuery.data.text || "No terminal output yet."}
+            {outputQuery.data.text}
           </pre>
         )}
       </section>
@@ -123,8 +131,16 @@ export function ShellConsole({ tab, onBack }: ShellConsoleProps) {
             </button>
           </div>
         </div>
-        {inputMutation.isError ? <p role="alert">{inputMutation.error.message}</p> : null}
-        {keyMutation.isError ? <p role="alert">{keyMutation.error.message}</p> : null}
+        {inputMutation.isError ? (
+          <StateNotice kind="unavailable" role="alert">
+            {inputMutation.error.message}
+          </StateNotice>
+        ) : null}
+        {keyMutation.isError ? (
+          <StateNotice kind="unavailable" role="alert">
+            {keyMutation.error.message}
+          </StateNotice>
+        ) : null}
       </form>
     </main>
   );

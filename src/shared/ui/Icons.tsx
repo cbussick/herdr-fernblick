@@ -72,6 +72,41 @@ export function MessageIcon(props: IconProps) {
   );
 }
 
+export function LoaderIcon(props: IconProps) {
+  return (
+    <IconBase {...props}>
+      <path d="M20 12a8 8 0 1 1-8-8" />
+      <path d="M12 2v4M18 4l-2 3M22 8l-4 1" />
+    </IconBase>
+  );
+}
+
+export function PlugOffIcon(props: IconProps) {
+  return (
+    <IconBase {...props}>
+      <path d="m3 3 18 18M7 3v4M17 3v4M5 7h14v4a7 7 0 0 1-1 3M15 17a7 7 0 0 1-10-6v-1M12 18v3" />
+    </IconBase>
+  );
+}
+
+export function InfoIcon(props: IconProps) {
+  return (
+    <IconBase {...props}>
+      <circle cx="12" cy="12" r="9" />
+      <path d="M12 11v6M12 7h.01" />
+    </IconBase>
+  );
+}
+
+export function TerminalIcon(props: IconProps) {
+  return (
+    <IconBase {...props}>
+      <rect x="3" y="4" width="18" height="16" rx="3" />
+      <path d="m7 9 3 3-3 3M13 15h4" />
+    </IconBase>
+  );
+}
+
 export function PencilIcon(props: IconProps) {
   return (
     <IconBase {...props}>

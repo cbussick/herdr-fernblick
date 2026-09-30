@@ -3,6 +3,7 @@ import { useMutation, useQuery } from "@tanstack/react-query";
 import type { PiTreeNode, Target } from "../../../packages/pi-live-chat/protocol";
 import { getAgentTree, navigateAgentTree } from "../../shared/api/apiClient";
 import { BranchIcon, CloseIcon, SearchIcon } from "../../shared/ui/Icons";
+import { StateIcon, StateNotice } from "../../shared/ui/StateFeedback";
 
 type Filter = "all" | "user" | "labels";
 
@@ -175,13 +176,15 @@ export function ConversationTreeDialog({
         </div>
         <div className="conversation-tree-dialog__body">
           {treeQuery.isPending ? (
-            <p className="terminal-state" aria-busy="true">
-              Reading conversation paths…
-            </p>
+            <div className="terminal-state" aria-busy="true">
+              <StateIcon kind="loading" />
+              <p>Reading conversation paths…</p>
+            </div>
           ) : treeQuery.isError ? (
-            <p className="terminal-state terminal-state--error" role="alert">
-              Could not read conversation paths. {treeQuery.error.message}
-            </p>
+            <div className="terminal-state terminal-state--error" role="alert">
+              <StateIcon kind="unavailable" />
+              <p>Could not read conversation paths. {treeQuery.error.message}</p>
+            </div>
           ) : visibleNodes.length ? (
             <TreeNodes
               nodes={visibleNodes}
@@ -212,7 +215,11 @@ export function ConversationTreeDialog({
               </>
             ) : null}
           </div>
-          {navigateMutation.isError ? <p role="alert">{navigateMutation.error.message}</p> : null}
+          {navigateMutation.isError ? (
+            <StateNotice kind="unavailable" role="alert">
+              {navigateMutation.error.message}
+            </StateNotice>
+          ) : null}
           <button
             type="button"
             className="secondary-button"

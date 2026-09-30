@@ -15,6 +15,34 @@
   height: 1.5rem;
 }
 
+.state-notice {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--space-3);
+  padding: var(--space-3) var(--space-4);
+  color: var(--color-text-secondary);
+  font: 0.8125rem/1.6 var(--font-sans);
+  background: var(--color-surface-subtle);
+  border-radius: var(--radius-sm);
+}
+
+.state-notice > svg {
+  width: 1.125rem;
+  height: 1.125rem;
+  flex: none;
+  margin-top: 0.1rem;
+}
+
+.state-notice > span {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.state-notice[data-tone="error"] {
+  color: var(--color-danger);
+  background: var(--color-danger-soft);
+}
+
 .button {
   display: inline-flex;
   min-height: var(--control-height);
