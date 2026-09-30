@@ -1,3 +1,12 @@
+/* Component state selectors refine their base controls. */
+/* stylelint-disable no-descending-specificity */
+
+@media (pointer: coarse) {
+  .search-field input {
+    font-size: 1rem;
+  }
+}
+
 .empty-state-icon {
   display: grid;
   width: 3.5rem;

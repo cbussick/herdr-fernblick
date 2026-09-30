@@ -1,3 +1,4 @@
+import uiStyles from "./ui.module.css";
 import type { ReactNode } from "react";
 import { InfoIcon, LoaderIcon, MessageIcon, PlugOffIcon, SendIcon, TerminalIcon } from "./Icons";
 
@@ -15,7 +16,11 @@ type StateKind = keyof typeof icons;
 export function StateIcon({ kind }: { kind: StateKind }) {
   const Icon = icons[kind];
   return (
-    <span className="empty-state-icon" data-state-kind={kind}>
+    <span
+      className={uiStyles["empty-state-icon"]}
+      data-testid="empty-state-icon"
+      data-state-kind={kind}
+    >
       <Icon />
     </span>
   );
@@ -34,7 +39,8 @@ export function StateNotice({
   const Icon = icons[kind];
   return (
     <div
-      className="state-notice"
+      className={uiStyles["state-notice"]}
+      data-ui="state-notice"
       data-state-kind={kind}
       data-tone={role === "alert" ? "error" : "info"}
       role={role}

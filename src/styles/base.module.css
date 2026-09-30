@@ -6,17 +6,17 @@
   src: url("./fonts/manrope-latin-wght-normal.woff2") format("woff2");
 }
 
-* {
+:global(*) {
   box-sizing: border-box;
 }
 
-html {
+.document {
   min-width: 20rem;
   overflow: hidden;
   background: var(--color-canvas);
 }
 
-body {
+:global(body) {
   min-width: 20rem;
   height: 100dvh;
   margin: 0;
@@ -24,33 +24,33 @@ body {
   background: var(--color-canvas);
 }
 
-button,
-input,
-select,
-textarea {
+:global(button),
+:global(input),
+:global(select),
+:global(textarea) {
   font: inherit;
 }
 
-button:not(:disabled) {
+:global(button:not(:disabled)) {
   cursor: pointer;
 }
 
-button:disabled,
-input:disabled,
-select:disabled,
-textarea:disabled {
+:global(button:disabled),
+:global(input:disabled),
+:global(select:disabled),
+:global(textarea:disabled) {
   cursor: not-allowed;
   opacity: 0.55;
 }
 
-:where(button, input, select, textarea, a, summary, [tabindex]):focus-visible {
+:global(:where(button, input, select, textarea, a, summary, [tabindex]):focus-visible) {
   outline: 3px solid var(--color-focus);
   outline-offset: 2px;
 }
 
-h1,
-h2,
-h3,
-p {
+:global(h1),
+:global(h2),
+:global(h3),
+:global(p) {
   margin: 0;
 }

@@ -1,3 +1,7 @@
+import a11yStyles from "../../styles/accessibility.module.css";
+import consoleStyles from "./Console.module.css";
+import treeStyles from "./ConversationTreeDialog.module.css";
+import uiStyles from "../../shared/ui/ui.module.css";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useMutation, useQuery } from "@tanstack/react-query";
 import type { PiTreeNode, Target } from "../../../packages/pi-live-chat/protocol";
@@ -45,11 +49,14 @@ function TreeNodes({
   onSelect: (node: PiTreeNode) => void;
 }) {
   return (
-    <ul className="conversation-tree__list">
+    <ul className={treeStyles["conversation-tree__list"]}>
       {nodes.map((node) => (
         <li key={node.id}>
-          <div className="conversation-tree__row">
-            <span className="conversation-tree__node" aria-hidden="true" />
+          <div
+            className={treeStyles["conversation-tree__row"]}
+            data-testid="conversation-tree__row"
+          >
+            <span className={treeStyles["conversation-tree__node"]} aria-hidden="true" />
             <time>
               {node.timestamp
                 ? new Date(node.timestamp).toLocaleTimeString([], {
@@ -125,16 +132,16 @@ export function ConversationTreeDialog({
   return (
     <dialog
       ref={dialogRef}
-      className="conversation-tree-dialog"
+      className={treeStyles["conversation-tree-dialog"]}
       aria-labelledby="conversation-tree-title"
       onClose={onClose}
       onCancel={(event) => {
         if (navigateMutation.isPending) event.preventDefault();
       }}
     >
-      <div className="conversation-tree-dialog__layout">
-        <header className="conversation-tree-dialog__header">
-          <span className="conversation-tree-dialog__icon">
+      <div className={treeStyles["conversation-tree-dialog__layout"]}>
+        <header className={treeStyles["conversation-tree-dialog__header"]}>
+          <span className={treeStyles["conversation-tree-dialog__icon"]}>
             <BranchIcon />
           </span>
           <div>
@@ -150,9 +157,9 @@ export function ConversationTreeDialog({
             <CloseIcon />
           </button>
         </header>
-        <div className="conversation-tree-dialog__toolbar">
+        <div className={treeStyles["conversation-tree-dialog__toolbar"]}>
           <label>
-            <span className="sr-only">Search this conversation</span>
+            <span className={a11yStyles["sr-only"]}>Search this conversation</span>
             <SearchIcon />
             <input
               type="search"
@@ -174,14 +181,20 @@ export function ConversationTreeDialog({
             ))}
           </div>
         </div>
-        <div className="conversation-tree-dialog__body">
+        <div className={treeStyles["conversation-tree-dialog__body"]}>
           {treeQuery.isPending ? (
-            <div className="terminal-state" aria-busy="true">
+            <div className={consoleStyles["terminal-state"]} aria-busy="true">
               <StateIcon kind="loading" />
               <p>Reading conversation paths…</p>
             </div>
           ) : treeQuery.isError ? (
-            <div className="terminal-state terminal-state--error" role="alert">
+            <div
+              className={
+                consoleStyles["terminal-state"] + " " + consoleStyles["terminal-state--error"]
+              }
+              data-testid="terminal-state--error"
+              role="alert"
+            >
               <StateIcon kind="unavailable" />
               <p>Could not read conversation paths. {treeQuery.error.message}</p>
             </div>
@@ -192,15 +205,15 @@ export function ConversationTreeDialog({
               onSelect={(node) => setSelectedId(node.id)}
             />
           ) : (
-            <div className="terminal-state">
-              <span className="empty-state-icon">
+            <div className={consoleStyles["terminal-state"]}>
+              <span className={uiStyles["empty-state-icon"]} data-testid="empty-state-icon">
                 <SearchIcon />
               </span>
               <p>No matching messages.</p>
             </div>
           )}
         </div>
-        <footer className="conversation-tree-dialog__footer">
+        <footer className={treeStyles["conversation-tree-dialog__footer"]}>
           <div>
             {selected ? (
               <>
@@ -222,7 +235,7 @@ export function ConversationTreeDialog({
           ) : null}
           <button
             type="button"
-            className="secondary-button"
+            className={treeStyles["secondary-button"]}
             onClick={onClose}
             disabled={navigateMutation.isPending}
           >
@@ -230,7 +243,7 @@ export function ConversationTreeDialog({
           </button>
           <button
             type="button"
-            className="primary-button"
+            className={treeStyles["primary-button"]}
             disabled={
               busy ||
               treeQuery.isFetching ||

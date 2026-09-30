@@ -1,3 +1,5 @@
+import dialogStyles from "./Dialogs.module.css";
+import overviewStyles from "./agentOverview.module.css";
 import { useEffect, useRef, useState, type FormEvent, type ReactNode } from "react";
 import type * as React from "react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
@@ -95,19 +97,19 @@ export function PaneContextActions({
     },
   };
   return (
-    <div className="pane-row-context">
+    <div className={overviewStyles["pane-row-context"]}>
       {/* Handlers access refs only after pointer/click events, not during render. */}
       {/* oxlint-disable-next-line react/refs */}
       {children(handlers)}
       {menuOpen ? (
         <>
           <button
-            className="pane-context-scrim"
+            className={overviewStyles["pane-context-scrim"]}
             type="button"
             aria-label="Close menu"
             onClick={() => setMenuOpen(false)}
           />
-          <div className="pane-context-menu" role="menu">
+          <div className={overviewStyles["pane-context-menu"]} role="menu">
             <button
               type="button"
               role="menuitem"
@@ -123,7 +125,7 @@ export function PaneContextActions({
             <button
               type="button"
               role="menuitem"
-              className="pane-context-menu__danger"
+              className={overviewStyles["pane-context-menu__danger"]}
               onClick={() => {
                 setMenuOpen(false);
                 setDialog("remove");
@@ -135,7 +137,11 @@ export function PaneContextActions({
         </>
       ) : null}
       {dialog === "rename" ? (
-        <dialog ref={renameDialogRef} className="context-dialog" onClose={() => setDialog(null)}>
+        <dialog
+          ref={renameDialogRef}
+          className={dialogStyles["context-dialog"]}
+          onClose={() => setDialog(null)}
+        >
           <form onSubmit={submitRename}>
             <h2>{agentRunning ? "Edit agent" : "Edit shell tab"}</h2>
             {agentRunning ? (
@@ -164,13 +170,13 @@ export function PaneContextActions({
             {renameMutation.isError ? <p role="alert">{renameMutation.error.message}</p> : null}
             <button
               type="button"
-              className="edit-remove-button"
+              className={dialogStyles["edit-remove-button"]}
               onClick={() => setDialog("remove")}
             >
               <TrashIcon />
               Close this tab
             </button>
-            <hr className="edit-dialog-divider" />
+            <hr className={dialogStyles["edit-dialog-divider"]} />
             <div>
               <button type="button" onClick={() => setDialog(null)}>
                 Cancel
@@ -190,7 +196,11 @@ export function PaneContextActions({
         </dialog>
       ) : null}
       {dialog === "remove" ? (
-        <dialog ref={removeDialogRef} className="context-dialog" onClose={() => setDialog(null)}>
+        <dialog
+          ref={removeDialogRef}
+          className={dialogStyles["context-dialog"]}
+          onClose={() => setDialog(null)}
+        >
           <form
             onSubmit={(event) => {
               event.preventDefault();
@@ -210,7 +220,7 @@ export function PaneContextActions({
               </button>
               <button
                 type="submit"
-                className="context-dialog__danger"
+                className={dialogStyles["context-dialog__danger"]}
                 disabled={closeMutation.isPending}
               >
                 {closeMutation.isPending ? "Closing…" : "Close tab"}

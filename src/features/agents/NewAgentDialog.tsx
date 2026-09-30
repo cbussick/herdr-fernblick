@@ -1,3 +1,4 @@
+import dialogStyles from "./Dialogs.module.css";
 import { useEffect, useRef, useState, type FormEvent } from "react";
 import { useMutation } from "@tanstack/react-query";
 import { ZodError } from "zod";
@@ -84,16 +85,16 @@ export function NewAgentDialog({
   }
 
   return (
-    <dialog ref={dialogRef} className="new-agent-dialog" onClose={handleClose}>
-      <form className="new-agent-form" onSubmit={handleSubmit} noValidate>
-        <div className="new-agent-form__header">
+    <dialog ref={dialogRef} className={dialogStyles["new-agent-dialog"]} onClose={handleClose}>
+      <form className={dialogStyles["new-agent-form"]} onSubmit={handleSubmit} noValidate>
+        <div className={dialogStyles["new-agent-form__header"]}>
           <div>
             <h2>New Pi agent</h2>
             <p>Herdr will create a tab and start Pi inside it.</p>
           </div>
           <button
             type="button"
-            className="new-agent-form__close"
+            className={dialogStyles["new-agent-form__close"]}
             onClick={() => dialogRef.current?.close()}
             aria-label="Close"
           >
@@ -117,7 +118,7 @@ export function NewAgentDialog({
         </select>
         <button
           type="button"
-          className="new-agent-form__inline-action"
+          className={dialogStyles["new-agent-form__inline-action"]}
           onClick={() => {
             dialogRef.current?.close();
             onCreateWorkspace();
@@ -146,7 +147,11 @@ export function NewAgentDialog({
           underscores.
         </small>
         {nameError ? (
-          <small id="new-agent-name-error" className="new-agent-form__field-error" role="alert">
+          <small
+            id="new-agent-name-error"
+            className={dialogStyles["new-agent-form__field-error"]}
+            role="alert"
+          >
             {nameError}
           </small>
         ) : null}
@@ -168,7 +173,7 @@ export function NewAgentDialog({
           </p>
         ) : null}
 
-        <div className="new-agent-form__actions">
+        <div className={dialogStyles["new-agent-form__actions"]}>
           <button type="button" onClick={() => dialogRef.current?.close()}>
             Cancel
           </button>

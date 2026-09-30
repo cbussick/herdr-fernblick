@@ -1,3 +1,4 @@
+import { appSelector } from "./selectors.mjs";
 // Browser-level checks for the generated gallery and the responsive proposal.
 import assert from "node:assert/strict";
 const { chromium, webkit } = await import(process.env.PLAYWRIGHT_MODULE || "playwright");
@@ -10,6 +11,28 @@ for (const [name, engine] of Object.entries({ chromium, webkit })) {
     const errors = [];
     page.on("pageerror", (e) => errors.push(e.message));
     await page.goto(gallery);
+    await page.locator(".screen-group").first().waitFor();
+    assert.equal(await page.locator(".screen-group").count(), 52);
+    assert.equal(await page.locator(".card").count(), 156);
+    assert.deepEqual(
+      await page
+        .locator(".screen-group")
+        .evaluateAll((groups) =>
+          groups.map((group) =>
+            [...group.querySelectorAll(".card")].map((card) => card.dataset.viewport),
+          ),
+        ),
+      Array.from({ length: 52 }, () => ["phone", "ipad", "desktop"]),
+    );
+    await page
+      .locator(".screen-group")
+      .first()
+      .locator("img")
+      .evaluateAll((images) => Promise.all(images.map((image) => image.decode())));
+    await page.getByRole("button", { name: "View Agent conversation, phone", exact: true }).click();
+    assert.equal(await page.locator("dialog[open] img").count(), 1);
+    await page.keyboard.press("Escape");
+    await page.goto(`${gallery}/?phase=compare`);
     await page.locator(".card").first().waitFor();
     assert.equal(await page.locator(".card").count(), 52);
     await page.getByRole("button", { name: "Compare Agent conversation", exact: true }).click();
@@ -70,44 +93,58 @@ for (const [name, engine] of Object.entries({ chromium, webkit })) {
     );
     await page.goto(app);
     await page.getByRole("searchbox", { name: "Search workspaces" }).waitFor();
-    assert.equal(await page.locator(".overview-header__summary").count(), 0);
-    const chevron = page.locator(".workspace-disclosure summary > svg").first();
+    await page.evaluate(() => document.fonts.ready);
+    assert.ok(
+      await page.evaluate(
+        () =>
+          getComputedStyle(document.body).fontFamily.includes("Manrope") &&
+          [...document.fonts].some((font) => font.family === "Manrope" && font.status === "loaded"),
+      ),
+      "Locally hosted Manrope must be loaded in the production build",
+    );
+    const license = await page.request.get(`${app}/licenses/Manrope-OFL.txt`);
+    assert.equal(license.status(), 200);
+    assert.ok((await license.text()).includes("SIL OPEN FONT LICENSE Version 1.1"));
+    assert.equal(await page.locator(appSelector(".overview-header__summary")).count(), 0);
+    const chevron = page.locator(appSelector(".workspace-disclosure summary > svg")).first();
     assert.ok(
       await chevron.evaluate((el) => new DOMMatrix(getComputedStyle(el).transform).b < -0.99),
       "Collapsed chevron must point up",
     );
-    await page.locator(".workspace-disclosure summary").first().click();
+    await page.locator(appSelector(".workspace-disclosure summary")).first().click();
     await page.waitForTimeout(180);
     assert.ok(
       await chevron.evaluate((el) => new DOMMatrix(getComputedStyle(el).transform).b > 0.99),
       "Expanded chevron must point down",
     );
     await page.getByRole("searchbox", { name: "Search workspaces" }).fill("no matching workspace");
-    await page.locator(".overview-empty svg").waitFor();
-    const icon = await page.locator(".overview-empty .empty-state-icon").boundingBox();
-    const heading = await page.locator(".overview-empty strong").boundingBox();
+    await page.locator(appSelector(".overview-empty svg")).waitFor();
+    const icon = await page.locator(appSelector(".overview-empty .empty-state-icon")).boundingBox();
+    const heading = await page.locator(appSelector(".overview-empty strong")).boundingBox();
     assert.ok(icon.y + icon.height <= heading.y, "Empty-state icon must be above the heading");
     await page.getByRole("searchbox", { name: "Search workspaces" }).fill("");
     await page.getByRole("tab", { name: "Agents", exact: true }).click();
     await page.getByRole("searchbox", { name: "Search agents" }).fill("no matching agent");
-    await page.locator(".overview-empty svg").waitFor();
+    await page.locator(appSelector(".overview-empty svg")).waitFor();
     await page.getByRole("searchbox", { name: "Search agents" }).fill("");
-    await page.locator(".pane-row").click();
-    assert.equal(await page.locator(".agent-list").isVisible(), width >= 768);
-    const targets = await page.locator(".console-header > button").evaluateAll((buttons) =>
-      buttons.map((button) => {
-        const r = button.getBoundingClientRect();
-        return {
-          label: button.getAttribute("aria-label"),
-          width: r.width,
-          height: r.height,
-          visible: r.left >= 0 && r.right <= innerWidth,
-          hit: button.contains(
-            document.elementFromPoint(r.left + r.width / 2, r.top + r.height / 2),
-          ),
-        };
-      }),
-    );
+    await page.locator(appSelector(".pane-row")).click();
+    assert.equal(await page.locator(appSelector(".agent-list")).isVisible(), width >= 768);
+    const targets = await page
+      .locator(appSelector(".console-header > button"))
+      .evaluateAll((buttons) =>
+        buttons.map((button) => {
+          const r = button.getBoundingClientRect();
+          return {
+            label: button.getAttribute("aria-label"),
+            width: r.width,
+            height: r.height,
+            visible: r.left >= 0 && r.right <= innerWidth,
+            hit: button.contains(
+              document.elementFromPoint(r.left + r.width / 2, r.top + r.height / 2),
+            ),
+          };
+        }),
+      );
     for (const target of targets) {
       assert.ok(target.visible && target.hit, `${name} ${width}: obscured ${target.label}`);
       assert.ok(
@@ -119,16 +156,18 @@ for (const [name, engine] of Object.entries({ chromium, webkit })) {
       await page.evaluate(() => document.documentElement.scrollWidth > innerWidth),
       false,
     );
-    await page.locator(".terminal-state--error svg").waitFor();
-    const errorColors = await page.locator(".terminal-state--error").evaluate((el) => ({
-      icon: getComputedStyle(el.querySelector("svg")).color,
-      text: getComputedStyle(el.querySelector("p")).color,
-      danger: getComputedStyle(el).getPropertyValue("--color-danger").trim(),
-    }));
+    await page.locator(appSelector(".terminal-state--error svg")).waitFor();
+    const errorColors = await page
+      .locator(appSelector(".terminal-state--error"))
+      .evaluate((el) => ({
+        icon: getComputedStyle(el.querySelector("svg")).color,
+        text: getComputedStyle(el.querySelector("p")).color,
+        danger: getComputedStyle(el).getPropertyValue("--color-danger").trim(),
+      }));
     assert.equal(errorColors.icon, errorColors.text, "Error icon must match the red message text");
     assert.equal(errorColors.icon, "rgb(198, 74, 59)");
     await page.getByRole("button", { name: "Back to overview" }).click();
-    assert.equal(await page.locator(".agent-list").isVisible(), true);
+    assert.equal(await page.locator(appSelector(".agent-list")).isVisible(), true);
     await page.addInitScript(() => {
       const snapshot = {
         type: "snapshot",
@@ -161,11 +200,13 @@ for (const [name, engine] of Object.entries({ chromium, webkit })) {
     });
     await page.goto(app);
     await page.getByRole("tab", { name: "Agents", exact: true }).click();
-    await page.locator(".pane-row").click();
-    await page.locator(".chat-transcript[data-empty]").waitFor();
+    await page.locator(appSelector(".pane-row")).click();
+    await page.locator(appSelector(".chat-transcript[data-empty]")).waitFor();
     await page.evaluate(() => document.fonts.ready);
-    const panel = await page.locator(".output-panel--chat").boundingBox();
-    const emptyIcon = await page.locator(".chat-transcript [data-state-kind=empty]").boundingBox();
+    const panel = await page.locator(appSelector(".output-panel--chat")).boundingBox();
+    const emptyIcon = await page
+      .locator(appSelector(".chat-transcript [data-state-kind=empty]"))
+      .boundingBox();
     const emptyText = await page.getByText("No messages yet.", { exact: true }).boundingBox();
     const groupCenter = (emptyIcon.y + emptyText.y + emptyText.height) / 2;
     assert.ok(

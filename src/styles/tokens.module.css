@@ -1,4 +1,4 @@
-:root {
+.theme {
   --font-sans: "Manrope", "Avenir Next", "Segoe UI", system-ui, sans-serif;
   --font-mono: "IBM Plex Mono", "SFMono-Regular", consolas, monospace;
   --color-canvas: #f5f9fd;

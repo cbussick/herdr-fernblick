@@ -1,3 +1,4 @@
+import { appSelector } from "./selectors.mjs";
 // Run with PLAYWRIGHT_MODULE=/absolute/path/to/playwright/index.mjs node tools/design/capture.mjs before|after URL
 // All API traffic is intercepted. This never connects to or controls real agents.
 import fs from "node:fs/promises";
@@ -310,7 +311,10 @@ for (const size of sizes)
     );
     try {
       await page.goto(base);
-      if (!["loading", "offline"].includes(id)) await page.locator(".overview-header").waitFor();
+      if (!["loading", "offline"].includes(id))
+        await page
+          .locator(phase === "before" ? ".overview-header" : appSelector(".overview-header"))
+          .waitFor();
       if (
         [
           "expanded",
@@ -325,7 +329,14 @@ for (const size of sizes)
           "edit-shell",
         ].includes(id)
       )
-        await page.locator(".workspace-disclosure summary").first().click();
+        await page
+          .locator(
+            phase === "before"
+              ? ".workspace-disclosure summary"
+              : appSelector(".workspace-disclosure summary"),
+          )
+          .first()
+          .click();
       if (id === "agents") await page.getByRole("tab", { name: "Agents", exact: true }).click();
       if (["search", "no-results"].includes(id))
         await page
@@ -351,7 +362,10 @@ for (const size of sizes)
         }
       }
       if (["context-menu", "context-edit", "context-close"].includes(id)) {
-        await page.locator(".pane-row").first().click({ button: "right" });
+        await page
+          .locator(phase === "before" ? ".pane-row" : appSelector(".pane-row"))
+          .first()
+          .click({ button: "right" });
         if (id !== "context-menu")
           await page
             .getByRole("menuitem", { name: id === "context-edit" ? "Edit agent" : "Close tab" })
@@ -392,18 +406,23 @@ for (const size of sizes)
             .first()
             .click();
         }
-        await page.locator(".console").waitFor();
+        await page.locator(phase === "before" ? ".console" : appSelector(".console")).waitFor();
         if (
           !id.startsWith("shell") &&
           !["edit-shell", "chat-connecting", "chat-unavailable"].includes(id)
         )
-          await page.locator(".chat-transcript").waitFor();
+          await page
+            .locator(phase === "before" ? ".chat-transcript" : appSelector(".chat-transcript"))
+            .waitFor();
         if (id.startsWith("terminal")) {
           const toggle = page.getByRole("button", { name: "Switch to Terminal view" });
           if (phase === "before") await toggle.dispatchEvent("click");
           else await toggle.click();
         }
-        if (id === "tool-open") await page.locator(".chat-tool summary").click();
+        if (id === "tool-open")
+          await page
+            .locator(phase === "before" ? ".chat-tool summary" : appSelector(".chat-tool summary"))
+            .click();
         if (id === "image-preview")
           await page.getByRole("button", { name: "Open attached image" }).click();
         if (id === "draft-image") {
@@ -415,8 +434,14 @@ for (const size of sizes)
           await page.getByRole("button", { name: "Send message" }).click();
         }
         if (["edit-agent", "edit-shell", "restart", "close-agent"].includes(id)) {
-          if (phase === "before") await page.locator(".edit-tab-button").dispatchEvent("click");
-          else await page.locator(".edit-tab-button").click();
+          if (phase === "before")
+            await page
+              .locator(phase === "before" ? ".edit-tab-button" : appSelector(".edit-tab-button"))
+              .dispatchEvent("click");
+          else
+            await page
+              .locator(phase === "before" ? ".edit-tab-button" : appSelector(".edit-tab-button"))
+              .click();
           if (id === "restart")
             await page.getByRole("button", { name: "Restart agent session", exact: true }).click();
           if (id === "close-agent")
@@ -431,12 +456,30 @@ for (const size of sizes)
           if (id === "paths-empty")
             await page.getByPlaceholder("Search this conversation…").fill("not present");
           if (id === "paths-branch")
-            await page.locator(".conversation-tree__row button").first().click();
+            await page
+              .locator(
+                phase === "before"
+                  ? ".conversation-tree__row button"
+                  : appSelector(".conversation-tree__row button"),
+              )
+              .first()
+              .click();
         }
       }
-      if (id === "offline") await page.locator(".page-state[role=alert]").waitFor();
+      if (id === "offline")
+        await page
+          .locator(
+            phase === "before" ? ".page-state[role=alert]" : appSelector(".page-state[role=alert]"),
+          )
+          .waitFor();
       if (["terminal-error", "shell-error"].includes(id))
-        await page.locator(".output-panel [role=alert]").waitFor();
+        await page
+          .locator(
+            phase === "before"
+              ? ".output-panel [role=alert]"
+              : appSelector(".output-panel [role=alert]"),
+          )
+          .waitFor();
       await page.waitForTimeout(220);
       if (
         phase === "after" &&

@@ -1,3 +1,5 @@
+import a11yStyles from "../../styles/accessibility.module.css";
+import uiStyles from "./ui.module.css";
 import {
   useEffect,
   useRef,
@@ -9,7 +11,6 @@ import {
 } from "react";
 import type { AgentStatus } from "../../shared/api/contracts";
 import { CloseIcon, PlusIcon, SearchIcon } from "./Icons";
-import "./ui.css";
 
 export function Button({
   variant = "primary",
@@ -22,7 +23,7 @@ export function Button({
 }) {
   return (
     <button
-      className={`button button--${variant} ${size === "small" ? "button--small" : ""} ${className}`}
+      className={`${uiStyles["button"]} ${variant === "primary" ? "" : uiStyles[`button--${variant}`]} ${size === "small" ? uiStyles["button--small"] : ""} ${className}`}
       {...props}
     />
   );
@@ -34,7 +35,12 @@ export function IconButton({
   ...props
 }: ButtonHTMLAttributes<HTMLButtonElement> & { label: string; children: ReactNode }) {
   return (
-    <button className={`icon-button ${className}`} aria-label={label} {...props}>
+    <button
+      className={`${uiStyles["icon-button"]} ${className}`}
+      data-ui="icon-button"
+      aria-label={label}
+      {...props}
+    >
       {children}
     </button>
   );
@@ -49,16 +55,22 @@ export function StatusIndicator({
   hideLabel?: boolean;
 }) {
   return (
-    <span className={`status-indicator status-indicator--${status}`}>
-      <i className="status-indicator__dot" aria-hidden="true" />
-      {hideLabel ? <span className="sr-only">{label}</span> : label}
+    <span
+      className={uiStyles["status-indicator"] + " " + uiStyles[`status-indicator--${status}`]}
+      data-ui="status-indicator"
+    >
+      <i className={uiStyles["status-indicator__dot"]} aria-hidden="true" />
+      {hideLabel ? <span className={a11yStyles["sr-only"]}>{label}</span> : label}
     </span>
   );
 }
 export function TabKindIcon({ kind }: { kind: "agent" | "shell" }) {
   return (
     <span
-      className={`tab-kind-icon ${kind === "shell" ? "tab-kind-icon--shell" : ""}`}
+      className={
+        uiStyles["tab-kind-icon"] + " " + (kind === "shell" ? uiStyles["tab-kind-icon--shell"] : "")
+      }
+      data-ui="tab-kind-icon"
       aria-hidden="true"
     >
       {kind === "agent" ? "π" : ">_"}
@@ -78,7 +90,7 @@ export function SegmentedTabs<T extends string>({
 }) {
   return (
     <div
-      className="segmented-tabs"
+      className={uiStyles["segmented-tabs"]}
       role="tablist"
       aria-label={label}
       style={{ "--tab-count": options.length } as CSSProperties}
@@ -102,8 +114,8 @@ export function SearchField({
   ...props
 }: InputHTMLAttributes<HTMLInputElement> & { label: string }) {
   return (
-    <label className="search-field">
-      <span className="sr-only">{label}</span>
+    <label className={uiStyles["search-field"]}>
+      <span className={a11yStyles["sr-only"]}>{label}</span>
       <SearchIcon />
       <input type="search" aria-label={label} {...props} />
     </label>
@@ -121,7 +133,7 @@ export function FormField({
   children: ReactNode;
 }) {
   return (
-    <div className="form-field">
+    <div className={uiStyles["form-field"]}>
       <label>{label}</label>
       {children}
       {help ? <small>{help}</small> : null}
@@ -148,12 +160,12 @@ export function SpeedDial({ actions }: { actions: SpeedDialAction[] }) {
     return () => document.removeEventListener("pointerdown", close);
   }, [open]);
   return (
-    <div className="speed-dial" ref={rootRef}>
+    <div className={uiStyles["speed-dial"]} ref={rootRef}>
       {open ? (
-        <div className="speed-dial__menu">
+        <div className={uiStyles["speed-dial__menu"]}>
           {actions.map((action) => (
             <button
-              className="speed-dial__item"
+              className={uiStyles["speed-dial__item"]}
               key={action.id}
               type="button"
               onClick={() => {
@@ -171,7 +183,7 @@ export function SpeedDial({ actions }: { actions: SpeedDialAction[] }) {
         </div>
       ) : null}
       <button
-        className="speed-dial__trigger"
+        className={uiStyles["speed-dial__trigger"]}
         type="button"
         aria-expanded={open}
         aria-label={open ? "Close create menu" : "Open create menu"}

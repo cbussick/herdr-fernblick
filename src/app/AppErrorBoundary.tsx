@@ -1,3 +1,4 @@
+import appStyles from "./App.module.css";
 import { Component, type ErrorInfo, type ReactNode } from "react";
 import { StateIcon } from "../shared/ui/StateFeedback";
 
@@ -27,7 +28,7 @@ export class AppErrorBoundary extends Component<AppErrorBoundaryProps, AppErrorB
   render() {
     if (this.state.hasError) {
       return (
-        <main className="page-state page-state--error" id="main-content">
+        <main className={appStyles["page-state"]} data-testid="page-state" id="main-content">
           <StateIcon kind="unavailable" />
           <h1>Something went wrong</h1>
           <p>Reload Fernblick to reconnect to your Herdr session.</p>

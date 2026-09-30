@@ -1,3 +1,4 @@
+import dialogStyles from "./Dialogs.module.css";
 import { useEffect, useRef, useState, type FormEvent } from "react";
 import { useMutation } from "@tanstack/react-query";
 import type { Workspace } from "../../shared/api/contracts";
@@ -38,16 +39,16 @@ export function NewWorkspaceDialog({ onClose, onCreated }: NewWorkspaceDialogPro
   }
 
   return (
-    <dialog ref={dialogRef} className="new-agent-dialog" onClose={handleClose}>
-      <form className="new-agent-form" onSubmit={handleSubmit}>
-        <div className="new-agent-form__header">
+    <dialog ref={dialogRef} className={dialogStyles["new-agent-dialog"]} onClose={handleClose}>
+      <form className={dialogStyles["new-agent-form"]} onSubmit={handleSubmit}>
+        <div className={dialogStyles["new-agent-form__header"]}>
           <div>
             <h2>New workspace</h2>
             <p>Herdr will create the workspace with an initial shell tab.</p>
           </div>
           <button
             type="button"
-            className="new-agent-form__close"
+            className={dialogStyles["new-agent-form__close"]}
             onClick={() => dialogRef.current?.close()}
             aria-label="Close"
           >
@@ -81,7 +82,7 @@ export function NewWorkspaceDialog({ onClose, onCreated }: NewWorkspaceDialogPro
 
         {createMutation.isError && <p role="alert">{createMutation.error.message}</p>}
 
-        <div className="new-agent-form__actions">
+        <div className={dialogStyles["new-agent-form__actions"]}>
           <button type="button" onClick={() => dialogRef.current?.close()}>
             Cancel
           </button>

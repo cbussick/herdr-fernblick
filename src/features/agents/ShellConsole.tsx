@@ -1,3 +1,5 @@
+import a11yStyles from "../../styles/accessibility.module.css";
+import consoleStyles from "./Console.module.css";
 import { useEffect, useRef, useState, type FormEvent } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import type { KeyName, ShellTab } from "../../shared/api/contracts";
@@ -46,15 +48,15 @@ export function ShellConsole({ tab, onBack }: ShellConsoleProps) {
     inputMutation.mutate(command);
   }
   return (
-    <main className="console" id="main-content">
-      <header className="console-header">
+    <main className={consoleStyles["console"]} data-testid="console" id="main-content">
+      <header className={consoleStyles["console-header"]} data-testid="console-header">
         <IconButton label="Back to overview" onClick={onBack}>
           <BackIcon />
         </IconButton>
         <TabKindIcon kind="shell" />
-        <div className="console-header__copy">
+        <div className={consoleStyles["console-header__copy"]}>
           <p>{tab.workspace_label ?? tab.workspace_id}</p>
-          <div className="console-header__title">
+          <div className={consoleStyles["console-header__title"]}>
             <h2>{tab.label}</h2>
           </div>
         </div>
@@ -64,38 +66,48 @@ export function ShellConsole({ tab, onBack }: ShellConsoleProps) {
           tabId={tab.tab_id}
           onClosed={onBack}
         />
-        <span className="shell-status">
+        <span className={consoleStyles["shell-status"]}>
           <i aria-hidden="true" />
           Shell
         </span>
       </header>
-      <section className="output-panel output-panel--shell" aria-label="Terminal output">
-        <div className="output-panel__bar">
+      <section
+        className={consoleStyles["output-panel"] + " " + consoleStyles["output-panel--shell"]}
+        data-testid="output-panel"
+        aria-label="Terminal output"
+      >
+        <div className={consoleStyles["output-panel__bar"]}>
           <span>Terminal output</span>
           <span>ANSI</span>
         </div>
         {outputQuery.isPending ? (
-          <div className="terminal-state" aria-busy="true">
+          <div className={consoleStyles["terminal-state"]} aria-busy="true">
             <StateIcon kind="loading" />
             <p>Reading terminal…</p>
           </div>
         ) : outputQuery.isError ? (
-          <div className="terminal-state terminal-state--error" role="alert">
+          <div
+            className={
+              consoleStyles["terminal-state"] + " " + consoleStyles["terminal-state--error"]
+            }
+            data-testid="terminal-state--error"
+            role="alert"
+          >
             <StateIcon kind="unavailable" />
             <p>Could not read this tab. {outputQuery.error.message}</p>
           </div>
         ) : !outputQuery.data.text ? (
-          <div className="terminal-state">
+          <div className={consoleStyles["terminal-state"]}>
             <StateIcon kind="terminal" />
             <p>No terminal output yet.</p>
           </div>
         ) : (
-          <pre ref={outputRef} className="terminal-output" tabIndex={0}>
+          <pre ref={outputRef} className={consoleStyles["terminal-output"]} tabIndex={0}>
             {outputQuery.data.text}
           </pre>
         )}
       </section>
-      <div className="key-controls" aria-label="Terminal controls">
+      <div className={consoleStyles["key-controls"]} aria-label="Terminal controls">
         {controls.map((control) => (
           <button
             type="button"
@@ -107,12 +119,18 @@ export function ShellConsole({ tab, onBack }: ShellConsoleProps) {
           </button>
         ))}
       </div>
-      <form className="prompt-composer" onSubmit={submit}>
-        <label htmlFor="shell-command" className="sr-only">
+      <form className={consoleStyles["prompt-composer"]} onSubmit={submit}>
+        <label htmlFor="shell-command" className={a11yStyles["sr-only"]}>
           Shell command
         </label>
-        <div className="prompt-composer__surface">
-          <div className="prompt-composer__row prompt-composer__row--shell">
+        <div className={consoleStyles["prompt-composer__surface"]}>
+          <div
+            className={
+              consoleStyles["prompt-composer__row"] +
+              " " +
+              consoleStyles["prompt-composer__row--shell"]
+            }
+          >
             <textarea
               id="shell-command"
               value={command}

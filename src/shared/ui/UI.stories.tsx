@@ -9,7 +9,6 @@ import {
   StatusIndicator,
   TabKindIcon,
 } from ".";
-import "./ui.css";
 
 const meta = { title: "UI/Components", parameters: { layout: "centered" } } satisfies Meta;
 export default meta;

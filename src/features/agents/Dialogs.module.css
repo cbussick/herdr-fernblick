@@ -1,0 +1,419 @@
+/* Component state selectors refine their base controls. */
+/* stylelint-disable no-descending-specificity */
+
+@media (prefers-reduced-motion: reduce) {
+  .edit-thinking-toggle > i,
+  .edit-thinking-toggle > i::after {
+    transition: none;
+  }
+}
+
+.edit-tab-button {
+  display: inline-grid;
+  flex: none;
+  width: 2.75rem;
+  height: 2.75rem;
+  padding: 0;
+  place-items: center;
+  color: var(--color-accent);
+  background: var(--color-accent-soft);
+  border: 1px solid var(--color-border-strong);
+  border-radius: 50%;
+}
+
+.edit-tab-button svg {
+  width: 1.125rem;
+  height: 1.125rem;
+}
+
+.edit-tab-dialog,
+.confirm-dialog,
+.new-agent-dialog {
+  width: min(29rem, calc(100% - 2rem));
+  max-height: calc(100svh - 2rem);
+  padding: 0;
+  color: var(--color-text);
+  background: var(--color-surface);
+  border: 1px solid var(--color-border-strong);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-menu);
+}
+
+.edit-tab-dialog::backdrop,
+.confirm-dialog::backdrop,
+.new-agent-dialog::backdrop {
+  background: var(--color-overlay);
+  backdrop-filter: blur(2px);
+}
+
+.confirm-dialog form,
+.edit-tab-dialog form,
+.new-agent-form {
+  display: grid;
+  gap: var(--space-3);
+  padding: var(--space-6);
+}
+
+.confirm-dialog h2,
+.edit-tab-dialog h2,
+.new-agent-form h2 {
+  font-size: 1.25rem;
+}
+
+.confirm-dialog p,
+.edit-tab-dialog p,
+.new-agent-form__header p {
+  margin-top: var(--space-1);
+  overflow: visible;
+  color: var(--color-text-secondary);
+  font-size: 0.8125rem;
+  line-height: 1.5;
+  text-overflow: clip;
+  white-space: normal;
+  overflow-wrap: anywhere;
+}
+
+.edit-tab-dialog p {
+  margin-bottom: 0.2rem;
+}
+
+.confirm-dialog__actions,
+.edit-tab-dialog__actions,
+.new-agent-form__actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: var(--space-2);
+  margin-top: var(--space-3);
+}
+
+.confirm-dialog__actions button,
+.edit-tab-dialog__actions button,
+.new-agent-form__actions button {
+  min-height: 2.6rem;
+  padding: 0 var(--space-4);
+  color: var(--color-text);
+  font-weight: 700;
+  background: var(--color-surface-subtle);
+  border: 1px solid var(--color-border-strong);
+  border-radius: var(--radius-sm);
+}
+
+.confirm-dialog__actions .confirm-dialog__danger,
+.edit-tab-dialog__actions .edit-tab-dialog__danger {
+  color: #fff;
+  background: var(--color-danger);
+  border-color: var(--color-danger);
+}
+
+.edit-tab-dialog label {
+  display: grid;
+  gap: var(--space-2);
+  color: var(--color-text-secondary);
+  font-size: 0.75rem;
+  font-weight: 700;
+}
+
+.edit-tab-dialog label input {
+  min-height: var(--control-height);
+  padding: 0 var(--space-3);
+  color: var(--color-text);
+  background: var(--color-surface);
+  border: 1px solid var(--color-border-strong);
+  border-radius: var(--radius-sm);
+}
+
+.edit-tab-dialog label small {
+  color: var(--color-text-tertiary);
+  font-size: 0.6875rem;
+  font-weight: 400;
+}
+
+.edit-tab-dialog .edit-thinking-toggle {
+  position: relative;
+  display: grid;
+  min-height: 3.5rem;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  gap: var(--space-3);
+  padding: var(--space-2) var(--space-3);
+  color: var(--color-text);
+  background: var(--color-surface-subtle);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+}
+
+.edit-thinking-toggle > span,
+.edit-thinking-toggle small {
+  display: block;
+}
+
+.edit-thinking-toggle small {
+  margin-top: var(--space-1);
+}
+
+.edit-tab-dialog .edit-thinking-toggle input {
+  position: absolute;
+  width: 1px;
+  min-height: 1px;
+  padding: 0;
+  opacity: 0;
+}
+
+.edit-thinking-toggle > i {
+  position: relative;
+  width: 2.5rem;
+  height: 1.5rem;
+  background: var(--color-neutral);
+  border-radius: var(--radius-round);
+  transition: background 140ms ease;
+}
+
+.edit-thinking-toggle > i::after {
+  position: absolute;
+  top: 0.1875rem;
+  left: 0.1875rem;
+  width: 1.125rem;
+  height: 1.125rem;
+  content: "";
+  background: var(--color-surface);
+  border-radius: 50%;
+  transition: transform 140ms ease;
+}
+
+.edit-thinking-toggle input:checked + i {
+  background: var(--color-accent);
+}
+
+.edit-thinking-toggle input:checked + i::after {
+  transform: translateX(1rem);
+}
+
+.edit-thinking-toggle input:focus-visible + i {
+  outline: 2px solid var(--color-focus);
+  outline-offset: 2px;
+}
+
+.edit-restart-button,
+.edit-remove-button {
+  display: flex;
+  min-height: 2.75rem;
+  align-items: center;
+  justify-content: center;
+  gap: var(--space-2);
+  padding: 0 var(--space-4);
+  color: var(--color-danger);
+  font-weight: 700;
+  background: var(--color-danger-soft);
+  border: 1px solid color-mix(in srgb, var(--color-danger) 28%, transparent);
+  border-radius: var(--radius-sm);
+}
+
+.edit-restart-button {
+  color: var(--color-accent);
+  background: var(--color-accent-soft);
+  border-color: var(--color-border-strong);
+}
+
+.edit-restart-button:disabled {
+  color: var(--color-text-tertiary);
+  cursor: not-allowed;
+  opacity: 0.65;
+}
+
+.edit-restart-button svg,
+.edit-remove-button svg,
+.edit-tab-dialog__icon svg {
+  width: 1rem;
+  height: 1rem;
+}
+
+.edit-dialog-divider {
+  width: 100%;
+  height: 1px;
+  margin: 0;
+  background: var(--color-border);
+  border: 0;
+}
+
+.edit-tab-dialog__icon {
+  display: grid;
+  width: 2.5rem;
+  height: 2.5rem;
+  place-items: center;
+  color: var(--color-accent);
+  background: var(--color-accent-soft);
+  border-radius: 50%;
+}
+
+.edit-tab-dialog__icon--danger {
+  color: var(--color-danger);
+  background: var(--color-danger-soft);
+}
+
+.new-agent-form__header {
+  display: flex;
+  justify-content: space-between;
+  align-items: start;
+  gap: var(--space-4);
+}
+
+.new-agent-form__close {
+  display: grid;
+  width: 2.5rem;
+  height: 2.5rem;
+  flex: 0 0 auto;
+  padding: 0;
+  place-items: center;
+  color: var(--color-text-secondary);
+  font-size: 1.4rem;
+  background: var(--color-surface-subtle);
+  border: 0;
+  border-radius: 50%;
+}
+
+.new-agent-form > label {
+  margin-top: var(--space-1);
+  color: var(--color-text-secondary);
+  font-size: 0.75rem;
+  font-weight: 700;
+}
+
+.new-agent-form > :where(input, select) {
+  width: 100%;
+  min-height: var(--control-height);
+  padding: 0 var(--space-3);
+  color: var(--color-text);
+  background: var(--color-surface);
+  border: 1px solid var(--color-border-strong);
+  border-radius: var(--radius-sm);
+}
+
+.new-agent-form small {
+  color: var(--color-text-tertiary);
+  font-size: 0.7rem;
+  line-height: 1.45;
+}
+
+.new-agent-form > input[aria-invalid="true"] {
+  border-color: var(--color-danger);
+}
+
+.new-agent-form .new-agent-form__field-error {
+  color: var(--color-danger);
+}
+
+.new-agent-form__inline-action {
+  justify-self: start;
+  padding: 0;
+  color: var(--color-accent);
+  font-size: 0.75rem;
+  font-weight: 700;
+  background: transparent;
+  border: 0;
+}
+
+.new-agent-form > [role="alert"],
+.confirm-dialog [role="alert"] {
+  color: var(--color-danger);
+}
+
+.new-agent-form__actions button[type="submit"] {
+  color: #fff;
+  background: var(--color-accent);
+  border-color: var(--color-accent);
+}
+
+@media (width < 48rem) {
+  .new-agent-dialog {
+    width: calc(100% - 1rem);
+    max-height: calc(100svh - 1rem);
+  }
+
+  .new-agent-form {
+    padding: var(--space-5);
+  }
+}
+
+@media (pointer: coarse) {
+  .new-agent-form > :where(input, select),
+  .edit-tab-dialog label input,
+  .context-dialog input {
+    font-size: 1rem;
+  }
+}
+
+.context-dialog {
+  z-index: 12;
+  width: min(26rem, calc(100% - 2rem));
+  padding: 0;
+  color: var(--color-text);
+  background: var(--color-surface);
+  border: 1px solid var(--color-border-strong);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-menu);
+}
+
+.context-dialog::backdrop {
+  background: var(--color-overlay);
+}
+
+.context-dialog form {
+  display: grid;
+  gap: var(--space-4);
+  padding: var(--space-6);
+}
+
+.context-dialog h2 {
+  font-size: 1.125rem;
+}
+
+.context-dialog p {
+  color: var(--color-text-secondary);
+  font-size: 0.8125rem;
+}
+
+.context-dialog label {
+  display: grid;
+  gap: var(--space-2);
+  color: var(--color-text-secondary);
+  font-size: 0.75rem;
+  font-weight: 700;
+}
+
+.context-dialog label small {
+  color: var(--color-text-tertiary);
+  font-size: 0.6875rem;
+  font-weight: 400;
+}
+
+.context-dialog input {
+  min-height: var(--control-height);
+  padding: 0 var(--space-3);
+  color: var(--color-text);
+  background: var(--color-surface);
+  border: 1px solid var(--color-border-strong);
+  border-radius: var(--radius-sm);
+}
+
+.context-dialog form > div {
+  display: flex;
+  justify-content: flex-end;
+  gap: var(--space-2);
+}
+
+.context-dialog form > div button {
+  min-height: 2.5rem;
+  padding: 0 var(--space-4);
+  color: var(--color-text);
+  font-weight: 700;
+  background: var(--color-surface-subtle);
+  border: 1px solid var(--color-border-strong);
+  border-radius: var(--radius-sm);
+}
+
+.context-dialog form > div .context-dialog__danger {
+  color: #fff;
+  background: var(--color-danger);
+  border-color: var(--color-danger);
+}
