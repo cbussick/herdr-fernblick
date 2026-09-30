@@ -28,6 +28,12 @@ optional complete ID `order` when rows are added, removed or reordered. Patches
 require the exact baseline; invalid baselines reconnect for a full snapshot.
 Runtime/epoch/session changes always send a full snapshot. Network interruptions
 keep the existing transcript visible but disable commands until reconnected.
+`{type:"connecting",reason}` represents initial session/extension registration.
+The UI shows a starting/connecting spinner rather than a red error, with a fixed
+30-second startup deadline (progress notices do not restart it). A late valid
+snapshot still recovers normally. Identity, ambiguity and unsupported-agent
+failures remain immediate `unavailable` errors; a previously connected stream
+losing its peer is not classified as a new-agent startup.
 `{type:"unavailable",reason}` explicitly invalidates the displayed session.
 There is no file/terminal fallback. Snapshot version 2 identifies the current
 image-capable send bridge. Version 1 remains readable, but the browser disables

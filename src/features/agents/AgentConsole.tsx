@@ -83,6 +83,8 @@ export function AgentConsole({ agent, onBack }: AgentConsoleProps) {
   const shouldFollowRef = useRef(true);
   const live = useLiveChat(agent.pane_id, view === "chat", agent.agent_session?.value);
   const snapshot = live.snapshot;
+  const initializing = view === "chat" && !snapshot && !live.error;
+  const starting = initializing && !agent.agent_session;
   const outputQuery = useQuery({
     queryKey: ["agent-output", target],
     queryFn: () => getAgentOutput(target),
@@ -238,7 +240,16 @@ export function AgentConsole({ agent, onBack }: AgentConsoleProps) {
         >
           {view === "chat" ? "Chat" : "Terminal"}
         </button>
-        <StatusIndicator status={agent.agent_status} label={getStatusLabel(agent.agent_status)} />
+        <StatusIndicator
+          status={initializing ? "unknown" : agent.agent_status}
+          label={
+            initializing
+              ? starting
+                ? "Starting"
+                : "Connecting"
+              : getStatusLabel(agent.agent_status)
+          }
+        />
       </header>
       {agent.agent_status === "blocked" ? (
         <div className="attention-banner" role="status">
@@ -276,8 +287,9 @@ export function AgentConsole({ agent, onBack }: AgentConsoleProps) {
             {live.error}
           </div>
         ) : !snapshot ? (
-          <div className="terminal-state" aria-busy="true">
-            Connecting to Pi live chat…
+          <div className="terminal-state transcript-initializing" role="status" aria-busy="true">
+            <span className="transcript-initializing__spinner" aria-hidden="true" />
+            <span>{starting ? "Starting Pi…" : "Connecting to Pi live chat…"}</span>
           </div>
         ) : (
           <div
