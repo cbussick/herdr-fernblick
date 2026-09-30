@@ -1,0 +1,28 @@
+{
+  "name": "@fernblick/pi-live-chat",
+  "version": "0.1.0",
+  "description": "Same-user local live chat bridge for interactive Pi",
+  "keywords": [
+    "pi-package"
+  ],
+  "files": [
+    "index.ts",
+    "protocol.ts",
+    "projector.ts",
+    "security.ts",
+    "transport.ts",
+    "README.md"
+  ],
+  "type": "module",
+  "dependencies": {
+    "zod": "^4.3.6"
+  },
+  "peerDependencies": {
+    "@earendil-works/pi-coding-agent": "*"
+  },
+  "pi": {
+    "extensions": [
+      "./index.ts"
+    ]
+  }
+}

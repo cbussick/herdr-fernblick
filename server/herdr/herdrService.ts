@@ -9,13 +9,17 @@ import {
   type KeyName,
 } from "../../src/shared/api/contracts.js";
 import { HerdrClient, HerdrRequestError } from "./HerdrClient.js";
-import { readPiTranscript } from "../pi/readPiTranscript.js";
-import { readPiTree } from "../pi/readPiTree.js";
-import { encodeGuardedPrompt } from "../pi/guardedPrompt.js";
 
-const extensionJsPath = fileURLToPath(new URL("../pi/fernblickPiExtension.js", import.meta.url));
-const extensionTsPath = fileURLToPath(new URL("../pi/fernblickPiExtension.ts", import.meta.url));
+const extensionJsPath = fileURLToPath(
+  new URL("../../packages/pi-live-chat/index.js", import.meta.url),
+);
+const extensionTsPath = fileURLToPath(
+  new URL("../../packages/pi-live-chat/index.ts", import.meta.url),
+);
 const fernblickExtensionPath = existsSync(extensionJsPath) ? extensionJsPath : extensionTsPath;
+// Users who installed the standalone package globally can opt out of explicit loading.
+const extensionArgs = () =>
+  process.env.FERNBLICK_PI_GLOBAL === "1" ? [] : ["--extension", fernblickExtensionPath];
 const delay = (milliseconds: number) => new Promise((resolve) => setTimeout(resolve, milliseconds));
 
 const tabSchema = z.object({
@@ -44,11 +48,6 @@ const sessionSnapshotResultSchema = z.object({
 const agentReadResultSchema = z.object({
   read: terminalOutputSchema,
   type: z.literal("pane_read"),
-});
-
-const agentPromptResultSchema = z.object({
-  agent: agentSchema,
-  type: z.literal("agent_prompted"),
 });
 
 const agentInfoResultSchema = z.object({
@@ -133,7 +132,7 @@ export class HerdrService {
         kind: "pi",
         pane_id: createdTab.root_pane.pane_id,
         timeout_ms: 30_000,
-        args: ["--extension", fernblickExtensionPath],
+        args: extensionArgs(),
       },
       agentStartedResultSchema,
     );
@@ -209,7 +208,7 @@ export class HerdrService {
         kind: "pi",
         pane_id: agent.pane_id,
         timeout_ms: 30_000,
-        args: ["--session", agent.agent_session.value, "--extension", fernblickExtensionPath],
+        args: ["--session", agent.agent_session.value, ...extensionArgs()],
       },
       agentStartedResultSchema,
     );
@@ -251,81 +250,8 @@ export class HerdrService {
     await this.client.request("pane.send_keys", { pane_id: paneId, keys: [key] }, okResultSchema);
   }
 
-  async readAgentTranscript(target: string) {
-    let agent: z.infer<typeof agentSchema>;
-    try {
-      ({ agent } = await this.client.request("agent.get", { target }, agentInfoResultSchema));
-    } catch (error) {
-      if (error instanceof HerdrRequestError) {
-        return {
-          messages: [],
-          status: { cwd: "Unknown directory", totalTokens: 0, cost: 0 },
-        };
-      }
-      throw error;
-    }
-    if (agent.agent && agent.agent !== "pi") {
-      throw new Error("A structured transcript is not available for this agent");
-    }
-    if (agent.agent_session?.kind !== "path") {
-      return {
-        messages: [],
-        status: {
-          cwd: agent.foreground_cwd ?? agent.cwd ?? "Unknown directory",
-          totalTokens: 0,
-          cost: 0,
-        },
-      };
-    }
-    const [transcript, visible] = await Promise.all([
-      readPiTranscript(
-        agent.agent_session.value,
-        agent.foreground_cwd ?? agent.cwd ?? "Unknown directory",
-      ),
-      this.client.request(
-        "agent.read",
-        {
-          target,
-          source: "visible",
-          format: "text",
-          strip_ansi: true,
-        },
-        agentReadResultSchema,
-      ),
-    ]);
-    const visibleLines = visible.read.text.split("\n");
-    const footerDivider = visibleLines.findLastIndex((line) => /^\s*[-─]{8,}\s*$/.test(line));
-    const renderedFooter = (footerDivider >= 0 ? visibleLines.slice(footerDivider + 1) : [])
-      .map((line) => line.trim())
-      .filter(Boolean);
-    const nativeLines = renderedFooter.some((line) => line.endsWith("...")) ? [] : renderedFooter;
-    return { ...transcript, status: { ...transcript.status, nativeLines } };
-  }
-
-  async readAgentTree(target: string) {
+  async getAgent(target: string) {
     const { agent } = await this.client.request("agent.get", { target }, agentInfoResultSchema);
-    if (agent.agent !== "pi" || agent.agent_session?.kind !== "path") {
-      throw new Error("A conversation tree is not available for this agent");
-    }
-    return readPiTree(agent.agent_session.value);
-  }
-
-  async navigateAgentTree(target: string, entryId: string) {
-    const tree = await this.readAgentTree(target);
-    const containsEntry = (nodes: typeof tree.roots): boolean =>
-      nodes.some((node) => node.id === entryId || containsEntry(node.children));
-    if (!containsEntry(tree.roots)) throw new Error("Conversation entry was not found");
-    // agent.prompt submits text to the model, bypassing Pi's interactive slash-command handler.
-    // Deliver the command to the validated agent's pane instead.
-    const { agent } = await this.client.request("agent.get", { target }, agentInfoResultSchema);
-    if (agent.agent !== "pi" || agent.agent_session?.kind !== "path") {
-      throw new Error("A conversation tree is not available for this agent");
-    }
-    await this.client.request(
-      "pane.send_input",
-      { pane_id: agent.pane_id, text: `/fernblick-navigate ${entryId}`, keys: ["enter"] },
-      okResultSchema,
-    );
     return agent;
   }
 
@@ -342,29 +268,6 @@ export class HerdrService {
       agentReadResultSchema,
     );
     return result.read;
-  }
-
-  async promptAgent(target: string, text: string) {
-    const result = await this.client.request(
-      "agent.prompt",
-      { target, text },
-      agentPromptResultSchema,
-    );
-    return result.agent;
-  }
-
-  async promptAgentGuarded(paneId: string, expectedSession: string, id: string, dbPath: string) {
-    // agent.prompt bypasses Pi's interactive slash-command handler.
-    // Send this guarded command through the same interactive path as tree navigation.
-    await this.client.request(
-      "pane.send_input",
-      {
-        pane_id: paneId,
-        text: encodeGuardedPrompt({ id, expectedSession, dbPath }),
-        keys: ["enter"],
-      },
-      okResultSchema,
-    );
   }
 
   async sendKey(target: string, key: KeyName) {

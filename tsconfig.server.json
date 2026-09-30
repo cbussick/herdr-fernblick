@@ -10,6 +10,6 @@
     "rootDir": ".",
     "types": ["node"]
   },
-  "include": ["server/**/*.ts", "src/shared/api/contracts.ts"],
-  "exclude": ["server/**/*.test.ts"]
+  "include": ["server/**/*.ts", "src/shared/api/contracts.ts", "packages/pi-live-chat/**/*.ts"],
+  "exclude": ["server/**/*.test.ts", "packages/**/*.test.ts"]
 }

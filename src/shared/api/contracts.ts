@@ -122,107 +122,6 @@ export const terminalOutputSchema = z.object({
   workspace_id: z.string(),
 });
 
-export const imageUploadSchema = z.object({
-  id: z.string().regex(/^[0-9a-f-]{36}\.(?:png|jpg|gif|webp)$/),
-  path: z.string(),
-  url: z.string(),
-});
-
-export const chatMessageSchema = z.object({
-  id: z.string(),
-  role: z.enum(["user", "assistant", "thinking", "tool", "status"]),
-  text: z.string(),
-  toolName: z.string().optional(),
-  isError: z.boolean().optional(),
-  timestamp: z.number().optional(),
-  attachments: z.array(z.string()).optional(),
-});
-
-export const agentTranscriptSchema = z.object({
-  messages: z.array(chatMessageSchema),
-  status: z.object({
-    cwd: z.string(),
-    model: z.string().optional(),
-    provider: z.string().optional(),
-    sessionName: z.string().optional(),
-    totalTokens: z.number(),
-    cost: z.number(),
-    nativeLines: z.array(z.string()).optional(),
-    workingSince: z.number().optional(),
-  }),
-});
-
-export type PiTreeNode = {
-  id: string;
-  parentId: string | null;
-  role: "user" | "assistant";
-  text: string;
-  timestamp?: string;
-  label?: string;
-  isActivePath: boolean;
-  children: PiTreeNode[];
-};
-
-export const piTreeNodeSchema: z.ZodType<PiTreeNode> = z.lazy(() =>
-  z.object({
-    id: z.string(),
-    parentId: z.string().nullable(),
-    role: z.enum(["user", "assistant"]),
-    text: z.string(),
-    timestamp: z.string().optional(),
-    label: z.string().optional(),
-    isActivePath: z.boolean(),
-    children: z.array(piTreeNodeSchema),
-  }),
-);
-
-export const piTreeResponseSchema = z.object({
-  roots: z.array(piTreeNodeSchema),
-  leafId: z.string().nullable(),
-});
-
-export const navigateTreeRequestSchema = z.object({
-  entryId: z.string().regex(/^[A-Za-z0-9_-]{1,128}$/),
-});
-
-export const promptRequestSchema = z
-  .object({
-    text: z.string().trim().max(32_000),
-    attachments: z
-      .array(z.string().regex(/^[0-9a-f-]{36}\.(?:png|jpg|gif|webp)$/))
-      .max(4)
-      .default([]),
-  })
-  .refine((value) => value.text.length > 0 || value.attachments.length > 0, {
-    message: "A message or attachment is required",
-  });
-
-export const queuedMessageInputSchema = promptRequestSchema;
-export const queuedMessageCreateSchema = z
-  .object({
-    text: z.string().trim().max(32_000),
-    attachments: z.array(imageUploadSchema.shape.id).max(4).default([]),
-    requestId: z.string().regex(/^[a-f0-9]{32}$/),
-  })
-  .refine((value) => value.text.length > 0 || value.attachments.length > 0);
-export type QueuedMessageCreate = z.infer<typeof queuedMessageCreateSchema>;
-export const queuedMessageSchema = z.object({
-  id: z.string().uuid(),
-  paneId: z.string(),
-  session: z.string(),
-  text: z.string(),
-  attachments: z.array(imageUploadSchema.shape.id),
-  state: z.enum(["queued", "sending", "submitted", "uncertain", "failed", "delivered"]),
-  error: z.string().nullable(),
-  createdAt: z.number(),
-  statusSequence: z.number(),
-  claimedAt: z.number().nullable(),
-});
-export const queuedMessagesResponseSchema = z.object({ messages: z.array(queuedMessageSchema) });
-export const queuedMessageResponseSchema = z.object({ message: queuedMessageSchema });
-export type QueuedMessage = z.infer<typeof queuedMessageSchema>;
-export type QueuedMessageInput = z.infer<typeof queuedMessageInputSchema>;
-
 export const keyNameSchema = z.enum([
   "esc",
   "ctrl+c",
@@ -240,14 +139,11 @@ export const keyRequestSchema = z.object({
 });
 
 export type Agent = z.infer<typeof agentSchema>;
-export type AgentTranscript = z.infer<typeof agentTranscriptSchema>;
-export type ChatMessage = z.infer<typeof chatMessageSchema>;
 export type AgentStatus = z.infer<typeof agentStatusSchema>;
 export type CreateAgentRequest = z.infer<typeof createAgentRequestSchema>;
 export type CreateWorkspaceRequest = z.infer<typeof createWorkspaceRequestSchema>;
 export type CreateTabRequest = z.infer<typeof createTabRequestSchema>;
 export type KeyName = z.infer<typeof keyNameSchema>;
 export type TerminalOutput = z.infer<typeof terminalOutputSchema>;
-export type PiTreeResponse = z.infer<typeof piTreeResponseSchema>;
 export type ShellTab = z.infer<typeof shellTabSchema>;
 export type Workspace = z.infer<typeof workspaceSchema>;

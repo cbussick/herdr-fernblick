@@ -1,18 +1,19 @@
 # Fernblick
 
-A small mobile web controller for agents running inside Herdr. It connects to Herdr's local Unix socket, shows agent status and terminal text snapshots, and exposes a narrow set of controls.
+A small mobile web controller for agents running inside Herdr. Dashboard and Terminal use Herdr; live Pi Chat uses a standalone in-process Pi extension, a private Unix socket, and browser SSE.
 
 ## Requirements
 
 - Linux with Herdr 0.9 or later
 - Node.js 24 or later
+- Interactive Pi 0.99.1 with the [standalone live-chat extension](packages/pi-live-chat/README.md) for Chat
 - The backend must run as the same Unix user as the Herdr session
 - Tailscale on the VPS and phone for private access
 
 ## Development
 
 ```bash
-npm install
+npm ci
 npm run dev
 ```
 
@@ -37,31 +38,60 @@ HERDR_SOCKET_PATH="$HOME/.config/herdr/sessions/<name>/herdr.sock" \
   npm start
 ```
 
-## Fernblick message queue
+## Pi live chat
 
-Messages composed in Fernblick are stored in a SQLite queue on the server, **not in Pi's native terminal queue**. Queued messages are visible across browser reloads/devices and survive server restarts. When Herdr reports the agent idle, the dispatcher sends a short guarded slash command through the Pi terminal. Fernblick's Pi extension checks the current session **inside Pi**, reads the claimed message from SQLite, and only then submits it; if the pane switched to another Pi session, the message is rejected. The Pi process must have the extension loaded and access to the same SQLite file. An agent without the extension cannot accept this command as a normal prompt. Fernblick confirms delivery only after finding a matching user message in Pi's transcript; a status change alone is not confirmation. If delivery cannot be confirmed within two minutes (including after a server crash or a rejected command), the queue stops and shows **uncertain**; check the conversation before choosing Retry (which may duplicate a delivered message) or Mark delivered. The queue is scoped to the agent pane and Pi session. If that pane starts a replacement session, its old messages remain visible for removal but will not be dispatched to the new session. Herdr still delivers terminal input to a pane by ID, so a pane replaced by a non-Pi shell may see the encoded message ID and database path, but not the message text; the original message is not submitted to a replacement Pi session.
+Install the standalone extension **yourself** for ordinary CLI Pi agents:
 
-The database defaults to `~/.local/share/fernblick/queue.sqlite` and can be set with `FERNBLICK_DB_PATH` (use the same path for multiple Fernblick servers sharing a Herdr session). The database file is mode 0600 inside a mode 0700 directory. Back up the SQLite database using a SQLite-aware backup or after shutting down **all** Fernblick servers; copying only the `.sqlite` file while servers run in WAL mode can omit queued transactions. Idempotency records for delivered messages remain in the database so retried requests cannot send duplicates.
+```sh
+pi install /absolute/path/to/herdr-fernblick/packages/pi-live-chat
+```
 
-Images remain under `/tmp/fernblick`, not in SQLite; reboot or temporary-file cleanup may remove them. If an image is already missing at the pre-dispatch check, the message is **not** sent; delete it and queue it again without the missing image. A temporary file could still disappear between that check and Pi reading it.
+Then start Pi or reload it yourself. This local-path installation requires the
+checkout's `npm ci`; see the [package README](packages/pi-live-chat/README.md) for
+installing a standalone copy. Fernblick never changes your global Pi configuration.
+Created agents load that same extension explicitly; set `FERNBLICK_PI_GLOBAL=1`
+on the backend to omit explicit loading when installed globally.
+
+The extension connects persistently to
+`~/.local/share/fernblick/live/pi.sock`. Set `FERNBLICK_PI_SOCKET` consistently on
+both the backend and Pi/Herdr environment for a separate instance. No additional
+TCP port is opened. [Protocol, safety, and limitations](docs/pi-live-chat.md).
+
+Chat uses public Pi branch history and live events, **not JSONL files, pane text,
+or footer scraping**. Busy/concurrent sends are rejected; there is no queue.
+An ACK means only that Pi's void send method was invoked, not guaranteed
+acceptance. Drafts remain until explicitly cleared; check Pi before retrying.
+Stop invokes Pi's abort method and then observes events. Images can appear in
+history within limits; sending attachments and tree navigation are deferred to
+Pi's terminal.
+
+### Removed legacy queue
+
+The Fernblick SQLite queue, dispatcher, HTTP routes, UI and guarded delivery
+command have been removed. **Existing `queue.sqlite`, WAL/SHM files and old uploads
+are left untouched.** Nothing reads, migrates, deletes or automatically sends those
+messages, and `FERNBLICK_DB_PATH` is no longer used. If you want to recover old
+drafts, inspect a backup manually; do not expect them to be delivered.
+No Pi-native queue was added.
 
 ## Available controls
 
 - List detected agents and their Herdr status
 - Read the latest 600 lines as plain terminal text
-- Submit a normal agent prompt
-- Send Escape, Ctrl+C, arrow keys, Enter, Tab, or Shift+Tab
+- Stream ordinary Pi model chat, thinking and tool output; send idle text prompts and request Stop
+- Send terminal keys only from Terminal view
 
 The HTTP API does not expose a shell or arbitrary Herdr method proxy. Access to this application still grants effective control of the agents, which may execute commands and modify files with their Unix account's permissions.
 
 ## Configuration
 
-| Variable            | Default                                 | Purpose                     |
-| ------------------- | --------------------------------------- | --------------------------- |
-| `HOST`              | `127.0.0.1`                             | Address for the HTTP server |
-| `PORT`              | `8787`                                  | HTTP port                   |
-| `HERDR_SOCKET_PATH` | `~/.config/herdr/herdr.sock`            | Herdr session socket        |
-| `FERNBLICK_DB_PATH` | `~/.local/share/fernblick/queue.sqlite` | SQLite queue location       |
+| Variable              | Default                                 | Purpose                                                             |
+| --------------------- | --------------------------------------- | ------------------------------------------------------------------- |
+| `HOST`                | `127.0.0.1`                             | Address for the HTTP server                                         |
+| `PORT`                | `8787`                                  | HTTP port                                                           |
+| `HERDR_SOCKET_PATH`   | `~/.config/herdr/herdr.sock`            | Herdr session socket                                                |
+| `FERNBLICK_PI_SOCKET` | `~/.local/share/fernblick/live/pi.sock` | Private Pi bridge socket (also configure Pi)                        |
+| `FERNBLICK_PI_GLOBAL` | unset                                   | Set to `1` to use a globally installed extension for created agents |
 
 ## Checks
 

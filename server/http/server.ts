@@ -7,24 +7,28 @@ import {
   createTabRequestSchema,
   createWorkspaceRequestSchema,
   keyRequestSchema,
-  navigateTreeRequestSchema,
   paneInputRequestSchema,
-  promptRequestSchema,
-  queuedMessageInputSchema,
-  queuedMessageCreateSchema,
   renameAgentRequestSchema,
   renameTabRequestSchema,
 } from "../../src/shared/api/contracts.js";
 import { HerdrRequestError } from "../herdr/HerdrClient.js";
 import {
-  getImageUploadPath,
   mimeTypeForUpload,
   readImageUpload,
   saveImageUpload,
   uploadIdPattern,
 } from "../uploads/imageUploads.js";
 import type { HerdrService } from "../herdr/herdrService.js";
-import type { QueueStore } from "../queue/queueStore.js";
+import { LiveBridge, LiveChatError } from "../pi/liveBridge.js";
+import { liveEvents } from "../pi/liveEvents.js";
+import {
+  targetSchema as chatTargetSchema,
+  MAX_TEXT,
+} from "../../packages/pi-live-chat/protocol.js";
+const chatCommandSchema = z.object({
+  target: chatTargetSchema,
+  text: z.string().trim().min(1).max(MAX_TEXT).optional(),
+});
 
 const MAX_BODY_BYTES = 40_000;
 const MAX_IMAGE_BYTES = 10 * 1024 * 1024;
@@ -46,7 +50,7 @@ const contentTypes: Record<string, string> = {
 function setSecurityHeaders(response: ServerResponse) {
   response.setHeader(
     "Content-Security-Policy",
-    "default-src 'self'; connect-src 'self'; img-src 'self' blob:; style-src 'self'; script-src 'self'; base-uri 'none'; frame-ancestors 'none'; form-action 'self'",
+    "default-src 'self'; connect-src 'self'; img-src 'self' blob: data:; style-src 'self'; script-src 'self'; base-uri 'none'; frame-ancestors 'none'; form-action 'self'",
   );
   response.setHeader("Cross-Origin-Opener-Policy", "same-origin");
   response.setHeader("Permissions-Policy", "camera=(), geolocation=(), microphone=()");
@@ -115,7 +119,7 @@ class HttpError extends Error {
 
 function getAgentRoute(pathname: string) {
   const match = pathname.match(
-    /^\/api\/agents\/([^/]+)(?:\/(output|transcript|prompt|keys|restart|tree|tree-navigation))?$/,
+    /^\/api\/agents\/([^/]+)(?:\/(output|chat|prompt|stop|keys|restart))?$/,
   );
   if (!match) return null;
 
@@ -145,7 +149,7 @@ async function handleApi(
   request: IncomingMessage,
   response: ServerResponse,
   service: HerdrService,
-  queue: QueueStore,
+  bridge: LiveBridge,
 ) {
   const url = new URL(request.url ?? "/", `http://${request.headers.host ?? "localhost"}`);
 
@@ -242,62 +246,6 @@ async function handleApi(
     return true;
   }
 
-  const queueMatch = url.pathname.match(
-    /^\/api\/agents\/([^/]+)\/queue(?:\/([^/]+))?(?:\/(retry|ack))?$/,
-  );
-  if (queueMatch) {
-    const target = targetSchema.parse(decodeURIComponent(queueMatch[1]));
-    const id = queueMatch[2] ? z.string().uuid().parse(queueMatch[2]) : null;
-    const agent = (await service.getDashboard()).agents.find(
-      (candidate) => candidate.pane_id === target || candidate.name === target,
-    );
-    if (!agent?.agent_session?.value || agent.agent !== "pi")
-      throw new HttpError(404, "Pi session not found");
-    const { pane_id: paneId } = agent;
-    const session = agent.agent_session.value;
-    if (request.method === "GET" && !id) {
-      sendJson(response, 200, { messages: queue.listForPane(paneId) });
-      return true;
-    }
-    if (request.method !== "GET") requireSameOrigin(request);
-    if (request.method === "POST" && !id) {
-      const body = queuedMessageCreateSchema.parse(await readJson(request));
-      const message = queue.create(paneId, session, body);
-      if (!message) throw new HttpError(409, "Request ID was already used for a different message");
-      sendJson(response, 201, { message });
-      return true;
-    }
-    const existing = id ? queue.getForPane(paneId, id) : null;
-    if (request.method === "PATCH" && id && !queueMatch[3]) {
-      if (existing?.session !== session)
-        throw new HttpError(409, "Message belongs to a previous session");
-      const body = queuedMessageInputSchema.parse(await readJson(request));
-      if (!queue.update(paneId, session, id, body))
-        throw new HttpError(409, "Message is no longer editable");
-      sendJson(response, 200, { message: queue.get(paneId, session, id) });
-      return true;
-    }
-    if (request.method === "DELETE" && id && !queueMatch[3]) {
-      if (!existing || !queue.remove(paneId, existing.session, id))
-        throw new HttpError(409, "Message is no longer removable");
-      sendJson(response, 200, { ok: true });
-      return true;
-    }
-    if (request.method === "POST" && id && queueMatch[3] === "retry") {
-      if (existing?.session !== session || !queue.retry(paneId, session, id))
-        throw new HttpError(409, "Message cannot be retried");
-      sendJson(response, 200, { ok: true });
-      return true;
-    }
-    if (request.method === "POST" && id && queueMatch[3] === "ack") {
-      if (!existing || !queue.acknowledge(paneId, existing.session, id))
-        throw new HttpError(409, "Message cannot be acknowledged");
-      sendJson(response, 200, { ok: true });
-      return true;
-    }
-    return false;
-  }
-
   const route = getAgentRoute(url.pathname);
   if (!route) return false;
 
@@ -309,8 +257,11 @@ async function handleApi(
     return true;
   }
 
-  if (request.method === "GET" && route.action === "transcript") {
-    sendJson(response, 200, await service.readAgentTranscript(route.target));
+  if (request.method === "GET" && route.action === "chat") {
+    if (request.headers.origin) requireSameOrigin(request);
+    if (request.headers["sec-fetch-site"] === "cross-site")
+      throw new HttpError(403, "Cross-origin request rejected");
+    liveEvents(response, await service.getAgent(route.target), bridge);
     return true;
   }
 
@@ -320,30 +271,28 @@ async function handleApi(
     return true;
   }
 
-  if (request.method === "GET" && route.action === "tree") {
-    sendJson(response, 200, await service.readAgentTree(route.target));
-    return true;
-  }
-
   if (request.method === "POST" && route.action === "restart") {
     requireSameOrigin(request);
     sendJson(response, 200, { agent: await service.restartPiAgent(route.target) });
     return true;
   }
 
-  if (request.method === "POST" && route.action === "tree-navigation") {
+  if (request.method === "POST" && (route.action === "prompt" || route.action === "stop")) {
     requireSameOrigin(request);
-    const body = navigateTreeRequestSchema.parse(await readJson(request));
-    sendJson(response, 200, { agent: await service.navigateAgentTree(route.target, body.entryId) });
-    return true;
-  }
-
-  if (request.method === "POST" && route.action === "prompt") {
-    requireSameOrigin(request);
-    const body = promptRequestSchema.parse(await readJson(request));
-    const attachmentPaths = body.attachments.map(getImageUploadPath);
-    const text = [body.text, ...attachmentPaths].filter(Boolean).join("\n");
-    sendJson(response, 200, { agent: await service.promptAgent(route.target, text) });
+    const body = chatCommandSchema.parse(await readJson(request));
+    if (route.action === "prompt" && !body.text)
+      throw new HttpError(400, "Message text is required");
+    const ack = await bridge.command(
+      await service.getAgent(route.target),
+      body.target,
+      route.action === "prompt" ? "send" : "stop",
+      body.text,
+    );
+    sendJson(
+      response,
+      ack.outcome === "rejected" ? 409 : 200,
+      ack.outcome === "rejected" ? { error: ack.reason } : ack,
+    );
     return true;
   }
 
@@ -378,13 +327,13 @@ function serveStatic(request: IncomingMessage, response: ServerResponse, publicD
   return true;
 }
 
-export function createHttpServer(service: HerdrService, publicDir: string, queue: QueueStore) {
+export function createHttpServer(service: HerdrService, publicDir: string, bridge: LiveBridge) {
   return createServer(async (request, response) => {
     setSecurityHeaders(response);
 
     try {
       const handled = request.url?.startsWith("/api/")
-        ? await handleApi(request, response, service, queue)
+        ? await handleApi(request, response, service, bridge)
         : serveStatic(request, response, publicDir);
 
       if (!handled) sendJson(response, 404, { error: "Not found" });
@@ -393,7 +342,7 @@ export function createHttpServer(service: HerdrService, publicDir: string, queue
         sendJson(response, 400, { error: "Invalid request" });
         return;
       }
-      if (error instanceof HttpError) {
+      if (error instanceof HttpError || error instanceof LiveChatError) {
         sendJson(response, error.status, { error: error.message });
         return;
       }
