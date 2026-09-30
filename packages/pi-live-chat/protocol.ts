@@ -54,7 +54,6 @@ export const snapshotSchema = z.object({
   seq: z.number().int().nonnegative(),
   busy: z.boolean(),
   sendPending: z.boolean(),
-  receivedSendIds: z.array(z.string().uuid()).max(128).optional(),
   truncated: z.boolean(),
   messages: z.array(messageSchema).max(MAX_MESSAGES),
   status: z.object({

@@ -89,6 +89,7 @@ afterEach(async () => {
   for (const fn of cleanup.reverse()) await fn();
   cleanup.length = 0;
   vi.unstubAllEnvs();
+  vi.useRealTimers();
 });
 async function setup() {
   const dir = await mkdtemp(join(tmpdir(), "fb-ext-"));
@@ -255,36 +256,61 @@ it("uses real Pi 0.99.1 command dispatch and navigateTree(user.id) to reach the 
   }
 }, 20_000);
 
-it("confirms text receipt on the user event, not the invocation ACK, and releases the send latch", async () => {
+it("acknowledges forwarding without text matching and gates further sends using native working/idle events", async () => {
   const t = await setup();
   const id = t.command("send");
   expect(await t.ack(id)).toMatchObject({ outcome: "invoked" });
-  expect(t.latest()?.receivedSendIds).not.toContain(id);
-  t.emit("message_start", {
-    message: { role: "user", content: "another terminal message", timestamp: 1 },
-  });
-  await new Promise((done) => setTimeout(done, 70));
-  expect(t.latest()?.receivedSendIds).not.toContain(id);
+  await vi.waitFor(() => expect(t.latest()?.sendPending).toBe(true));
+  expect(await t.ack(t.command("send"))).toMatchObject({ outcome: "rejected" });
   t.setIdle(false);
   t.emit("agent_start");
   t.emit("message_start", {
-    message: { role: "user", content: [{ type: "text", text: "hello" }], timestamp: 2 },
+    message: {
+      role: "user",
+      content: "hello\n\n[Image dimension note or arbitrary transformation]",
+      timestamp: 2,
+    },
   });
-  await vi.waitFor(() => expect(t.latest()?.receivedSendIds).toContain(id));
-  expect(t.latest()?.sendPending).toBe(false);
+  await vi.waitFor(() => expect(t.latest()?.sendPending).toBe(false));
   expect(t.latest()?.busy).toBe(true);
+  expect(t.latest()).not.toHaveProperty("receivedSendIds");
+  expect(await t.ack(t.command("send"))).toMatchObject({ outcome: "rejected" });
   t.setIdle(true);
   t.emit("agent_settled");
   await vi.waitFor(() => expect(t.latest()?.busy).toBe(false));
-  const oldEpoch = t.latest()!.epoch;
-  t.connections.at(-1)!.destroy();
-  await vi.waitFor(() => expect(t.latest()?.epoch).not.toBe(oldEpoch));
-  expect(t.latest()?.receivedSendIds).toContain(id);
-  const secondId = t.command("send", targetOf(t.latest()!), "next");
-  expect(await t.ack(secondId)).toMatchObject({ outcome: "invoked" });
-  t.emit("message_start", { message: { role: "user", content: "next", timestamp: 3 } });
-  await vi.waitFor(() => expect(t.latest()?.receivedSendIds).toContain(secondId));
-  expect(t.latest()?.receivedSendIds).toContain(id);
+  expect(await t.ack(t.command("send", targetOf(t.latest()!), "next"))).toMatchObject({
+    outcome: "invoked",
+  });
+});
+it("does not invoke Pi twice if a transport repeats the same request ID", async () => {
+  const t = await setup();
+  const id = t.command("send");
+  expect(await t.ack(id)).toMatchObject({ outcome: "invoked" });
+  writeFrame(t.connections.at(-1)!, {
+    type: "command",
+    action: "send",
+    target: targetOf(t.latest()!),
+    id,
+    text: "hello",
+  });
+  await vi.waitFor(() =>
+    expect(t.frames.filter((frame) => (frame as { id?: string }).id === id)).toHaveLength(2),
+  );
+  expect(t.frames.filter((frame) => (frame as { id?: string }).id === id).at(-1)).toMatchObject({
+    outcome: "rejected",
+    reason: "Command already seen; never retried",
+  });
+  expect(t.pi.sendUserMessage).toHaveBeenCalledOnce();
+});
+it("bounds the handoff guard when Pi emits no run events, without retrying", async () => {
+  const t = await setup();
+  vi.useFakeTimers();
+  expect(await t.ack(t.command("send"))).toMatchObject({ outcome: "invoked" });
+  await vi.waitFor(() => expect(t.latest()?.sendPending).toBe(true));
+  await vi.advanceTimersByTimeAsync(15_050);
+  await vi.waitFor(() => expect(t.latest()?.sendPending).toBe(false));
+  expect(t.latest()?.busy).toBe(false);
+  expect(t.pi.sendUserMessage).toHaveBeenCalledOnce();
 });
 
 it("navigates through its private command context and replies only after navigation completes", async () => {
@@ -413,8 +439,6 @@ it("sends four 10 MiB image-only uploads as Pi ImageContent without putting base
       attachments.map((id) => `/api/uploads/${id}`),
     ),
   );
-  expect(t.latest()?.receivedSendIds).toContain(id);
-  expect(t.latest()?.sendPending).toBe(false);
   t.emit("agent_settled");
   t.pi.sendUserMessage.mockImplementationOnce((text, options) => {
     expect(options).toEqual({ expandPromptTemplates: true });
