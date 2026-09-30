@@ -1,4 +1,11 @@
 import { z } from "zod";
+import { uploadIdSchema } from "../../../packages/pi-live-chat/protocol.js";
+
+export const imageUploadSchema = z.object({
+  id: uploadIdSchema,
+  path: z.string(),
+  url: z.string(),
+});
 
 export const agentStatusSchema = z.enum(["idle", "working", "blocked", "done", "unknown"]);
 

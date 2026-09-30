@@ -7,6 +7,9 @@
   ],
   "files": [
     "index.ts",
+    "images.ts",
+    "imageHistory.ts",
+    "tree.ts",
     "protocol.ts",
     "projector.ts",
     "security.ts",

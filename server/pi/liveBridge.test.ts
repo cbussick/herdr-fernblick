@@ -161,7 +161,7 @@ it("rejects busy, concurrent and stale commands; ACK means invoked; disconnect n
     "in flight",
   );
   writeFrame(socket, { type: "ack", id: commands[0].id, outcome: "invoked" });
-  expect((await pending).outcome).toBe("invoked");
+  expect(await pending).toMatchObject({ type: "ack", outcome: "invoked" });
   const uncertain = bridge.command(agent, targetOf(snapshot), "stop");
   const rejection = expect(uncertain).rejects.toThrow("uncertain");
   await vi.waitFor(() => expect(commands).toHaveLength(2));

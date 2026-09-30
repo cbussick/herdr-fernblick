@@ -56,6 +56,14 @@ only after connection refusal and an unchanged inode/device check. An active
 server is never replaced. Private-directory permissions define the same-user
 trust boundary; this is not isolation from malicious programs running as you.
 
+Images use the shared same-user directory `/tmp/fernblick`. Set
+`FERNBLICK_UPLOAD_DIR` identically for backend and Pi to override it. The directory
+must be absolute, owned by the user, 0700 and without symlink ancestors; use a path
+shorter than 94 bytes (it shares the private-directory validator). Upload files
+must be regular, private, single-link files owned by that user. Only validated
+UUID upload IDs—not arbitrary paths—are accepted. Missing temporary files remain
+unavailable; no automatic retry or send occurs.
+
 ## Behavior and limits
 
 - Long-lived bidirectional Unix connection starts only at `session_start`, only
@@ -74,9 +82,21 @@ trust boundary; this is not isolation from malicious programs running as you.
   per-row text 32,000 characters; live overlay at most 64 messages/2 MiB;
   protocol frame and pending writes at most 4 MiB. Truncation is shown.
   Usage is for retained ordinary branch entries, not exact Pi session totals.
-- Small validated raster ImageContent (PNG/JPEG/GIF/WebP, at most 128 KiB each,
-  four per message) is shown in history. Unsupported/large images are marked
-  omitted. Outgoing attachments are explicitly disabled for now; use Pi's terminal.
+- Select/preview/upload up to four PNG, JPEG, GIF or WebP images, at most 10 MiB
+  each. Image-only sends are supported. Commands carry upload IDs, not base64.
+  The extension performs bounded, no-follow reads, checks owner/mode/link count,
+  size and file signatures, then converts to Pi ImageContent. After async reads it
+  rechecks generation, session, epoch, connection and idle state before invocation.
+  Draft text, files and uploaded IDs stay in the composer on ACK or uncertain error.
+- History prefers original `/api/uploads/<id>` URLs using content-hash references
+  stored as Pi custom metadata (never model messages or delivery state). Pi may
+  resize/re-encode images; unmatched large normalized images are copied into the
+  shared directory asynchronously and served through the same HTTP endpoint.
+  Small unreferenced raster images can remain inline (128 KiB maximum). At most
+  four image copies run concurrently; startup hydration covers the last 16 branch
+  entries, with at most 4096 cached image references. Older unreferenced large
+  images, missing files and invalid data may remain unavailable. Uploads are
+  temporary and require manual lifecycle/storage management.
 - Browser sends require idle Pi, no pending native messages/UI prompt, and no
   unresolved Fernblick invocation. `pi.sendUserMessage` returns **void**.
   ACK means **invoked**, never guaranteed accepted; input hooks or asynchronous
@@ -86,8 +106,23 @@ trust boundary; this is not isolation from malicious programs running as you.
   settles blocks further sends until the user checks Pi and reloads the extension.
 - Stop invokes void `ctx.abort()`. Working/stopped state comes from later Pi
   events, not the ACK or Herdr status. `agent_end` alone is not final settlement.
-- Tree navigation is deferred: its API is command-context-only. Use `/tree` in Pi;
-  no socket calls command-only context methods and no slash commands are injected.
+- Conversation paths are requested on open from public `getTree()/getLeafId()`,
+  with labels and the actual active branch, not JSONL or polling. The original
+  dialog/search/filters are restored. Navigation validates the selected entry and
+  uses an instance-unique registered `/fernblick-bridge-<instance>` command plus
+  a one-use in-memory nonce to obtain a real command context. Internal command
+  tokens reaching normal input are consumed. No command is sent through Herdr
+  and no LLM prompt is submitted. The handler awaits
+  `ctx.navigateTree(entryId,{summarize:false})` before replying; Pi itself moves
+  user selections to their parent/root. User text and available image IDs return
+  to the composer. Tree success creates a fresh epoch/SSE snapshot.
+- Commands are serialized, including image preparation and navigation. A nonce
+  expires after four seconds; shutdown invalidates it. Cancellation, stale
+  identity, busy Pi, a missing entry/handler, disconnect or timeout is not reported
+  as successful navigation. An already-running navigation cannot be rolled back
+  on disconnect/timeout: inspect Pi before retrying; no automatic retries occur.
+  Trees over 2000 raw entries, 256 levels or 2 MiB are rejected explicitly. Prompts
+  over 32,000 characters cannot be restored; use Pi for those cases.
 - Public extension events are **not a complete TUI mirror**. Shell commands,
   custom entries/messages/renderers, compaction summaries and arbitrary terminal
   UI are out of scope. Nested tool execution can appear provisionally; only

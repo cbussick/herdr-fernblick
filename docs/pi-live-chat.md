@@ -26,13 +26,24 @@ SSE IDs are `epoch:seq`; `Last-Event-ID` is intentionally not replayed.
 Keepalive comments carry no chat data and do not trigger Herdr reads.
 
 `POST /api/agents/:paneId/prompt` accepts
-`{target:{runtime,epoch,sessionId},text}`; `POST .../stop` accepts the same target.
+`{target:{runtime,epoch,sessionId},text,attachments:[uploadId,...]}` (text may be
+empty with images); `POST .../stop` accepts the same target. Existing upload
+endpoints accept up to 10 MiB per PNG/JPEG/GIF/WebP image. The socket carries at
+most four validated IDs; bounded local file reads and ImageContent conversion
+happen only inside the standalone extension.
 Mutations require matching Origin and JSON. Bodies are limited to 40,000 bytes,
 text to 32,000 characters. The extension validates the command again against its
 current context with no await before invoking Pi. Commands are not persisted or
 retried; duplicate IDs are rejected (up to 1024 seen IDs per runtime lifecycle,
 then reload required). ACK is `outcome:"invoked"` or `"rejected"`, not delivery
 confirmation. Transport timeout/loss is uncertain.
+
+`POST .../tree` accepts `{target}` and returns a correlated typed tree from
+public Pi `getTree()/getLeafId()`. `POST .../tree-navigation` accepts
+`{target,entryId}` and returns `navigated` only after command-context navigation
+completes, with the new target epoch and optional restored `{text,attachments}`.
+Opening the original dialog makes one request, without focus/reconnect polling;
+mutations are never automatically retried.
 
 The private transport is bounded newline-delimited JSON, **not a Pi session JSONL
 reader**. Extension event handlers update an in-memory projector and schedule a
@@ -61,10 +72,19 @@ settings, CLI, sessions, session-format, message-types and SDK) and actual
   asynchronous connection attempts from reviving it.
 - `getBranch` is the authoritative active branch. Abandoned branches are not
   reconstructed from file order.
-- Navigation/reload/session replacement are command-context-only. Chat exposes
-  none of them.
+- Navigation is command-context-only. The extension registers an instance-unique
+  private command, verifies registration, stores one bounded one-use nonce and
+  invokes `pi.sendUserMessage("/fernblick-bridge-<instance> <nonce>",
+{expandPromptTemplates:true})`. Actual Pi command dispatch runs before model
+  input and supplies a real command context. An input guard consumes any stale
+  internal prefix that falls through command dispatch. The command handler catches
+  failures and reports rejection itself, revalidates before navigation, awaits
+  `ctx.navigateTree(entry.id,{summarize:false})`, then replies on the captured
+  socket. Pi 0.99.1 moves user targets to their parent, including the null root.
+  Reload/session replacement are not exposed. This ephemeral nonce is not a
+  delivery queue; timeout/shutdown cancels it and no model work is requested.
 
-## Safety / deliberately deferred
+## Safety and limits
 
 See the [standalone package README](../packages/pi-live-chat/README.md) for install,
 socket permissions, mapping checks and all transcript/buffer limits.
@@ -77,16 +97,25 @@ and command delivery; runtime/session/epoch checks prevent delivery into a
 replacement Pi context, but this is not atomic with Herdr.
 
 This projects ordinary model chat, not every shell/custom entry or TUI renderer.
-Nested tool output is transient unless persisted by Pi. Small validated raster
-ImageContent remains viewable; outgoing images and tree navigation are explicitly
-disabled/deferred in UI. Usage totals cover retained ordinary entries.
+Nested tool output is transient unless persisted by Pi. Image selection, previews,
+uploads, image-only sends and tree navigation are restored. Shared upload reads
+check owner, private mode, regular/single-link file, no symlink, bounded size and
+magic bytes; they never read an arbitrary browser-supplied path. Async preparation
+revalidates identity/epoch/busy state immediately before invoking Pi. History image
+references are non-context custom metadata, not delivery records. Original images
+are served by upload ID; resized/re-encoded images can require a temporary copy.
+See package limits for old/unreferenced images and oversized trees.
+Usage totals cover retained ordinary entries.
 Sends consumed by another extension without starting a turn remain unresolved;
 inspect Pi and reload the extension before sending again. Drafts are memory-only
 in the open console, not persistent across page reload/navigation.
 
 The previous SQLite database and upload files are preserved without opening or
-migrating them. Legacy queue and tree routes return 404. Retained upload endpoints
-are not used for live sends.
+migrating them. Legacy queue routes still return 404. Upload endpoints now support
+live sends; tree routes are POST requests guarded by current runtime/session/epoch.
+Navigation is serialized, with a four-second nonce deadline; an operation already
+inside Pi may complete after timeout/disconnect. Such outcomes remain uncertain,
+never success ACKs, and should be checked in Pi before manual retry.
 
 ## Verification
 
@@ -103,10 +132,23 @@ an SSE test verifies one Herdr lookup despite repeated live frames.
 The loader test invokes actual Pi `install <path>` into a disposable
 `PI_CODING_AGENT_DIR` under this worktree and then actual Pi jiti loading of
 `index.ts`, including relative `.js` imports resolving to package TypeScript.
-No personal configuration is touched. Tests do not call a provider; real interactive agents and browser layout have not been manually exercised.
+No personal configuration is touched. Restoration tests first failed for four
+10 MiB image-only sends, original image history URLs, socket tree reads and
+command-context navigation, then passed after implementation. Filesystem-boundary
+tests pause image preparation and change epoch/session/busy state before resuming.
+HTTP tests cover all four formats, the original 10 MiB limit, four-ID/image-only
+requests and unsafe files. Restored image-only prompts retain their attachment IDs.
+
+A real Pi 0.99.1 `createAgentSession`/SessionManager harness exercises
+`sendUserMessage` → registered command dispatch → `navigateTree(user.id)`.
+It verifies labels and active branch via real `getLeafId()`, user-to-root
+navigation, and that both the agent prompt and model stream remain uncalled,
+including an internal token that reaches the normal input guard.
+Tests do not call a provider; existing user agents and browser layout have not
+been manually exercised.
 
 Dependency audit currently reports two development-tool findings: the pre-existing moderate `fast-uri` advisory and a high `brace-expansion` advisory pinned by Pi 0.99.1's published shrinkwrap. The Pi dependency is for type/loader verification, not imported by the backend at runtime. The standalone extension's runtime dependency is Zod. `npm run check` does not include `npm audit`; these findings remain unresolved.
 
-CSS removals are scoped to removed queue/tree UI and disabled attachment previews.
-Shared console, transcript, image lightbox, shell composer overrides, and
-dashboard styles remain; the chat composer loses the removed tree-button column.
+The original conversation-tree and attachment-preview styles were restored
+narrowly from commit `435eec2`, along with the tree button/composer column. No
+dashboard, Terminal or shared-layout redesign was performed.
