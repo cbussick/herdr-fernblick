@@ -69,7 +69,29 @@ for (const [name, engine] of Object.entries({ chromium, webkit })) {
             }),
     );
     await page.goto(app);
+    await page.getByRole("searchbox", { name: "Search workspaces" }).waitFor();
+    assert.equal(await page.locator(".overview-header__summary").count(), 0);
+    const chevron = page.locator(".workspace-disclosure summary > svg").first();
+    assert.ok(
+      await chevron.evaluate((el) => new DOMMatrix(getComputedStyle(el).transform).b < -0.99),
+      "Collapsed chevron must point up",
+    );
+    await page.locator(".workspace-disclosure summary").first().click();
+    await page.waitForTimeout(180);
+    assert.ok(
+      await chevron.evaluate((el) => new DOMMatrix(getComputedStyle(el).transform).b > 0.99),
+      "Expanded chevron must point down",
+    );
+    await page.getByRole("searchbox", { name: "Search workspaces" }).fill("no matching workspace");
+    await page.locator(".overview-empty svg").waitFor();
+    const icon = await page.locator(".overview-empty .empty-state-icon").boundingBox();
+    const heading = await page.locator(".overview-empty strong").boundingBox();
+    assert.ok(icon.y + icon.height <= heading.y, "Empty-state icon must be above the heading");
+    await page.getByRole("searchbox", { name: "Search workspaces" }).fill("");
     await page.getByRole("tab", { name: "Agents", exact: true }).click();
+    await page.getByRole("searchbox", { name: "Search agents" }).fill("no matching agent");
+    await page.locator(".overview-empty svg").waitFor();
+    await page.getByRole("searchbox", { name: "Search agents" }).fill("");
     await page.locator(".pane-row").click();
     assert.equal(await page.locator(".agent-list").isVisible(), width >= 768);
     const targets = await page.locator(".console-header > button").evaluateAll((buttons) =>

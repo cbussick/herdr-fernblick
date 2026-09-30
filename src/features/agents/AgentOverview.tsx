@@ -1,5 +1,5 @@
 import type { Agent, AgentStatus, ShellTab, Workspace } from "../../shared/api/contracts";
-import { ChevronIcon } from "../../shared/ui/Icons";
+import { ChevronIcon, FolderIcon, SearchIcon } from "../../shared/ui/Icons";
 import { StatusIndicator, TabKindIcon } from "../../shared/ui";
 import {
   getAgentTabLabel,
@@ -106,6 +106,7 @@ export function WorkspaceList({
   if (groups.length === 0)
     return (
       <div className="overview-empty">
+        <span className="empty-state-icon">{normalized ? <SearchIcon /> : <FolderIcon />}</span>
         <strong>{normalized ? "No workspaces found" : "A place for your next project"}</strong>
         <p>{normalized ? "Try a different search." : "Use the create menu to add a workspace."}</p>
       </div>
@@ -217,6 +218,9 @@ export function FlatAgentList({
         ))
       ) : (
         <div className="overview-empty">
+          <span className="empty-state-icon">
+            <SearchIcon />
+          </span>
           <strong>No agents found</strong>
           <p>Try a different search.</p>
         </div>

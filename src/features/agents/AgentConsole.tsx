@@ -14,6 +14,7 @@ import {
   CloseIcon,
   ImageIcon,
   LightbulbIcon,
+  MessageIcon,
   SendIcon,
 } from "../../shared/ui/Icons";
 import { IconButton, StatusIndicator, TabKindIcon } from "../../shared/ui";
@@ -350,7 +351,12 @@ export function AgentConsole({ agent, onBack }: AgentConsoleProps) {
                 ),
               )}
             {!snapshot.messages.length ? (
-              <div className="terminal-state">No messages yet.</div>
+              <div className="terminal-state">
+                <span className="empty-state-icon">
+                  <MessageIcon />
+                </span>
+                <p>No messages yet.</p>
+              </div>
             ) : null}
             {snapshot.busy ? (
               <div className="chat-working" role="status">

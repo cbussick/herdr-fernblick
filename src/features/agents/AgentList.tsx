@@ -70,11 +70,6 @@ export function AgentList({
             Connected
           </span>
         </div>
-        <p className="overview-header__summary">
-          {workspaces.length} {workspaces.length === 1 ? "workspace" : "workspaces"}
-          <span aria-hidden="true"> / </span>
-          {agents.length} {agents.length === 1 ? "agent" : "agents"}
-        </p>
         <SegmentedTabs
           label="Overview"
           value={view}

@@ -55,6 +55,7 @@
 .workspace-disclosure summary > svg {
   width: 1.1rem;
   color: var(--color-text-tertiary);
+  transform: rotate(-90deg);
   transition: transform 140ms ease;
 }
 
@@ -142,8 +143,9 @@
 
 .overview-empty {
   display: grid;
-  min-height: 12rem;
+  min-height: 15rem;
   place-content: center;
+  justify-items: center;
   text-align: center;
 }
 

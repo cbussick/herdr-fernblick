@@ -189,7 +189,12 @@ export function ConversationTreeDialog({
               onSelect={(node) => setSelectedId(node.id)}
             />
           ) : (
-            <p className="terminal-state">No matching messages.</p>
+            <div className="terminal-state">
+              <span className="empty-state-icon">
+                <SearchIcon />
+              </span>
+              <p>No matching messages.</p>
+            </div>
           )}
         </div>
         <footer className="conversation-tree-dialog__footer">

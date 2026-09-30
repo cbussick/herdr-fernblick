@@ -55,6 +55,23 @@ export function SearchIcon(props: IconProps) {
     </IconBase>
   );
 }
+export function FolderIcon(props: IconProps) {
+  return (
+    <IconBase {...props}>
+      <path d="M3 7V5a2 2 0 0 1 2-2h5l3 3h6a2 2 0 0 1 2 2v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V7Z" />
+    </IconBase>
+  );
+}
+
+export function MessageIcon(props: IconProps) {
+  return (
+    <IconBase {...props}>
+      <path d="M21 11a8 8 0 0 1-8 8H7l-4 3V5a2 2 0 0 1 2-2h8a8 8 0 0 1 8 8Z" />
+      <path d="M7 8h9M7 12h6" />
+    </IconBase>
+  );
+}
+
 export function PencilIcon(props: IconProps) {
   return (
     <IconBase {...props}>

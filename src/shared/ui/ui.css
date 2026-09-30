@@ -1,3 +1,20 @@
+.empty-state-icon {
+  display: grid;
+  width: 3.5rem;
+  height: 3.5rem;
+  place-items: center;
+  justify-self: center;
+  margin-bottom: var(--space-4);
+  color: var(--color-accent);
+  background: var(--color-accent-soft);
+  border-radius: var(--radius-lg);
+}
+
+.empty-state-icon svg {
+  width: 1.5rem;
+  height: 1.5rem;
+}
+
 .button {
   display: inline-flex;
   min-height: var(--control-height);

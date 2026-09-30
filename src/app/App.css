@@ -87,16 +87,6 @@
   letter-spacing: -0.055em;
 }
 
-.overview-header__summary {
-  color: var(--color-text-secondary);
-  font-size: 0.75rem;
-}
-
-.overview-header__summary span {
-  padding-inline: var(--space-2);
-  color: var(--color-border-strong);
-}
-
 .connection-state {
   display: flex;
   align-items: center;
