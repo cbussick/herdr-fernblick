@@ -407,7 +407,7 @@
   font-weight: 600;
   background: var(--color-warning-soft);
   border: 1px solid color-mix(in srgb, var(--color-warning) 28%, var(--color-border));
-  border-radius: var(--radius-round);
+  border-radius: var(--radius-sm);
 }
 
 .chat-thinking > svg {
