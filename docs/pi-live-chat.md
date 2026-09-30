@@ -7,7 +7,9 @@
   Pi types are a host-provided peer. There are no backend imports or SQLite APIs.
 - `server/pi/liveBridge.ts` owns the private socket, live registry, validated
   process association, and bounded one-command-in-flight request/ACK handling.
-- `server/pi/liveEvents.ts` sends full sequenced snapshots over HTTP SSE. Each
+- `server/pi/liveEvents.ts` sends an initial snapshot, then sequenced patches of
+  changed rows over HTTP SSE. Backpressured clients skip intermediate snapshots
+  and receive the latest state on drain; no replay queue accumulates. Each
   subscriber resolves Herdr **once**, then routes matching registered snapshots
   directly. Ordinary streaming performs no Herdr requests. New socket connections
   are process-checked; commands revalidate both Herdr and process identity.
@@ -19,14 +21,22 @@
 
 ## HTTP / wire contract
 
-`GET /api/agents/:paneId/chat` opens SSE: either a versioned `snapshot` with
+`GET /api/agents/:paneId/chat` opens SSE: an initial versioned `snapshot` with
 runtime/PID/process-start/pane/Herdr-socket/session identity, epoch and sequence,
-or `{type:"unavailable",reason}`. Availability is explicit; no file/terminal fallback.
+then `patch` frames carrying metadata, `baseSeq`, changed rows (`upsert`), and an
+optional complete ID `order` when rows are added, removed or reordered. Patches
+require the exact baseline; invalid baselines reconnect for a full snapshot.
+Runtime/epoch/session changes always send a full snapshot. Network interruptions
+keep the existing transcript visible but disable commands until reconnected.
+`{type:"unavailable",reason}` explicitly invalidates the displayed session.
+There is no file/terminal fallback. The extension now publishes snapshot version 2
+for send receipts. Version 1 remains readable, but the browser disables sends and
+asks for `/reload` instead of silently using an extension that cannot confirm receipt.
 SSE IDs are `epoch:seq`; `Last-Event-ID` is intentionally not replayed.
 Keepalive comments carry no chat data and do not trigger Herdr reads.
 
 `POST /api/agents/:paneId/prompt` accepts
-`{target:{runtime,epoch,sessionId},text,attachments:[uploadId,...]}` (text may be
+`{target:{runtime,epoch,sessionId},text,attachments:[uploadId,...],requestId?}` (text may be
 empty with images); `POST .../stop` accepts the same target. Existing upload
 endpoints accept up to 10 MiB per PNG/JPEG/GIF/WebP image. The socket carries at
 most four validated IDs; bounded local file reads and ImageContent conversion
@@ -36,7 +46,11 @@ text to 32,000 characters. The extension validates the command again against its
 current context with no await before invoking Pi. Commands are not persisted or
 retried; duplicate IDs are rejected (up to 1024 seen IDs per runtime lifecycle,
 then reload required). ACK is `outcome:"invoked"` or `"rejected"`, not delivery
-confirmation. Transport timeout/loss is uncertain.
+confirmation. A matching Pi user-message start (text and image count) publishes
+`receivedSendIds` (the last 128 confirmed command IDs), clearing the submitted browser draft and
+attachments automatically. A receipt also works when the HTTP ACK is lost.
+Newer draft edits are preserved. Without a receipt, transport timeout/loss is
+uncertain and the draft remains; no automatic retry occurs.
 
 `POST .../tree` accepts `{target}` and returns a correlated typed tree from
 public Pi `getTree()/getLeafId()`. `POST .../tree-navigation` accepts
@@ -47,8 +61,9 @@ mutations are never automatically retried.
 
 The private transport is bounded newline-delimited JSON, **not a Pi session JSONL
 reader**. Extension event handlers update an in-memory projector and schedule a
-coalesced publish; they never await networking. Slow peers are dropped rather than
-accumulating writes. There are at most 64 socket peers and 64 SSE subscribers,
+coalesced publish; they never await networking. Slow socket peers are dropped
+rather than accumulating writes. SSE pauses on backpressure and resumes with the
+latest state; a reader stalled for over 60 seconds is disconnected. There are at most 64 socket peers and 64 SSE subscribers,
 a 3-second initial handshake deadline and a 5-second command deadline.
 No extra TCP listener, chat polling, queue store or dispatcher exists.
 
@@ -65,8 +80,9 @@ settings, CLI, sessions, session-format, message-types and SDK) and actual
 - `message_end` extension handlers run before the session manager appends the
   message. Later handlers may replace it. Live content is provisional until
   `turn_end` and `agent_settled` reconciliation.
-- `agent_end` may precede retry/compaction/continuation; only settled clears the
-  invocation latch.
+- `agent_end` may precede retry/compaction/continuation. A matching user-message
+  start clears the invocation latch; `agent_settled` also clears unresolved latches
+  and marks the runtime idle. Receipt is not a durable-persistence guarantee.
 - Old contexts assert inactive after replacement. Shutdown invalidates retained
   context, destroys sockets and cancels timers; generation checks prevent late
   asynchronous connection attempts from reviving it.

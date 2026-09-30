@@ -164,11 +164,12 @@ export async function chatCommand(
   action: "prompt" | "stop",
   text?: string,
   attachments: string[] = [],
+  requestId?: string,
 ) {
   return request(`/api/agents/${encodeURIComponent(target)}/${action}`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ target: identity, text, attachments }),
+    body: JSON.stringify({ target: identity, text, attachments, requestId }),
   });
 }
 

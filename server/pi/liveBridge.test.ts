@@ -179,6 +179,36 @@ it("rejects invalid protocol and out-of-order sequences", async () => {
   await vi.waitFor(() => expect(socket.destroyed).toBe(true));
   await expect(bridge.resolve(agent)).rejects.toThrow("unavailable");
 });
+it("carries the browser request ID through HTTP and refuses receipt-based sends to legacy extensions", async () => {
+  const p = await peer();
+  const service = { getAgent: vi.fn(async () => agent) } as unknown as HerdrService;
+  const server = createHttpServer(service, dir, bridge);
+  await new Promise<void>((done) => server.listen(0, "127.0.0.1", done));
+  const base = `http://127.0.0.1:${(server.address() as { port: number }).port}`;
+  const requestId = randomUUID();
+  const send = () =>
+    fetch(base + "/api/agents/w1:p1/prompt", {
+      method: "POST",
+      headers: { Origin: base, "Content-Type": "application/json" },
+      body: JSON.stringify({ target: targetOf(p.snapshot), text: "hello", requestId }),
+    });
+  try {
+    expect((await send()).status).toBe(409);
+    writeFrame(p.socket, { ...p.snapshot, version: 2, seq: 2 });
+    await vi.waitFor(() => expect(bridge.current(agent).snapshot.version).toBe(2));
+    receiveFrames(p.socket, (command) => {
+      expect(command).toMatchObject({ id: requestId, action: "send", text: "hello" });
+      writeFrame(p.socket, { type: "ack", id: requestId, outcome: "invoked" });
+    });
+    const response = await send();
+    expect(response.status).toBe(200);
+    expect(await response.json()).toMatchObject({ id: requestId, outcome: "invoked" });
+  } finally {
+    server.closeAllConnections();
+    await new Promise<void>((done) => server.close(() => done()));
+  }
+});
+
 it("SSE streams directly after one Herdr lookup, reconnects fresh and removes queue routes", async () => {
   const p = await peer();
   const getAgent = vi.fn(async () => agent);

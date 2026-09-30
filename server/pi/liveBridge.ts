@@ -248,12 +248,25 @@ export class LiveBridge {
     agent: Agent,
     target: Target,
     input:
-      | { action: "send"; text: string; attachments: string[] }
+      | { action: "send"; text: string; attachments: string[]; requestId?: string }
       | { action: "stop" | "tree" }
       | { action: "navigate"; entryId: string },
   ) {
-    const command = commandSchema.parse({ ...input, type: "command", id: randomUUID(), target });
+    const command = commandSchema.parse({
+      ...input,
+      type: "command",
+      id: "requestId" in input ? (input.requestId ?? randomUUID()) : randomUUID(),
+      target,
+    });
     const peer = await this.resolve(agent);
+    if (
+      command.action === "send" &&
+      "requestId" in input &&
+      input.requestId &&
+      peer.snapshot.version !== 2
+    )
+      throw new LiveChatError(409, "Run /reload in Pi to update the chat connection");
+    if (this.pending.has(command.id)) throw new LiveChatError(409, "Command already in flight");
     if (!matchesTarget(peer.snapshot, target))
       throw new LiveChatError(
         409,

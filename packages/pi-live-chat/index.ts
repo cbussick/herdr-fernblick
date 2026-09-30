@@ -33,6 +33,8 @@ export default function liveChat(pi: ExtensionAPI) {
   let seq = 0;
   let active = false;
   let sendPending = false;
+  let outgoing: { id: string; text: string; images: number } | undefined;
+  const receivedSendIds: string[] = [];
   let preparing = false;
   let uiBlocked = false;
   let imageHistory = new ImageHistory();
@@ -168,12 +170,13 @@ export default function liveChat(pi: ExtensionAPI) {
       const messages = projector.messages();
       return {
         type: "snapshot",
-        version: 1,
+        version: 2,
         identity,
         epoch,
         seq: ++seq,
         busy: active || uiBlocked || !context.isIdle() || context.hasPendingMessages(),
         sendPending: sendPending || preparing,
+        receivedSendIds,
         truncated: projector.truncated,
         messages,
         status: {
@@ -370,6 +373,7 @@ export default function liveChat(pi: ExtensionAPI) {
               if (images.length)
                 pi.appendEntry(IMAGE_METADATA, imageHistory.remember(images, command.attachments));
               sendPending = true;
+              outgoing = { id: command.id, text: command.text, images: images.length };
               invoked = true;
               pi.sendUserMessage(
                 images.length
@@ -416,6 +420,8 @@ export default function liveChat(pi: ExtensionAPI) {
     context = ctx;
     active = !ctx.isIdle();
     sendPending = uiBlocked = false;
+    outgoing = undefined;
+    receivedSendIds.length = 0;
     seen.clear();
     imageHistory = new ImageHistory();
     imageHistory.restore(ctx.sessionManager.getEntries());
@@ -434,6 +440,7 @@ export default function liveChat(pi: ExtensionAPI) {
     if (!context) return;
     context = ctx;
     active = sendPending = false;
+    outgoing = undefined;
     projector.reconcile(ctx.sessionManager.getBranch());
     publish();
   });
@@ -480,7 +487,21 @@ export default function liveChat(pi: ExtensionAPI) {
     hydrateMessage(event.message);
     publish();
   }
-  pi.on("message_start", message);
+  pi.on("message_start", (event) => {
+    const value = event.message;
+    if (context && outgoing && value.role === "user") {
+      const images = Array.isArray(value.content)
+        ? value.content.filter((block) => block.type === "image").length
+        : 0;
+      if (contentText(value.content).trim() === outgoing.text && images === outgoing.images) {
+        receivedSendIds.push(outgoing.id);
+        if (receivedSendIds.length > 128) receivedSendIds.shift();
+        outgoing = undefined;
+        sendPending = false;
+      }
+    }
+    message(event);
+  });
   pi.on("message_update", message);
   pi.on("message_end", message);
   function tool(event: Parameters<TranscriptProjector["tool"]>[0]) {

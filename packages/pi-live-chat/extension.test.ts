@@ -255,6 +255,38 @@ it("uses real Pi 0.99.1 command dispatch and navigateTree(user.id) to reach the 
   }
 }, 20_000);
 
+it("confirms text receipt on the user event, not the invocation ACK, and releases the send latch", async () => {
+  const t = await setup();
+  const id = t.command("send");
+  expect(await t.ack(id)).toMatchObject({ outcome: "invoked" });
+  expect(t.latest()?.receivedSendIds).not.toContain(id);
+  t.emit("message_start", {
+    message: { role: "user", content: "another terminal message", timestamp: 1 },
+  });
+  await new Promise((done) => setTimeout(done, 70));
+  expect(t.latest()?.receivedSendIds).not.toContain(id);
+  t.setIdle(false);
+  t.emit("agent_start");
+  t.emit("message_start", {
+    message: { role: "user", content: [{ type: "text", text: "hello" }], timestamp: 2 },
+  });
+  await vi.waitFor(() => expect(t.latest()?.receivedSendIds).toContain(id));
+  expect(t.latest()?.sendPending).toBe(false);
+  expect(t.latest()?.busy).toBe(true);
+  t.setIdle(true);
+  t.emit("agent_settled");
+  await vi.waitFor(() => expect(t.latest()?.busy).toBe(false));
+  const oldEpoch = t.latest()!.epoch;
+  t.connections.at(-1)!.destroy();
+  await vi.waitFor(() => expect(t.latest()?.epoch).not.toBe(oldEpoch));
+  expect(t.latest()?.receivedSendIds).toContain(id);
+  const secondId = t.command("send", targetOf(t.latest()!), "next");
+  expect(await t.ack(secondId)).toMatchObject({ outcome: "invoked" });
+  t.emit("message_start", { message: { role: "user", content: "next", timestamp: 3 } });
+  await vi.waitFor(() => expect(t.latest()?.receivedSendIds).toContain(secondId));
+  expect(t.latest()?.receivedSendIds).toContain(id);
+});
+
 it("navigates through its private command context and replies only after navigation completes", async () => {
   const t = await setup();
   const entry = {
@@ -381,6 +413,8 @@ it("sends four 10 MiB image-only uploads as Pi ImageContent without putting base
       attachments.map((id) => `/api/uploads/${id}`),
     ),
   );
+  expect(t.latest()?.receivedSendIds).toContain(id);
+  expect(t.latest()?.sendPending).toBe(false);
   t.emit("agent_settled");
   t.pi.sendUserMessage.mockImplementationOnce((text, options) => {
     expect(options).toEqual({ expandPromptTemplates: true });

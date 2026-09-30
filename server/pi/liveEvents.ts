@@ -1,6 +1,8 @@
 import type { ServerResponse } from "node:http";
 import type { Agent } from "../../src/shared/api/contracts.js";
 import type { LiveBridge } from "./liveBridge.js";
+import { browserFrame } from "../../packages/pi-live-chat/browserStream.js";
+import type { Snapshot } from "../../packages/pi-live-chat/protocol.js";
 import { MAX_FRAME } from "../../packages/pi-live-chat/protocol.js";
 
 // One Herdr lookup before subscription; no Herdr requests in the chat data loop.
@@ -11,6 +13,9 @@ export function liveEvents(response: ServerResponse, agent: Agent, bridge: LiveB
   let dirty = false;
   let bound: Awaited<ReturnType<LiveBridge["resolve"]>> | undefined;
   let last = "";
+  let previous: Snapshot | undefined;
+  let paused = false;
+  let pausedAt = 0;
   const write = (data: unknown, id?: string) => {
     if (closed) return;
     const frame = `${id ? `id: ${id}\n` : ""}data: ${JSON.stringify(data)}\n\n`;
@@ -18,26 +23,32 @@ export function liveEvents(response: ServerResponse, agent: Agent, bridge: LiveB
       response.destroy();
       return;
     }
-    response.write(frame);
+    if (response.write(frame) === false) {
+      paused = true;
+      pausedAt = Date.now();
+    }
   };
   const refresh = async () => {
     dirty = true;
-    if (running || closed) return;
+    if (running || closed || paused) return;
     running = true;
     try {
-      while (dirty && !closed) {
+      while (dirty && !closed && !paused) {
         dirty = false;
         try {
           const peer = bridge.current(agent);
           if (peer !== bound) bound = await bridge.resolve(agent);
+          if (closed) return;
           const snapshot = bound.snapshot;
           const id = `${snapshot.epoch}:${snapshot.seq}`;
           if (id !== last) {
-            write(snapshot, id);
+            write(browserFrame(previous, snapshot), id);
+            previous = snapshot;
             last = id;
           }
         } catch (error) {
           bound = undefined;
+          previous = undefined;
           const reason = error instanceof Error ? error.message : "Live chat unavailable";
           if (last !== reason) {
             write({ type: "unavailable", reason });
@@ -59,14 +70,24 @@ export function liveEvents(response: ServerResponse, agent: Agent, bridge: LiveB
     "X-Accel-Buffering": "no",
   });
   response.flushHeaders();
+  const onDrain = () => {
+    paused = false;
+    void refresh();
+  };
+  response.on("drain", onDrain);
   const heartbeat = setInterval(() => {
-    if (response.writableLength > MAX_FRAME) response.destroy();
-    else response.write(": heartbeat\n\n");
+    if (response.writableLength > MAX_FRAME || (paused && Date.now() - pausedAt > 60_000))
+      response.destroy();
+    else if (!paused && response.write(": heartbeat\n\n") === false) {
+      paused = true;
+      pausedAt = Date.now();
+    }
   }, 15_000);
   heartbeat.unref();
   response.on("close", () => {
     closed = true;
     clearInterval(heartbeat);
+    response.off("drain", onDrain);
     unsubscribe();
   });
   void refresh();
