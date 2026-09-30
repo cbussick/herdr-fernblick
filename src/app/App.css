@@ -495,13 +495,19 @@
   font: inherit;
 }
 
-.transcript-initializing__spinner {
+.transcript-initializing__spinner,
+.prompt-composer__spinner {
   width: 1.25rem;
   height: 1.25rem;
   border: 2px solid var(--color-border);
   border-top-color: var(--color-text-secondary);
   border-radius: 50%;
   animation: transcript-spin 800ms linear infinite;
+}
+
+.prompt-composer__spinner {
+  border-color: currentcolor;
+  border-top-color: transparent;
 }
 
 @keyframes transcript-spin {
@@ -516,8 +522,12 @@
     transition: none;
   }
 
-  .transcript-initializing__spinner {
+  .transcript-initializing__spinner,
+  .prompt-composer__spinner {
     animation: none;
+  }
+
+  .transcript-initializing__spinner {
     border-top-color: var(--color-border);
   }
 }
