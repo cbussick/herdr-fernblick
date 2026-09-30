@@ -48,12 +48,13 @@ export const messageSchema = z.object({
 });
 export const snapshotSchema = z.object({
   type: z.literal("snapshot"),
-  version: z.literal(1),
+  version: z.union([z.literal(1), z.literal(2)]),
   identity: identitySchema,
   epoch: z.string().uuid(),
   seq: z.number().int().nonnegative(),
   busy: z.boolean(),
   sendPending: z.boolean(),
+  receivedSendIds: z.array(z.string().uuid()).max(128).optional(),
   truncated: z.boolean(),
   messages: z.array(messageSchema).max(MAX_MESSAGES),
   status: z.object({

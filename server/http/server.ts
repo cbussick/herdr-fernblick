@@ -26,7 +26,10 @@ import {
   sendInputSchema,
   MAX_IMAGE_BYTES,
 } from "../../packages/pi-live-chat/protocol.js";
-const chatCommandSchema = sendInputSchema.safeExtend({ target: chatTargetSchema });
+const chatCommandSchema = sendInputSchema.safeExtend({
+  target: chatTargetSchema,
+  requestId: z.string().uuid().optional(),
+});
 const treeRequestSchema = z.object({
   target: chatTargetSchema,
   entryId: z.string().min(1).max(256).optional(),
@@ -289,7 +292,12 @@ async function handleApi(
     if (route.action === "prompt") {
       const body = chatCommandSchema.parse(raw);
       target = body.target;
-      input = { action: "send", text: body.text, attachments: body.attachments };
+      input = {
+        action: "send",
+        text: body.text,
+        attachments: body.attachments,
+        requestId: body.requestId,
+      };
     } else {
       const body = treeRequestSchema.parse(raw);
       target = body.target;

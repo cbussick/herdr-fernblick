@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
-import { snapshotSchema, type Snapshot } from "../../../packages/pi-live-chat/protocol";
+import { type Snapshot } from "../../../packages/pi-live-chat/protocol";
+import { readBrowserFrame } from "../../../packages/pi-live-chat/browserStream";
 
 export function useLiveChat(target: string, enabled: boolean, session: string | undefined) {
   const [state, setState] = useState<{
@@ -10,38 +11,64 @@ export function useLiveChat(target: string, enabled: boolean, session: string | 
   }>({ target, session });
   useEffect(() => {
     if (!enabled) return;
-    const events = new EventSource(`/api/agents/${encodeURIComponent(target)}/chat`);
+    let disposed = false;
     let previous: Snapshot | undefined;
-    events.onmessage = (event) => {
-      try {
-        const value: unknown = JSON.parse(event.data);
-        if (typeof value === "object" && value && "type" in value && value.type === "unavailable") {
-          const reason =
-            "reason" in value && typeof value.reason === "string"
-              ? value.reason
-              : "Live chat unavailable";
-          previous = undefined;
-          setState({ target, session, error: reason });
-          return;
-        }
-        const snapshot = snapshotSchema.parse(value);
-        if (previous?.epoch === snapshot.epoch && previous.seq >= snapshot.seq) return;
-        previous = snapshot;
-        setState({ target, session, snapshot });
-      } catch {
-        previous = undefined;
-        setState({ target, session, error: "Invalid live chat snapshot" });
-      }
-    };
-    events.onerror = () => {
-      previous = undefined;
-      setState({
+    let events: EventSource;
+    let retry: ReturnType<typeof setTimeout> | undefined;
+    function connectionError(reason: string) {
+      if (disposed) return;
+      setState((current) => ({
         target,
         session,
-        error: "Live connection lost. Reconnecting; drafts are not retried.",
-      });
+        ...(current.target === target && current.session === session
+          ? { snapshot: current.snapshot }
+          : {}),
+        error: reason,
+      }));
+    }
+    function connect() {
+      if (disposed) return;
+      previous = undefined;
+      events = new EventSource(`/api/agents/${encodeURIComponent(target)}/chat`);
+      events.onmessage = (event) => {
+        if (disposed) return;
+        try {
+          const value: unknown = JSON.parse(event.data);
+          if (
+            typeof value === "object" &&
+            value &&
+            "type" in value &&
+            value.type === "unavailable"
+          ) {
+            const reason =
+              "reason" in value && typeof value.reason === "string"
+                ? value.reason
+                : "Live chat unavailable";
+            previous = undefined;
+            setState({ target, session, error: reason });
+            return;
+          }
+          const snapshot = readBrowserFrame(previous, value);
+          if (previous?.epoch === snapshot.epoch && previous.seq > snapshot.seq) return;
+          previous = snapshot;
+          setState({ target, session, snapshot });
+        } catch {
+          events.close();
+          connectionError("Reconnecting to Pi…");
+          retry = setTimeout(connect, 1000);
+        }
+      };
+      events.onerror = () => {
+        previous = undefined;
+        connectionError("Reconnecting to Pi…");
+      };
+    }
+    connect();
+    return () => {
+      disposed = true;
+      clearTimeout(retry);
+      events.close();
     };
-    return () => events.close();
   }, [target, enabled, session]);
   return enabled && state.target === target && state.session === session
     ? state
