@@ -227,6 +227,16 @@ it("locks the composer only through upload and forwarding, then uses Pi busy/idl
   expect(renderer.root.findAllByProps({ className: "prompt-composer__spinner" })).toHaveLength(0);
   expect(renderer.root.findByProps({ "aria-label": "Send message" }).props.disabled).toBe(true);
 });
+it("shows a starting placeholder instead of an unknown/error state before Pi is ready", async () => {
+  mocks.live = {};
+  await act(async () => renderer.update(render()));
+  const state = renderer.root.findByProps({ className: "terminal-state transcript-initializing" });
+  expect(state.props["aria-busy"]).toBe("true");
+  expect(state.findAllByProps({ className: "transcript-initializing__spinner" })).toHaveLength(1);
+  expect(JSON.stringify(renderer.toJSON())).toContain("Starting Pi…");
+  expect(renderer.root.findAllByProps({ role: "alert" })).toHaveLength(0);
+  expect(renderer.root.findByProps({ "aria-label": "Send message" }).props.disabled).toBe(true);
+});
 it("preserves text and attachments when forwarding fails", async () => {
   mocks.command.mockRejectedValue(new Error("Connection lost"));
   const file = new File(["image"], "image.png", { type: "image/png" });
