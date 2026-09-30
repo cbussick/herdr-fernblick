@@ -37,16 +37,19 @@
 
 .workspace {
   display: grid;
-  grid-template-columns: minmax(20rem, 25rem) minmax(0, 1fr);
+  grid-template-columns: clamp(18rem, 26vw, 22rem) minmax(0, 1fr);
   height: 100%;
   min-height: 0;
 }
 
 .agent-list {
   position: relative;
+  display: flex;
   min-width: 0;
+  min-height: 0;
+  flex-direction: column;
   overflow: hidden;
-  background: var(--color-canvas);
+  background: var(--color-navigation);
   border-right: 1px solid var(--color-border);
 }
 
@@ -56,9 +59,8 @@
   top: 0;
   display: grid;
   gap: var(--space-3);
-  padding: var(--space-5);
-  background: color-mix(in srgb, var(--color-canvas) 94%, transparent);
-  backdrop-filter: blur(0.75rem);
+  padding: max(var(--space-6), env(safe-area-inset-top)) var(--space-5) var(--space-5);
+  background: var(--color-navigation);
 }
 
 .overview-header__title {
@@ -67,9 +69,32 @@
   justify-content: space-between;
 }
 
+.overview-brand {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+}
+
+.overview-brand svg {
+  width: 2.5rem;
+  height: 2.5rem;
+  color: var(--color-accent);
+}
+
 .overview-header h1 {
-  font-size: 1.75rem;
-  letter-spacing: -0.05em;
+  font-size: 1.625rem;
+  font-weight: 800;
+  letter-spacing: -0.055em;
+}
+
+.overview-header__summary {
+  color: var(--color-text-secondary);
+  font-size: 0.75rem;
+}
+
+.overview-header__summary span {
+  padding-inline: var(--space-2);
+  color: var(--color-border-strong);
 }
 
 .connection-state {
@@ -89,9 +114,11 @@
 }
 
 .overview-content {
-  height: calc(100% - 12.5rem);
-  padding: 0 var(--space-5);
+  min-height: 0;
+  flex: 1;
+  padding: 0 var(--space-4);
   overflow: auto;
+  overscroll-behavior: contain;
 }
 
 .console {
@@ -104,25 +131,46 @@
 
 .console-header {
   display: grid;
-  min-height: var(--header-height);
-  grid-template-columns: auto auto minmax(0, auto) auto auto minmax(0, 1fr);
+  grid-template-columns: 2.75rem 2.5rem minmax(0, 1fr) auto;
   align-items: center;
-  gap: var(--space-3);
-  padding: var(--space-3) var(--space-5);
-  background: var(--color-canvas);
+  gap: var(--space-2) var(--space-3);
+  padding: max(var(--space-3), env(safe-area-inset-top)) var(--space-4) var(--space-3);
+  background: var(--color-surface);
+  border-bottom: 1px solid var(--color-border);
+}
+
+.console-header > .icon-button {
+  grid-column: 1;
+  grid-row: 1;
+}
+
+.console-header > .tab-kind-icon {
+  grid-column: 2;
+  grid-row: 1;
 }
 
 .console-header__copy {
   min-width: 0;
+  grid-column: 3;
+  grid-row: 1;
+}
+
+.console-header > .edit-tab-button {
+  grid-column: 4;
+  grid-row: 1;
+  justify-self: end;
+}
+
+.console-header > .agent-view-toggle {
+  grid-column: 4;
+  grid-row: 2;
 }
 
 .console-header > .status-indicator,
 .console-header > .shell-status {
-  justify-self: end;
-}
-
-.console-header > .shell-status {
-  grid-column: 6;
+  grid-column: 2 / 4;
+  grid-row: 2;
+  justify-self: start;
 }
 
 .console-header__title {
@@ -156,8 +204,8 @@
 }
 
 .agent-view-toggle {
-  min-height: 1.875rem;
-  padding: 0 var(--space-2);
+  min-height: 2.75rem;
+  padding: 0 var(--space-3);
   color: var(--color-accent);
   font-size: 0.6875rem;
   font-weight: 750;
@@ -206,8 +254,8 @@
   background: var(--color-terminal-bar);
   border-bottom: 1px solid var(--color-border);
   font: 0.6875rem var(--font-mono);
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
+  letter-spacing: 0;
+  text-transform: none;
 }
 
 .terminal-output,
@@ -234,8 +282,8 @@
   height: 100%;
   max-width: 48rem;
   align-content: start;
-  gap: var(--space-4);
-  padding: var(--space-2) 0 0;
+  gap: var(--space-5);
+  padding: var(--space-5) var(--space-2) var(--space-4);
   margin-inline: auto;
   overflow: auto;
   overscroll-behavior: contain;
@@ -262,7 +310,7 @@
   overflow-wrap: anywhere;
   background: var(--color-surface);
   border: 1px solid var(--color-border);
-  border-radius: var(--radius-md);
+  border-radius: 0.25rem 1.125rem 1.125rem;
 }
 
 .chat-message p a {
@@ -292,7 +340,8 @@
 
 .chat-message--user p {
   background: var(--color-accent-soft);
-  border-color: color-mix(in srgb, var(--color-accent) 20%, var(--color-border));
+  border-color: #c0ddf2;
+  border-radius: 1.125rem 0.25rem 1.125rem 1.125rem;
 }
 
 .chat-message__attachments {
@@ -427,8 +476,8 @@
 }
 
 .chat-tool summary {
-  min-height: 2rem;
-  padding: var(--space-2) var(--space-3);
+  min-height: 2.75rem;
+  padding: var(--space-3) var(--space-4);
   cursor: pointer;
   background: var(--color-surface-subtle);
   border-radius: var(--radius-sm);
@@ -530,8 +579,8 @@
 }
 
 .key-controls button {
-  min-height: 2.25rem;
-  padding: 0 var(--space-3);
+  min-height: 2.75rem;
+  padding: 0 var(--space-4);
   color: var(--color-text-secondary);
   font: 700 0.7rem var(--font-mono);
   white-space: nowrap;
@@ -544,7 +593,8 @@
   display: flex;
   width: 100%;
   min-width: 0;
-  max-width: 100%;
+  max-width: 50rem;
+  align-self: center;
   box-sizing: border-box;
   flex-direction: column;
   gap: var(--space-1);
@@ -563,7 +613,10 @@
 }
 
 .prompt-composer {
-  padding: var(--space-2) var(--space-4);
+  width: 100%;
+  max-width: 50rem;
+  align-self: center;
+  padding: var(--space-2) var(--space-4) max(var(--space-3), env(safe-area-inset-bottom));
   background: var(--color-canvas);
 }
 
@@ -571,7 +624,13 @@
   overflow: hidden;
   background: var(--color-surface);
   border: 1px solid var(--color-border-strong);
-  border-radius: var(--radius-lg);
+  border-radius: 1.25rem;
+  box-shadow: 0 0.25rem 1rem rgb(23 55 79 / 4%);
+}
+
+.prompt-composer__surface:focus-within {
+  border-color: var(--color-accent);
+  outline: 2px solid var(--color-accent-soft);
 }
 
 .prompt-composer__row {
@@ -589,8 +648,9 @@
 .prompt-composer textarea {
   width: 100%;
   min-width: 0;
-  min-height: 2.5rem;
+  min-height: 2.75rem;
   max-height: 8rem;
+  font-size: 1rem;
   field-sizing: content;
   padding: 0.65rem;
   resize: none;
@@ -602,8 +662,8 @@
 
 .prompt-composer button {
   display: grid;
-  width: 2.5rem;
-  height: 2.5rem;
+  width: 2.75rem;
+  height: 2.75rem;
   padding: 0;
   place-items: center;
   color: #fff;
@@ -966,7 +1026,7 @@
 }
 
 .conversation-tree-dialog__footer > button {
-  min-height: 2.5rem;
+  min-height: 2.75rem;
   padding: 0 var(--space-4);
   font-size: 0.78rem;
   font-weight: 750;
@@ -993,8 +1053,8 @@
 .edit-tab-button {
   display: inline-grid;
   flex: none;
-  width: 1.75rem;
-  height: 1.75rem;
+  width: 2.75rem;
+  height: 2.75rem;
   padding: 0;
   place-items: center;
   color: var(--color-accent);
@@ -1004,8 +1064,8 @@
 }
 
 .edit-tab-button svg {
-  width: 0.875rem;
-  height: 0.875rem;
+  width: 1.125rem;
+  height: 1.125rem;
 }
 
 .shell-status {
@@ -1345,8 +1405,8 @@
   border-radius: var(--radius-sm);
 }
 
-/* A portrait tablet needs the same single-pane navigation as a phone. */
-@media (width < 64rem) {
+/* Phones stay focused on one pane; portrait iPads keep the workspace rail. */
+@media (width < 48rem) {
   .workspace {
     display: block;
   }
@@ -1365,14 +1425,9 @@
     display: none;
   }
 
-  .overview-content {
-    height: calc(100% - 12.5rem);
-  }
-
   .console-header {
-    min-height: 3.5rem;
-    grid-template-columns: auto auto minmax(0, auto) auto auto minmax(0, 1fr);
-    padding: var(--space-2) var(--space-3) var(--space-1);
+    column-gap: var(--space-2);
+    padding-inline: var(--space-3);
   }
 
   .output-panel {
@@ -1441,5 +1496,70 @@
 
   .new-agent-form {
     padding: var(--space-5);
+  }
+}
+
+.console-empty {
+  justify-items: center;
+  align-content: center;
+  gap: var(--space-4);
+}
+
+.console-empty__mark {
+  width: 4rem;
+  height: 4rem;
+  margin-bottom: var(--space-4);
+  color: var(--color-accent);
+}
+
+.console-empty h2 {
+  color: var(--color-text);
+  font-size: clamp(1.5rem, 2.4vw, 2rem);
+  letter-spacing: -0.04em;
+}
+
+.console-empty p {
+  max-width: 25rem;
+  font-size: 0.9375rem;
+  line-height: 1.8;
+}
+
+.console-empty > span {
+  margin-top: var(--space-4);
+  color: var(--color-text-tertiary);
+  font-size: 0.75rem;
+}
+
+@media (width >= 72rem) {
+  .console-header {
+    min-height: 5.5rem;
+    grid-template-columns: 2.75rem 2.5rem minmax(0, 1fr) auto auto auto;
+    padding-inline: var(--space-6);
+  }
+
+  .console-header > .agent-view-toggle {
+    grid-column: 5;
+    grid-row: 1;
+  }
+
+  .console-header > .status-indicator,
+  .console-header > .shell-status {
+    grid-column: 6;
+    grid-row: 1;
+    justify-self: end;
+    margin-left: var(--space-3);
+  }
+
+  .chat-transcript {
+    padding-top: var(--space-8);
+  }
+}
+
+@media (pointer: coarse) {
+  .new-agent-form > :where(input, select),
+  .edit-tab-dialog label input,
+  .context-dialog input,
+  .search-field input {
+    font-size: 1rem;
   }
 }

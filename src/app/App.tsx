@@ -8,6 +8,7 @@ import { NewAgentDialog } from "../features/agents/NewAgentDialog";
 import { NewWorkspaceDialog } from "../features/agents/NewWorkspaceDialog";
 import { NewTabDialog } from "../features/agents/NewTabDialog";
 import { ShellConsole } from "../features/agents/ShellConsole";
+import { FernblickMark } from "../shared/ui/FernblickMark";
 import "./App.css";
 
 export function App() {
@@ -69,7 +70,10 @@ export function App() {
             <ShellConsole tab={selectedTab} onBack={() => setSelectedPaneId(null)} />
           ) : (
             <main className="console-empty" id="main-content">
-              <p>Select a tab to view its terminal.</p>
+              <FernblickMark className="console-empty__mark" />
+              <h2>Keep your agents in view.</h2>
+              <p>Choose an agent to pick up the conversation, or a shell to open its terminal.</p>
+              <span>Your workspaces stay within reach.</span>
             </main>
           )}
         </div>

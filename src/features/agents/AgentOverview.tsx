@@ -106,8 +106,8 @@ export function WorkspaceList({
   if (groups.length === 0)
     return (
       <div className="overview-empty">
-        <strong>No workspaces found</strong>
-        <p>Try a different search.</p>
+        <strong>{normalized ? "No workspaces found" : "A place for your next project"}</strong>
+        <p>{normalized ? "Try a different search." : "Use the create menu to add a workspace."}</p>
       </div>
     );
   return (
@@ -133,7 +133,15 @@ export function WorkspaceList({
             open={normalized ? true : undefined}
           >
             <summary>
-              <strong>{group.label}</strong>
+              <span className="workspace-disclosure__copy">
+                <strong>{group.label}</strong>
+                <small>
+                  {group.agents.length} {group.agents.length === 1 ? "agent" : "agents"}
+                  {group.tabs.length
+                    ? ` / ${group.tabs.length} ${group.tabs.length === 1 ? "shell" : "shells"}`
+                    : ""}
+                </small>
+              </span>
               <StatusIndicator status={status} label={getStatusLabel(status)} />
               <ChevronIcon />
             </summary>
@@ -142,11 +150,7 @@ export function WorkspaceList({
                 <PaneRow
                   key={agent.pane_id}
                   title={getAgentTabLabel(agent)}
-                  subtitle={
-                    agent.agent_status === "done"
-                      ? "New answer"
-                      : getStatusLabel(agent.agent_status)
-                  }
+                  subtitle="Pi agent"
                   kind="agent"
                   tabId={agent.tab_id}
                   agentName={agent.name}
@@ -201,7 +205,7 @@ export function FlatAgentList({
           <PaneRow
             key={agent.pane_id}
             title={getAgentTabLabel(agent)}
-            subtitle={`${getStatusLabel(agent.agent_status)} · ${agent.workspace_label ?? agent.workspace_id}`}
+            subtitle={agent.workspace_label ?? agent.workspace_id}
             kind="agent"
             tabId={agent.tab_id}
             agentName={agent.name}

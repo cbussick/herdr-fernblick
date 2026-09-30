@@ -178,6 +178,7 @@ export function SpeedDial({ actions }: { actions: SpeedDialAction[] }) {
         onClick={() => setOpen((value) => !value)}
       >
         {open ? <CloseIcon /> : <PlusIcon />}
+        <span>{open ? "Close" : "Create"}</span>
       </button>
     </div>
   );

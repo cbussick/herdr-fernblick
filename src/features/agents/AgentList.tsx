@@ -2,6 +2,7 @@ import { useState } from "react";
 import type { Agent, ShellTab, Workspace } from "../../shared/api/contracts";
 import { SearchField, SegmentedTabs, SpeedDial } from "../../shared/ui";
 import { FlatAgentList, WorkspaceList } from "./AgentOverview";
+import { FernblickMark } from "../../shared/ui/FernblickMark";
 
 interface AgentListProps {
   agents: Agent[];
@@ -60,12 +61,20 @@ export function AgentList({
     <nav className="agent-list" aria-label="Herdr Web overview">
       <header className="overview-header">
         <div className="overview-header__title">
-          <h1>Fernblick</h1>
+          <div className="overview-brand">
+            <FernblickMark />
+            <h1>Fernblick</h1>
+          </div>
           <span className="connection-state">
             <i />
             Connected
           </span>
         </div>
+        <p className="overview-header__summary">
+          {workspaces.length} {workspaces.length === 1 ? "workspace" : "workspaces"}
+          <span aria-hidden="true"> / </span>
+          {agents.length} {agents.length === 1 ? "agent" : "agents"}
+        </p>
         <SegmentedTabs
           label="Overview"
           value={view}

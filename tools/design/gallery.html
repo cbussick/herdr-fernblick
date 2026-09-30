@@ -1,0 +1,421 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width,initial-scale=1" />
+    <title>Fernblick · Blue command desk</title>
+    <style>
+      :root {
+        font-family: "Segoe UI", system-ui, sans-serif;
+        color: #17374f;
+        background: #edf5fb;
+        color-scheme: light;
+      }
+      * {
+        box-sizing: border-box;
+      }
+      body {
+        margin: 0;
+      }
+      button,
+      input {
+        font: inherit;
+      }
+      button {
+        cursor: pointer;
+      }
+      button:focus-visible,
+      input:focus-visible,
+      a:focus-visible {
+        outline: 3px solid #146eb4;
+        outline-offset: 4px;
+      }
+      header {
+        max-width: 1440px;
+        margin: auto;
+        padding: 48px 28px 28px;
+      }
+      h1 {
+        font-size: clamp(28px, 4vw, 48px);
+        letter-spacing: -0.045em;
+        margin: 0 0 12px;
+      }
+      header p {
+        max-width: 740px;
+        line-height: 1.6;
+        color: #4c687e;
+        margin: 8px 0;
+      }
+      nav {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 8px;
+        margin-top: 24px;
+      }
+      button,
+      .link {
+        border: 1px solid #bed5e5;
+        background: white;
+        color: #17374f;
+        border-radius: 10px;
+        padding: 12px 16px;
+        text-decoration: none;
+      }
+      button[aria-pressed="true"] {
+        background: #155e96;
+        color: white;
+        border-color: #155e96;
+      }
+      .toolbar {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 12px;
+        align-items: center;
+        margin-top: 16px;
+      }
+      .toolbar input {
+        padding: 12px 16px;
+        border: 1px solid #bed5e5;
+        border-radius: 10px;
+        background: white;
+        min-width: 240px;
+      }
+      #count {
+        color: #4c687e;
+        font-size: 14px;
+      }
+      main {
+        max-width: 1440px;
+        margin: auto;
+        padding: 0 28px 64px;
+        display: grid;
+        grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
+        gap: 22px;
+      }
+      .card {
+        display: block;
+        text-align: left;
+        padding: 0;
+        border-radius: 16px;
+        overflow: hidden;
+        box-shadow: 0 5px 18px #17374f08;
+      }
+      .card h2 {
+        font-size: 17px;
+        margin: 18px 18px 6px;
+      }
+      .card p {
+        font-size: 13px;
+        color: #4c687e;
+        margin: 0 18px 18px;
+      }
+      .pair {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: 1px;
+        background: #cbdce8;
+      }
+      .pair figure {
+        margin: 0;
+        background: #e3edf5;
+        min-width: 0;
+      }
+      .pair figcaption {
+        font-size: 12px;
+        font-weight: 650;
+        padding: 10px 12px;
+        background: white;
+      }
+      .pair img {
+        width: 100%;
+        height: 280px;
+        display: block;
+        object-fit: contain;
+        object-position: top;
+        background: #e3edf5;
+      }
+      .card[data-viewport="desktop"] .pair img {
+        height: 180px;
+      }
+      .card[data-viewport="ipad"] .pair img {
+        height: 230px;
+      }
+      dialog {
+        width: calc(100% - 32px);
+        max-width: 1600px;
+        height: calc(100dvh - 32px);
+        max-height: none;
+        padding: 0;
+        border: 1px solid #abc6da;
+        border-radius: 16px;
+        background: #edf5fb;
+        color: #17374f;
+      }
+      dialog::backdrop {
+        background: #0c243ce6;
+        backdrop-filter: blur(6px);
+      }
+      .lightbox-head {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 12px;
+        padding: 16px 20px;
+        border-bottom: 1px solid #bed5e5;
+      }
+      .lightbox-head h2 {
+        font-size: 18px;
+        margin: 0;
+      }
+      .lightbox-head p {
+        font-size: 12px;
+        color: #4c687e;
+        margin: 5px 0 0;
+      }
+      .lightbox-controls {
+        display: flex;
+        gap: 6px;
+        flex-wrap: wrap;
+      }
+      .lightbox-controls button {
+        padding: 10px 14px;
+      }
+      .lightbox-content {
+        height: calc(100% - 84px);
+        overflow: auto;
+        padding: 16px;
+      }
+      .lightbox-content .pair {
+        min-height: 100%;
+        gap: 16px;
+        background: none;
+      }
+      .lightbox-content figure {
+        background: white;
+        border-radius: 10px;
+        overflow: hidden;
+      }
+      .lightbox-content figcaption {
+        position: sticky;
+        top: 0;
+        font-size: 14px;
+        border-bottom: 1px solid #cbdce8;
+      }
+      .lightbox-content img {
+        height: auto;
+        max-height: calc(100dvh - 165px);
+        object-fit: contain;
+        object-position: top;
+        cursor: zoom-in;
+      }
+      .lightbox-content.zoom img {
+        max-height: none;
+        cursor: zoom-out;
+      }
+      .lightbox-content.zoom .pair {
+        min-width: var(--comparison-width);
+        align-items: start;
+      }
+      .lightbox-content.zoom.single .pair {
+        min-width: var(--screen-width);
+      }
+      body.before-only .pair {
+        grid-template-columns: 1fr;
+      }
+      .lightbox-content.single .pair {
+        grid-template-columns: 1fr;
+      }
+      .lightbox-content.single figure:first-child {
+        display: none;
+      }
+      #empty {
+        padding: 32px;
+      }
+      footer {
+        padding: 20px 28px;
+        color: #4c687e;
+        text-align: center;
+        font-size: 13px;
+      }
+      @media (max-width: 600px) {
+        header {
+          padding: 28px 18px;
+        }
+        main {
+          padding: 0 18px 36px;
+          grid-template-columns: 1fr;
+        }
+        .lightbox-head {
+          padding: 12px;
+          align-items: start;
+          flex-direction: column;
+        }
+        .lightbox-content {
+          padding: 8px;
+          height: calc(100% - 130px);
+        }
+        .lightbox-content .pair {
+          gap: 8px;
+        }
+        .lightbox-content figcaption {
+          padding: 10px;
+          font-size: 12px;
+        }
+        .lightbox-content img {
+          max-height: none;
+        }
+        dialog {
+          width: calc(100% - 12px);
+          height: calc(100dvh - 12px);
+          border-radius: 12px;
+        }
+        .toolbar input {
+          width: 100%;
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <header>
+      <h1>Fernblick, in a different light.</h1>
+      <p>
+        A blue command desk for your agents. Phone-first focus, a persistent workspace rail on iPad
+        and desktop, and quieter, more readable conversations.
+      </p>
+      <p>
+        <strong>Actual application screenshots.</strong> Identical synthetic fixtures before and
+        after; no private sessions or real agent commands. Click a comparison to open the lightbox.
+        Use ← / → to browse, Escape to close, and click an image to zoom.
+      </p>
+      <nav aria-label="Viewport">
+        <button data-size="phone" aria-pressed="true">Phone · 390 × 844</button
+        ><button data-size="ipad" aria-pressed="false">iPad · 834 × 1194</button
+        ><button data-size="desktop" aria-pressed="false">Desktop · 1440 × 1000</button>
+      </nav>
+      <div class="toolbar">
+        <input
+          id="search"
+          type="search"
+          aria-label="Filter screens"
+          placeholder="Find a screen or state…"
+        /><span id="count"></span><a class="link" href="?phase=before">Before-only gallery</a
+        ><a class="link" href="?">Before / after</a>
+      </div>
+    </header>
+    <main id="gallery"></main>
+    <footer>
+      Proposal branch: design/blue-responsive · Baseline: 2695548 · Screens include overview,
+      creation, chat, terminals, settings, paths and recovery states.
+    </footer>
+    <dialog id="lightbox" aria-labelledby="lightbox-title">
+      <div class="lightbox-head">
+        <div>
+          <h2 id="lightbox-title"></h2>
+          <p id="lightbox-meta"></p>
+        </div>
+        <div class="lightbox-controls">
+          <button id="prev" aria-label="Previous screen">←</button
+          ><button id="next" aria-label="Next screen">→</button><button id="mode">After only</button
+          ><button id="zoom" aria-pressed="false">Zoom</button><button id="close">Close</button>
+        </div>
+      </div>
+      <div class="lightbox-content" id="lightbox-content"></div>
+    </dialog>
+    <script type="module">
+      const $ = (s) => document.querySelector(s);
+      let viewport = "phone",
+        visible = [],
+        index = 0;
+      const beforeOnly = new URLSearchParams(location.search).get("phase") === "before";
+      document.body.classList.toggle("before-only", beforeOnly);
+      const manifest = await fetch("before.json").then((r) => r.json());
+      const after = await fetch("after.json")
+        .then((r) => (r.ok ? r.json() : []))
+        .catch(() => []);
+      const afterKeys = new Set(after.map((x) => x.viewport + "-" + x.id));
+      function pair(x, lazy = true) {
+        const key = x.viewport + "-" + x.id;
+        return `<div class="pair"><figure><figcaption>Before</figcaption><img ${lazy ? 'loading="lazy"' : ""} src="before/${key}.png" alt="Before: ${x.title}, ${x.viewport}"></figure>${!beforeOnly && afterKeys.has(key) ? `<figure><figcaption>Blue command desk</figcaption><img ${lazy ? 'loading="lazy"' : ""} src="after/${key}.png" alt="Proposed: ${x.title}, ${x.viewport}"></figure>` : ""}</div>`;
+      }
+      function render() {
+        const q = $("#search").value.toLowerCase();
+        visible = manifest.filter(
+          (x) => x.viewport === viewport && (x.title + " " + x.group).toLowerCase().includes(q),
+        );
+        $("#count").textContent = `${visible.length} screen comparisons`;
+        $("#gallery").innerHTML =
+          visible
+            .map(
+              (x, i) =>
+                `<button class="card" data-index="${i}" data-viewport="${x.viewport}" aria-label="Compare ${x.title}"><h2>${x.title}</h2><p>${x.group} · ${x.width} × ${x.height}</p>${pair(x)}</button>`,
+            )
+            .join("") || '<p id="empty">No matching screens.</p>';
+        document
+          .querySelectorAll(".card")
+          .forEach((c) => (c.onclick = () => open(+c.dataset.index)));
+      }
+      function show() {
+        const x = visible[index];
+        $("#lightbox-title").textContent = x.title;
+        $("#lightbox-meta").textContent =
+          `${x.group} · ${x.viewport} · ${index + 1} of ${visible.length}`;
+        $("#lightbox-content").innerHTML = pair(x, false);
+        $("#lightbox-content").style.setProperty(
+          "--comparison-width",
+          `${beforeOnly ? x.width : x.width * 2 + 16}px`,
+        );
+        $("#lightbox-content").style.setProperty("--screen-width", `${x.width}px`);
+        $("#lightbox-content").scrollTop = 0;
+        $("#lightbox-content").scrollLeft = 0;
+        $("#lightbox-content")
+          .querySelectorAll("img")
+          .forEach((img) => (img.onclick = toggleZoom));
+      }
+      function open(i) {
+        index = i;
+        $("#lightbox-content").className = "lightbox-content";
+        $("#zoom").setAttribute("aria-pressed", "false");
+        $("#mode").textContent = "After only";
+        show();
+        $("#lightbox").showModal();
+      }
+      function move(d) {
+        index = (index + d + visible.length) % visible.length;
+        show();
+      }
+      function toggleZoom() {
+        const on = $("#lightbox-content").classList.toggle("zoom");
+        $("#zoom").setAttribute("aria-pressed", String(on));
+      }
+      document.querySelectorAll("[data-size]").forEach(
+        (b) =>
+          (b.onclick = () => {
+            viewport = b.dataset.size;
+            document
+              .querySelectorAll("[data-size]")
+              .forEach((v) => v.setAttribute("aria-pressed", String(v === b)));
+            render();
+          }),
+      );
+      $("#search").oninput = render;
+      $("#close").onclick = () => $("#lightbox").close();
+      $("#prev").onclick = () => move(-1);
+      $("#next").onclick = () => move(1);
+      $("#zoom").onclick = toggleZoom;
+      $("#mode").hidden = beforeOnly || !after.length;
+      $("#mode").onclick = () => {
+        const on = $("#lightbox-content").classList.toggle("single");
+        $("#mode").textContent = on ? "Side by side" : "After only";
+      };
+      document.addEventListener("keydown", (e) => {
+        if (!$("#lightbox").open) return;
+        if (e.key === "ArrowRight") move(1);
+        if (e.key === "ArrowLeft") move(-1);
+      });
+      $("#lightbox").onclick = (e) => {
+        if (e.target === $("#lightbox")) $("#lightbox").close();
+      };
+      render();
+    </script>
+  </body>
+</html>

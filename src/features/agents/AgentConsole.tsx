@@ -254,7 +254,7 @@ export function AgentConsole({ agent, onBack }: AgentConsoleProps) {
           aria-label={`Switch to ${view === "chat" ? "Terminal" : "Chat"} view`}
           onClick={() => setView((current) => (current === "chat" ? "terminal" : "chat"))}
         >
-          {view === "chat" ? "Chat" : "Terminal"}
+          {view === "chat" ? "Terminal" : "Chat"}
         </button>
         <StatusIndicator status={agent.agent_status} label={getStatusLabel(agent.agent_status)} />
       </header>
