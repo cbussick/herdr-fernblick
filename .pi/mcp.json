@@ -2,7 +2,7 @@
   "mcpServers": {
     "linear-herdr-fernblick": {
       "type": "http",
-      "url": "https://mcp.linear.app/mcp"
+      "url": "https://mcp.linear.app/mcp#herdr-fernblick"
     }
   }
 }
