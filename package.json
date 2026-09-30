@@ -17,7 +17,7 @@
     "preview": "vite preview",
     "start": "node dist-server/server/index.js",
     "test": "vitest run --exclude \"dist-server/**\"",
-    "typecheck": "tsc -b --pretty false"
+    "typecheck": "tsc -b --pretty false && tsc -p tsconfig.tests.json --pretty false"
   },
   "dependencies": {
     "@tanstack/react-query": "^5.90.21",
@@ -26,6 +26,7 @@
     "zod": "^4.3.6"
   },
   "devDependencies": {
+    "@earendil-works/pi-coding-agent": "0.99.1",
     "@storybook/addon-a11y": "^10.5.10",
     "@storybook/react-vite": "^10.5.10",
     "@types/node": "^24.13.3",

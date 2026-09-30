@@ -1,9 +1,6 @@
 import {
   agentsResponseSchema,
-  agentTranscriptSchema,
   imageUploadSchema,
-  navigateTreeRequestSchema,
-  piTreeResponseSchema,
   createAgentRequestSchema,
   createAgentResponseSchema,
   createWorkspaceRequestSchema,
@@ -11,12 +8,6 @@ import {
   createTabRequestSchema,
   createTabResponseSchema,
   terminalOutputSchema,
-  queuedMessageInputSchema,
-  queuedMessageCreateSchema,
-  queuedMessageResponseSchema,
-  queuedMessagesResponseSchema,
-  type QueuedMessageInput,
-  type QueuedMessageCreate,
   type Agent,
   type CreateAgentRequest,
   type CreateWorkspaceRequest,
@@ -128,27 +119,6 @@ export async function sendPaneKey(paneId: string, key: KeyName) {
   });
 }
 
-export async function getAgentTranscript(target: string) {
-  return agentTranscriptSchema.parse(
-    await request(`/api/agents/${encodeURIComponent(target)}/transcript`),
-  );
-}
-
-export async function getAgentTree(target: string) {
-  return piTreeResponseSchema.parse(
-    await request(`/api/agents/${encodeURIComponent(target)}/tree`),
-  );
-}
-
-export async function navigateAgentTree(target: string, entryId: string) {
-  const body = (await request(`/api/agents/${encodeURIComponent(target)}/tree-navigation`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(navigateTreeRequestSchema.parse({ entryId })),
-  })) as { agent: Agent };
-  return body.agent;
-}
-
 export async function getAgentOutput(target: string) {
   const body = await request(`/api/agents/${encodeURIComponent(target)}/output?lines=600`);
   return terminalOutputSchema.parse(body);
@@ -164,51 +134,17 @@ export async function uploadImage(file: File) {
   );
 }
 
-export async function promptAgent(target: string, text: string, attachments: string[] = []) {
-  const body = (await request(`/api/agents/${encodeURIComponent(target)}/prompt`, {
+export async function chatCommand(
+  target: string,
+  identity: import("../../../packages/pi-live-chat/protocol").Target,
+  action: "prompt" | "stop",
+  text?: string,
+) {
+  return request(`/api/agents/${encodeURIComponent(target)}/${action}`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ text, attachments }),
-  })) as { agent: Agent };
-  return body.agent;
-}
-
-const queueUrl = (target: string) => `/api/agents/${encodeURIComponent(target)}/queue`;
-
-export async function getQueuedMessages(target: string) {
-  return queuedMessagesResponseSchema.parse(await request(queueUrl(target))).messages;
-}
-
-export async function queueMessage(target: string, input: QueuedMessageCreate) {
-  return queuedMessageResponseSchema.parse(
-    await request(queueUrl(target), {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(queuedMessageCreateSchema.parse(input)),
-    }),
-  ).message;
-}
-
-export async function editQueuedMessage(target: string, id: string, input: QueuedMessageInput) {
-  return queuedMessageResponseSchema.parse(
-    await request(`${queueUrl(target)}/${encodeURIComponent(id)}`, {
-      method: "PATCH",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(queuedMessageInputSchema.parse(input)),
-    }),
-  ).message;
-}
-
-export async function removeQueuedMessage(target: string, id: string) {
-  await request(`${queueUrl(target)}/${encodeURIComponent(id)}`, { method: "DELETE" });
-}
-
-export async function retryQueuedMessage(target: string, id: string) {
-  await request(`${queueUrl(target)}/${encodeURIComponent(id)}/retry`, { method: "POST" });
-}
-
-export async function acknowledgeQueuedMessage(target: string, id: string) {
-  await request(`${queueUrl(target)}/${encodeURIComponent(id)}/ack`, { method: "POST" });
+    body: JSON.stringify({ target: identity, text }),
+  });
 }
 
 export async function sendAgentKey(target: string, key: KeyName) {

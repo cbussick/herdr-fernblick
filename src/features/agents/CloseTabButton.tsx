@@ -52,8 +52,6 @@ export function CloseTabButton({
     onSuccess: () => {
       void queryClient.invalidateQueries({ queryKey: ["agents"] });
       void queryClient.invalidateQueries({ queryKey: ["agent-output", agentTarget] });
-      void queryClient.invalidateQueries({ queryKey: ["agent-transcript", agentTarget] });
-      void queryClient.invalidateQueries({ queryKey: ["agent-tree", agentTarget] });
       dialogRef.current?.close();
     },
   });

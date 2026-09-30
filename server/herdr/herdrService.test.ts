@@ -2,9 +2,6 @@ import { expect, it, vi } from "vitest";
 import type { z } from "zod";
 import type { HerdrClient } from "./HerdrClient.js";
 import { HerdrService } from "./herdrService.js";
-import { readPiTree } from "../pi/readPiTree.js";
-
-vi.mock("../pi/readPiTree.js", () => ({ readPiTree: vi.fn() }));
 
 const agent = {
   agent: "pi",
@@ -16,45 +13,6 @@ const agent = {
   tab_id: "w1:t2",
   workspace_id: "w1",
 };
-
-it("navigates the Pi tree through the interactive command rather than a chat prompt", async () => {
-  vi.mocked(readPiTree).mockResolvedValue({
-    roots: [
-      {
-        id: "entry-1",
-        parentId: null,
-        role: "user",
-        text: "hello",
-        isActivePath: true,
-        children: [],
-      },
-    ],
-    leafId: "entry-1",
-  });
-  const request = vi.fn(async <T>(method: string, _params: unknown, schema: z.ZodType<T>) =>
-    schema.parse(
-      method === "agent.get"
-        ? {
-            type: "agent_info",
-            agent: {
-              ...agent,
-              agent_session: { agent: "pi", source: "pi", kind: "path", value: "/session.jsonl" },
-            },
-          }
-        : { type: "ok" },
-    ),
-  );
-  const service = new HerdrService({ request } as unknown as HerdrClient);
-
-  await service.navigateAgentTree("w1:p2", "entry-1");
-
-  expect(request).toHaveBeenCalledWith(
-    "pane.send_input",
-    { pane_id: "w1:p2", text: "/fernblick-navigate entry-1", keys: ["enter"] },
-    expect.anything(),
-  );
-  expect(request).not.toHaveBeenCalledWith("agent.prompt", expect.anything(), expect.anything());
-});
 
 it("uses the raw protocol spelling for recent unwrapped output", async () => {
   const request = vi.fn(
@@ -123,21 +81,6 @@ it("adds workspace and tab labels to agents from the session snapshot", async ()
   expect(request).toHaveBeenCalledWith("session.snapshot", {}, expect.anything());
 });
 
-it("returns an empty transcript while a Pi session is initializing", async () => {
-  const request = vi.fn(async <T>(_method: string, _params: unknown, schema: z.ZodType<T>) =>
-    schema.parse({ type: "agent_info", agent }),
-  );
-  const service = new HerdrService({ request } as unknown as HerdrClient);
-
-  const transcript = await service.readAgentTranscript("w1:p2");
-
-  expect(transcript).toEqual({
-    messages: [],
-    status: { cwd: "Unknown directory", totalTokens: 0, cost: 0 },
-  });
-  expect(request).toHaveBeenCalledTimes(1);
-});
-
 it("creates a tab before starting Pi in its root pane", async () => {
   const request = vi.fn(async <T>(method: string, _params: unknown, schema: z.ZodType<T>) => {
     if (method === "tab.create") {
@@ -166,7 +109,7 @@ it("creates a tab before starting Pi in its root pane", async () => {
       kind: "pi",
       pane_id: "w1:p2",
       timeout_ms: 30_000,
-      args: ["--extension", expect.stringContaining("fernblickPiExtension")],
+      args: ["--extension", expect.stringContaining("pi-live-chat/index")],
     },
     expect.anything(),
   ]);
@@ -205,7 +148,7 @@ it("generates a valid default agent name while letting Herdr choose the tab name
       kind: "pi",
       pane_id: "w1:p2",
       timeout_ms: 30_000,
-      args: ["--extension", expect.stringContaining("fernblickPiExtension")],
+      args: ["--extension", expect.stringContaining("pi-live-chat/index")],
     },
     expect.anything(),
   ]);
@@ -249,7 +192,7 @@ it("gracefully restarts Pi in the same pane and session", async () => {
         "--session",
         sessionPath,
         "--extension",
-        expect.stringContaining("fernblickPiExtension"),
+        expect.stringContaining("pi-live-chat/index"),
       ],
     }),
     expect.anything(),
