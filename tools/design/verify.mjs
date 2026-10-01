@@ -238,6 +238,8 @@ for (const [name, engine] of Object.entries({ chromium, webkit })) {
       };
       window.EventSource = class {
         constructor() {
+          this.snapshot = snapshot;
+          window.__fixtureEvents = this;
           this.timer = setTimeout(() => this.onmessage?.({ data: JSON.stringify(snapshot) }), 10);
         }
         close() {
@@ -260,6 +262,50 @@ for (const [name, engine] of Object.entries({ chromium, webkit })) {
       Math.abs(groupCenter - (panel.y + panel.height / 2)) < 2,
       `${name} ${width}: Empty conversation must be vertically centered`,
     );
+    await page.evaluate(() => {
+      const events = window.__fixtureEvents;
+      events.onmessage({
+        data: JSON.stringify({
+          ...events.snapshot,
+          seq: 2,
+          messages: [
+            {
+              id: "tool",
+              role: "tool",
+              toolName: "read · AgentOverview.tsx",
+              text: "WorkspaceList\n  Workspace disclosure\n  Agent rows and status indicators",
+            },
+            {
+              id: "answer",
+              role: "assistant",
+              text: "A long answer to verify that the read accordion retains its complete height. ".repeat(
+                30,
+              ),
+            },
+          ],
+        }),
+      });
+    });
+    const tool = page.locator(appSelector(".chat-tool"));
+    await tool.locator("summary").click();
+    assert.ok(
+      await tool.evaluate((accordion) => {
+        const summary = accordion.querySelector("summary").getBoundingClientRect();
+        const output = accordion.querySelector("pre").getBoundingClientRect();
+        const frame = accordion.getBoundingClientRect();
+        return (
+          Math.abs(summary.bottom - output.top) < 1 &&
+          frame.bottom >= output.bottom &&
+          accordion.nextElementSibling.getBoundingClientRect().top >= frame.bottom
+        );
+      }),
+      "Read header and output must share one complete, non-overlapping accordion frame",
+    );
+    await tool.locator("summary").focus();
+    await page.keyboard.press("Space");
+    assert.equal(await tool.locator("pre").isVisible(), false);
+    await page.keyboard.press("Space");
+    assert.equal(await tool.locator("pre").isVisible(), true);
     assert.deepEqual(errors, []);
     console.log(
       `${name}: ${width}×${height} gallery, layout, lightbox, filters, navigation and touch targets passed`,

@@ -165,10 +165,23 @@ const sizes = [
   { id: "ipad-landscape", label: "iPad landscape", width: 1194, height: 834 },
   { id: "desktop", label: "Desktop", width: 1440, height: 1000 },
 ];
+// An optional fourth argument refreshes only named states in an existing gallery.
+const selected = process.argv[4]?.split(",");
+assert.ok(
+  !selected || selected.every((id) => scenarios.some((scenario) => scenario[0] === id)),
+  "Unknown capture scenario",
+);
+const captureScenarios = selected
+  ? scenarios.filter((scenario) => selected.includes(scenario[0]))
+  : scenarios;
+const manifest = selected
+  ? JSON.parse(await fs.readFile(`${out}/${phase}.json`, "utf8")).filter(
+      (screen) => !selected.includes(screen.id),
+    )
+  : [];
 const browser = await chromium.launch({ headless: true });
-const manifest = [];
 for (const size of sizes)
-  for (const [id, title, group] of scenarios) {
+  for (const [id, title, group] of captureScenarios) {
     const page = await browser.newPage({
       viewport: { width: size.width, height: size.height },
       deviceScaleFactor: 1,
@@ -549,14 +562,26 @@ for (const size of sizes)
           );
         if (id === "tool-open")
           assert.ok(
-            await page
-              .locator(appSelector(".chat-tool pre"))
-              .evaluate(
-                (pre) =>
-                  getComputedStyle(pre).backgroundColor === "rgb(255, 255, 255)" &&
-                  getComputedStyle(pre).borderTopWidth === "1px",
-              ),
-            "Expanded tool output must have a white, bordered surface",
+            await page.locator(appSelector(".chat-tool pre")).evaluate((pre) => {
+              const accordion = pre.parentElement;
+              const summary = accordion.querySelector("summary");
+              const following = accordion.nextElementSibling;
+              return (
+                (!following ||
+                  following.getBoundingClientRect().top >=
+                    accordion.getBoundingClientRect().bottom) &&
+                getComputedStyle(pre).backgroundColor === "rgb(255, 255, 255)" &&
+                getComputedStyle(pre).borderTopWidth === "0px" &&
+                getComputedStyle(pre).marginTop === "0px" &&
+                getComputedStyle(accordion).borderTopWidth === "1px" &&
+                Math.abs(summary.getBoundingClientRect().bottom - pre.getBoundingClientRect().top) <
+                  1 &&
+                accordion.getBoundingClientRect().bottom >= pre.getBoundingClientRect().bottom &&
+                accordion.getBoundingClientRect().height >=
+                  summary.getBoundingClientRect().height + pre.getBoundingClientRect().height
+              );
+            }),
+            "Tool header and output must form one connected, bordered accordion",
           );
         if (id === "send-pending") await page.locator('[data-testid="send-spinner"]').waitFor();
         if (id === "send-acknowledged")
@@ -570,6 +595,28 @@ for (const size of sizes)
         );
       }
       await page.screenshot({ path: `${out}/${phase}/${size.id}-${id}.png` });
+      if (phase === "after" && id === "tool-open") {
+        await page.locator(appSelector(".chat-tool summary")).focus();
+        await page.keyboard.press("Space");
+        assert.equal(
+          await page.locator(appSelector(".chat-tool pre")).isVisible(),
+          false,
+          "Space must collapse the read accordion",
+        );
+        await page.keyboard.press("Space");
+        assert.equal(
+          await page.locator(appSelector(".chat-tool pre")).isVisible(),
+          true,
+          "Space must reopen the read accordion",
+        );
+        assert.equal(
+          await page
+            .locator(appSelector(".chat-tool summary"))
+            .evaluate((summary) => getComputedStyle(summary).outlineOffset),
+          "-3px",
+          "Keyboard focus must remain visible inside the accordion header",
+        );
+      }
       const overflow = await page.evaluate(() => document.documentElement.scrollWidth > innerWidth);
       if (overflow) console.warn(`Overflow: ${size.id}/${id}`);
       manifest.push({
@@ -591,6 +638,14 @@ for (const size of sizes)
     }
   }
 await browser.close();
+if (process.exitCode) throw new Error("Capture failed; previous gallery manifest was preserved");
+manifest.sort(
+  (a, b) =>
+    sizes.findIndex((size) => size.id === a.viewport) -
+      sizes.findIndex((size) => size.id === b.viewport) ||
+    scenarios.findIndex((scenario) => scenario[0] === a.id) -
+      scenarios.findIndex((scenario) => scenario[0] === b.id),
+);
 await fs.writeFile(`${out}/${phase}.json`, JSON.stringify(manifest, null, 2));
 await fs.copyFile("tools/design/gallery.html", `${out}/index.html`);
 console.log(`Captured ${manifest.length} screens for ${phase}.`);

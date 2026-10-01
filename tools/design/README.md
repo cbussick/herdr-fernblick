@@ -11,7 +11,7 @@ Fernblick is a remote view onto coding agents, not an analytics dashboard. Its v
 - Phone: one pane at a time, left-aligned workspace grouping, a reachable labeled Create control, and two header rows so status never competes with edit/view controls.
 - iPad: single-pane/mobile navigation in portrait, persistent workspace rail in landscape. A rail is shown at widths of at least 768px in landscape, or at least 1200px regardless of orientation. Rotation keeps the selected agent.
 - Desktop: rail plus a bounded conversation column, a one-row console header from 1152px, and a bounded composer instead of a viewport-wide input.
-- Grouping: workspace containers correspond to actual projects, not arbitrary dashboard cards. The flat agent view uses white, bordered row surfaces. Expanded tool results use a separate white, bordered output surface. Distinct chat corners communicate speaker, not decoration.
+- Grouping: workspace containers correspond to actual projects, not arbitrary dashboard cards. The flat agent view uses white, bordered row surfaces. Expanded tool results use a white output area inside the same bordered accordion as their blue `read` header, with no gap or separate bubble corners. Distinct chat corners communicate speaker, not decoration.
 - Accessibility: 44px console touch targets, visible focus, improved secondary-text contrast, safe-area padding and existing reduced-motion support. Existing status pulses and startup/send spinners respect reduced motion; no decorative animation.
 
 The plan deliberately avoids metrics tiles, a decorative gradient hero, and dashboard ornament. A subtle blue rail and the horizon mark carry the personality; status color retains its operational meaning.
@@ -53,6 +53,8 @@ Build a separate checkout of baseline `2695548` and serve its `dist/` on loopbac
 ```sh
 node tools/design/capture.mjs before http://127.0.0.1:5195
 node tools/design/capture.mjs after http://127.0.0.1:5198
+# Optional targeted refresh of an existing complete gallery:
+node tools/design/capture.mjs after http://127.0.0.1:5198 tool-open
 python3 -m http.server 5197 --bind "$(tailscale ip -4)" --directory design-gallery
 node tools/design/verify.mjs http://100.71.229.1:5197 http://127.0.0.1:5198
 ```
@@ -76,7 +78,7 @@ The comparison writes `design-gallery/proposal-comparison.json` and fails if mor
 - `npm run check`: formatting, CSS Modules conventions, lint, TypeScript, 81 tests and production build. Includes a real loopback HTTP test for the locally bundled font and full license, without any live-agent socket access.
 - `npm run build:storybook`: builds component stories and copies the font license into the output.
 - `verify.mjs`: Chromium and WebKit at eight phone/tablet/desktop sizes, including 1024×1366 portrait, 1024×768 landscape and 1194×834 landscape. Checks all 53 three-viewport screen groups (159 default screenshot cards), plus the 53 landscape captures, image decode, comparison/finished/zoom modes, search and device filters, keyboard navigation and close, before-only gallery, actual Manrope loading and the shipped license, orientation-aware rail visibility and rotation with selection preserved, white flat-agent rows, long-title console hit targets, red error icons, centered empty chat, back navigation, no page errors and no document-level horizontal overflow.
-- `capture.mjs`: asserts layout for every finished detail screen, white agent rows and expanded tool surfaces, replacement empty-workspace copy, actual pending-send spinner, immediate ACK draft clearing and absence of obsolete sending/receipt/footer text.
+- `capture.mjs`: asserts layout for every finished detail screen, white agent rows, connected accordion header/output surfaces with keyboard toggle and visible focus, replacement empty-workspace copy, actual pending-send spinner, immediate ACK draft clearing and absence of obsolete sending/receipt/footer text.
 - Visual review of phone overview/conversation/forms and both iPad orientations/desktop captures.
 
 Remaining limitation: these are synthetic-data browser captures, not testing against a live backend or physical iPad/phone. No production deployment or integration into `main` has been performed.
