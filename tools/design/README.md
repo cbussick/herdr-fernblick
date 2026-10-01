@@ -1,6 +1,6 @@
 # Blue command desk
 
-Implemented light-blue design for Fernblick, isolated on `design/blue-responsive`. All application and Storybook styles use CSS Modules. The running production app is unchanged until integration/deployment is explicitly approved. Finished-screen gallery: <http://100.71.229.1:5197/> (same Tailnet required); each screen is grouped with its mobile, iPad portrait and desktop captures, with an extra iPad landscape filter. The same gallery is also served at <http://127.0.0.1:5197/>.
+Implemented light-blue design for Fernblick. All application and Storybook styles use CSS Modules. The approved implementation is maintained on `main` and served by the normal production app on port 8787. Finished-screen gallery: <http://100.71.229.1:5197/> (same Tailnet required); each screen is grouped with its mobile, iPad portrait and desktop captures, with an extra iPad landscape filter. The same gallery is also served at <http://127.0.0.1:5197/>.
 
 ## Direction
 
@@ -48,7 +48,7 @@ export PLAYWRIGHT_MODULE=/tmp/fernblick-design-tools/node_modules/playwright/ind
 /tmp/fernblick-design-tools/node_modules/.bin/playwright install chromium webkit
 ```
 
-Build a separate checkout of baseline `2695548` and serve its `dist/` on loopback port 5195. Build this task worktree (`npm ci && npm run check`) and serve its `dist/` on loopback port 5198. Neither needs a backend. Run from this task worktree:
+Build a separate checkout of baseline `2695548` and serve its `dist/` on loopback port 5195. Build a checkout of `main` (`npm ci && npm run check`) and serve its `dist/` on a temporary loopback port 5198. Neither needs a backend. Run from this task worktree:
 
 ```sh
 node tools/design/capture.mjs before http://127.0.0.1:5195
@@ -81,4 +81,6 @@ The comparison writes `design-gallery/proposal-comparison.json` and fails if mor
 - `capture.mjs`: asserts layout for every finished detail screen, white agent rows, connected accordion header/output surfaces with keyboard toggle and visible focus, replacement empty-workspace copy, actual pending-send spinner, immediate ACK draft clearing and absence of obsolete sending/receipt/footer text.
 - Visual review of phone overview/conversation/forms and both iPad orientations/desktop captures.
 
-Remaining limitation: these are synthetic-data browser captures, not testing against a live backend or physical iPad/phone. No production deployment or integration into `main` has been performed.
+Remaining limitation: these are synthetic-data browser captures, not exercising live-agent commands or physical iPad/phone hardware. Production deployment should additionally be smoke-checked with read-only HTTP requests and frontend browser checks that intercept agent APIs.
+
+The served gallery archive is retained in the primary checkout’s ignored `design-gallery/` directory after task-worktree cleanup. Ports 5195/5198 are temporary capture infrastructure and can be stopped once production is verified.
