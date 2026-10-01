@@ -1,3 +1,5 @@
+import a11yStyles from "../../styles/accessibility.module.css";
+import consoleStyles from "./Console.module.css";
 import { useEffect, useRef, useState, type FormEvent, type RefObject } from "react";
 import { useMutation, useQuery } from "@tanstack/react-query";
 import type { Agent, KeyName } from "../../shared/api/contracts";
@@ -17,6 +19,7 @@ import {
   SendIcon,
 } from "../../shared/ui/Icons";
 import { IconButton, StatusIndicator, TabKindIcon } from "../../shared/ui";
+import { StateIcon, StateNotice } from "../../shared/ui/StateFeedback";
 
 interface AgentConsoleProps {
   agent: Agent;
@@ -45,7 +48,11 @@ function ChatAttachment({ url, onOpen }: { url: string; onOpen: () => void }) {
   const [unavailable, setUnavailable] = useState(false);
   if (unavailable) {
     return (
-      <div className="chat-attachment-unavailable" role="img" aria-label="Attachment unavailable">
+      <div
+        className={consoleStyles["chat-attachment-unavailable"]}
+        role="img"
+        aria-label="Attachment unavailable"
+      >
         <ImageIcon />
         <span>Attachment no longer available</span>
       </div>
@@ -202,15 +209,15 @@ export function AgentConsole({ agent, onBack }: AgentConsoleProps) {
       send.mutate({ text: prompt, attachments: [...attachments], target: targetOf(snapshot) });
   }
   return (
-    <main className="console" id="main-content">
-      <header className="console-header">
+    <main className={consoleStyles["console"]} data-testid="console" id="main-content">
+      <header className={consoleStyles["console-header"]} data-testid="console-header">
         <IconButton label="Back to overview" onClick={onBack}>
           <BackIcon />
         </IconButton>
         <TabKindIcon kind="agent" />
-        <div className="console-header__copy">
+        <div className={consoleStyles["console-header__copy"]}>
           <p>{agent.workspace_label ?? agent.workspace_id}</p>
-          <div className="console-header__title">
+          <div className={consoleStyles["console-header__title"]}>
             <h2>{getAgentTabLabel(agent)}</h2>
           </div>
         </div>
@@ -234,11 +241,11 @@ export function AgentConsole({ agent, onBack }: AgentConsoleProps) {
         />
         <button
           type="button"
-          className="agent-view-toggle"
+          className={consoleStyles["agent-view-toggle"]}
           aria-label={`Switch to ${view === "chat" ? "Terminal" : "Chat"} view`}
           onClick={() => setView((current) => (current === "chat" ? "terminal" : "chat"))}
         >
-          {view === "chat" ? "Chat" : "Terminal"}
+          {view === "chat" ? "Terminal" : "Chat"}
         </button>
         <StatusIndicator
           status={initializing ? "unknown" : agent.agent_status}
@@ -252,75 +259,118 @@ export function AgentConsole({ agent, onBack }: AgentConsoleProps) {
         />
       </header>
       {agent.agent_status === "blocked" ? (
-        <div className="attention-banner" role="status">
+        <div className={consoleStyles["attention-banner"]} role="status">
           <strong>Needs your input</strong>
           <span>The agent is waiting for a decision.</span>
         </div>
       ) : null}
       <section
-        className={`output-panel output-panel--${view}`}
+        className={consoleStyles["output-panel"] + " " + consoleStyles[`output-panel--${view}`]}
+        data-testid="output-panel"
+        data-view={view}
         aria-label={view === "chat" ? "Agent conversation" : "Terminal output"}
       >
         {view === "terminal" ? (
           <>
-            <div className="output-panel__bar">
+            <div className={consoleStyles["output-panel__bar"]}>
               <span>Agent output</span>
               <span>ANSI</span>
             </div>
             {outputQuery.isPending ? (
-              <div className="terminal-state">Reading agent output…</div>
+              <div className={consoleStyles["terminal-state"]} aria-busy="true">
+                <StateIcon kind="loading" />
+                <p>Reading agent output…</p>
+              </div>
             ) : outputQuery.isError ? (
-              <div role="alert">{outputQuery.error.message}</div>
+              <div
+                className={
+                  consoleStyles["terminal-state"] + " " + consoleStyles["terminal-state--error"]
+                }
+                data-testid="terminal-state--error"
+                role="alert"
+              >
+                <StateIcon kind="unavailable" />
+                <p>{outputQuery.error.message}</p>
+              </div>
+            ) : !outputQuery.data.text ? (
+              <div className={consoleStyles["terminal-state"]}>
+                <StateIcon kind="terminal" />
+                <p>No agent output yet.</p>
+              </div>
             ) : (
               <pre
                 ref={outputRef as RefObject<HTMLPreElement>}
-                className="terminal-output"
+                className={consoleStyles["terminal-output"]}
                 tabIndex={0}
                 onScroll={trackScroll}
               >
-                {outputQuery.data.text || "No agent output yet."}
+                {outputQuery.data.text}
               </pre>
             )}
           </>
         ) : live.error && !snapshot ? (
-          <div className="terminal-state terminal-state--error" role="alert">
-            {live.error}
+          <div
+            className={
+              consoleStyles["terminal-state"] + " " + consoleStyles["terminal-state--error"]
+            }
+            data-testid="terminal-state--error"
+            role="alert"
+          >
+            <StateIcon kind="unavailable" />
+            <p>{live.error}</p>
           </div>
         ) : !snapshot ? (
-          <div className="terminal-state transcript-initializing" role="status" aria-busy="true">
-            <span className="transcript-initializing__spinner" aria-hidden="true" />
-            <span>{starting ? "Starting Pi…" : "Connecting to Pi live chat…"}</span>
+          <div
+            className={
+              consoleStyles["terminal-state"] + " " + consoleStyles["transcript-initializing"]
+            }
+            role="status"
+            aria-busy="true"
+          >
+            <StateIcon kind="loading" spinning />
+            <p>{starting ? "Starting Pi…" : "Connecting to Pi live chat…"}</p>
           </div>
         ) : (
           <div
             ref={outputRef as RefObject<HTMLDivElement>}
-            className="chat-transcript"
+            className={consoleStyles["chat-transcript"]}
+            data-testid="chat-transcript"
+            data-empty={!snapshot.messages.length || undefined}
             tabIndex={0}
             onScroll={trackScroll}
           >
-            {live.error ? <p role="status">{live.error}</p> : null}
+            {live.error ? <StateNotice kind="unavailable">{live.error}</StateNotice> : null}
             {snapshot.version !== 2 ? (
-              <p role="status">Run /reload in Pi to update the chat connection.</p>
+              <StateNotice kind="info">
+                Run /reload in Pi to update the chat connection.
+              </StateNotice>
             ) : null}
             {snapshot.truncated ? (
-              <div role="status">Showing a bounded recent transcript; some content is omitted.</div>
+              <StateNotice kind="info">
+                Showing a bounded recent transcript; some content is omitted.
+              </StateNotice>
             ) : null}
             {snapshot.messages
               .filter((message) => showThinking || message.role !== "thinking")
               .map((message) =>
                 message.role === "status" ? (
-                  <div className="chat-status" role="status" key={message.id}>
+                  <StateNotice kind="info" key={message.id}>
                     {message.text}
-                  </div>
+                  </StateNotice>
                 ) : message.role === "thinking" ? (
-                  <div className="chat-thinking" key={message.id}>
+                  <div className={consoleStyles["chat-thinking"]} key={message.id}>
                     <LightbulbIcon />
-                    <span className="sr-only">Thinking: </span>
+                    <span className={a11yStyles["sr-only"]}>Thinking: </span>
                     <ChatMessageText text={message.text} />
                   </div>
                 ) : message.role === "tool" ? (
                   <details
-                    className={`chat-tool${message.isError ? " chat-tool--error" : ""}`}
+                    className={
+                      consoleStyles["chat-tool"] +
+                      " " +
+                      (message.isError ? consoleStyles["chat-tool--error"] : "")
+                    }
+                    data-testid="chat-tool"
                     key={message.id}
                   >
                     <summary>{message.toolName}</summary>
@@ -328,13 +378,17 @@ export function AgentConsole({ agent, onBack }: AgentConsoleProps) {
                   </details>
                 ) : (
                   <article
-                    className={`chat-message chat-message--${message.role}`}
+                    className={
+                      consoleStyles["chat-message"] +
+                      " " +
+                      (message.role === "user" ? consoleStyles["chat-message--user"] : "")
+                    }
                     key={message.id}
                   >
                     <span>{message.role === "user" ? "You" : getAgentTabLabel(agent)}</span>
                     {message.text ? <ChatMessageText text={message.text} /> : null}
                     {message.attachments?.length ? (
-                      <div className="chat-message__attachments">
+                      <div className={consoleStyles["chat-message__attachments"]}>
                         {message.attachments.map((url, i) => (
                           <ChatAttachment key={i} url={url} onOpen={() => setLightboxImage(url)} />
                         ))}
@@ -344,10 +398,13 @@ export function AgentConsole({ agent, onBack }: AgentConsoleProps) {
                 ),
               )}
             {!snapshot.messages.length ? (
-              <div className="terminal-state">No messages yet.</div>
+              <div className={consoleStyles["terminal-state"]}>
+                <StateIcon kind="empty" />
+                <p>No messages yet.</p>
+              </div>
             ) : null}
             {snapshot.busy ? (
-              <div className="chat-working" role="status">
+              <div className={consoleStyles["chat-working"]} role="status">
                 <StatusIndicator status="working" label="Working" />
                 <button
                   type="button"
@@ -363,7 +420,7 @@ export function AgentConsole({ agent, onBack }: AgentConsoleProps) {
         )}
       </section>
       {view === "terminal" ? (
-        <div className="key-controls" aria-label="Terminal controls">
+        <div className={consoleStyles["key-controls"]} aria-label="Terminal controls">
           {keyControls.map((control) => (
             <button
               type="button"
@@ -374,15 +431,23 @@ export function AgentConsole({ agent, onBack }: AgentConsoleProps) {
               {control.label}
             </button>
           ))}
-          {keyMutation.isError ? <p role="alert">{keyMutation.error.message}</p> : null}
+          {keyMutation.isError ? (
+            <StateNotice kind="unavailable" role="alert">
+              {keyMutation.error.message}
+            </StateNotice>
+          ) : null}
         </div>
       ) : (
-        <form className="prompt-composer" aria-busy={composerSending} onSubmit={submit}>
-          <div className="prompt-composer__surface">
+        <form
+          className={consoleStyles["prompt-composer"]}
+          aria-busy={composerSending}
+          onSubmit={submit}
+        >
+          <div className={consoleStyles["prompt-composer__surface"]}>
             {attachments.length ? (
-              <div className="prompt-attachments" aria-label="Image attachments">
+              <div className={consoleStyles["prompt-attachments"]} aria-label="Image attachments">
                 {attachments.map((attachment, i) => (
-                  <div className="prompt-attachment" key={attachment.previewUrl}>
+                  <div className={consoleStyles["prompt-attachment"]} key={attachment.previewUrl}>
                     <img
                       src={attachment.previewUrl}
                       alt={attachment.file?.name ?? "Restored image attachment"}
@@ -408,13 +473,13 @@ export function AgentConsole({ agent, onBack }: AgentConsoleProps) {
                 ))}
               </div>
             ) : null}
-            <label htmlFor="agent-prompt" className="sr-only">
+            <label htmlFor="agent-prompt" className={a11yStyles["sr-only"]}>
               Message {getAgentTabLabel(agent)}
             </label>
-            <div className="prompt-composer__row">
+            <div className={consoleStyles["prompt-composer__row"]}>
               <input
                 ref={fileInputRef}
-                className="sr-only"
+                className={a11yStyles["sr-only"]}
                 type="file"
                 accept="image/png,image/jpeg,image/gif,image/webp"
                 multiple
@@ -423,7 +488,7 @@ export function AgentConsole({ agent, onBack }: AgentConsoleProps) {
               />
               <button
                 type="button"
-                className="prompt-composer__attach"
+                className={consoleStyles["prompt-composer__attach"]}
                 disabled={composerSending || attachments.length >= 4}
                 title="Attach images"
                 aria-label="Attach images"
@@ -433,7 +498,7 @@ export function AgentConsole({ agent, onBack }: AgentConsoleProps) {
               </button>
               <button
                 type="button"
-                className="prompt-composer__tree"
+                className={consoleStyles["prompt-composer__tree"]}
                 aria-label="Open conversation paths"
                 title="Conversation paths"
                 disabled={!snapshot || Boolean(live.error) || composerSending}
@@ -462,22 +527,36 @@ export function AgentConsole({ agent, onBack }: AgentConsoleProps) {
                 disabled={!canSend}
               >
                 {composerSending ? (
-                  <span className="prompt-composer__spinner" aria-hidden="true" />
+                  <span
+                    className={consoleStyles["prompt-composer__spinner"]}
+                    data-testid="send-spinner"
+                    aria-hidden="true"
+                  />
                 ) : (
                   <SendIcon />
                 )}
               </button>
             </div>
           </div>
-          {attachmentError ? <p role="alert">{attachmentError}</p> : null}
-          {send.isError ? (
-            <p role="alert">{send.error.message} Draft retained; check Pi before retrying.</p>
+          {attachmentError ? (
+            <StateNotice kind="info" role="alert">
+              {attachmentError}
+            </StateNotice>
           ) : null}
-          {stop.isError ? <p role="alert">{stop.error.message}</p> : null}
+          {send.isError ? (
+            <StateNotice kind="unavailable" role="alert">
+              {send.error.message} Draft retained; check Pi before retrying.
+            </StateNotice>
+          ) : null}
+          {stop.isError ? (
+            <StateNotice kind="unavailable" role="alert">
+              {stop.error.message}
+            </StateNotice>
+          ) : null}
         </form>
       )}
       {view === "chat" && snapshot ? (
-        <div className="pi-status-line" aria-label="Pi session status">
+        <div className={consoleStyles["pi-status-line"]} aria-label="Pi session status">
           <span>
             {snapshot.status.model ?? "Unknown model"} · {snapshot.status.cwd}
           </span>
@@ -505,7 +584,7 @@ export function AgentConsole({ agent, onBack }: AgentConsoleProps) {
       {lightboxImage ? (
         <dialog
           ref={lightboxRef}
-          className="image-lightbox"
+          className={consoleStyles["image-lightbox"]}
           aria-label="Image preview"
           onClose={() => setLightboxImage(null)}
           onClick={(event) => {
@@ -514,7 +593,7 @@ export function AgentConsole({ agent, onBack }: AgentConsoleProps) {
         >
           <button
             type="button"
-            className="image-lightbox__close"
+            className={consoleStyles["image-lightbox__close"]}
             aria-label="Close image preview"
             onClick={() => lightboxRef.current?.close()}
           >

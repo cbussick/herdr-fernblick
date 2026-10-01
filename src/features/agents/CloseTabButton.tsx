@@ -1,3 +1,4 @@
+import dialogStyles from "./Dialogs.module.css";
 import { useRef, useState, type FormEvent } from "react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { closeTab, renameAgent, renameTab, restartAgent } from "../../shared/api/apiClient";
@@ -81,7 +82,9 @@ export function CloseTabButton({
     <>
       <button
         type="button"
-        className="edit-tab-button"
+        className={dialogStyles["edit-tab-button"]}
+        data-testid="edit-tab-button"
+        data-ui="edit-tab-button"
         aria-label={`Edit ${label}`}
         title="Edit tab"
         onClick={open}
@@ -90,7 +93,7 @@ export function CloseTabButton({
       </button>
       <dialog
         ref={dialogRef}
-        className="edit-tab-dialog"
+        className={dialogStyles["edit-tab-dialog"]}
         onClose={() => {
           setConfirmation(null);
           saveMutation.reset();
@@ -105,7 +108,13 @@ export function CloseTabButton({
               closeMutation.mutate();
             }}
           >
-            <div className="edit-tab-dialog__icon edit-tab-dialog__icon--danger">
+            <div
+              className={
+                dialogStyles["edit-tab-dialog__icon"] +
+                " " +
+                dialogStyles["edit-tab-dialog__icon--danger"]
+              }
+            >
               <TrashIcon />
             </div>
             <h2>Close “{label}”?</h2>
@@ -115,13 +124,13 @@ export function CloseTabButton({
                 : "The terminal session in this tab will end."}
             </p>
             {closeMutation.isError ? <p role="alert">{closeMutation.error.message}</p> : null}
-            <div className="edit-tab-dialog__actions">
+            <div className={dialogStyles["edit-tab-dialog__actions"]}>
               <button type="button" onClick={() => setConfirmation(null)}>
                 Back
               </button>
               <button
                 type="submit"
-                className="edit-tab-dialog__danger"
+                className={dialogStyles["edit-tab-dialog__danger"]}
                 disabled={closeMutation.isPending}
               >
                 {closeMutation.isPending ? "Closing…" : "Close tab"}
@@ -135,7 +144,7 @@ export function CloseTabButton({
               restartMutation.mutate();
             }}
           >
-            <div className="edit-tab-dialog__icon">
+            <div className={dialogStyles["edit-tab-dialog__icon"]}>
               <RestartIcon />
             </div>
             <h2>Restart this agent session?</h2>
@@ -144,7 +153,7 @@ export function CloseTabButton({
               preserved.
             </p>
             {restartMutation.isError ? <p role="alert">{restartMutation.error.message}</p> : null}
-            <div className="edit-tab-dialog__actions">
+            <div className={dialogStyles["edit-tab-dialog__actions"]}>
               <button type="button" onClick={() => setConfirmation(null)}>
                 Back
               </button>
@@ -183,7 +192,7 @@ export function CloseTabButton({
               />
             </label>
             {agentRunning ? (
-              <label className="edit-thinking-toggle">
+              <label className={dialogStyles["edit-thinking-toggle"]}>
                 <span>
                   Show thinking chips
                   <small>Display Pi’s brief progress notes in Fernblick.</small>
@@ -200,7 +209,7 @@ export function CloseTabButton({
             {agentRunning && agentTarget ? (
               <button
                 type="button"
-                className="edit-restart-button"
+                className={dialogStyles["edit-restart-button"]}
                 disabled={agentStatus !== "idle" && agentStatus !== "done"}
                 title={
                   agentStatus === "idle" || agentStatus === "done"
@@ -215,14 +224,14 @@ export function CloseTabButton({
             ) : null}
             <button
               type="button"
-              className="edit-remove-button"
+              className={dialogStyles["edit-remove-button"]}
               onClick={() => setConfirmation("delete")}
             >
               <TrashIcon />
               Close this tab
             </button>
-            <hr className="edit-dialog-divider" />
-            <div className="edit-tab-dialog__actions">
+            <hr className={dialogStyles["edit-dialog-divider"]} />
+            <div className={dialogStyles["edit-tab-dialog__actions"]}>
               <button type="button" onClick={() => dialogRef.current?.close()}>
                 Cancel
               </button>

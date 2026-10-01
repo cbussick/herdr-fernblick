@@ -2,6 +2,12 @@
 
 A small mobile web controller for agents running inside Herdr. Dashboard and Terminal use Herdr; live Pi Chat uses a standalone in-process Pi extension, a private Unix socket, and browser SSE.
 
+## Interface
+
+React 19 and TypeScript, built with Vite. The light-blue interface is smartphone-first, with single-pane navigation on portrait iPads and a persistent workspace sidebar on landscape iPads and desktop. All styles use CSS Modules; icons are custom SVGs and Manrope is bundled locally, with no external font requests.
+
+Manrope is licensed under the SIL Open Font License 1.1. Its complete copyright notice and license ship at `/licenses/Manrope-OFL.txt`; see [font provenance](src/styles/fonts/README.md). See [styling and development conventions](docs/development.md) and the [three-viewport screenshot gallery tooling](tools/design/README.md).
+
 ## Requirements
 
 - Linux with Herdr 0.9 or later

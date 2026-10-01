@@ -2,6 +2,16 @@
 
 Fernblick's state comes from a Herdr Unix socket and Pi sessions; two servers pointing at the same socket control the **same agents**. For truly isolated agent stacks, start a separate Herdr session/pod for each worktree and point `HERDR_SOCKET_PATH` at that session's socket. Confirm the session is distinct before sending commands through Fernblick. Protect sockets and uploads as sensitive local data.
 
+## Styling
+
+Use CSS Modules (`*.module.css`) for all application and Storybook styles. Import module maps and pass their exported class names to JSX; do not introduce literal/global component classes. `npm run lint` enforces these conventions.
+
+Modules are grouped by responsibility: application layout, overview, console, dialogs, conversation paths, shared UI and accessibility utilities. Use scoped parent selectors with explicit `data-ui` contracts to position shared child components; browser tests use stable `data-testid` hooks, never generated class names. Document-level resets and the font-face are the only global application rules. The theme and document module classes are applied to `<html>` in the app and Storybook entry points; keep these bound imports so Vite retains them in production.
+
+Manrope is locally bundled under the SIL OFL 1.1. Preserve the full notice in both `src/styles/fonts/Manrope-LICENSE.txt` and the distributed `public/licenses/Manrope-OFL.txt`; see [font provenance](../src/styles/fonts/README.md).
+
+## Worktree runtime
+
 Each worktree has its own dependencies, Vitest invocation and ignored build outputs. Run `npm ci` and `npm run check` from inside each worktree. Avoid simultaneous test commands in the **same** worktree.
 
 The backend listens on `HOST` / `PORT` (defaults: loopback / 8787). Assign a distinct loopback `PORT` to each concurrent server. The current Vite development proxy in `vite.config.ts` is fixed to port 8787; changing only `PORT` or Vite's `--port` does **not** isolate API traffic. Until the proxy is made configurable, run only one `npm run dev` stack at a time, or build each worktree and serve it on a distinct port instead:

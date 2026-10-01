@@ -1,0 +1,56 @@
+@font-face {
+  font-family: Manrope;
+  font-style: normal;
+  font-weight: 200 800;
+  font-display: swap;
+  src: url("./fonts/manrope-latin-wght-normal.woff2") format("woff2");
+}
+
+:global(*) {
+  box-sizing: border-box;
+}
+
+.document {
+  min-width: 20rem;
+  overflow: hidden;
+  background: var(--color-canvas);
+}
+
+:global(body) {
+  min-width: 20rem;
+  height: 100dvh;
+  margin: 0;
+  overflow: hidden;
+  background: var(--color-canvas);
+}
+
+:global(button),
+:global(input),
+:global(select),
+:global(textarea) {
+  font: inherit;
+}
+
+:global(button:not(:disabled)) {
+  cursor: pointer;
+}
+
+:global(button:disabled),
+:global(input:disabled),
+:global(select:disabled),
+:global(textarea:disabled) {
+  cursor: not-allowed;
+  opacity: 0.55;
+}
+
+:global(:where(button, input, select, textarea, a, summary, [tabindex]):focus-visible) {
+  outline: 3px solid var(--color-focus);
+  outline-offset: 2px;
+}
+
+:global(h1),
+:global(h2),
+:global(h3),
+:global(p) {
+  margin: 0;
+}

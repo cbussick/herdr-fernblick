@@ -1,3 +1,4 @@
+import appStyles from "./App.module.css";
 import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import type { Agent, ShellTab } from "../shared/api/contracts";
@@ -8,7 +9,8 @@ import { NewAgentDialog } from "../features/agents/NewAgentDialog";
 import { NewWorkspaceDialog } from "../features/agents/NewWorkspaceDialog";
 import { NewTabDialog } from "../features/agents/NewTabDialog";
 import { ShellConsole } from "../features/agents/ShellConsole";
-import "./App.css";
+import { FernblickMark } from "../shared/ui/FernblickMark";
+import { StateIcon } from "../shared/ui/StateFeedback";
 
 export function App() {
   const [selectedPaneId, setSelectedPaneId] = useState<string | null>(null);
@@ -29,17 +31,19 @@ export function App() {
   const detailOpen = selectedAgent || selectedTab;
 
   return (
-    <div className="app-shell" data-detail-open={detailOpen ? true : undefined}>
-      <a href="#main-content" className="skip-link">
+    <div className={appStyles["app-shell"]} data-detail-open={detailOpen ? true : undefined}>
+      <a href="#main-content" className={appStyles["skip-link"]}>
         Skip to content
       </a>
 
       {agentsQuery.isPending ? (
-        <div className="page-state" aria-busy="true">
-          Loading agents…
+        <div className={appStyles["page-state"]} data-testid="page-state" aria-busy="true">
+          <StateIcon kind="loading" />
+          <p>Loading agents…</p>
         </div>
       ) : agentsQuery.isError ? (
-        <div className="page-state page-state--error" role="alert">
+        <div className={appStyles["page-state"]} data-testid="page-state" role="alert">
+          <StateIcon kind="unavailable" />
           <h1>Cannot reach Herdr</h1>
           <p>{agentsQuery.error.message}</p>
           <button type="button" onClick={() => void agentsQuery.refetch()}>
@@ -47,7 +51,7 @@ export function App() {
           </button>
         </div>
       ) : (
-        <div className="workspace">
+        <div className={appStyles["workspace"]}>
           <AgentList
             agents={agents}
             tabs={tabs}
@@ -68,8 +72,10 @@ export function App() {
           ) : selectedTab ? (
             <ShellConsole tab={selectedTab} onBack={() => setSelectedPaneId(null)} />
           ) : (
-            <main className="console-empty" id="main-content">
-              <p>Select a tab to view its terminal.</p>
+            <main className={appStyles["console-empty"]} id="main-content">
+              <FernblickMark className={appStyles["console-empty__mark"]} />
+              <h2>Keep your agents in view.</h2>
+              <p>Choose an agent to pick up the conversation, or a shell to open its terminal.</p>
             </main>
           )}
         </div>

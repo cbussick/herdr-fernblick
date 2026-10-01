@@ -1,7 +1,9 @@
+import overviewStyles from "./agentOverview.module.css";
 import { useState } from "react";
 import type { Agent, ShellTab, Workspace } from "../../shared/api/contracts";
 import { SearchField, SegmentedTabs, SpeedDial } from "../../shared/ui";
 import { FlatAgentList, WorkspaceList } from "./AgentOverview";
+import { FernblickMark } from "../../shared/ui/FernblickMark";
 
 interface AgentListProps {
   agents: Agent[];
@@ -57,11 +59,19 @@ export function AgentList({
     },
   ].filter((action) => workspaces.length > 0 || action.id === "workspace");
   return (
-    <nav className="agent-list" aria-label="Herdr Web overview">
-      <header className="overview-header">
-        <div className="overview-header__title">
-          <h1>Fernblick</h1>
-          <span className="connection-state">
+    <nav
+      className={overviewStyles["agent-list"]}
+      data-testid="agent-list"
+      data-ui="agent-list"
+      aria-label="Herdr Web overview"
+    >
+      <header className={overviewStyles["overview-header"]} data-testid="overview-header">
+        <div className={overviewStyles["overview-header__title"]}>
+          <div className={overviewStyles["overview-brand"]}>
+            <FernblickMark />
+            <h1>Fernblick</h1>
+          </div>
+          <span className={overviewStyles["connection-state"]}>
             <i />
             Connected
           </span>
@@ -82,7 +92,7 @@ export function AgentList({
           onChange={(event) => setQuery(event.target.value)}
         />
       </header>
-      <div className="overview-content">
+      <div className={overviewStyles["overview-content"]}>
         {view === "workspaces" ? (
           <WorkspaceList
             agents={agents}

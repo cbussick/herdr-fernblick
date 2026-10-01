@@ -1,5 +1,7 @@
+import overviewStyles from "./agentOverview.module.css";
+import uiStyles from "../../shared/ui/ui.module.css";
 import type { Agent, AgentStatus, ShellTab, Workspace } from "../../shared/api/contracts";
-import { ChevronIcon } from "../../shared/ui/Icons";
+import { ChevronIcon, FolderIcon, SearchIcon } from "../../shared/ui/Icons";
 import { StatusIndicator, TabKindIcon } from "../../shared/ui";
 import {
   getAgentTabLabel,
@@ -7,7 +9,6 @@ import {
   groupAgentsByWorkspace,
 } from "../../features/agents/agentPresentation";
 import { PaneContextActions } from "./PaneContextActions";
-import "./agentOverview.css";
 
 const priority: Record<AgentStatus, number> = {
   blocked: 5,
@@ -55,23 +56,24 @@ export function PaneRow({
       {(handlers) => (
         <button
           type="button"
-          className="pane-row"
+          className={overviewStyles["pane-row"]}
+          data-testid="pane-row"
           data-selected={selected || undefined}
           aria-current={selected ? "page" : undefined}
           onClick={onClick}
           {...handlers}
         >
           <TabKindIcon kind={kind} />
-          <span className="pane-row__copy">
+          <span className={overviewStyles["pane-row__copy"]}>
             <strong>{title}</strong>
             <small>{subtitle}</small>
           </span>
           {status ? (
             <StatusIndicator status={status} label={getStatusLabel(status)} />
           ) : (
-            <span className="pane-row__shell">Shell</span>
+            <span className={overviewStyles["pane-row__shell"]}>Shell</span>
           )}
-          <ChevronIcon className="pane-row__chevron" />
+          <ChevronIcon className={overviewStyles["pane-row__chevron"]} />
         </button>
       )}
     </PaneContextActions>
@@ -105,13 +107,16 @@ export function WorkspaceList({
   );
   if (groups.length === 0)
     return (
-      <div className="overview-empty">
-        <strong>No workspaces found</strong>
-        <p>Try a different search.</p>
+      <div className={overviewStyles["overview-empty"]} data-testid="overview-empty">
+        <span className={uiStyles["empty-state-icon"]} data-testid="empty-state-icon">
+          {normalized ? <SearchIcon /> : <FolderIcon />}
+        </span>
+        <strong>{normalized ? "No workspaces found" : "No workspaces yet"}</strong>
+        <p>{normalized ? "Try a different search." : "Use the create menu to add a workspace."}</p>
       </div>
     );
   return (
-    <div className="workspace-list">
+    <div className={overviewStyles["workspace-list"]}>
       {groups.map((group) => {
         const groupAgents = group.agents.filter(
           (a) =>
@@ -128,25 +133,30 @@ export function WorkspaceList({
         const status = getWorkspaceStatus(group.agents);
         return (
           <details
-            className="workspace-disclosure"
+            className={overviewStyles["workspace-disclosure"]}
+            data-testid="workspace-disclosure"
             key={group.workspace_id}
             open={normalized ? true : undefined}
           >
             <summary>
-              <strong>{group.label}</strong>
+              <span className={overviewStyles["workspace-disclosure__copy"]}>
+                <strong>{group.label}</strong>
+                <small>
+                  {group.agents.length} {group.agents.length === 1 ? "agent" : "agents"}
+                  {group.tabs.length
+                    ? ` / ${group.tabs.length} ${group.tabs.length === 1 ? "shell" : "shells"}`
+                    : ""}
+                </small>
+              </span>
               <StatusIndicator status={status} label={getStatusLabel(status)} />
               <ChevronIcon />
             </summary>
-            <div className="workspace-disclosure__content">
+            <div className={overviewStyles["workspace-disclosure__content"]}>
               {groupAgents.map((agent) => (
                 <PaneRow
                   key={agent.pane_id}
                   title={getAgentTabLabel(agent)}
-                  subtitle={
-                    agent.agent_status === "done"
-                      ? "New answer"
-                      : getStatusLabel(agent.agent_status)
-                  }
+                  subtitle="Pi agent"
                   kind="agent"
                   tabId={agent.tab_id}
                   agentName={agent.name}
@@ -194,14 +204,14 @@ export function FlatAgentList({
       (agent.workspace_label ?? "").toLowerCase().includes(normalized),
   );
   return (
-    <div className="flat-agent-list">
-      <p className="flat-agent-list__label">All agents across workspaces</p>
+    <div className={overviewStyles["flat-agent-list"]}>
+      <p className={overviewStyles["flat-agent-list__label"]}>All agents across workspaces</p>
       {visible.length ? (
         visible.map((agent) => (
           <PaneRow
             key={agent.pane_id}
             title={getAgentTabLabel(agent)}
-            subtitle={`${getStatusLabel(agent.agent_status)} · ${agent.workspace_label ?? agent.workspace_id}`}
+            subtitle={agent.workspace_label ?? agent.workspace_id}
             kind="agent"
             tabId={agent.tab_id}
             agentName={agent.name}
@@ -212,7 +222,10 @@ export function FlatAgentList({
           />
         ))
       ) : (
-        <div className="overview-empty">
+        <div className={overviewStyles["overview-empty"]} data-testid="overview-empty">
+          <span className={uiStyles["empty-state-icon"]} data-testid="empty-state-icon">
+            <SearchIcon />
+          </span>
           <strong>No agents found</strong>
           <p>Try a different search.</p>
         </div>

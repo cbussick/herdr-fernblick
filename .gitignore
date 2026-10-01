@@ -14,6 +14,7 @@ dist-server/
 dist-ssr/
 storybook-static/
 coverage/
+design-gallery/
 *.tsbuildinfo
 *.local
 .env

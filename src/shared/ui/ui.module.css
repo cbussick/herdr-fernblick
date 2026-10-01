@@ -1,3 +1,73 @@
+/* Component state selectors refine their base controls. */
+/* stylelint-disable no-descending-specificity */
+
+@media (pointer: coarse) {
+  .search-field input {
+    font-size: 1rem;
+  }
+}
+
+.empty-state-icon {
+  display: grid;
+  width: 3.5rem;
+  height: 3.5rem;
+  place-items: center;
+  justify-self: center;
+  margin-bottom: var(--space-4);
+  color: var(--state-icon-color, var(--color-accent));
+  background: var(--state-icon-background, var(--color-accent-soft));
+  border-radius: var(--radius-lg);
+}
+
+.empty-state-icon svg {
+  width: 1.5rem;
+  height: 1.5rem;
+}
+
+.empty-state-icon[data-spinning] svg {
+  animation: state-spin 800ms linear infinite;
+}
+
+@keyframes state-spin {
+  to {
+    transform: rotate(1turn);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .empty-state-icon[data-spinning] svg {
+    animation: none;
+  }
+}
+
+.state-notice {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--space-3);
+  padding: var(--space-3) var(--space-4);
+  color: var(--color-text-secondary);
+  font: 0.8125rem/1.6 var(--font-sans);
+  background: var(--color-surface-subtle);
+  border-radius: var(--radius-sm);
+}
+
+.state-notice > svg {
+  width: 1.125rem;
+  height: 1.125rem;
+  flex: none;
+  margin-top: 0.1rem;
+}
+
+.state-notice > span {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.state-notice[data-tone="error"] {
+  color: var(--color-danger);
+  background: var(--color-danger-soft);
+}
+
 .button {
   display: inline-flex;
   min-height: var(--control-height);
@@ -150,13 +220,13 @@
   grid-template-columns: repeat(var(--tab-count), 1fr);
   gap: 0.25rem;
   padding: 0.25rem;
-  background: var(--color-surface-subtle);
-  border: 1px solid var(--color-border-strong);
+  background: #d5e7f5;
+  border: 1px solid transparent;
   border-radius: var(--radius-md);
 }
 
 .segmented-tabs button {
-  min-height: 2.375rem;
+  min-height: 2.75rem;
   padding: 0 var(--space-3);
   color: var(--color-text-secondary);
   font-size: 0.8125rem;
@@ -167,9 +237,9 @@
 }
 
 .segmented-tabs button[aria-selected="true"] {
-  color: var(--color-on-accent);
-  background: var(--color-accent);
-  box-shadow: 0 2px 7px rgb(74 42 126 / 20%);
+  color: var(--color-accent);
+  background: var(--color-surface);
+  box-shadow: 0 2px 5px rgb(23 55 79 / 6%);
 }
 
 .search-field {
@@ -192,9 +262,9 @@
   min-height: 2.75rem;
   padding: 0 var(--space-4) 0 2.5rem;
   color: var(--color-text);
-  background: var(--color-surface-subtle);
-  border: 1px solid transparent;
-  border-radius: var(--radius-md);
+  background: rgb(255 255 255 / 65%);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-sm);
 }
 
 .search-field input::placeholder {
@@ -204,26 +274,31 @@
 .search-field input:focus {
   background: var(--color-surface);
   border-color: var(--color-border-strong);
-  outline: none;
+  outline: 2px solid var(--color-focus);
+  outline-offset: 2px;
 }
 
 .speed-dial {
   position: absolute;
   right: var(--space-5);
-  bottom: var(--space-5);
+  bottom: max(var(--space-5), env(safe-area-inset-bottom));
   z-index: 4;
 }
 
 .speed-dial__trigger {
-  display: grid;
-  width: 3.25rem;
+  display: flex;
+  min-width: 7.5rem;
   height: 3.25rem;
-  padding: 0;
-  place-items: center;
+  align-items: center;
+  justify-content: center;
+  gap: var(--space-2);
+  padding: 0 var(--space-5);
+  font-size: 0.875rem;
+  font-weight: 750;
   color: var(--color-on-accent);
   background: var(--color-accent);
   border: 0;
-  border-radius: 50%;
+  border-radius: var(--radius-round);
   box-shadow: var(--shadow-fab);
 }
 
@@ -236,7 +311,7 @@
   position: absolute;
   right: 0;
   bottom: 4rem;
-  width: 13.5rem;
+  width: 17rem;
   overflow: hidden;
   background: var(--color-surface);
   border: 1px solid var(--color-border);

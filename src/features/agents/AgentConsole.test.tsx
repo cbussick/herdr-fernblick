@@ -204,7 +204,7 @@ it("locks the composer only through upload and forwarding, then uses Pi busy/idl
     for (const button of form.findAllByType("button")) expect(button.props.disabled).toBe(true);
     expect(form.findByType("textarea").props.disabled).toBe(true);
     expect(form.findByProps({ type: "file" }).props.disabled).toBe(true);
-    expect(form.findAllByProps({ className: "prompt-composer__spinner" })).toHaveLength(1);
+    expect(form.findAllByProps({ "data-testid": "send-spinner" })).toHaveLength(1);
     expect(JSON.stringify(renderer.toJSON())).not.toContain("Waiting for Pi to receive");
     expect(JSON.stringify(renderer.toJSON())).not.toContain("Sending to Pi");
   };
@@ -224,15 +224,15 @@ it("locks the composer only through upload and forwarding, then uses Pi busy/idl
   expect(renderer.root.findByType("textarea").props.disabled).toBe(false);
   expect(renderer.root.findByProps({ type: "file" }).props.disabled).toBe(false);
   expect(renderer.root.findByProps({ "aria-label": "Attach images" }).props.disabled).toBe(false);
-  expect(renderer.root.findAllByProps({ className: "prompt-composer__spinner" })).toHaveLength(0);
+  expect(renderer.root.findAllByProps({ "data-testid": "send-spinner" })).toHaveLength(0);
   expect(renderer.root.findByProps({ "aria-label": "Send message" }).props.disabled).toBe(true);
 });
 it("shows a starting placeholder instead of an unknown/error state before Pi is ready", async () => {
   mocks.live = {};
   await act(async () => renderer.update(render()));
-  const state = renderer.root.findByProps({ className: "terminal-state transcript-initializing" });
+  const state = renderer.root.findByProps({ role: "status" });
   expect(state.props["aria-busy"]).toBe("true");
-  expect(state.findAllByProps({ className: "transcript-initializing__spinner" })).toHaveLength(1);
+  expect(state.findByProps({ "data-state-kind": "loading" }).props["data-spinning"]).toBe(true);
   expect(JSON.stringify(renderer.toJSON())).toContain("Starting Pi…");
   expect(renderer.root.findAllByProps({ role: "alert" })).toHaveLength(0);
   expect(renderer.root.findByProps({ "aria-label": "Send message" }).props.disabled).toBe(true);
@@ -251,5 +251,40 @@ it("preserves text and attachments when forwarding fails", async () => {
   expect(mocks.command).toHaveBeenCalledOnce();
   expect(renderer.root.findByType("textarea").props.disabled).toBe(false);
   expect(renderer.root.findByProps({ "aria-label": "Attach images" }).props.disabled).toBe(false);
-  expect(renderer.root.findAllByProps({ className: "prompt-composer__spinner" })).toHaveLength(0);
+  expect(renderer.root.findAllByProps({ "data-testid": "send-spinner" })).toHaveLength(0);
+});
+
+it("shows a decorative icon in connecting and unavailable chat placeholders", async () => {
+  mocks.live = {};
+  await act(async () => renderer.update(render()));
+  expect(
+    renderer.root.findByProps({ "data-state-kind": "loading" }).findByType("svg").props[
+      "aria-hidden"
+    ],
+  ).toBe("true");
+  mocks.live = { error: "Cannot reach Pi" };
+  await act(async () => renderer.update(render()));
+  expect(renderer.root.findByProps({ role: "alert" }).findByType("svg").props["aria-hidden"]).toBe(
+    "true",
+  );
+  expect(JSON.stringify(renderer.toJSON())).toContain("Cannot reach Pi");
+});
+
+it("does not render obsolete sending or receipt notices for a backend handoff", async () => {
+  mocks.live.snapshot = { ...mocks.live.snapshot!, sendPending: true };
+  await act(async () => renderer.update(render()));
+  expect(JSON.stringify(renderer.toJSON())).not.toContain("Sending to Pi");
+  expect(JSON.stringify(renderer.toJSON())).not.toContain("Waiting for Pi");
+  expect(renderer.root.findByProps({ "aria-label": "Send message" }).props.disabled).toBe(true);
+});
+
+it("clears the acknowledged draft without requiring a Pi receipt", async () => {
+  await act(async () =>
+    renderer.root.findByType("textarea").props.onChange({ target: { value: "clear on ACK" } }),
+  );
+  await act(async () => renderer.root.findByType("form").props.onSubmit({ preventDefault() {} }));
+  await flush();
+  expect(renderer.root.findByType("textarea").props.value).toBe("");
+  expect(renderer.root.findAllByProps({ "data-testid": "send-spinner" })).toHaveLength(0);
+  expect(JSON.stringify(renderer.toJSON())).not.toContain("Waiting for Pi");
 });

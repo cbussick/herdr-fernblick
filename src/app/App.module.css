@@ -1,0 +1,108 @@
+/* Component state selectors refine their base controls. */
+/* stylelint-disable no-descending-specificity */
+
+.app-shell {
+  position: fixed;
+  inset: 0;
+  overflow: clip;
+  background: var(--color-canvas);
+}
+
+.skip-link {
+  position: fixed;
+  z-index: 20;
+  top: var(--space-3);
+  left: var(--space-3);
+  padding: var(--space-2) var(--space-3);
+  color: #fff;
+  background: #222;
+  border-radius: var(--radius-sm);
+  transform: translateY(-200%);
+}
+
+.skip-link:focus {
+  transform: none;
+}
+
+.workspace {
+  display: grid;
+  grid-template-columns: clamp(18rem, 26vw, 22rem) minmax(0, 1fr);
+  height: 100%;
+  min-height: 0;
+}
+
+.console-empty,
+.page-state {
+  display: grid;
+  min-height: 100%;
+  place-content: center;
+  gap: var(--space-3);
+  padding: var(--space-6);
+  color: var(--color-text-secondary);
+  text-align: center;
+}
+
+.page-state p {
+  max-width: 32rem;
+  line-height: 1.7;
+  overflow-wrap: anywhere;
+}
+
+.page-state h1 {
+  font-size: 1.25rem;
+}
+
+.page-state button {
+  justify-self: center;
+  min-height: var(--control-height);
+  padding: 0 var(--space-4);
+  color: #fff;
+  font-weight: 700;
+  background: var(--color-accent);
+  border: 0;
+  border-radius: var(--radius-sm);
+}
+
+/* Narrow screens and portrait tablets use single-pane navigation. */
+@media (width < 48rem), (width < 75rem) and (orientation: portrait) {
+  .workspace {
+    display: block;
+  }
+
+  .console-empty {
+    height: 100%;
+  }
+
+  .app-shell[data-detail-open] [data-ui="agent-list"] {
+    display: none;
+  }
+
+  .app-shell:not([data-detail-open]) .console-empty {
+    display: none;
+  }
+}
+
+.console-empty {
+  justify-items: center;
+  align-content: center;
+  gap: var(--space-4);
+}
+
+.console-empty__mark {
+  width: 4rem;
+  height: 4rem;
+  margin-bottom: var(--space-4);
+  color: var(--color-accent);
+}
+
+.console-empty h2 {
+  color: var(--color-text);
+  font-size: clamp(1.5rem, 2.4vw, 2rem);
+  letter-spacing: -0.04em;
+}
+
+.console-empty p {
+  max-width: 25rem;
+  font-size: 0.9375rem;
+  line-height: 1.8;
+}

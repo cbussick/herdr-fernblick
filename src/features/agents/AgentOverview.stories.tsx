@@ -2,7 +2,6 @@ import type { Meta, StoryObj } from "@storybook/react-vite";
 import { fn } from "storybook/test";
 import type { Agent, ShellTab, Workspace } from "../../shared/api/contracts";
 import { FlatAgentList, WorkspaceList } from "./AgentOverview";
-import "../../shared/ui/ui.css";
 
 const workspaces: Workspace[] = [
   { workspace_id: "w1", label: "PHOGET" },
