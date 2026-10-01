@@ -5,15 +5,25 @@ const { chromium, webkit } = await import(process.env.PLAYWRIGHT_MODULE || "play
 const gallery = process.argv[2] || "http://100.71.229.1:5197";
 const app = process.argv[3] || "http://127.0.0.1:5198";
 for (const [name, engine] of Object.entries({ chromium, webkit })) {
+  if (process.env.DESIGN_BROWSER && process.env.DESIGN_BROWSER !== name) continue;
   const browser = await engine.launch({ headless: true });
-  for (const width of [320, 390, 768, 834, 1024, 1440]) {
-    const page = await browser.newPage({ viewport: { width, height: 1000 } });
+  for (const { width, height } of [
+    { width: 320, height: 1000 },
+    { width: 390, height: 844 },
+    { width: 768, height: 1024 },
+    { width: 834, height: 1194 },
+    { width: 1024, height: 1366 },
+    { width: 1024, height: 768 },
+    { width: 1194, height: 834 },
+    { width: 1440, height: 1000 },
+  ]) {
+    const page = await browser.newPage({ viewport: { width, height } });
     const errors = [];
     page.on("pageerror", (e) => errors.push(e.message));
     await page.goto(gallery);
     await page.locator(".screen-group").first().waitFor();
-    assert.equal(await page.locator(".screen-group").count(), 52);
-    assert.equal(await page.locator(".card").count(), 156);
+    assert.equal(await page.locator(".screen-group").count(), 53);
+    assert.equal(await page.locator(".card").count(), 159);
     assert.deepEqual(
       await page
         .locator(".screen-group")
@@ -22,19 +32,28 @@ for (const [name, engine] of Object.entries({ chromium, webkit })) {
             [...group.querySelectorAll(".card")].map((card) => card.dataset.viewport),
           ),
         ),
-      Array.from({ length: 52 }, () => ["phone", "ipad", "desktop"]),
+      Array.from({ length: 53 }, () => ["phone", "ipad", "desktop"]),
     );
     await page
       .locator(".screen-group")
       .first()
       .locator("img")
-      .evaluateAll((images) => Promise.all(images.map((image) => image.decode())));
+      .evaluateAll((images) =>
+        Promise.all(
+          images.map((image) => {
+            image.loading = "eager"; // WebKit will not decode an offscreen lazy image until it is requested.
+            return image.decode();
+          }),
+        ),
+      );
     await page.getByRole("button", { name: "View Agent conversation, phone", exact: true }).click();
     assert.equal(await page.locator("dialog[open] img").count(), 1);
     await page.keyboard.press("Escape");
+    await page.getByRole("button", { name: /iPad landscape ·/ }).click();
+    assert.equal(await page.locator(".card").count(), 53);
     await page.goto(`${gallery}/?phase=compare`);
     await page.locator(".card").first().waitFor();
-    assert.equal(await page.locator(".card").count(), 52);
+    assert.equal(await page.locator(".card").count(), 53);
     await page.getByRole("button", { name: "Compare Agent conversation", exact: true }).click();
     assert.equal(await page.locator("dialog[open] img").count(), 2);
     await page
@@ -48,8 +67,8 @@ for (const [name, engine] of Object.entries({ chromium, webkit })) {
     assert.equal(await page.locator("#lightbox-title").textContent(), "Agent working / Stop");
     await page.keyboard.press("Escape");
     assert.equal(await page.locator("dialog[open]").count(), 0);
-    await page.getByRole("button", { name: /iPad ·/ }).click();
-    assert.equal(await page.locator(".card").count(), 52);
+    await page.getByRole("button", { name: /iPad portrait ·/ }).click();
+    assert.equal(await page.locator(".card").count(), 53);
     await page.getByRole("searchbox").fill("paths");
     assert.equal(await page.locator(".card").count(), 7);
     assert.equal(
@@ -127,8 +146,36 @@ for (const [name, engine] of Object.entries({ chromium, webkit })) {
     await page.getByRole("searchbox", { name: "Search agents" }).fill("no matching agent");
     await page.locator(appSelector(".overview-empty svg")).waitFor();
     await page.getByRole("searchbox", { name: "Search agents" }).fill("");
+    assert.equal(
+      await page
+        .locator(appSelector(".pane-row"))
+        .evaluate((row) => getComputedStyle(row.parentElement).backgroundColor),
+      "rgb(255, 255, 255)",
+    );
     await page.locator(appSelector(".pane-row")).click();
-    assert.equal(await page.locator(appSelector(".agent-list")).isVisible(), width >= 768);
+    assert.equal(
+      await page.locator(appSelector(".agent-list")).isVisible(),
+      width >= 1200 || (width >= 768 && width > height),
+    );
+    if (width === 834 && height === 1194) {
+      await page.setViewportSize({ width: 1194, height: 834 });
+      assert.equal(
+        await page.locator(appSelector(".agent-list")).isVisible(),
+        true,
+        "Landscape rotation must reveal the sidebar",
+      );
+      await page.setViewportSize({ width, height });
+      assert.equal(
+        await page.locator(appSelector(".agent-list")).isVisible(),
+        false,
+        "Portrait rotation must restore single-pane navigation",
+      );
+      assert.equal(
+        await page.locator(appSelector(".console")).isVisible(),
+        true,
+        "Rotation must preserve the selected agent",
+      );
+    }
     const targets = await page
       .locator(appSelector(".console-header > button"))
       .evaluateAll((buttons) =>
@@ -215,7 +262,7 @@ for (const [name, engine] of Object.entries({ chromium, webkit })) {
     );
     assert.deepEqual(errors, []);
     console.log(
-      `${name}: ${width}px gallery, lightbox, filters, navigation and touch targets passed`,
+      `${name}: ${width}×${height} gallery, layout, lightbox, filters, navigation and touch targets passed`,
     );
     await page.close();
   }

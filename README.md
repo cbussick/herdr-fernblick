@@ -4,7 +4,7 @@ A small mobile web controller for agents running inside Herdr. Dashboard and Ter
 
 ## Interface
 
-React 19 and TypeScript, built with Vite. The light-blue interface is smartphone-first, with a persistent workspace sidebar on iPad and desktop. All styles use CSS Modules; icons are custom SVGs and Manrope is bundled locally, with no external font requests.
+React 19 and TypeScript, built with Vite. The light-blue interface is smartphone-first, with single-pane navigation on portrait iPads and a persistent workspace sidebar on landscape iPads and desktop. All styles use CSS Modules; icons are custom SVGs and Manrope is bundled locally, with no external font requests.
 
 Manrope is licensed under the SIL Open Font License 1.1. Its complete copyright notice and license ship at `/licenses/Manrope-OFL.txt`; see [font provenance](src/styles/fonts/README.md). See [styling and development conventions](docs/development.md) and the [three-viewport screenshot gallery tooling](tools/design/README.md).
 
@@ -66,9 +66,10 @@ TCP port is opened. [Protocol, safety, and limitations](docs/pi-live-chat.md).
 Chat uses public Pi branch history and live events, **not JSONL files, pane text,
 or footer scraping**. Busy/concurrent sends are rejected; there is no queue.
 An ACK means only that Pi's void send method was invoked, not guaranteed
-acceptance. A matching Pi user-message event confirms receipt and automatically
-clears the submitted text and images. Unconfirmed drafts are retained; sends are
-never automatically retried.
+acceptance. The browser clears text and images when forwarding is acknowledged,
+without waiting for a Pi receipt or comparing message text. Failed or uncertain
+forwarding keeps the visible draft; there is no hidden recovery copy or automatic
+retry. Pi's working/idle state gates the next send independently.
 Stop invokes Pi's abort method and then observes events. Attach up to four PNG,
 JPEG, GIF or WebP images (10 MiB each), including image-only messages. Conversation
 paths restore search, filters, labels, active-branch display and edit-and-branch,

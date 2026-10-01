@@ -179,7 +179,7 @@ it("rejects invalid protocol and out-of-order sequences", async () => {
   await vi.waitFor(() => expect(socket.destroyed).toBe(true));
   await expect(bridge.resolve(agent)).rejects.toThrow("unavailable");
 });
-it("carries the browser request ID through HTTP and refuses receipt-based sends to legacy extensions", async () => {
+it("carries the browser request ID through HTTP and requires the current send bridge", async () => {
   const p = await peer();
   const service = { getAgent: vi.fn(async () => agent) } as unknown as HerdrService;
   const server = createHttpServer(service, dir, bridge);
@@ -204,6 +204,28 @@ it("carries the browser request ID through HTTP and refuses receipt-based sends 
     expect(response.status).toBe(200);
     expect(await response.json()).toMatchObject({ id: requestId, outcome: "invoked" });
   } finally {
+    server.closeAllConnections();
+    await new Promise<void>((done) => server.close(() => done()));
+  }
+});
+
+it("reports a new agent without a saved session as connecting, not an error", async () => {
+  const service = {
+    getAgent: vi.fn(async () => ({ ...agent, agent_session: null })),
+  } as unknown as HerdrService;
+  const server = createHttpServer(service, dir, bridge);
+  await new Promise<void>((done) => server.listen(0, "127.0.0.1", done));
+  const abort = new AbortController();
+  try {
+    const response = await fetch(
+      `http://127.0.0.1:${(server.address() as { port: number }).port}/api/agents/w1:p1/chat`,
+      { signal: abort.signal },
+    );
+    const frame = new TextDecoder().decode((await response.body!.getReader().read()).value);
+    expect(frame).toContain('"type":"connecting"');
+    expect(frame).not.toContain('"type":"unavailable"');
+  } finally {
+    abort.abort();
     server.closeAllConnections();
     await new Promise<void>((done) => server.close(() => done()));
   }

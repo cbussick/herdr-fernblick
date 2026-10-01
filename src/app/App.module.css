@@ -63,7 +63,8 @@
   border-radius: var(--radius-sm);
 }
 
-@media (width < 48rem) {
+/* Narrow screens and portrait tablets use single-pane navigation. */
+@media (width < 48rem), (width < 75rem) and (orientation: portrait) {
   .workspace {
     display: block;
   }
@@ -104,10 +105,4 @@
   max-width: 25rem;
   font-size: 0.9375rem;
   line-height: 1.8;
-}
-
-.console-empty > span {
-  margin-top: var(--space-4);
-  color: var(--color-text-tertiary);
-  font-size: 0.75rem;
 }

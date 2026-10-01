@@ -13,12 +13,13 @@ const icons = {
 type StateKind = keyof typeof icons;
 
 // Standalone placeholders use the same icon surface as overview empty states.
-export function StateIcon({ kind }: { kind: StateKind }) {
+export function StateIcon({ kind, spinning = false }: { kind: StateKind; spinning?: boolean }) {
   const Icon = icons[kind];
   return (
     <span
       className={uiStyles["empty-state-icon"]}
       data-testid="empty-state-icon"
+      data-spinning={spinning || undefined}
       data-state-kind={kind}
     >
       <Icon />

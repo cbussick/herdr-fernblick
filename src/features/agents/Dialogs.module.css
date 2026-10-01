@@ -324,7 +324,7 @@
   border-color: var(--color-accent);
 }
 
-@media (width < 48rem) {
+@media (width < 48rem), (width < 75rem) and (orientation: portrait) {
   .new-agent-dialog {
     width: calc(100% - 1rem);
     max-height: calc(100svh - 1rem);

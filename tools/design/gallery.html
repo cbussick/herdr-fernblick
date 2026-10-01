@@ -302,18 +302,20 @@
       <h1>Fernblick, implemented.</h1>
       <p>
         A blue command desk for your agents. Phone-first focus, a persistent workspace rail on iPad
-        and desktop, and quieter, more readable conversations.
+        landscape and desktop, single-pane navigation on portrait iPads, and quieter conversations.
       </p>
       <p>
         <strong>Actual application screenshots.</strong> Every screen and representative state is
-        captured in mobile, iPad and desktop viewports. Synthetic fixtures protect private sessions;
-        no real agent commands are sent. Click a screenshot to open the lightbox. Use ← / → to
-        browse, Escape to close, and click an image to zoom.
+        captured in mobile, iPad portrait and desktop viewports, with an additional iPad landscape
+        filter. Synthetic fixtures protect private sessions; no real agent commands are sent. Click
+        a screenshot to open the lightbox. Use ← / → to browse, Escape to close, and click an image
+        to zoom.
       </p>
       <nav aria-label="Viewport">
         <button data-size="all" aria-pressed="true">All three viewports</button>
         <button data-size="phone" aria-pressed="false">Mobile · 390 × 844</button
-        ><button data-size="ipad" aria-pressed="false">iPad · 834 × 1194</button
+        ><button data-size="ipad" aria-pressed="false">iPad portrait · 834 × 1194</button
+        ><button data-size="ipad-landscape" aria-pressed="false">iPad landscape · 1194 × 834</button
         ><button data-size="desktop" aria-pressed="false">Desktop · 1440 × 1000</button>
       </nav>
       <div class="toolbar">
@@ -348,6 +350,12 @@
     </dialog>
     <script type="module">
       const $ = (s) => document.querySelector(s);
+      const viewportNames = {
+        phone: "Mobile",
+        ipad: "iPad portrait",
+        "ipad-landscape": "iPad landscape",
+        desktop: "Desktop",
+      };
       const params = new URLSearchParams(location.search);
       const phase = params.get("phase") || "after";
       const beforeOnly = phase === "before";
@@ -369,21 +377,21 @@
       function pair(x, lazy = true) {
         const key = x.viewport + "-" + x.id;
         if (finished)
-          return `<div class="pair"><figure><figcaption>${x.viewport === "phone" ? "Mobile" : x.viewport === "ipad" ? "iPad" : "Desktop"} · ${x.width} × ${x.height}</figcaption><img ${lazy ? 'loading="lazy"' : ""} src="after/${key}.png" alt="Implemented: ${x.title}, ${x.viewport}"></figure></div>`;
+          return `<div class="pair"><figure><figcaption>${viewportNames[x.viewport]} · ${x.width} × ${x.height}</figcaption><img ${lazy ? 'loading="lazy"' : ""} src="after/${key}.png" alt="Implemented: ${x.title}, ${x.viewport}"></figure></div>`;
         return `<div class="pair"><figure><figcaption>Before</figcaption><img ${lazy ? 'loading="lazy"' : ""} src="before/${key}.png" alt="Before: ${x.title}, ${x.viewport}"></figure>${!beforeOnly && afterKeys.has(key) ? `<figure><figcaption>Blue command desk</figcaption><img ${lazy ? 'loading="lazy"' : ""} src="after/${key}.png" alt="Proposed: ${x.title}, ${x.viewport}"></figure>` : ""}</div>`;
       }
       function render() {
         const q = $("#search").value.toLowerCase();
         visible = (finished ? after : manifest).filter(
           (x) =>
-            (viewport === "all" || x.viewport === viewport) &&
+            ((viewport === "all" && x.viewport !== "ipad-landscape") || x.viewport === viewport) &&
             (x.title + " " + x.group).toLowerCase().includes(q),
         );
         $("#count").textContent = finished
           ? `${new Set(visible.map((x) => x.id)).size} screens · ${visible.length} screenshots`
           : `${visible.length} screen comparisons`;
         const card = (x, i, grouped = false) =>
-          `<button class="card" data-index="${i}" data-viewport="${x.viewport}" aria-label="${finished ? "View" : "Compare"} ${x.title}${finished ? ", " + x.viewport : ""}"><h2>${grouped ? (x.viewport === "phone" ? "Mobile" : x.viewport === "ipad" ? "iPad" : "Desktop") : x.title}</h2>${grouped ? "" : `<p>${x.group} · ${x.width} × ${x.height}</p>`}${pair(x)}</button>`;
+          `<button class="card" data-index="${i}" data-viewport="${x.viewport}" aria-label="${finished ? "View" : "Compare"} ${x.title}${finished ? ", " + x.viewport : ""}"><h2>${grouped ? viewportNames[x.viewport] : x.title}</h2>${grouped ? "" : `<p>${x.group} · ${x.width} × ${x.height}</p>`}${pair(x)}</button>`;
         if (finished && viewport === "all") {
           const groups = new Map();
           visible.forEach((x, i) => {

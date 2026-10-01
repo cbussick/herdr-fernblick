@@ -347,7 +347,7 @@
   font-weight: 600;
   background: var(--color-warning-soft);
   border: 1px solid color-mix(in srgb, var(--color-warning) 28%, var(--color-border));
-  border-radius: var(--radius-round);
+  border-radius: var(--radius-sm);
 }
 
 .chat-thinking > svg {
@@ -382,8 +382,10 @@
   color: var(--color-terminal-text);
   font: 0.75rem/1.5 var(--font-mono);
   white-space: pre-wrap;
-  background: var(--color-terminal);
+  background: var(--color-surface);
+  border: 1px solid var(--color-border-strong);
   border-radius: var(--radius-sm);
+  box-shadow: 0 0.2rem 0.75rem rgb(23 55 79 / 5%);
 }
 
 .chat-tool--error summary {
@@ -446,11 +448,11 @@
   font: inherit;
 }
 
-.transcript-initializing__spinner {
+.prompt-composer__spinner {
   width: 1.25rem;
   height: 1.25rem;
-  border: 2px solid var(--color-border);
-  border-top-color: var(--color-text-secondary);
+  border: 2px solid currentcolor;
+  border-top-color: transparent;
   border-radius: 50%;
   animation: transcript-spin 800ms linear infinite;
 }
@@ -462,9 +464,8 @@
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .transcript-initializing__spinner {
+  .prompt-composer__spinner {
     animation: none;
-    border-top-color: var(--color-border);
   }
 }
 
@@ -654,7 +655,7 @@
   border-radius: 50%;
 }
 
-@media (width < 48rem) {
+@media (width < 48rem), (width < 75rem) and (orientation: portrait) {
   .console {
     height: 100%;
   }

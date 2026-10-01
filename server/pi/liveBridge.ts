@@ -24,6 +24,7 @@ export class LiveChatError extends Error {
   constructor(
     readonly status: number,
     message: string,
+    readonly starting = false,
   ) {
     super(message);
   }
@@ -189,7 +190,11 @@ export class LiveBridge {
   }
   current(agent: Agent): Peer & { snapshot: Snapshot } {
     if (agent.agent !== "pi" || agent.agent_session?.kind !== "path")
-      throw new LiveChatError(409, "A saved Pi session is required for live chat");
+      throw new LiveChatError(
+        409,
+        "A saved Pi session is required for live chat",
+        (!agent.agent || agent.agent === "pi") && !agent.agent_session,
+      );
     const candidates = [...this.peers].filter(
       (p) =>
         p.snapshot?.identity.pane === agent.pane_id &&
@@ -201,6 +206,7 @@ export class LiveBridge {
         candidates.length
           ? "Ambiguous Pi processes for this pane"
           : "Pi live chat extension unavailable",
+        candidates.length === 0,
       );
     const peer = candidates[0];
     const snapshot = peer.snapshot!;

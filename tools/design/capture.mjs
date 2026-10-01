@@ -2,6 +2,7 @@ import { appSelector } from "./selectors.mjs";
 // Run with PLAYWRIGHT_MODULE=/absolute/path/to/playwright/index.mjs node tools/design/capture.mjs before|after URL
 // All API traffic is intercepted. This never connects to or controls real agents.
 import fs from "node:fs/promises";
+import assert from "node:assert/strict";
 import path from "node:path";
 const { chromium } = await import(process.env.PLAYWRIGHT_MODULE || "playwright");
 const phase = process.argv[2] || "before";
@@ -20,6 +21,7 @@ const agent = (n, label, status, w = 1) => ({
   tab_id: `w${w}:t${n}`,
   tab_label: label,
   agent_status: status,
+  agent_session: { agent: "pi", kind: "path", source: "fixture", value: "/fixtures/session.jsonl" },
   workspace_id: `w${w}`,
   workspace_label: workspaces[w - 1].label,
   cwd: "/projects/fernblick",
@@ -116,8 +118,9 @@ const scenarios = [
   ["form-error", "Create failure / retained form", "States"],
   ["chat", "Agent conversation", "Conversation"],
   ["working", "Agent working / Stop", "Conversation"],
-  ["blocked", "Agent needs input", "Conversation"],
+  ["blocked", "Herdr-reported needs-input status", "Conversation"],
   ["chat-empty", "Empty conversation", "States"],
+  ["chat-starting", "Starting Pi", "States"],
   ["chat-connecting", "Connecting to Pi", "States"],
   ["chat-unavailable", "Chat unavailable", "States"],
   ["chat-reconnecting", "Reconnecting with conversation history", "States"],
@@ -128,8 +131,8 @@ const scenarios = [
   ["image", "Conversation attachment", "Conversation"],
   ["image-preview", "Attachment lightbox", "Conversation"],
   ["draft-image", "Composer with image", "Conversation"],
-  ["send-pending", "Sending message", "States"],
-  ["send-waiting", "Waiting for message receipt", "States"],
+  ["send-pending", "Sending / forwarding spinner", "States"],
+  ["send-acknowledged", "Forwarding acknowledged / draft cleared", "States"],
   ["send-error", "Send failure / retained draft", "States"],
   ["terminal", "Agent terminal", "Terminal"],
   ["terminal-error", "Terminal read failure", "States"],
@@ -158,7 +161,8 @@ const scenarios = [
 ];
 const sizes = [
   { id: "phone", label: "Phone", width: 390, height: 844 },
-  { id: "ipad", label: "iPad", width: 834, height: 1194 },
+  { id: "ipad", label: "iPad portrait", width: 834, height: 1194 },
+  { id: "ipad-landscape", label: "iPad landscape", width: 1194, height: 834 },
   { id: "desktop", label: "Desktop", width: 1440, height: 1000 },
 ];
 const browser = await chromium.launch({ headless: true });
@@ -186,7 +190,7 @@ for (const size of sizes)
       epoch: target.epoch,
       seq: 1,
       busy: id === "working",
-      sendPending: id === "send-pending",
+      sendPending: false,
       truncated: id === "chat-truncated",
       messages: id === "chat-empty" ? [] : [...messages],
       status: {
@@ -222,7 +226,7 @@ for (const size of sizes)
         class FixtureEvents {
           constructor() {
             this.timer = setTimeout(() => {
-              if (id !== "chat-connecting")
+              if (!["chat-starting", "chat-connecting"].includes(id))
                 this.onmessage?.({
                   data: JSON.stringify(
                     id === "chat-unavailable"
@@ -260,11 +264,21 @@ for (const size of sizes)
             json:
               id === "empty"
                 ? { agents: [], tabs: [], workspaces: [] }
-                : { agents, tabs, workspaces },
+                : {
+                    agents:
+                      id === "chat-starting"
+                        ? agents.map((agent) => ({ ...agent, agent_session: null }))
+                        : agents,
+                    tabs,
+                    workspaces,
+                  },
           });
         if (url.endsWith("/tree") && id === "paths-loading") return;
-        if (url.endsWith("/prompt") && id === "send-waiting")
-          return route.fulfill({ json: { type: "ack", id: target.runtime, outcome: "invoked" } });
+        if (url.endsWith("/prompt") && id === "send-pending") return; // Keep the actual forwarding request pending for the spinner capture.
+        if (url.endsWith("/prompt") && id === "send-acknowledged")
+          return route.fulfill({
+            json: { type: "ack", id: route.request().postDataJSON().requestId, outcome: "invoked" },
+          });
         if (url.endsWith("/tree"))
           return route.fulfill(
             id === "paths-error"
@@ -304,7 +318,7 @@ for (const size of sizes)
             error:
               id === "form-error"
                 ? "Could not create the workspace. Check the directory and try again."
-                : "Pi disconnected before receipt.",
+                : "Forwarding failed; delivery uncertain.",
           },
         });
       },
@@ -409,7 +423,7 @@ for (const size of sizes)
         await page.locator(phase === "before" ? ".console" : appSelector(".console")).waitFor();
         if (
           !id.startsWith("shell") &&
-          !["edit-shell", "chat-connecting", "chat-unavailable"].includes(id)
+          !["edit-shell", "chat-starting", "chat-connecting", "chat-unavailable"].includes(id)
         )
           await page
             .locator(phase === "before" ? ".chat-transcript" : appSelector(".chat-transcript"))
@@ -429,7 +443,7 @@ for (const size of sizes)
           await page.locator("input[type=file]").setInputFiles(imagePath);
           await page.locator("#agent-prompt").fill("Here is the visual direction I have in mind.");
         }
-        if (["send-error", "send-waiting"].includes(id)) {
+        if (["send-error", "send-pending", "send-acknowledged"].includes(id)) {
           await page.locator("#agent-prompt").fill("Please apply the blue design.");
           await page.getByRole("button", { name: "Send message" }).click();
         }
@@ -487,14 +501,13 @@ for (const size of sizes)
           "loading",
           "offline",
           "chat-empty",
+          "chat-starting",
           "chat-connecting",
           "chat-unavailable",
           "chat-reconnecting",
           "chat-status",
           "chat-legacy",
           "chat-truncated",
-          "send-pending",
-          "send-waiting",
           "send-error",
           "terminal-empty",
           "terminal-loading",
@@ -508,6 +521,54 @@ for (const size of sizes)
       )
         await page.locator("[data-state-kind] svg").first().waitFor();
       await page.evaluate(() => document.fonts.ready);
+      if (phase === "after") {
+        if (detail) {
+          const sidebar = size.width >= 1200 || (size.width >= 768 && size.width > size.height);
+          assert.equal(
+            await page.locator(appSelector(".agent-list")).isVisible(),
+            sidebar,
+            `${size.id}: incorrect single-pane/sidebar layout`,
+          );
+        }
+        if (id === "agents")
+          assert.ok(
+            await page
+              .locator(appSelector(".pane-row"))
+              .evaluateAll((rows) =>
+                rows.every(
+                  (row) =>
+                    getComputedStyle(row.parentElement).backgroundColor === "rgb(255, 255, 255)",
+                ),
+              ),
+            "Flat agent rows must have white surfaces",
+          );
+        if (id === "empty")
+          assert.equal(
+            await page.locator(appSelector(".overview-empty strong")).textContent(),
+            "No workspaces yet",
+          );
+        if (id === "tool-open")
+          assert.ok(
+            await page
+              .locator(appSelector(".chat-tool pre"))
+              .evaluate(
+                (pre) =>
+                  getComputedStyle(pre).backgroundColor === "rgb(255, 255, 255)" &&
+                  getComputedStyle(pre).borderTopWidth === "1px",
+              ),
+            "Expanded tool output must have a white, bordered surface",
+          );
+        if (id === "send-pending") await page.locator('[data-testid="send-spinner"]').waitFor();
+        if (id === "send-acknowledged")
+          await page.waitForFunction(() => document.querySelector("#agent-prompt").value === "");
+        const text = await page.locator("body").innerText();
+        assert.ok(
+          !/Waiting for Pi to receive|Sending to Pi|before receipt|Your workspaces stay within reach/.test(
+            text,
+          ),
+          "Obsolete send/receipt/footer text must not be rendered",
+        );
+      }
       await page.screenshot({ path: `${out}/${phase}/${size.id}-${id}.png` });
       const overflow = await page.evaluate(() => document.documentElement.scrollWidth > innerWidth);
       if (overflow) console.warn(`Overflow: ${size.id}/${id}`);

@@ -24,6 +24,22 @@
   height: 1.5rem;
 }
 
+.empty-state-icon[data-spinning] svg {
+  animation: state-spin 800ms linear infinite;
+}
+
+@keyframes state-spin {
+  to {
+    transform: rotate(1turn);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .empty-state-icon[data-spinning] svg {
+    animation: none;
+  }
+}
+
 .state-notice {
   display: flex;
   align-items: flex-start;

@@ -33,7 +33,6 @@ it("sends only changed rows instead of resending a 900 KB conversation", () => {
   const after = {
     ...before,
     seq: 2,
-    receivedSendIds: [randomUUID()],
     messages: [...before.messages, { id: "stream", role: "assistant" as const, text: "working" }],
   };
   const frame = browserFrame(before, after);

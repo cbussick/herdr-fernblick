@@ -111,7 +111,7 @@ export function WorkspaceList({
         <span className={uiStyles["empty-state-icon"]} data-testid="empty-state-icon">
           {normalized ? <SearchIcon /> : <FolderIcon />}
         </span>
-        <strong>{normalized ? "No workspaces found" : "A place for your next project"}</strong>
+        <strong>{normalized ? "No workspaces found" : "No workspaces yet"}</strong>
         <p>{normalized ? "Try a different search." : "Use the create menu to add a workspace."}</p>
       </div>
     );

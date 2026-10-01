@@ -33,8 +33,7 @@ export default function liveChat(pi: ExtensionAPI) {
   let seq = 0;
   let active = false;
   let sendPending = false;
-  let outgoing: { id: string; text: string; images: number } | undefined;
-  const receivedSendIds: string[] = [];
+  let handoffTimer: ReturnType<typeof setTimeout> | undefined;
   let preparing = false;
   let uiBlocked = false;
   let imageHistory = new ImageHistory();
@@ -137,8 +136,14 @@ export default function liveChat(pi: ExtensionAPI) {
     },
   });
 
+  function finishHandoff() {
+    clearTimeout(handoffTimer);
+    handoffTimer = undefined;
+    sendPending = false;
+  }
   function stop() {
     generation++;
+    finishHandoff();
     if (navigation) {
       navigation.expired = true;
       navigation.nonce = undefined;
@@ -176,7 +181,6 @@ export default function liveChat(pi: ExtensionAPI) {
         seq: ++seq,
         busy: active || uiBlocked || !context.isIdle() || context.hasPendingMessages(),
         sendPending: sendPending || preparing,
-        receivedSendIds,
         truncated: projector.truncated,
         messages,
         status: {
@@ -373,7 +377,13 @@ export default function liveChat(pi: ExtensionAPI) {
               if (images.length)
                 pi.appendEntry(IMAGE_METADATA, imageHistory.remember(images, command.attachments));
               sendPending = true;
-              outgoing = { id: command.id, text: command.text, images: images.length };
+              // Prevent rapid double submission during Pi's async input preflight.
+              // This is a bounded handoff guard, not a delivery receipt or queue.
+              handoffTimer = setTimeout(() => {
+                finishHandoff();
+                publish();
+              }, 15_000);
+              handoffTimer.unref();
               invoked = true;
               pi.sendUserMessage(
                 images.length
@@ -420,8 +430,6 @@ export default function liveChat(pi: ExtensionAPI) {
     context = ctx;
     active = !ctx.isIdle();
     sendPending = uiBlocked = false;
-    outgoing = undefined;
-    receivedSendIds.length = 0;
     seen.clear();
     imageHistory = new ImageHistory();
     imageHistory.restore(ctx.sessionManager.getEntries());
@@ -434,13 +442,14 @@ export default function liveChat(pi: ExtensionAPI) {
   pi.on("agent_start", () => {
     if (!context) return;
     active = true;
+    finishHandoff();
     publish();
   });
   pi.on("agent_settled", (_e, ctx) => {
     if (!context) return;
     context = ctx;
-    active = sendPending = false;
-    outgoing = undefined;
+    active = false;
+    finishHandoff();
     projector.reconcile(ctx.sessionManager.getBranch());
     publish();
   });
@@ -487,21 +496,7 @@ export default function liveChat(pi: ExtensionAPI) {
     hydrateMessage(event.message);
     publish();
   }
-  pi.on("message_start", (event) => {
-    const value = event.message;
-    if (context && outgoing && value.role === "user") {
-      const images = Array.isArray(value.content)
-        ? value.content.filter((block) => block.type === "image").length
-        : 0;
-      if (contentText(value.content).trim() === outgoing.text && images === outgoing.images) {
-        receivedSendIds.push(outgoing.id);
-        if (receivedSendIds.length > 128) receivedSendIds.shift();
-        outgoing = undefined;
-        sendPending = false;
-      }
-    }
-    message(event);
-  });
+  pi.on("message_start", message);
   pi.on("message_update", message);
   pi.on("message_end", message);
   function tool(event: Parameters<TranscriptProjector["tool"]>[0]) {

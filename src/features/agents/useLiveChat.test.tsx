@@ -14,6 +14,28 @@ class Events {
     Events.instances.push(this);
   }
 }
+function readySnapshot(): Snapshot {
+  return {
+    type: "snapshot",
+    version: 2,
+    identity: {
+      runtime: randomUUID(),
+      pid: 1,
+      processStart: "1",
+      pane: "w1:p1",
+      herdrSocket: "/test.sock",
+      sessionId: "s",
+      sessionFile: "/s.jsonl",
+    },
+    epoch: randomUUID(),
+    seq: 1,
+    busy: false,
+    sendPending: false,
+    truncated: false,
+    messages: [],
+    status: { cwd: "/", totalTokens: 0, cost: 0 },
+  };
+}
 let renderer: ReactTestRenderer;
 let latest: ReturnType<typeof useLiveChat>;
 function Probe({ session = "s" }: { session?: string }) {
@@ -27,7 +49,58 @@ afterEach(async () => {
   await act(async () => renderer.unmount());
   vi.unstubAllGlobals();
   Events.instances = [];
+  vi.useRealTimers();
 });
+it("waits quietly for initial registration but reports a bounded startup timeout", async () => {
+  vi.useFakeTimers();
+  vi.stubGlobal("IS_REACT_ACT_ENVIRONMENT", true);
+  vi.stubGlobal("EventSource", Events);
+  await act(async () => {
+    renderer = create(<Probe />);
+  });
+  const events = Events.instances[0];
+  await act(async () =>
+    events.onmessage!({
+      data: JSON.stringify({
+        type: "connecting",
+        reason: "A saved Pi session is required for live chat",
+      }),
+    }),
+  );
+  expect(latest.error).toBeUndefined();
+  expect(latest.snapshot).toBeUndefined();
+  await act(async () => vi.advanceTimersByTimeAsync(20_000));
+  await act(async () =>
+    events.onmessage!({
+      data: JSON.stringify({ type: "connecting", reason: "Pi live chat extension unavailable" }),
+    }),
+  );
+  expect(latest.error).toBeUndefined();
+  await act(async () => vi.advanceTimersByTimeAsync(10_000));
+  expect(latest.error).toContain("Pi live chat extension unavailable");
+  const snapshot = readySnapshot();
+  await act(async () => events.onmessage!({ data: JSON.stringify(snapshot) }));
+  expect(latest.error).toBeUndefined();
+  expect(latest.snapshot).toEqual(snapshot);
+  await act(async () => vi.advanceTimersByTimeAsync(60_000));
+  expect(latest.error).toBeUndefined();
+});
+it("shows genuine identity errors immediately rather than hiding them as startup", async () => {
+  vi.useFakeTimers();
+  vi.stubGlobal("IS_REACT_ACT_ENVIRONMENT", true);
+  vi.stubGlobal("EventSource", Events);
+  await act(async () => {
+    renderer = create(<Probe />);
+  });
+  const reason = "Herdr and Pi session identities do not match";
+  await act(async () =>
+    Events.instances[0].onmessage!({ data: JSON.stringify({ type: "unavailable", reason }) }),
+  );
+  expect(latest.error).toBe(reason);
+  await act(async () => vi.advanceTimersByTimeAsync(30_000));
+  expect(latest.error).toBe(reason);
+});
+
 it("retains the conversation during a network interruption and recovers from a fresh snapshot", async () => {
   vi.stubGlobal("IS_REACT_ACT_ENVIRONMENT", true);
   vi.stubGlobal("EventSource", Events);

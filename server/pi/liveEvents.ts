@@ -1,6 +1,6 @@
 import type { ServerResponse } from "node:http";
 import type { Agent } from "../../src/shared/api/contracts.js";
-import type { LiveBridge } from "./liveBridge.js";
+import { LiveChatError, type LiveBridge } from "./liveBridge.js";
 import { browserFrame } from "../../packages/pi-live-chat/browserStream.js";
 import type { Snapshot } from "../../packages/pi-live-chat/protocol.js";
 import { MAX_FRAME } from "../../packages/pi-live-chat/protocol.js";
@@ -13,6 +13,7 @@ export function liveEvents(response: ServerResponse, agent: Agent, bridge: LiveB
   let dirty = false;
   let bound: Awaited<ReturnType<LiveBridge["resolve"]>> | undefined;
   let last = "";
+  let initialized = false;
   let previous: Snapshot | undefined;
   let paused = false;
   let pausedAt = 0;
@@ -40,6 +41,7 @@ export function liveEvents(response: ServerResponse, agent: Agent, bridge: LiveB
           if (peer !== bound) bound = await bridge.resolve(agent);
           if (closed) return;
           const snapshot = bound.snapshot;
+          initialized = true;
           const id = `${snapshot.epoch}:${snapshot.seq}`;
           if (id !== last) {
             write(browserFrame(previous, snapshot), id);
@@ -50,9 +52,14 @@ export function liveEvents(response: ServerResponse, agent: Agent, bridge: LiveB
           bound = undefined;
           previous = undefined;
           const reason = error instanceof Error ? error.message : "Live chat unavailable";
-          if (last !== reason) {
-            write({ type: "unavailable", reason });
-            last = reason;
+          const type =
+            !initialized && error instanceof LiveChatError && error.starting
+              ? "connecting"
+              : "unavailable";
+          const key = `${type}:${reason}`;
+          if (last !== key) {
+            write({ type, reason });
+            last = key;
           }
         }
       }

@@ -28,10 +28,16 @@ optional complete ID `order` when rows are added, removed or reordered. Patches
 require the exact baseline; invalid baselines reconnect for a full snapshot.
 Runtime/epoch/session changes always send a full snapshot. Network interruptions
 keep the existing transcript visible but disable commands until reconnected.
+`{type:"connecting",reason}` represents initial session/extension registration.
+The UI shows a starting/connecting spinner rather than a red error, with a fixed
+30-second startup deadline (progress notices do not restart it). A late valid
+snapshot still recovers normally. Identity, ambiguity and unsupported-agent
+failures remain immediate `unavailable` errors; a previously connected stream
+losing its peer is not classified as a new-agent startup.
 `{type:"unavailable",reason}` explicitly invalidates the displayed session.
-There is no file/terminal fallback. The extension now publishes snapshot version 2
-for send receipts. Version 1 remains readable, but the browser disables sends and
-asks for `/reload` instead of silently using an extension that cannot confirm receipt.
+There is no file/terminal fallback. Snapshot version 2 identifies the current
+image-capable send bridge. Version 1 remains readable, but the browser disables
+sends and asks for `/reload` rather than silently using an older bridge.
 SSE IDs are `epoch:seq`; `Last-Event-ID` is intentionally not replayed.
 Keepalive comments carry no chat data and do not trigger Herdr reads.
 
@@ -46,11 +52,13 @@ text to 32,000 characters. The extension validates the command again against its
 current context with no await before invoking Pi. Commands are not persisted or
 retried; duplicate IDs are rejected (up to 1024 seen IDs per runtime lifecycle,
 then reload required). ACK is `outcome:"invoked"` or `"rejected"`, not delivery
-confirmation. A matching Pi user-message start (text and image count) publishes
-`receivedSendIds` (the last 128 confirmed command IDs), clearing the submitted browser draft and
-attachments automatically. A receipt also works when the HTTP ACK is lost.
-Newer draft edits are preserved. Without a receipt, transport timeout/loss is
-uncertain and the draft remains; no automatic retry occurs.
+confirmation. The browser validates the correlated forwarding ACK, clears the
+submitted text and images, and unlocks editing immediately. It does not wait for
+a Pi user-message event or compare text. The HTTP command has a 15-second browser
+deadline. Rejection, malformed ACK, timeout or network loss preserves the visible
+draft and unlocks the composer with an error; uncertain sends are never retried
+automatically. There is no hidden recovery copy. Pi busy/idle state independently
+gates the next send.
 
 `POST .../tree` accepts `{target}` and returns a correlated typed tree from
 public Pi `getTree()/getLeafId()`. `POST .../tree-navigation` accepts
@@ -80,9 +88,11 @@ settings, CLI, sessions, session-format, message-types and SDK) and actual
 - `message_end` extension handlers run before the session manager appends the
   message. Later handlers may replace it. Live content is provisional until
   `turn_end` and `agent_settled` reconciliation.
-- `agent_end` may precede retry/compaction/continuation. A matching user-message
-  start clears the invocation latch; `agent_settled` also clears unresolved latches
-  and marks the runtime idle. Receipt is not a durable-persistence guarantee.
+- `agent_end` may precede retry/compaction/continuation. `agent_start` clears the
+  preflight handoff guard and marks the runtime active; `agent_settled` clears it
+  and marks the runtime idle. The guard expires after 15 seconds if Pi never emits
+  a run event, without retrying. Native busy and pending-message checks still apply.
+  This gate is not a receipt or durable-persistence guarantee.
 - Old contexts assert inactive after replacement. Shutdown invalidates retained
   context, destroys sockets and cancels timers; generation checks prevent late
   asynchronous connection attempts from reviving it.

@@ -27,6 +27,7 @@ interface AgentConsoleProps {
 }
 type AgentView = "chat" | "terminal";
 type Attachment = { file?: File; id?: string; previewUrl: string };
+type OutgoingDraft = { text: string; attachments: Attachment[]; target: Target };
 function submissionId() {
   // getRandomValues also works on the dashboard's non-HTTPS private IP origin.
   const bytes = crypto.getRandomValues(new Uint8Array(16));
@@ -77,12 +78,6 @@ export function AgentConsole({ agent, onBack }: AgentConsoleProps) {
   const [prompt, setPrompt] = useState("");
   const [attachments, setAttachments] = useState<Attachment[]>([]);
   const [attachmentError, setAttachmentError] = useState("");
-  const [submission, setSubmission] = useState<{
-    id: string;
-    target: Target;
-    text: string;
-    attachments: Attachment[];
-  }>();
   const [treeTarget, setTreeTarget] = useState<Target | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const uploadedIds = useRef(new Map<File, string>());
@@ -95,6 +90,8 @@ export function AgentConsole({ agent, onBack }: AgentConsoleProps) {
   const shouldFollowRef = useRef(true);
   const live = useLiveChat(agent.pane_id, view === "chat", agent.agent_session?.value);
   const snapshot = live.snapshot;
+  const initializing = view === "chat" && !snapshot && !live.error;
+  const starting = initializing && !agent.agent_session;
   const outputQuery = useQuery({
     queryKey: ["agent-output", target],
     queryFn: () => getAgentOutput(target),
@@ -102,11 +99,9 @@ export function AgentConsole({ agent, onBack }: AgentConsoleProps) {
     refetchInterval: view === "terminal" ? 1000 : false,
   });
   const send = useMutation({
-    mutationFn: async () => {
-      if (!snapshot) throw new Error("Live chat unavailable");
-      const identity = targetOf(snapshot);
+    mutationFn: async (draft: OutgoingDraft) => {
       const ids: string[] = [];
-      for (const attachment of attachments) {
+      for (const attachment of draft.attachments) {
         if (attachment.id) ids.push(attachment.id);
         else if (attachment.file) {
           let id = uploadedIds.current.get(attachment.file);
@@ -117,12 +112,24 @@ export function AgentConsole({ agent, onBack }: AgentConsoleProps) {
           ids.push(id);
         }
       }
-      const id = submissionId();
-      setSubmission({ id, target: identity, text: prompt, attachments });
-      return chatCommand(agent.pane_id, identity, "prompt", prompt, ids, id);
+      return chatCommand(agent.pane_id, draft.target, "prompt", draft.text, ids, submissionId());
     },
+    onSuccess: (_ack, draft) => {
+      setPrompt((current) => (current === draft.text ? "" : current));
+      setAttachments((current) =>
+        current.filter((attachment) => !draft.attachments.includes(attachment)),
+      );
+      for (const attachment of draft.attachments) {
+        if (previews.current.delete(attachment.previewUrl))
+          URL.revokeObjectURL(attachment.previewUrl);
+        if (attachment.file) uploadedIds.current.delete(attachment.file);
+      }
+      setAttachmentError("");
+      resetSend();
+    },
+    gcTime: 0,
     retry: false,
-    // Receipt arrives independently over SSE, including after a lost HTTP ACK.
+    // ACK confirms forwarding only. No Pi receipt, hidden backup, or automatic retry.
   });
   const resetSend = send.reset;
   const stop = useMutation({
@@ -154,29 +161,7 @@ export function AgentConsole({ agent, onBack }: AgentConsoleProps) {
     const el = outputRef.current;
     if (el) shouldFollowRef.current = el.scrollHeight - el.scrollTop - el.clientHeight < 48;
   }
-  useEffect(() => {
-    if (
-      !submission ||
-      !snapshot ||
-      !snapshot.receivedSendIds?.includes(submission.id) ||
-      snapshot.identity.runtime !== submission.target.runtime ||
-      snapshot.identity.sessionId !== submission.target.sessionId
-    )
-      return;
-    // oxlint-disable-next-line react/set-state-in-effect -- Synchronize the submitted draft with an external Pi receipt.
-    setPrompt((current) => (current === submission.text ? "" : current));
-    setAttachments((current) =>
-      current.filter((attachment) => !submission.attachments.includes(attachment)),
-    );
-    for (const attachment of submission.attachments) {
-      if (previews.current.delete(attachment.previewUrl))
-        URL.revokeObjectURL(attachment.previewUrl);
-      if (attachment.file) uploadedIds.current.delete(attachment.file);
-    }
-    setAttachmentError("");
-    setSubmission(undefined);
-    resetSend();
-  }, [submission, snapshot, resetSend]);
+  const composerSending = send.isPending;
   const canSend = Boolean(
     snapshot &&
     snapshot.version === 2 &&
@@ -184,8 +169,7 @@ export function AgentConsole({ agent, onBack }: AgentConsoleProps) {
     !snapshot.busy &&
     !snapshot.sendPending &&
     (prompt.trim() || attachments.length) &&
-    !send.isPending &&
-    !submission,
+    !send.isPending,
   );
   function clearAttachments() {
     for (const url of previews.current) URL.revokeObjectURL(url);
@@ -197,7 +181,6 @@ export function AgentConsole({ agent, onBack }: AgentConsoleProps) {
   function selectImages(files: FileList | null) {
     if (!files) return;
     if (send.isError) {
-      setSubmission(undefined);
       send.reset();
     }
     const selected = Array.from(files);
@@ -222,7 +205,8 @@ export function AgentConsole({ agent, onBack }: AgentConsoleProps) {
   }
   function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    if (canSend) send.mutate();
+    if (canSend && snapshot)
+      send.mutate({ text: prompt, attachments: [...attachments], target: targetOf(snapshot) });
   }
   return (
     <main className={consoleStyles["console"]} data-testid="console" id="main-content">
@@ -263,7 +247,16 @@ export function AgentConsole({ agent, onBack }: AgentConsoleProps) {
         >
           {view === "chat" ? "Terminal" : "Chat"}
         </button>
-        <StatusIndicator status={agent.agent_status} label={getStatusLabel(agent.agent_status)} />
+        <StatusIndicator
+          status={initializing ? "unknown" : agent.agent_status}
+          label={
+            initializing
+              ? starting
+                ? "Starting"
+                : "Connecting"
+              : getStatusLabel(agent.agent_status)
+          }
+        />
       </header>
       {agent.agent_status === "blocked" ? (
         <div className={consoleStyles["attention-banner"]} role="status">
@@ -327,9 +320,15 @@ export function AgentConsole({ agent, onBack }: AgentConsoleProps) {
             <p>{live.error}</p>
           </div>
         ) : !snapshot ? (
-          <div className={consoleStyles["terminal-state"]} aria-busy="true">
-            <StateIcon kind="loading" />
-            <p>Connecting to Pi live chat…</p>
+          <div
+            className={
+              consoleStyles["terminal-state"] + " " + consoleStyles["transcript-initializing"]
+            }
+            role="status"
+            aria-busy="true"
+          >
+            <StateIcon kind="loading" spinning />
+            <p>{starting ? "Starting Pi…" : "Connecting to Pi live chat…"}</p>
           </div>
         ) : (
           <div
@@ -417,7 +416,6 @@ export function AgentConsole({ agent, onBack }: AgentConsoleProps) {
                 {stop.isSuccess ? <span>Abort invoked; waiting for Pi events.</span> : null}
               </div>
             ) : null}
-            {snapshot.sendPending ? <StateNotice kind="sending">Sending to Pi…</StateNotice> : null}
           </div>
         )}
       </section>
@@ -440,7 +438,11 @@ export function AgentConsole({ agent, onBack }: AgentConsoleProps) {
           ) : null}
         </div>
       ) : (
-        <form className={consoleStyles["prompt-composer"]} onSubmit={submit}>
+        <form
+          className={consoleStyles["prompt-composer"]}
+          aria-busy={composerSending}
+          onSubmit={submit}
+        >
           <div className={consoleStyles["prompt-composer__surface"]}>
             {attachments.length ? (
               <div className={consoleStyles["prompt-attachments"]} aria-label="Image attachments">
@@ -452,11 +454,10 @@ export function AgentConsole({ agent, onBack }: AgentConsoleProps) {
                     />
                     <button
                       type="button"
-                      disabled={send.isPending}
+                      disabled={composerSending}
                       aria-label={`Remove image ${i + 1}`}
                       onClick={() => {
                         if (send.isError) {
-                          setSubmission(undefined);
                           send.reset();
                         }
                         if (previews.current.delete(attachment.previewUrl))
@@ -482,12 +483,13 @@ export function AgentConsole({ agent, onBack }: AgentConsoleProps) {
                 type="file"
                 accept="image/png,image/jpeg,image/gif,image/webp"
                 multiple
+                disabled={composerSending}
                 onChange={(event) => selectImages(event.target.files)}
               />
               <button
                 type="button"
                 className={consoleStyles["prompt-composer__attach"]}
-                disabled={send.isPending || attachments.length >= 4}
+                disabled={composerSending || attachments.length >= 4}
                 title="Attach images"
                 aria-label="Attach images"
                 onClick={() => fileInputRef.current?.click()}
@@ -499,7 +501,7 @@ export function AgentConsole({ agent, onBack }: AgentConsoleProps) {
                 className={consoleStyles["prompt-composer__tree"]}
                 aria-label="Open conversation paths"
                 title="Conversation paths"
-                disabled={!snapshot || Boolean(live.error) || send.isPending}
+                disabled={!snapshot || Boolean(live.error) || composerSending}
                 onClick={() => snapshot && setTreeTarget(targetOf(snapshot))}
               >
                 <BranchIcon />
@@ -507,10 +509,9 @@ export function AgentConsole({ agent, onBack }: AgentConsoleProps) {
               <textarea
                 id="agent-prompt"
                 value={prompt}
-                disabled={send.isPending}
+                disabled={composerSending}
                 onChange={(event) => {
                   if (send.isError) {
-                    setSubmission(undefined);
                     send.reset();
                   }
                   setPrompt(event.target.value);
@@ -519,8 +520,21 @@ export function AgentConsole({ agent, onBack }: AgentConsoleProps) {
                 rows={1}
                 maxLength={32000}
               />
-              <button type="submit" aria-label="Send message" disabled={!canSend}>
-                <SendIcon />
+              <button
+                type="submit"
+                aria-label="Send message"
+                aria-busy={composerSending}
+                disabled={!canSend}
+              >
+                {composerSending ? (
+                  <span
+                    className={consoleStyles["prompt-composer__spinner"]}
+                    data-testid="send-spinner"
+                    aria-hidden="true"
+                  />
+                ) : (
+                  <SendIcon />
+                )}
               </button>
             </div>
           </div>
@@ -528,9 +542,6 @@ export function AgentConsole({ agent, onBack }: AgentConsoleProps) {
             <StateNotice kind="info" role="alert">
               {attachmentError}
             </StateNotice>
-          ) : null}
-          {submission && send.isSuccess ? (
-            <StateNotice kind="sending">Waiting for Pi to receive your message…</StateNotice>
           ) : null}
           {send.isError ? (
             <StateNotice kind="unavailable" role="alert">
@@ -560,10 +571,9 @@ export function AgentConsole({ agent, onBack }: AgentConsoleProps) {
           open
           target={agent.pane_id}
           identity={treeTarget}
-          busy={!snapshot || snapshot.busy || snapshot.sendPending || send.isPending}
+          busy={!snapshot || snapshot.busy || snapshot.sendPending || composerSending}
           onClose={() => setTreeTarget(null)}
           onRestorePrompt={(text, ids) => {
-            setSubmission(undefined);
             clearAttachments();
             setPrompt(text);
             setAttachments(ids.map((id) => ({ id, previewUrl: `/api/uploads/${id}` })));

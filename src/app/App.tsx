@@ -76,7 +76,6 @@ export function App() {
               <FernblickMark className={appStyles["console-empty__mark"]} />
               <h2>Keep your agents in view.</h2>
               <p>Choose an agent to pick up the conversation, or a shell to open its terminal.</p>
-              <span>Your workspaces stay within reach.</span>
             </main>
           )}
         </div>
