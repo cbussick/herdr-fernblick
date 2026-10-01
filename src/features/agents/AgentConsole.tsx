@@ -92,6 +92,16 @@ export function AgentConsole({ agent, onBack }: AgentConsoleProps) {
   const snapshot = live.snapshot;
   const initializing = view === "chat" && !snapshot && !live.error;
   const starting = initializing && !agent.agent_session;
+  // Discard a captured tree target before rendering commands for a replacement session.
+  if (
+    treeTarget &&
+    (!snapshot ||
+      treeTarget.runtime !== snapshot.identity.runtime ||
+      treeTarget.epoch !== snapshot.epoch ||
+      treeTarget.sessionId !== snapshot.identity.sessionId)
+  ) {
+    setTreeTarget(null);
+  }
   const outputQuery = useQuery({
     queryKey: ["agent-output", target],
     queryFn: () => getAgentOutput(target),
@@ -571,7 +581,13 @@ export function AgentConsole({ agent, onBack }: AgentConsoleProps) {
           open
           target={agent.pane_id}
           identity={treeTarget}
-          busy={!snapshot || snapshot.busy || snapshot.sendPending || composerSending}
+          busy={
+            !snapshot ||
+            Boolean(live.error) ||
+            snapshot.busy ||
+            snapshot.sendPending ||
+            composerSending
+          }
           onClose={() => setTreeTarget(null)}
           onRestorePrompt={(text, ids) => {
             clearAttachments();

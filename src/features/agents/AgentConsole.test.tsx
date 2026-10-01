@@ -6,6 +6,7 @@ import { randomUUID } from "node:crypto";
 import type { Agent } from "../../shared/api/contracts";
 import type { Snapshot } from "../../../packages/pi-live-chat/protocol";
 import { AgentConsole } from "./AgentConsole";
+import { ConversationTreeDialog } from "./ConversationTreeDialog";
 const mocks = vi.hoisted(() => ({
   live: {} as { snapshot?: Snapshot; error?: string },
   command: vi.fn(),
@@ -144,6 +145,65 @@ it("preserves the conversation on a disconnect while disabling send and stop", a
     .find((button) => button.children.includes("Stop"));
   expect(stop?.props.disabled).toBe(true);
 });
+it("preserves drafts and images through recovery without replaying commands", async () => {
+  const file = new File(["image"], "image.png", { type: "image/png" });
+  await act(async () => {
+    renderer.root.findByType("textarea").props.onChange({ target: { value: "keep this draft" } });
+    renderer.root.findByProps({ type: "file" }).props.onChange({ target: { files: [file] } });
+  });
+  mocks.live.error = "Reconnecting to Pi…";
+  await act(async () => renderer.update(render()));
+  expect(renderer.root.findByProps({ "aria-label": "Send message" }).props.disabled).toBe(true);
+  expect(renderer.root.findByType("textarea").props.value).toBe("keep this draft");
+  expect(renderer.root.findAllByProps({ "aria-label": "Image attachments" })).toHaveLength(1);
+  delete mocks.live.error;
+  await act(async () => renderer.update(render()));
+  expect(renderer.root.findByProps({ "aria-label": "Send message" }).props.disabled).toBe(false);
+  expect(renderer.root.findByType("textarea").props.value).toBe("keep this draft");
+  expect(mocks.command).not.toHaveBeenCalled();
+  expect(mocks.upload).not.toHaveBeenCalled();
+});
+
+it("never replays an uncertain in-flight send when the stream recovers", async () => {
+  let fail!: (error: Error) => void;
+  mocks.command.mockImplementationOnce(
+    () =>
+      new Promise((_resolve, reject) => {
+        fail = reject;
+      }),
+  );
+  await act(async () =>
+    renderer.root.findByType("textarea").props.onChange({ target: { value: "uncertain send" } }),
+  );
+  await act(async () => renderer.root.findByType("form").props.onSubmit({ preventDefault() {} }));
+  await flush();
+  mocks.live.error = "Reconnecting to Pi…";
+  await act(async () => renderer.update(render()));
+  await act(async () => fail(new Error("Delivery uncertain")));
+  await flush();
+  delete mocks.live.error;
+  await act(async () => renderer.update(render()));
+  expect(mocks.command).toHaveBeenCalledOnce();
+  expect(renderer.root.findByType("textarea").props.value).toBe("uncertain send");
+  expect(renderer.root.findByType("textarea").props.disabled).toBe(false);
+});
+
+it("blocks an already-open tree during recovery and closes it on epoch replacement", async () => {
+  const treeButton = renderer.root.findByProps({ "aria-label": "Open conversation paths" });
+  await act(async () => treeButton.props.onClick());
+  expect(renderer.root.findByType(ConversationTreeDialog).props.busy).toBe(false);
+  mocks.live.error = "Reconnecting to Pi…";
+  await act(async () => renderer.update(render()));
+  expect(renderer.root.findByType(ConversationTreeDialog).props.busy).toBe(true);
+  delete mocks.live.error;
+  await act(async () => renderer.update(render()));
+  expect(renderer.root.findByType(ConversationTreeDialog).props.busy).toBe(false);
+  mocks.live.snapshot = { ...mocks.live.snapshot!, epoch: randomUUID() };
+  await act(async () => renderer.update(render()));
+  expect(renderer.root.findAllByType(ConversationTreeDialog)).toHaveLength(0);
+  expect(mocks.command).not.toHaveBeenCalled();
+});
+
 it("requires reloading a legacy extension instead of accepting an unconfirmable send", async () => {
   mocks.live.snapshot = { ...mocks.live.snapshot!, version: 1 };
   await act(async () => renderer.update(render()));

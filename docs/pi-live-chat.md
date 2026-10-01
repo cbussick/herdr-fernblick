@@ -14,8 +14,14 @@
   directly. Ordinary streaming performs no Herdr requests. New socket connections
   are process-checked; commands revalidate both Herdr and process identity.
 - `useLiveChat` subscribes by immutable pane ID, reconnecting when the dashboard's
-  session identity changes. EventSource reconnect receives a full fresh snapshot,
-  not a delta replay; stale sequence numbers in the same epoch are ignored.
+  session identity changes. Returning to a visible tab, network restoration while
+  visible, and persisted `pageshow` request a fresh subscription. Lifecycle bursts
+  are coalesced and rapid successful recoveries are rate-limited. EventSource
+  handles ordinary reconnects natively; terminal CLOSED streams and malformed
+  frames retry with jittered exponential backoff (1 second initially, capped at
+  30 seconds). Superseded connection callbacks cannot update state. EventSource
+  reconnect receives a full fresh snapshot, not a delta replay; stale sequence
+  numbers in the same epoch are ignored.
 - Dashboard polling is unchanged. Agent output polling and Herdr key controls
   exist only in Terminal view. Chat send/stop never use Herdr terminal input.
 
@@ -27,7 +33,12 @@ then `patch` frames carrying metadata, `baseSeq`, changed rows (`upsert`), and a
 optional complete ID `order` when rows are added, removed or reordered. Patches
 require the exact baseline; invalid baselines reconnect for a full snapshot.
 Runtime/epoch/session changes always send a full snapshot. Network interruptions
-keep the existing transcript visible but disable commands until reconnected.
+and lifecycle recovery keep the existing transcript and draft visible but disable
+commands (including already-open tree navigation) until a valid fresh snapshot.
+An unchanged snapshot sequence is valid on a new connection. Both initial startup
+and recovery have a fixed 30-second error-notice deadline; lifecycle events do not
+extend it, and late snapshots still recover. No commands are replayed. Changing
+runtime/session/epoch invalidates an open tree dialog.
 `{type:"connecting",reason}` represents initial session/extension registration.
 The UI shows a starting/connecting spinner rather than a red error, with a fixed
 30-second startup deadline (progress notices do not restart it). A late valid
@@ -152,6 +163,12 @@ existing user agents. Coverage includes lifecycle/duplicate loading/reconnect,
 provisional-to-persisted reconciliation, tools/thinking/images/errors/limits,
 stale identities and busy/concurrent sends, uncertain disconnects, socket
 permissions and stale-path handling, ordered snapshots and fresh SSE reconnect.
+Browser-hook regression tests simulate silently stalled and terminally closed
+streams, visibility/online/persisted-pageshow recovery, reconnect bursts/backoff,
+stale callbacks, fixed deadlines, full-to-patch baselines, cleanup and Strict Mode.
+Console tests cover retained drafts/images without command replay and already-open
+tree gating/identity invalidation. These simulate lifecycle events; actual OS
+screen-lock/sleep behavior in a real browser remains a manual verification step.
 A streaming-race regression advances a snapshot during an awaited process check;
 an SSE test verifies one Herdr lookup despite repeated live frames.
 
