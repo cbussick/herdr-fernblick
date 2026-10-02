@@ -204,6 +204,75 @@
   }
 }
 
+.picker.modal {
+  position: fixed;
+  inset: auto;
+  top: var(--skills-top, 0);
+  left: var(--skills-left, 0);
+  width: var(--skills-width, 100vw);
+  height: var(--skills-height, 100dvh);
+  max-width: none;
+  max-height: none;
+  padding: 0;
+  margin: 0;
+  overflow: hidden;
+  color: var(--color-text);
+  background: var(--color-surface);
+  border: 0;
+  border-radius: 0;
+}
+
+.modal::backdrop {
+  background: var(--color-canvas);
+}
+
+.modal .header {
+  padding: max(var(--space-2), env(safe-area-inset-top)) var(--space-3) var(--space-2)
+    var(--space-4);
+}
+
+.modal .header strong {
+  font-size: 1rem;
+}
+
+.modal .search {
+  margin-bottom: var(--space-3);
+}
+
+.modal .list {
+  flex: 1;
+}
+
+.modal .list:empty {
+  flex: none;
+}
+
+.modal .option {
+  padding-block: var(--space-2);
+}
+
+.modal .description {
+  display: -webkit-box;
+  -webkit-line-clamp: 1;
+}
+
+.modal .path {
+  display: block;
+}
+
+.modal .hint {
+  display: block;
+  padding-bottom: max(var(--space-2), env(safe-area-inset-bottom));
+  margin-top: auto;
+  border-top: 1px solid var(--color-border);
+}
+
+.modal .notice {
+  flex: none;
+  max-height: 40%;
+  overflow-y: auto;
+}
+
 @media (hover: hover) {
   .composer .action:hover,
   .composer .skills:hover,

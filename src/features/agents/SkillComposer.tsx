@@ -5,6 +5,7 @@ import type { AgentSkill, Target } from "../../../packages/pi-live-chat/protocol
 import { BranchIcon, CloseIcon, ImageIcon, SendIcon } from "../../shared/ui/Icons";
 import a11y from "../../styles/accessibility.module.css";
 import styles from "./SkillComposer.module.css";
+import { useSkillPickerOverlay } from "./useSkillPickerOverlay";
 
 function skillSearch(text: string) {
   const match = /^\/(?:skill:)?([^\s:]*)$/.exec(text);
@@ -55,6 +56,7 @@ export function SkillComposer(props: Props) {
   // interrupt composition, or lose keystrokes arriving with the first snapshot.
   const slash = skillSearch(prompt);
   const open = !sending && (browsing || (slash !== null && dismissed !== prompt));
+  const { mobile, dialogRef } = useSkillPickerOverlay(open);
   const query = browsing ? search : (slash ?? "");
   const catalog = useQuery({
     queryKey: ["agent-skills", props.pane, target?.runtime, target?.sessionId, target?.epoch],
@@ -74,13 +76,14 @@ export function SkillComposer(props: Props) {
   const activeId = open && ready && skills[index] ? `${listId}-${index}` : undefined;
 
   useEffect(() => {
-    if (browsing) searchInput.current?.focus();
-  }, [browsing]);
+    if (browsing) searchInput.current?.focus({ preventScroll: true });
+  }, [browsing, mobile]);
   useEffect(() => {
     if (open) selected.current?.scrollIntoView({ block: "nearest" });
   }, [index, open, query]);
 
   function close(focus = true) {
+    dialogRef.current?.close();
     setBrowsing(false);
     setDismissed(prompt);
     if (focus) textarea.current?.focus();
@@ -89,6 +92,7 @@ export function SkillComposer(props: Props) {
     if (!ready || sending) return;
     const next = insertSkill(prompt, skill.name);
     if (next.length > 32000) return;
+    dialogRef.current?.close();
     onChange(next);
     setBrowsing(false);
     setDismissed(next);
@@ -98,7 +102,7 @@ export function SkillComposer(props: Props) {
     if (!open || event.nativeEvent.isComposing) return;
     // Search is inside the send form. Enter must never implicitly send a draft,
     // including while loading, after an error, or with no matching skills.
-    if (browsing && event.key === "Enter") event.preventDefault();
+    if ((browsing || mobile) && event.key === "Enter") event.preventDefault();
     if (event.key === "Escape") {
       event.preventDefault();
       event.stopPropagation();
@@ -116,118 +120,139 @@ export function SkillComposer(props: Props) {
     }
   }
 
+  const pickerContents = open ? (
+    <>
+      <header className={styles.header}>
+        <strong>Skills</strong>
+        <span>From this Pi session</span>
+        <button
+          type="button"
+          className={styles.close}
+          aria-label="Close skills"
+          onClick={() => close()}
+        >
+          <CloseIcon />
+        </button>
+      </header>
+      {browsing || mobile ? (
+        <input
+          ref={searchInput}
+          className={styles.search}
+          aria-label="Search skills"
+          role="combobox"
+          aria-autocomplete="list"
+          aria-expanded={open}
+          aria-controls={listId}
+          aria-activedescendant={activeId}
+          placeholder="Find a skill…"
+          value={query}
+          onChange={(event) => {
+            setBrowsing(true);
+            setSearch(event.target.value);
+            setActive(0);
+          }}
+          onKeyDown={keys}
+        />
+      ) : null}
+      {!connected ? (
+        <p className={styles.notice} role="status">
+          Connect to Pi live chat to browse this agent’s skills.
+        </p>
+      ) : !available ? (
+        <p className={styles.notice} role="status">
+          Run /reload in Pi to enable skills in Fernblick.
+        </p>
+      ) : catalog.isFetching ? (
+        <p className={styles.notice} role="status">
+          Loading this agent’s skills…
+        </p>
+      ) : catalog.isError ? (
+        <div className={styles.notice} role="alert">
+          <p>{catalog.error.message}</p>
+          <button type="button" className={styles.retry} onClick={() => void catalog.refetch()}>
+            Try again
+          </button>
+        </div>
+      ) : null}
+      <div id={listId} role="listbox" aria-label="Available skills" className={styles.list}>
+        {ready
+          ? skills.map((skill, i) => (
+              <button
+                key={skill.name}
+                ref={i === index ? selected : undefined}
+                id={`${listId}-${i}`}
+                type="button"
+                role="option"
+                aria-selected={i === index}
+                tabIndex={-1}
+                className={styles.option}
+                onMouseDown={(event) => event.preventDefault()}
+                onClick={() => choose(skill)}
+                disabled={insertSkill(prompt, skill.name).length > 32000}
+                title={skill.path}
+              >
+                <span className={styles.name}>{skill.name}</span>
+                <span className={styles.scope}>
+                  {skill.scope === "user"
+                    ? "Personal"
+                    : skill.scope === "project"
+                      ? "Project"
+                      : "Session"}
+                </span>
+                <span className={styles.description}>{skill.description}</span>
+                <span className={styles.path}>{skill.path}</span>
+              </button>
+            ))
+          : null}
+      </div>
+      {ready && !skills.length ? (
+        <p className={styles.notice} role="status">
+          {catalog.data?.skills.length
+            ? "No matching skills. Try a name or description."
+            : "No skills loaded. Add a skill to Pi, then run /reload."}
+        </p>
+      ) : null}
+      {ready && catalog.data?.truncated ? (
+        <p className={styles.notice}>
+          Showing the first {catalog.data.skills.length} skills; catalogue limit reached.
+        </p>
+      ) : null}
+      {prompt.length > 31736 ? (
+        <p className={styles.notice}>Shorten the draft if a skill won’t fit the message limit.</p>
+      ) : null}
+      <footer className={styles.hint} id={hintId}>
+        Choose a skill, add instructions, then send.
+      </footer>
+    </>
+  ) : null;
   return (
     <div
       className={styles.composer}
       onBlur={(event) => {
-        if (!event.currentTarget.contains(event.relatedTarget)) close(false);
+        if (!mobile && !event.currentTarget.contains(event.relatedTarget)) close(false);
       }}
     >
       {open ? (
-        <section className={styles.picker} aria-label="Skills" data-testid="skill-picker">
-          <header className={styles.header}>
-            <strong>Skills</strong>
-            <span>From this Pi session</span>
-            <button
-              type="button"
-              className={styles.close}
-              aria-label="Close skills"
-              onClick={() => close()}
-            >
-              <CloseIcon />
-            </button>
-          </header>
-          {browsing ? (
-            <input
-              ref={searchInput}
-              className={styles.search}
-              aria-label="Search skills"
-              role="combobox"
-              aria-autocomplete="list"
-              aria-expanded={open}
-              aria-controls={listId}
-              aria-activedescendant={activeId}
-              placeholder="Find a skill…"
-              value={search}
-              onChange={(event) => {
-                setSearch(event.target.value);
-                setActive(0);
-              }}
-              onKeyDown={keys}
-            />
-          ) : null}
-          {!connected ? (
-            <p className={styles.notice} role="status">
-              Connect to Pi live chat to browse this agent’s skills.
-            </p>
-          ) : !available ? (
-            <p className={styles.notice} role="status">
-              Run /reload in Pi to enable skills in Fernblick.
-            </p>
-          ) : catalog.isFetching ? (
-            <p className={styles.notice} role="status">
-              Loading this agent’s skills…
-            </p>
-          ) : catalog.isError ? (
-            <div className={styles.notice} role="alert">
-              <p>{catalog.error.message}</p>
-              <button type="button" className={styles.retry} onClick={() => void catalog.refetch()}>
-                Try again
-              </button>
-            </div>
-          ) : null}
-          <div id={listId} role="listbox" aria-label="Available skills" className={styles.list}>
-            {ready
-              ? skills.map((skill, i) => (
-                  <button
-                    key={skill.name}
-                    ref={i === index ? selected : undefined}
-                    id={`${listId}-${i}`}
-                    type="button"
-                    role="option"
-                    aria-selected={i === index}
-                    tabIndex={-1}
-                    className={styles.option}
-                    onMouseDown={(event) => event.preventDefault()}
-                    onClick={() => choose(skill)}
-                    disabled={insertSkill(prompt, skill.name).length > 32000}
-                    title={skill.path}
-                  >
-                    <span className={styles.name}>{skill.name}</span>
-                    <span className={styles.scope}>
-                      {skill.scope === "user"
-                        ? "Personal"
-                        : skill.scope === "project"
-                          ? "Project"
-                          : "Session"}
-                    </span>
-                    <span className={styles.description}>{skill.description}</span>
-                    <span className={styles.path}>{skill.path}</span>
-                  </button>
-                ))
-              : null}
-          </div>
-          {ready && !skills.length ? (
-            <p className={styles.notice} role="status">
-              {catalog.data?.skills.length
-                ? "No matching skills. Try a name or description."
-                : "No skills loaded. Add a skill to Pi, then run /reload."}
-            </p>
-          ) : null}
-          {ready && catalog.data?.truncated ? (
-            <p className={styles.notice}>
-              Showing the first {catalog.data.skills.length} skills; catalogue limit reached.
-            </p>
-          ) : null}
-          {prompt.length > 31736 ? (
-            <p className={styles.notice}>
-              Shorten the draft if a skill won’t fit the message limit.
-            </p>
-          ) : null}
-          <footer className={styles.hint} id={hintId}>
-            Choose a skill, add instructions, then send.
-          </footer>
-        </section>
+        mobile ? (
+          <dialog
+            ref={dialogRef}
+            className={`${styles.picker} ${styles.modal}`}
+            aria-label="Skills"
+            aria-modal="true"
+            data-testid="skill-picker"
+            onCancel={(event) => {
+              event.preventDefault();
+              close();
+            }}
+            onClose={() => close(false)}
+          >
+            {pickerContents}
+          </dialog>
+        ) : (
+          <section className={styles.picker} aria-label="Skills" data-testid="skill-picker">
+            {pickerContents}
+          </section>
+        )
       ) : null}
       <label htmlFor="agent-prompt" className={a11y["sr-only"]}>
         Message {props.label}
@@ -237,8 +262,8 @@ export function SkillComposer(props: Props) {
         id="agent-prompt"
         value={prompt}
         disabled={sending}
-        aria-controls={open && !browsing ? listId : undefined}
-        aria-activedescendant={!browsing ? activeId : undefined}
+        aria-controls={open && !browsing && !mobile ? listId : undefined}
+        aria-activedescendant={!browsing && !mobile ? activeId : undefined}
         aria-autocomplete="list"
         aria-describedby={open ? hintId : undefined}
         onKeyDown={keys}

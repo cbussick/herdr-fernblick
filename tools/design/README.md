@@ -61,6 +61,25 @@ node tools/design/verify.mjs http://100.71.229.1:5197 http://127.0.0.1:5198
 
 The gallery server exposes only static synthetic artifacts and binds to the Tailnet interface, not a public interface. A separate loopback listener can serve the same directory with `python3 -m http.server 5197 --bind 127.0.0.1 --directory design-gallery`; this supports standard localhost forwarding. Restrict access in the Tailnet policy if needed. After editing `gallery.html`, copy it to `design-gallery/index.html` or recapture.
 
+## Skills picker regression
+
+```sh
+PLAYWRIGHT_MODULE=/tmp/fernblick-design-tools/node_modules/playwright/index.mjs \
+  node tools/design/skills.mjs http://<dev-host>:<vite-port>
+# Optional: SKILLS_CASE=keyboard-height or SKILLS_CASE=visual-keyboard
+```
+
+Chromium/WebKit cover six phone/tablet/desktop cases, with intercepted API/SSE
+fixtures only. At widths below 768px the native modal fills the **visual viewport**,
+covering the header and composer, with search, a scrolling list and close control.
+The short-phone check requires at least three complete skill rows instead of the
+old single-row list. A separate fixture changes only VisualViewport height/offset
+to simulate a keyboard and browser panning without changing the layout viewport.
+Checks include background inertness, search focus, slash/keyboard selection,
+preserved text and image attachments, no implicit sends, errors and reconnect.
+Screenshots are in ignored `design-gallery/skills/`. These simulate keyboard
+geometry; keyboard/IME behavior still needs physical-device confirmation.
+
 ## Keyboard layout regression
 
 ```sh

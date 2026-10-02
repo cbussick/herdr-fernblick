@@ -94,10 +94,16 @@ for (const [engine, browserType] of [
       ["phone", 390, 844],
       ["small-phone", 320, 568],
       ["keyboard-height", 390, 440],
+      ["visual-keyboard", 390, 844],
       ["ipad", 834, 1194],
       ["desktop", 1440, 1000],
     ]) {
-      const page = await browser.newPage({ viewport: { width, height }, reducedMotion: "reduce" });
+      if (process.env.SKILLS_CASE && process.env.SKILLS_CASE !== name) continue;
+      const page = await browser.newPage({
+        viewport: { width, height },
+        hasTouch: width < 768,
+        reducedMotion: "reduce",
+      });
       const errors = [];
       let mode = "ready";
       let calls = 0;
@@ -156,12 +162,31 @@ for (const [engine, browserType] of [
           });
         },
       );
+      if (name === "visual-keyboard") {
+        await page.addInitScript(() => {
+          const viewport = Object.assign(new EventTarget(), {
+            width: innerWidth,
+            height: innerHeight,
+            offsetTop: 0,
+            offsetLeft: 0,
+          });
+          Object.defineProperty(window, "visualViewport", { configurable: true, value: viewport });
+        });
+      }
       await page.goto(base);
       await page.getByRole("tab", { name: "Agents", exact: true }).click();
       await page.getByTestId("pane-row").click();
       const prompt = page.locator("#agent-prompt");
       const trigger = page.getByRole("button", { name: "Skills", exact: true });
       await prompt.fill("Review the mobile layout");
+      await page.locator('input[type="file"]').setInputFiles({
+        name: "reference.png",
+        mimeType: "image/png",
+        buffer: Buffer.from(
+          "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+j2ioAAAAASUVORK5CYII=",
+          "base64",
+        ),
+      });
       await trigger.click();
       await page.getByRole("option").first().waitFor();
       assert.equal(
@@ -169,7 +194,58 @@ for (const [engine, browserType] of [
         true,
       );
       assert.equal(calls, 1);
+      if (name === "visual-keyboard") {
+        await page.evaluate(() => {
+          visualViewport.height = 400;
+          visualViewport.dispatchEvent(new Event("resize"));
+          visualViewport.offsetTop = 70;
+          visualViewport.dispatchEvent(new Event("scroll"));
+        });
+      }
       await page.screenshot({ path: `${output}/${engine}-${name}.png` });
+      if (width < 768) {
+        const picker = await page.getByTestId("skill-picker").boundingBox();
+        const visibleRows = await page.getByRole("listbox").evaluate((list) => {
+          const box = list.getBoundingClientRect();
+          return [...list.querySelectorAll('[role="option"]')].filter((row) => {
+            const r = row.getBoundingClientRect();
+            return r.top >= box.top && r.bottom <= box.bottom;
+          }).length;
+        });
+        console.log(
+          `${engine}/${name}: picker height ${picker.height}, ${visibleRows} complete rows`,
+        );
+        assert.ok(
+          visibleRows >= 3,
+          "phone skills should show several complete rows above the keyboard",
+        );
+        const viewport = await page.evaluate(() => ({
+          top: visualViewport.offsetTop,
+          left: visualViewport.offsetLeft,
+          height: visualViewport.height,
+          width: visualViewport.width,
+        }));
+        assert.ok(
+          Math.abs(picker.y - viewport.top) < 1 &&
+            Math.abs(picker.height - viewport.height) < 1 &&
+            Math.abs(picker.x - viewport.left) < 1 &&
+            Math.abs(picker.width - viewport.width) < 1,
+          "phone skills overlay must fill the visible viewport, covering header and composer",
+        );
+        assert.equal(
+          await page.getByTestId("skill-picker").evaluate((el) => el.matches(":modal")),
+          true,
+        );
+        assert.equal(
+          await page.evaluate(() => {
+            const focused = document.activeElement;
+            document.querySelector("#agent-prompt").focus();
+            return focused === document.activeElement;
+          }),
+          true,
+          "background composer must be inert while the picker is open",
+        );
+      }
       const bounds = await page.evaluate(() => {
         const send = document.querySelector('[aria-label="Send message"]').getBoundingClientRect();
         return {
@@ -181,6 +257,20 @@ for (const [engine, browserType] of [
       });
       assert.ok(bounds.scroll <= bounds.client, `${engine}/${name}: horizontal overflow`);
       assert.ok(bounds.bottom <= bounds.height + 1, `${engine}/${name}: send off screen`);
+      if (width < 768) {
+        await page.getByRole("combobox").fill("fixture");
+        for (let i = 0; i < 8; i++) await page.getByRole("combobox").press("ArrowDown");
+        const selected = await page.getByRole("option", { selected: true }).boundingBox();
+        const list = await page.getByRole("listbox").boundingBox();
+        assert.ok(
+          selected.y >= list.y && selected.y + selected.height <= list.y + list.height + 1,
+          "arrow navigation must scroll the selected skill into the list's visible area",
+        );
+        assert.equal(
+          await page.getByRole("combobox").evaluate((el) => document.activeElement === el),
+          true,
+        );
+      }
       await page.getByRole("combobox").fill("no-such-skill");
       await page.getByRole("combobox").press("Enter");
       assert.equal(sends, 0, "search Enter with no results must not submit the draft");
@@ -191,11 +281,13 @@ for (const [engine, browserType] of [
       await page.getByRole("combobox").press("Enter");
       assert.equal(await prompt.inputValue(), "/skill:code-review Review the mobile layout");
       assert.equal(sends, 0);
+      assert.equal(await page.getByLabel("Image attachments").locator("img").count(), 1);
       assert.equal(await prompt.evaluate((el) => el === document.activeElement), true);
       await prompt.fill("/");
       await page.getByRole("option").first().waitFor();
-      await prompt.press("ArrowDown");
-      await prompt.press("Tab");
+      const slashInput = width < 768 ? page.getByRole("combobox") : prompt;
+      await slashInput.press("ArrowDown");
+      await slashInput.press("Tab");
       assert.equal(await prompt.inputValue(), "/skill:code-review ");
       assert.equal(sends, 0);
       await trigger.click();
@@ -203,13 +295,29 @@ for (const [engine, browserType] of [
       await page.getByRole("combobox").press("Escape");
       assert.equal(await page.getByTestId("skill-picker").count(), 0);
       assert.equal(await prompt.inputValue(), "/skill:code-review ");
+      if (name === "phone") {
+        await trigger.click();
+        await page.getByRole("combobox").fill("front");
+        await page.setViewportSize({ width: 900, height });
+        await page.waitForFunction(
+          () => document.querySelector('[data-testid="skill-picker"]')?.tagName === "SECTION",
+        );
+        assert.equal(await page.getByRole("combobox").inputValue(), "front");
+        await page.setViewportSize({ width, height });
+        await page.getByRole("dialog", { name: "Skills" }).waitFor();
+        assert.equal(await page.getByRole("combobox").inputValue(), "front");
+        await page.getByRole("button", { name: "Close skills" }).click();
+        assert.equal(await prompt.inputValue(), "/skill:code-review ");
+        assert.equal(await page.getByLabel("Image attachments").locator("img").count(), 1);
+        assert.equal(await prompt.evaluate((el) => document.activeElement === el), true);
+      }
       await trigger.click();
       await page.getByRole("option").first().waitFor();
       await page.getByRole("option").filter({ hasText: "frontend-design" }).click();
       assert.equal(await prompt.inputValue(), "/skill:frontend-design ");
       await prompt.fill("/nothing-matches");
       await page.getByText("No matching skills. Try a name or description.").waitFor();
-      await prompt.press("Escape");
+      await (width < 768 ? page.getByRole("combobox") : prompt).press("Escape");
       mode = "error";
       await trigger.click();
       await page.getByText("Skills offline").waitFor();
@@ -220,6 +328,7 @@ for (const [engine, browserType] of [
       await page.getByText("No skills loaded. Add a skill to Pi, then run /reload.").waitFor();
       await page.getByRole("combobox").press("Escape");
       mode = "ready";
+      await page.getByRole("button", { name: "Remove image 1" }).click();
       await prompt.fill("/skill:code-review check this");
       await page.getByRole("button", { name: "Send message" }).click();
       await page.waitForFunction(() => document.querySelector("#agent-prompt").value === "");
