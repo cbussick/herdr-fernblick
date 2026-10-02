@@ -7,6 +7,7 @@ import {
   annotationHighlights,
   annotationPrompt,
   positionAnnotationPopover,
+  positionTouchAnnotationAction,
   type Annotation,
 } from "./annotations";
 import { useChatAnnotations, type ChatAnnotations } from "./useChatAnnotations";
@@ -86,6 +87,48 @@ it("positions above a selection, flips below when needed, and clamps to the visu
       height: 300,
     }),
   ).toEqual({ left: 12, top: 168 });
+});
+
+describe("touch selection action placement", () => {
+  const size = { width: 106, height: 44 };
+  const ipad = { left: 0, top: 0, width: 834, height: 1194 };
+  it("sits to the right or left of multiline selections without covering their handles", () => {
+    expect(
+      positionTouchAnnotationAction({ left: 200, right: 350, top: 300, bottom: 380 }, size, ipad),
+    ).toEqual({ left: 370, top: 318 });
+    expect(
+      positionTouchAnnotationAction({ left: 600, right: 800, top: 300, bottom: 380 }, size, ipad),
+    ).toEqual({ left: 474, top: 318 });
+  });
+  it("reserves native-menu space below short or full-width passages, and flips above near the bottom", () => {
+    const phone = { ...ipad, width: 390, height: 844 };
+    expect(
+      positionTouchAnnotationAction({ left: 58, right: 380, top: 400, bottom: 426 }, size, phone),
+    ).toEqual({ left: 58, top: 510 });
+    expect(
+      positionTouchAnnotationAction({ left: 58, right: 380, top: 740, bottom: 766 }, size, phone),
+    ).toEqual({ left: 58, top: 612 });
+    expect(
+      positionTouchAnnotationAction({ left: 58, right: 380, top: 20, bottom: 46 }, size, phone),
+    ).toEqual({ left: 58, top: 130 });
+  });
+  it("keeps viewport-filling selections usable rather than clamping into the callout band", () => {
+    expect(
+      positionTouchAnnotationAction({ left: 12, right: 378, top: 20, bottom: 824 }, size, {
+        ...ipad,
+        width: 390,
+        height: 844,
+      }),
+    ).toEqual({ left: 272, top: 400 });
+    expect(
+      positionTouchAnnotationAction({ left: 110, right: 480, top: 220, bottom: 480 }, size, {
+        left: 100,
+        top: 200,
+        width: 390,
+        height: 300,
+      }),
+    ).toEqual({ left: 372, top: 328 });
+  });
 });
 
 describe("annotation draft ownership", () => {

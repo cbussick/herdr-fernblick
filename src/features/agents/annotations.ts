@@ -71,6 +71,46 @@ export function readAnnotationSelection(
   return { source: { messageId: message.id, quote, start, end }, range: range.cloneRange() };
 }
 
+// This reserves *estimated* callout space, not a measured system-menu rectangle.
+// iPad exposes neither its menu geometry nor a way to layer page UI above it.
+export function positionTouchAnnotationAction(
+  anchor: { left: number; right: number; top: number; bottom: number },
+  size: { width: number; height: number },
+  viewport: { left: number; top: number; width: number; height: number },
+) {
+  const inset = 12;
+  const handleGap = 20;
+  const calloutGap = 84;
+  const leftEdge = viewport.left + inset;
+  const rightEdge = viewport.left + viewport.width - inset;
+  const topEdge = viewport.top + inset;
+  const bottomEdge = viewport.top + viewport.height - inset;
+  const clamp = (value: number, min: number, max: number) => Math.max(min, Math.min(value, max));
+  const middle = clamp(
+    (Math.max(anchor.top, topEdge) + Math.min(anchor.bottom, bottomEdge) - size.height) / 2,
+    topEdge,
+    bottomEdge - size.height,
+  );
+
+  // Beside a multiline selection, stay within its vertical band rather than
+  // protruding into the native menu above/below it or covering selection handles.
+  if (middle >= anchor.top && middle + size.height <= anchor.bottom) {
+    if (anchor.right >= leftEdge && anchor.right + handleGap + size.width <= rightEdge)
+      return { left: anchor.right + handleGap, top: middle };
+    if (anchor.left <= rightEdge && anchor.left - handleGap - size.width >= leftEdge)
+      return { left: anchor.left - handleGap - size.width, top: middle };
+  }
+  const left = clamp(anchor.left, leftEdge, rightEdge - size.width);
+  const below = anchor.bottom + calloutGap;
+  if (below >= topEdge && below + size.height <= bottomEdge) return { left, top: below };
+  const above = anchor.top - calloutGap - size.height;
+  if (above >= topEdge && above + size.height <= bottomEdge) return { left, top: above };
+
+  // A viewport-filling selection may leave no exterior slot. Keep the action
+  // inside its visible band, not clamped back into an estimated callout area.
+  return { left: clamp(anchor.right - size.width, leftEdge, rightEdge - size.width), top: middle };
+}
+
 export function positionAnnotationPopover(
   anchor: { left: number; top: number; bottom: number },
   size: { width: number; height: number },

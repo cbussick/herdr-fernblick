@@ -2,11 +2,11 @@ import { useLayoutEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { CloseIcon, MessageIcon, PencilIcon, SendIcon, TrashIcon } from "../../shared/ui/Icons";
 import a11yStyles from "../../styles/accessibility.module.css";
-import { positionAnnotationPopover } from "./annotations";
+import { positionAnnotationPopover, positionTouchAnnotationAction } from "./annotations";
 import type { ChatAnnotations } from "./useChatAnnotations";
 import styles from "./ChatAnnotations.module.css";
 
-function useAnchoredOverlay(anchor: () => DOMRect) {
+function useAnchoredOverlay(anchor: () => DOMRect, touchAction = false) {
   const ref = useRef<HTMLDivElement>(null);
   const [position, setPosition] = useState({ left: 12, top: 12 });
   useLayoutEffect(() => {
@@ -21,7 +21,8 @@ function useAnchoredOverlay(anchor: () => DOMRect) {
         height: viewport?.height ?? window.innerHeight,
       };
       element.style.maxHeight = `${Math.max(120, bounds.height - 24)}px`;
-      setPosition(positionAnnotationPopover(anchor(), element.getBoundingClientRect(), bounds));
+      const placeOverlay = touchAction ? positionTouchAnnotationAction : positionAnnotationPopover;
+      setPosition(placeOverlay(anchor(), element.getBoundingClientRect(), bounds));
     }
     place();
     const observer = new ResizeObserver(place);
@@ -37,27 +38,13 @@ function useAnchoredOverlay(anchor: () => DOMRect) {
       window.visualViewport?.removeEventListener("resize", place);
       window.visualViewport?.removeEventListener("scroll", place);
     };
-  }, [anchor]);
+  }, [anchor, touchAction]);
   return { ref, position };
 }
 
-function CommentAction({ annotations }: { annotations: ChatAnnotations }) {
-  return (
-    <button
-      type="button"
-      className={styles.send}
-      aria-keyshortcuts="Alt+Enter"
-      title="Comment on selection (Alt+Enter)"
-      onMouseDown={(event) => event.preventDefault()}
-      onClick={annotations.openSelection}
-    >
-      <MessageIcon /> Comment
-    </button>
-  );
-}
-
-function FloatingSelectionAction({ annotations }: { annotations: ChatAnnotations }) {
-  const { ref, position } = useAnchoredOverlay(annotations.selection!.anchor);
+export function AnnotationSelectionAction({ annotations }: { annotations: ChatAnnotations }) {
+  const { anchor, touch } = annotations.selection!;
+  const { ref, position } = useAnchoredOverlay(anchor, touch);
   return createPortal(
     <div
       ref={ref}
@@ -65,36 +52,18 @@ function FloatingSelectionAction({ annotations }: { annotations: ChatAnnotations
       data-ui="annotation-action"
       style={position}
     >
-      <CommentAction annotations={annotations} />
+      <button
+        type="button"
+        className={styles.send}
+        aria-keyshortcuts="Alt+Enter"
+        title="Comment on selection (Alt+Enter)"
+        onMouseDown={(event) => event.preventDefault()}
+        onClick={annotations.openSelection}
+      >
+        <MessageIcon /> Comment
+      </button>
     </div>,
     document.body,
-  );
-}
-
-export function AnnotationSelectionAction({ annotations }: { annotations: ChatAnnotations }) {
-  if (!annotations.selection!.docked) return <FloatingSelectionAction annotations={annotations} />;
-  // System selection menus can appear above OR below a passage and cannot be
-  // measured or covered with CSS. Keep touch controls out of the transcript.
-  return (
-    <section
-      className={styles["selection-dock"]}
-      data-ui="annotation-action"
-      data-testid="annotation-selection-dock"
-      aria-label="Selected passage"
-    >
-      <div className={styles["selection-dock__surface"]}>
-        <blockquote>{annotations.selection!.source.quote}</blockquote>
-        <CommentAction annotations={annotations} />
-        <button
-          type="button"
-          className={styles["selection-dismiss"]}
-          aria-label="Cancel selection"
-          onClick={annotations.close}
-        >
-          <CloseIcon />
-        </button>
-      </div>
-    </section>
   );
 }
 

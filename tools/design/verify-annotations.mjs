@@ -247,13 +247,18 @@ for (const engine of [chromium, webkit]) {
       if (touch) {
         // iPad native selection handles need not emit any pointer events.
         await select(source, 0, 30, null);
-        await page.getByTestId("annotation-selection-dock").waitFor();
+        await action.waitFor();
+        assert.equal(
+          await page.getByTestId("annotation-selection-dock").count(),
+          0,
+          "touch entry stays beside the text, not docked",
+        );
         assert.equal(await comment.count(), 0);
         assert.equal(
           await page.evaluate(() => window.getSelection().toString()),
           messages[3].text.slice(0, 30),
         );
-        await page.getByRole("button", { name: "Cancel selection" }).click();
+        await page.keyboard.press("Escape");
         await action.waitFor({ state: "hidden" });
       }
       await select(source, 0, 30);
@@ -320,18 +325,20 @@ for (const engine of [chromium, webkit]) {
       // Headless WebKit cannot show iPad system chrome. Reserve its below-selection
       // menu footprint from the reported screenshot to catch app-button collisions.
       if (touch) {
-        await page.getByTestId("annotation-selection-dock").waitFor();
+        assert.equal(await page.getByTestId("annotation-selection-dock").count(), 0);
+        assert.equal(await page.locator("[data-ui=annotation-action]").count(), 1);
         assert.equal(
-          await page.locator("[data-ui=annotation-action]").count(),
-          1,
-          "no covered duplicate floating action",
+          await action.evaluate((button) => getComputedStyle(button.parentElement).position),
+          "fixed",
         );
-        const actionBounds = await action.boundingBox();
-        const transcriptBounds = await page.getByTestId("chat-transcript").boundingBox();
-        assert.ok(
-          actionBounds.y >= transcriptBounds.y + transcriptBounds.height + 60,
-          "touch action reserves space below native selection menus",
-        );
+        const distance = await action.evaluate((button) => {
+          const action = button.getBoundingClientRect();
+          const selection = window.getSelection().getRangeAt(0).getBoundingClientRect();
+          const dx = Math.max(selection.left - action.right, action.left - selection.right, 0);
+          const dy = Math.max(selection.top - action.bottom, action.top - selection.bottom, 0);
+          return Math.hypot(dx, dy);
+        });
+        assert.ok(distance <= 90, "Comment remains anchored near the selected passage");
         await page.evaluate(() => {
           const rect = window.getSelection().getRangeAt(0).getBoundingClientRect();
           const menu = document.createElement("div");
@@ -354,16 +361,26 @@ for (const engine of [chromium, webkit]) {
           menu.textContent = "Copy     Search     Translate";
           document.body.append(menu);
         });
-        for (const control of [action, page.getByRole("button", { name: "Cancel selection" })]) {
+        for (const side of ["above", "below"]) {
+          await page.getByTestId("native-selection-menu-fixture").evaluate((menu, side) => {
+            const rect = window.getSelection().getRangeAt(0).getBoundingClientRect();
+            menu.style.top = `${side === "below" ? rect.bottom + 12 : rect.top - 56}px`;
+          }, side);
           assert.equal(
-            await control.evaluate((button) => {
+            await action.evaluate((button) => {
               const rect = button.getBoundingClientRect();
-              return button.contains(
-                document.elementFromPoint(rect.x + rect.width / 2, rect.y + rect.height / 2),
+              const menu = document
+                .querySelector("[data-testid=native-selection-menu-fixture]")
+                .getBoundingClientRect();
+              return (
+                rect.right <= menu.left ||
+                rect.left >= menu.right ||
+                rect.bottom <= menu.top ||
+                rect.top >= menu.bottom
               );
             }),
             true,
-            "The native selection-menu footprint must not hide annotation controls",
+            `The ${side}-selection native-menu footprint must not cover Comment`,
           );
         }
       }

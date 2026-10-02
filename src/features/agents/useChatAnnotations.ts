@@ -18,7 +18,7 @@ type AnnotationAnchor = {
   target: Target;
   anchor: () => DOMRect;
 };
-type AnnotationSelection = AnnotationAnchor & { docked: boolean };
+type AnnotationSelection = AnnotationAnchor & { touch: boolean };
 export type AnnotationEditor = AnnotationAnchor & { id?: string; comment: string };
 
 export function useChatAnnotations(
@@ -79,7 +79,7 @@ export function useChatAnnotations(
             target: targetOf(snapshot),
             // Native selection handles may emit selectionchange without a new
             // pointer event, including iPads with a trackpad attached.
-            docked:
+            touch:
               touch ||
               navigator.maxTouchPoints > 0 ||
               window.matchMedia("(any-pointer: coarse)").matches,
