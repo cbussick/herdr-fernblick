@@ -91,6 +91,7 @@ No Pi-native queue was added.
 - Read the latest 600 lines as plain terminal text
 - Stream ordinary Pi model chat, thinking and tool output; send idle text prompts and request Stop
 - Send terminal keys only from Terminal view
+- Toggle **Annotate** in Chat to comment on selected assistant text, then send the pending comments directly without changing the ordinary draft. [Interaction and limitations](docs/annotation-mode.md).
 
 The HTTP API does not expose a shell or arbitrary Herdr method proxy. Access to this application still grants effective control of the agents, which may execute commands and modify files with their Unix account's permissions.
 

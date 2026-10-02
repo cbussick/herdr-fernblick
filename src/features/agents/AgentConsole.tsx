@@ -8,6 +8,10 @@ import { getAgentTabLabel, getAgentTarget, getStatusLabel } from "./agentPresent
 import { getAgentOutput, sendAgentKey, chatCommand, uploadImage } from "../../shared/api/apiClient";
 import { useLiveChat } from "./useLiveChat";
 import { ChatMessageText } from "./ChatMessageText";
+import { useChatAnnotations } from "./useChatAnnotations";
+import { AnnotationPopover, AnnotationToolbar, AnnotationTray } from "./ChatAnnotations";
+import { annotationHighlights, annotationPrompt } from "./annotations";
+import annotationStyles from "./ChatAnnotations.module.css";
 import { CloseTabButton } from "./CloseTabButton";
 import { ConversationTreeDialog } from "./ConversationTreeDialog";
 import {
@@ -16,6 +20,7 @@ import {
   CloseIcon,
   ImageIcon,
   LightbulbIcon,
+  MessageIcon,
   SendIcon,
 } from "../../shared/ui/Icons";
 import { IconButton, StatusIndicator, TabKindIcon } from "../../shared/ui";
@@ -27,7 +32,12 @@ interface AgentConsoleProps {
 }
 type AgentView = "chat" | "terminal";
 type Attachment = { file?: File; id?: string; previewUrl: string };
-type OutgoingDraft = { text: string; attachments: Attachment[]; target: Target };
+type OutgoingDraft = {
+  text: string;
+  attachments: Attachment[];
+  target: Target;
+  annotationIds?: string[];
+};
 function submissionId() {
   // getRandomValues also works on the dashboard's non-HTTPS private IP origin.
   const bytes = crypto.getRandomValues(new Uint8Array(16));
@@ -125,6 +135,11 @@ export function AgentConsole({ agent, onBack }: AgentConsoleProps) {
       return chatCommand(agent.pane_id, draft.target, "prompt", draft.text, ids, submissionId());
     },
     onSuccess: (_ack, draft) => {
+      if (draft.annotationIds) {
+        annotations.acknowledge(draft.annotationIds);
+        resetSend();
+        return;
+      }
       setPrompt((current) => (current === draft.text ? "" : current));
       setAttachments((current) =>
         current.filter((attachment) => !draft.attachments.includes(attachment)),
@@ -142,6 +157,12 @@ export function AgentConsole({ agent, onBack }: AgentConsoleProps) {
     // ACK confirms forwarding only. No Pi receipt, hidden backup, or automatic retry.
   });
   const resetSend = send.reset;
+  const annotations = useChatAnnotations(
+    snapshot,
+    view === "chat" && !treeTarget && !lightboxImage,
+    outputRef,
+    send.isPending,
+  );
   const stop = useMutation({
     mutationFn: () => {
       if (!snapshot) throw new Error("Live chat unavailable");
@@ -164,23 +185,34 @@ export function AgentConsole({ agent, onBack }: AgentConsoleProps) {
       lightboxRef.current.showModal();
   }, [lightboxImage]);
   useEffect(() => {
-    if (outputRef.current && shouldFollowRef.current)
+    if (outputRef.current && shouldFollowRef.current && (view !== "chat" || !annotations.enabled))
       outputRef.current.scrollTop = outputRef.current.scrollHeight;
-  }, [snapshot?.epoch, snapshot?.seq, outputQuery.data?.revision, view]);
+  }, [snapshot?.epoch, snapshot?.seq, outputQuery.data?.revision, view, annotations.enabled]);
   function trackScroll() {
     const el = outputRef.current;
     if (el) shouldFollowRef.current = el.scrollHeight - el.scrollTop - el.clientHeight < 48;
   }
   const composerSending = send.isPending;
-  const canSend = Boolean(
+  const canForward = Boolean(
     snapshot &&
     snapshot.version === 2 &&
     !live.error &&
     !snapshot.busy &&
     !snapshot.sendPending &&
-    (prompt.trim() || attachments.length) &&
     !send.isPending,
   );
+  const canSend = canForward && !annotations.editor && Boolean(prompt.trim() || attachments.length);
+  const canSendAnnotations =
+    canForward && annotations.entries.length > 0 && !annotations.stale && !annotations.editor;
+  function sendAnnotations() {
+    if (!canSendAnnotations || !annotations.owner) return;
+    send.mutate({
+      text: annotationPrompt(annotations.entries),
+      attachments: [],
+      target: annotations.owner,
+      annotationIds: annotations.entries.map((entry) => entry.id),
+    });
+  }
   function clearAttachments() {
     for (const url of previews.current) URL.revokeObjectURL(url);
     previews.current.clear();
@@ -273,6 +305,12 @@ export function AgentConsole({ agent, onBack }: AgentConsoleProps) {
           <strong>Needs your input</strong>
           <span>The agent is waiting for a decision.</span>
         </div>
+      ) : null}
+      {view === "chat" && snapshot ? (
+        <AnnotationToolbar
+          annotations={annotations}
+          disabled={composerSending || Boolean(treeTarget)}
+        />
       ) : null}
       <section
         className={consoleStyles["output-panel"] + " " + consoleStyles[`output-panel--${view}`]}
@@ -396,7 +434,40 @@ export function AgentConsole({ agent, onBack }: AgentConsoleProps) {
                     key={message.id}
                   >
                     <span>{message.role === "user" ? "You" : getAgentTabLabel(agent)}</span>
-                    {message.text ? <ChatMessageText text={message.text} /> : null}
+                    {message.text ? (
+                      <ChatMessageText
+                        text={message.text}
+                        annotationSource={message.role === "assistant" ? message.id : undefined}
+                        highlights={
+                          annotations.stale
+                            ? []
+                            : annotationHighlights(message, annotations.entries)
+                        }
+                      />
+                    ) : null}
+                    {message.role === "assistant" && message.text && annotations.enabled ? (
+                      <button
+                        type="button"
+                        className={annotationStyles["reply-action"]}
+                        disabled={
+                          composerSending || annotations.stale || Boolean(annotations.editor)
+                        }
+                        onClick={(event) => {
+                          const button = event.currentTarget;
+                          annotations.begin(
+                            {
+                              messageId: message.id,
+                              quote: message.text,
+                              start: 0,
+                              end: message.text.length,
+                            },
+                            () => button.getBoundingClientRect(),
+                          );
+                        }}
+                      >
+                        <MessageIcon /> Comment on response
+                      </button>
+                    ) : null}
                     {message.attachments?.length ? (
                       <div className={consoleStyles["chat-message__attachments"]}>
                         {message.attachments.map((url, i) => (
@@ -429,6 +500,27 @@ export function AgentConsole({ agent, onBack }: AgentConsoleProps) {
           </div>
         )}
       </section>
+      {view === "chat" ? (
+        <AnnotationTray
+          annotations={annotations}
+          canSend={canSendAnnotations}
+          sending={composerSending && Boolean(send.variables?.annotationIds)}
+          locked={composerSending}
+          blockedReason={
+            live.error
+              ? "Reconnect to Pi before sending comments."
+              : !snapshot || snapshot.version !== 2
+                ? "An up-to-date Pi connection is required to send comments."
+                : snapshot.busy || snapshot.sendPending
+                  ? "You can keep annotating. Send when the agent is idle."
+                  : annotations.editor
+                    ? "Save or cancel the open comment before sending."
+                    : ""
+          }
+          sendError={send.isError && send.variables?.annotationIds ? send.error.message : undefined}
+          onSend={sendAnnotations}
+        />
+      ) : null}
       {view === "terminal" ? (
         <div className={consoleStyles["key-controls"]} aria-label="Terminal controls">
           {keyControls.map((control) => (
@@ -511,7 +603,9 @@ export function AgentConsole({ agent, onBack }: AgentConsoleProps) {
                 className={consoleStyles["prompt-composer__tree"]}
                 aria-label="Open conversation paths"
                 title="Conversation paths"
-                disabled={!snapshot || Boolean(live.error) || composerSending}
+                disabled={
+                  !snapshot || Boolean(live.error) || composerSending || Boolean(annotations.editor)
+                }
                 onClick={() => snapshot && setTreeTarget(targetOf(snapshot))}
               >
                 <BranchIcon />
@@ -533,10 +627,10 @@ export function AgentConsole({ agent, onBack }: AgentConsoleProps) {
               <button
                 type="submit"
                 aria-label="Send message"
-                aria-busy={composerSending}
+                aria-busy={composerSending && !send.variables?.annotationIds}
                 disabled={!canSend}
               >
-                {composerSending ? (
+                {composerSending && !send.variables?.annotationIds ? (
                   <span
                     className={consoleStyles["prompt-composer__spinner"]}
                     data-testid="send-spinner"
@@ -553,7 +647,7 @@ export function AgentConsole({ agent, onBack }: AgentConsoleProps) {
               {attachmentError}
             </StateNotice>
           ) : null}
-          {send.isError ? (
+          {send.isError && !send.variables?.annotationIds ? (
             <StateNotice kind="unavailable" role="alert">
               {send.error.message} Draft retained; check Pi before retrying.
             </StateNotice>
@@ -575,6 +669,9 @@ export function AgentConsole({ agent, onBack }: AgentConsoleProps) {
             {snapshot.status.cost.toFixed(2)} · {snapshot.status.provider}
           </span>
         </div>
+      ) : null}
+      {view === "chat" && annotations.editor ? (
+        <AnnotationPopover annotations={annotations} />
       ) : null}
       {treeTarget ? (
         <ConversationTreeDialog
