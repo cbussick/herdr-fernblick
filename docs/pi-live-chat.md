@@ -78,6 +78,27 @@ completes, with the new target epoch and optional restored `{text,attachments}`.
 Opening the original dialog makes one request, without focus/reconnect polling;
 mutations are never automatically retried.
 
+`POST .../skills` accepts `{target}` and returns a correlated catalogue from the
+active extension's public `pi.getCommands()`. Snapshots advertise
+`capabilities.skills: true`; older bridges keep ordinary chat working and show a
+reload notice rather than accepting unsupported skill sends. Skills are fetched
+on opening the picker (also while Pi is busy), not on every keystroke or snapshot.
+Each catalogue is bounded to 1,000 entries and 512 KiB of entry JSON, with an
+explicit truncation notice. Metadata contains name, description, source path and
+personal/project/temporary scope, never skill bodies.
+
+A draft beginning with `/skill:` is validated against the freshly resolved Pi
+catalogue after image preparation, immediately before forwarding. Only known,
+unshadowed skills enable `expandPromptTemplates: true`; ordinary messages,
+including other slash commands, remain literal. Argument whitespace is normalized
+to Pi's literal-space separator. Selection only edits the visible draft, preserves
+instructions/images and never sends or queues anything. Busy/identity/ACK behavior
+is unchanged. Missing skills reject and retain the draft. Pi can still consume
+input in a hook or fail a file read after forwarding; ACK is not proof of skill
+expansion or completion. No backend filesystem scan, global configuration change,
+terminal injection, or extra provider integration is involved. See
+[Pi skill research](research/pi-skills.md) for source evidence and version caveats.
+
 The private transport is bounded newline-delimited JSON, **not a Pi session JSONL
 reader**. Extension event handlers update an in-memory projector and schedule a
 coalesced publish; they never await networking. Slow socket peers are dropped
@@ -155,6 +176,29 @@ inside Pi may complete after timeout/disconnect. Such outcomes remain uncertain,
 never success ACKs, and should be checked in Pi before manual retry.
 
 ## Verification
+
+HER-5 adds unit/socket/HTTP tests for per-session discovery, current-skill validation,
+shadowed commands, legacy capability guards, stale replies, bounds and image
+preservation. A subprocess with a private HOME runs the actual Pi 0.99.1 loader
+across personal/project Pi and Agent Skills folders, repository ancestors,
+configured paths and package resources. It verifies filtering, duplicate winners,
+untrusted-project omission, explicit CLI paths under no-skills, and native skill
+expansion with arguments/images while replacing the model-call boundary.
+
+Run the synthetic browser regression separately (no live agents are controlled):
+
+```sh
+PLAYWRIGHT_MODULE=/tmp/fernblick-design-tools/node_modules/playwright/index.mjs \
+  node tools/design/skills.mjs http://<dev-host>:<vite-port>
+```
+
+It intercepts every API request and substitutes the SSE connection. Chromium and
+WebKit exercise 320/390px phones, a short keyboard-like viewport, iPad portrait and
+desktop; assertions cover search, selection, keyboard/focus, explicit-only sends,
+no-result/error Enter suppression, retry/empty/disconnect states, editor DOM
+preservation on session changes, and layout. Screenshots go to the ignored
+`design-gallery/skills/`. This does not substitute for physical-device IME or
+software-keyboard testing.
 
 `npm run check` includes strict compilation against pinned Pi 0.99.1 types,
 compilation of server/package tests, unit/integration tests and production build.

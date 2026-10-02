@@ -14,7 +14,7 @@ Manrope is locally bundled under the SIL OFL 1.1. Preserve the full notice in bo
 
 Each worktree has its own dependencies, Vitest invocation and ignored build outputs. Run `npm ci` and `npm run check` from inside each worktree. Avoid simultaneous test commands in the **same** worktree.
 
-The backend listens on `HOST` / `PORT` (defaults: loopback / 8787). Assign a distinct loopback `PORT` to each concurrent server. The current Vite development proxy in `vite.config.ts` is fixed to port 8787; changing only `PORT` or Vite's `--port` does **not** isolate API traffic. Until the proxy is made configurable, run only one `npm run dev` stack at a time, or build each worktree and serve it on a distinct port instead:
+The backend listens on `HOST` / `PORT` (defaults: loopback / 8787). Assign a distinct loopback `PORT` to each concurrent server. Vite proxies to `FERNBLICK_API_TARGET` (default `http://127.0.0.1:8787`). Set it to the worktree backend's address and use a distinct Vite `--port`; changing only `PORT` or the Vite port does **not** isolate API traffic. For example, run `PORT=8795 npm run dev:api` and `FERNBLICK_API_TARGET=http://127.0.0.1:8795 npm run dev:web -- --port 5185` with the isolated socket environment below. Alternatively, build each worktree and serve it on a distinct port:
 
 ```sh
 npm ci

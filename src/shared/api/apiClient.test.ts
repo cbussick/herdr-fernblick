@@ -1,6 +1,6 @@
 import { randomUUID } from "node:crypto";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
-import { chatCommand, ApiError } from "./apiClient";
+import { chatCommand, getAgentSkills, ApiError } from "./apiClient";
 const target = { runtime: randomUUID(), epoch: randomUUID(), sessionId: "s" };
 const fetchMock = vi.fn();
 let controller: AbortController;
@@ -13,6 +13,16 @@ beforeEach(() => {
 afterEach(() => {
   vi.restoreAllMocks();
   vi.unstubAllGlobals();
+});
+it("accepts only a skills catalogue for the requested session identity", async () => {
+  const reply = { type: "skills", id: randomUUID(), target, skills: [], truncated: false };
+  fetchMock.mockResolvedValueOnce(Response.json(reply));
+  expect(await getAgentSkills("w1:p1", target, controller.signal)).toEqual(reply);
+  expect(fetchMock.mock.calls[0][1].signal).toBe(controller.signal);
+  fetchMock.mockResolvedValueOnce(
+    Response.json({ ...reply, target: { ...target, epoch: randomUUID() } }),
+  );
+  await expect(getAgentSkills("w1:p1", target)).rejects.toThrow("session changed");
 });
 it("validates a correlated forwarding ACK and uses a bounded HTTP deadline", async () => {
   const id = randomUUID();

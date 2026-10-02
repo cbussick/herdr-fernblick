@@ -76,6 +76,20 @@ paths restore search, filters, labels, active-branch display and edit-and-branch
 including available images from a restored prompt. Tree data and navigation use
 the direct Pi bridge, never session-file reads or terminal command injection.
 
+### Skills
+
+Use **Skills** beside the image and conversation-path buttons, or type `/` to search
+by name or description. Arrow keys select; Enter or Tab inserts `/skill:name` into
+the draft. Add instructions or images, then send when Pi is idle. Escape dismisses
+the picker without changing the draft.
+
+The list comes from the selected Pi session, not a backend directory scan. It
+includes the skills Pi actually loaded from personal/project `.pi` and `.agents`
+folders, configured paths, packages and explicit CLI resources. Source paths and
+scope are shown in the picker. Pi owns trust, filtering and duplicate precedence.
+After updating the bridge or changing skills, run `/reload` in Pi. Other agent
+providers are not yet supported by live chat or the skills picker.
+
 ### Removed legacy queue
 
 The Fernblick SQLite queue, dispatcher, HTTP routes, UI and guarded delivery
@@ -98,6 +112,7 @@ The HTTP API does not expose a shell or arbitrary Herdr method proxy. Access to 
 
 | Variable               | Default                                 | Purpose                                                               |
 | ---------------------- | --------------------------------------- | --------------------------------------------------------------------- |
+| `FERNBLICK_API_TARGET` | `http://127.0.0.1:8787`                 | Vite development API proxy target (set for isolated worktrees)        |
 | `HOST`                 | `127.0.0.1`                             | Address for the HTTP server                                           |
 | `PORT`                 | `8787`                                  | HTTP port                                                             |
 | `HERDR_SOCKET_PATH`    | `~/.config/herdr/herdr.sock`            | Herdr session socket                                                  |

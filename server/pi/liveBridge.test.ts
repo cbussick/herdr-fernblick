@@ -209,6 +209,79 @@ it("carries the browser request ID through HTTP and requires the current send br
   }
 });
 
+it("guards the skills HTTP route and refuses skill sends to legacy peers without forwarding", async () => {
+  const p = await peer();
+  const service = { getAgent: vi.fn(async () => agent) } as unknown as HerdrService;
+  const server = createHttpServer(service, dir, bridge);
+  await new Promise<void>((done) => server.listen(0, "127.0.0.1", done));
+  const base = `http://127.0.0.1:${(server.address() as { port: number }).port}`;
+  const commands: unknown[] = [];
+  receiveFrames(p.socket, (raw) => {
+    commands.push(raw);
+    const c = raw as { id: string; target: unknown };
+    writeFrame(p.socket, {
+      type: "skills",
+      id: c.id,
+      target: c.target,
+      skills: [],
+      truncated: false,
+    });
+  });
+  const request = (origin = base, target = targetOf(p.snapshot)) =>
+    fetch(base + "/api/agents/w1:p1/skills", {
+      method: "POST",
+      headers: { Origin: origin, "Content-Type": "application/json" },
+      body: JSON.stringify({ target }),
+    });
+  try {
+    expect((await request("https://elsewhere.test")).status).toBe(403);
+    expect((await request()).status).toBe(409);
+    await expect(
+      bridge.command(agent, targetOf(p.snapshot), "send", "/skill:review"),
+    ).rejects.toThrow("/reload");
+    expect(commands).toHaveLength(0);
+    writeFrame(p.socket, {
+      ...p.snapshot,
+      version: 2,
+      capabilities: { skills: true },
+      seq: 2,
+      busy: true,
+    });
+    await vi.waitFor(() => expect(bridge.current(agent).snapshot.capabilities?.skills).toBe(true));
+    expect((await request(base, { ...targetOf(p.snapshot), epoch: randomUUID() })).status).toBe(
+      409,
+    );
+    const result = await request();
+    expect(result.status).toBe(200);
+    expect(await result.json()).toMatchObject({
+      type: "skills",
+      skills: [],
+      target: targetOf(p.snapshot),
+    });
+    expect(commands).toHaveLength(1);
+  } finally {
+    server.closeAllConnections();
+    await new Promise<void>((done) => server.close(() => done()));
+  }
+});
+
+it("rejects skills responses from a different epoch", async () => {
+  const p = await peer({ ...makeSnapshot(), version: 2, capabilities: { skills: true } });
+  receiveFrames(p.socket, (raw) => {
+    const c = raw as { id: string; target: object };
+    writeFrame(p.socket, {
+      type: "skills",
+      id: c.id,
+      target: { ...c.target, epoch: randomUUID() },
+      skills: [],
+      truncated: false,
+    });
+  });
+  await expect(bridge.request(agent, targetOf(p.snapshot), { action: "skills" })).rejects.toThrow(
+    "uncertain",
+  );
+});
+
 it("reports a new agent without a saved session as connecting, not an error", async () => {
   const service = {
     getAgent: vi.fn(async () => ({ ...agent, agent_session: null })),

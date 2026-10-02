@@ -1,0 +1,214 @@
+.composer {
+  min-width: 0;
+}
+
+.composer textarea {
+  display: block;
+  padding: 0.85rem 1rem 0.5rem;
+}
+
+.toolbar {
+  display: flex;
+  align-items: center;
+  gap: var(--space-1);
+  padding: 0.25rem 0.5rem 0.5rem;
+}
+
+.composer .action,
+.composer .skills,
+.composer .close {
+  flex: none;
+  color: var(--color-text-secondary);
+  background: transparent;
+  border-radius: var(--radius-sm);
+}
+
+.composer .skills {
+  display: flex;
+  width: auto;
+  gap: var(--space-2);
+  padding: 0 var(--space-3);
+  color: var(--color-accent);
+  font-size: 0.8125rem;
+  font-weight: 700;
+}
+
+.skills > span {
+  font-size: 1.25rem;
+  font-weight: 500;
+}
+
+.composer .skills[aria-expanded="true"] {
+  background: var(--color-accent-soft);
+}
+
+.composer .send {
+  flex: none;
+  margin-left: auto;
+}
+
+.picker {
+  display: flex;
+  flex-direction: column;
+  max-height: min(27rem, 45dvh);
+  border-bottom: 1px solid var(--color-border);
+}
+
+.header {
+  display: flex;
+  flex: none;
+  align-items: center;
+  gap: var(--space-2);
+  padding: var(--space-1) var(--space-2) var(--space-1) var(--space-4);
+  font-size: 0.875rem;
+}
+
+.header > span {
+  color: var(--color-text-secondary);
+  font-size: 0.6875rem;
+}
+
+.composer .close {
+  margin-left: auto;
+}
+
+.search {
+  flex: none;
+  min-width: 0;
+  min-height: 2.75rem;
+  padding: var(--space-2) var(--space-3);
+  margin: 0 var(--space-3) var(--space-2);
+  color: var(--color-text);
+  background: var(--color-canvas);
+  border: 1px solid var(--color-border-strong);
+  border-radius: var(--radius-sm);
+  font: inherit;
+  font-size: 1rem;
+}
+
+.list {
+  min-height: 0;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  padding: 0 var(--space-2);
+  scrollbar-width: thin;
+}
+
+.composer .option {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 0.25rem var(--space-2);
+  width: 100%;
+  height: auto;
+  min-height: 2.75rem;
+  padding: var(--space-3);
+  place-items: initial;
+  text-align: left;
+  color: var(--color-text);
+  background: transparent;
+  border-radius: var(--radius-sm);
+}
+
+.composer .option[aria-selected="true"] {
+  background: var(--color-accent-soft);
+}
+
+.name {
+  overflow-wrap: anywhere;
+  font-size: 0.875rem;
+  font-weight: 700;
+}
+
+.scope {
+  align-self: start;
+  padding-top: 0.125rem;
+  color: var(--color-text-secondary);
+  font-size: 0.625rem;
+}
+
+.description {
+  display: -webkit-box;
+  grid-column: 1 / -1;
+  overflow: hidden;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  color: var(--color-text-secondary);
+  font-size: 0.75rem;
+  line-height: 1.5;
+}
+
+.path {
+  grid-column: 1 / -1;
+  overflow: hidden;
+  color: var(--color-text-secondary);
+  font-size: 0.625rem;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.composer .notice,
+.composer .notice p {
+  margin: 0;
+  padding: var(--space-3) var(--space-4);
+  color: var(--color-text-secondary);
+  font-size: 0.8125rem;
+}
+
+.composer .notice p {
+  padding: 0 0 var(--space-2);
+}
+
+.composer .retry {
+  width: auto;
+  padding: 0 var(--space-3);
+  font-size: 0.8125rem;
+}
+
+.hint {
+  flex: none;
+  padding: var(--space-2) var(--space-4);
+  color: var(--color-text-secondary);
+  font-size: 0.6875rem;
+}
+
+.spinner {
+  width: 1.125rem;
+  height: 1.125rem;
+  border: 2px solid rgb(255 255 255 / 35%);
+  border-top-color: currentcolor;
+  border-radius: 50%;
+  animation: spin 0.8s linear infinite;
+}
+
+@keyframes spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .spinner {
+    animation: none;
+  }
+}
+
+@media (height <= 36rem) {
+  .picker {
+    max-height: min(45dvh, max(8.5rem, calc(100dvh - 18rem)));
+  }
+
+  .description,
+  .path,
+  .hint {
+    display: none;
+  }
+}
+
+@media (hover: hover) {
+  .composer .action:hover,
+  .composer .skills:hover,
+  .composer .close:hover,
+  .composer .option:hover {
+    background: var(--color-surface-hover);
+  }
+}

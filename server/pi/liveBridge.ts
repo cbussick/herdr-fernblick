@@ -151,7 +151,9 @@ export class LiveBridge {
                 pending.command.action === "stop"
               : response.type === "tree"
                 ? pending.command.action === "tree"
-                : pending.command.action === "navigate";
+                : response.type === "skills"
+                  ? pending.command.action === "skills"
+                  : pending.command.action === "navigate";
           const validTarget =
             response.type === "ack" ||
             (response.target.runtime === pending.command.target.runtime &&
@@ -255,7 +257,7 @@ export class LiveBridge {
     target: Target,
     input:
       | { action: "send"; text: string; attachments: string[]; requestId?: string }
-      | { action: "stop" | "tree" }
+      | { action: "stop" | "tree" | "skills" }
       | { action: "navigate"; entryId: string },
   ) {
     const command = commandSchema.parse({
@@ -272,6 +274,12 @@ export class LiveBridge {
       peer.snapshot.version !== 2
     )
       throw new LiveChatError(409, "Run /reload in Pi to update the chat connection");
+    if (
+      (command.action === "skills" ||
+        (command.action === "send" && command.text.startsWith("/skill:"))) &&
+      !peer.snapshot.capabilities?.skills
+    )
+      throw new LiveChatError(409, "Run /reload in Pi to enable skills in Fernblick");
     if (this.pending.has(command.id)) throw new LiveChatError(409, "Command already in flight");
     if (!matchesTarget(peer.snapshot, target))
       throw new LiveChatError(
