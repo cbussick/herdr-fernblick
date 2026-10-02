@@ -75,8 +75,9 @@ covering the header and composer, with search, a scrolling list and close contro
 The short-phone check requires at least three complete skill rows instead of the
 old single-row list. A separate fixture changes only VisualViewport height/offset
 to simulate a keyboard and browser panning without changing the layout viewport.
-Checks include background inertness, search focus, slash/keyboard selection,
-preserved text and image attachments, no implicit sends, errors and reconnect.
+Checks include background inertness, search focus, button-only opening (slash text
+never activates the menu), keyboard selection, preserved text and image attachments,
+no implicit sends, errors and reconnect.
 Screenshots are in ignored `design-gallery/skills/`. These simulate keyboard
 geometry; keyboard/IME behavior still needs physical-device confirmation.
 

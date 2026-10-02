@@ -7,14 +7,10 @@ import a11y from "../../styles/accessibility.module.css";
 import styles from "./SkillComposer.module.css";
 import { useSkillPickerOverlay } from "./useSkillPickerOverlay";
 
-function skillSearch(text: string) {
-  const match = /^\/(?:skill:)?([^\s:]*)$/.exec(text);
-  return match ? match[1] : null;
-}
 function insertSkill(text: string, name: string) {
-  // Replace a leading skill or slash search, not the instructions after it.
+  // Replace a leading skill, preserving instructions and other slash-prefixed text.
   const rest = text.replace(/^\/skill:[^\s]*(?:\s+|$)/, "");
-  return `/skill:${name} ${skillSearch(text) !== null ? "" : rest}`;
+  return `/skill:${name} ${rest}`;
 }
 
 interface Props {
@@ -37,7 +33,6 @@ export function SkillComposer(props: Props) {
   const { prompt, target, sending, connected, available, onChange } = props;
   const [browsing, setBrowsing] = useState(false);
   const [search, setSearch] = useState("");
-  const [dismissed, setDismissed] = useState<string | null>(null);
   const [active, setActive] = useState(0);
   const textarea = useRef<HTMLTextAreaElement>(null);
   const searchInput = useRef<HTMLInputElement>(null);
@@ -49,15 +44,12 @@ export function SkillComposer(props: Props) {
   if (previousIdentity !== identity) {
     setPreviousIdentity(identity);
     setBrowsing(false);
-    setDismissed(prompt);
     setActive(0);
   }
   // Invalidate the picker, not the editor DOM: reconnect must not steal focus,
   // interrupt composition, or lose keystrokes arriving with the first snapshot.
-  const slash = skillSearch(prompt);
-  const open = !sending && (browsing || (slash !== null && dismissed !== prompt));
+  const open = !sending && browsing;
   const { mobile, dialogRef } = useSkillPickerOverlay(open);
-  const query = browsing ? search : (slash ?? "");
   const catalog = useQuery({
     queryKey: ["agent-skills", props.pane, target?.runtime, target?.sessionId, target?.epoch],
     queryFn: ({ signal }) => getAgentSkills(props.pane, target!, signal),
@@ -69,7 +61,7 @@ export function SkillComposer(props: Props) {
     refetchOnReconnect: false,
   });
   const skills = (catalog.data?.skills ?? []).filter((skill) =>
-    `${skill.name} ${skill.description}`.toLowerCase().includes(query.toLowerCase()),
+    `${skill.name} ${skill.description}`.toLowerCase().includes(search.toLowerCase()),
   );
   const index = Math.min(active, Math.max(0, skills.length - 1));
   const ready = connected && available && !catalog.isFetching && !catalog.isError;
@@ -80,12 +72,11 @@ export function SkillComposer(props: Props) {
   }, [browsing, mobile]);
   useEffect(() => {
     if (open) selected.current?.scrollIntoView({ block: "nearest" });
-  }, [index, open, query]);
+  }, [index, open, search]);
 
   function close(focus = true) {
     dialogRef.current?.close();
     setBrowsing(false);
-    setDismissed(prompt);
     if (focus) textarea.current?.focus();
   }
   function choose(skill: AgentSkill) {
@@ -95,14 +86,13 @@ export function SkillComposer(props: Props) {
     dialogRef.current?.close();
     onChange(next);
     setBrowsing(false);
-    setDismissed(next);
     textarea.current?.focus();
   }
   function keys(event: KeyboardEvent) {
     if (!open || event.nativeEvent.isComposing) return;
     // Search is inside the send form. Enter must never implicitly send a draft,
     // including while loading, after an error, or with no matching skills.
-    if ((browsing || mobile) && event.key === "Enter") event.preventDefault();
+    if (event.key === "Enter") event.preventDefault();
     if (event.key === "Escape") {
       event.preventDefault();
       event.stopPropagation();
@@ -134,26 +124,24 @@ export function SkillComposer(props: Props) {
           <CloseIcon />
         </button>
       </header>
-      {browsing || mobile ? (
-        <input
-          ref={searchInput}
-          className={styles.search}
-          aria-label="Search skills"
-          role="combobox"
-          aria-autocomplete="list"
-          aria-expanded={open}
-          aria-controls={listId}
-          aria-activedescendant={activeId}
-          placeholder="Find a skill…"
-          value={query}
-          onChange={(event) => {
-            setBrowsing(true);
-            setSearch(event.target.value);
-            setActive(0);
-          }}
-          onKeyDown={keys}
-        />
-      ) : null}
+      <input
+        ref={searchInput}
+        className={styles.search}
+        aria-label="Search skills"
+        role="combobox"
+        aria-autocomplete="list"
+        aria-expanded={open}
+        aria-controls={listId}
+        aria-activedescendant={activeId}
+        aria-describedby={hintId}
+        placeholder="Find a skill…"
+        value={search}
+        onChange={(event) => {
+          setSearch(event.target.value);
+          setActive(0);
+        }}
+        onKeyDown={keys}
+      />
       {!connected ? (
         <p className={styles.notice} role="status">
           Connect to Pi live chat to browse this agent’s skills.
@@ -262,17 +250,8 @@ export function SkillComposer(props: Props) {
         id="agent-prompt"
         value={prompt}
         disabled={sending}
-        aria-controls={open && !browsing && !mobile ? listId : undefined}
-        aria-activedescendant={!browsing && !mobile ? activeId : undefined}
-        aria-autocomplete="list"
-        aria-describedby={open ? hintId : undefined}
-        onKeyDown={keys}
-        onChange={(event) => {
-          onChange(event.target.value);
-          setActive(0);
-          setDismissed(null);
-        }}
-        placeholder={`Message ${props.label}, or / for skills…`}
+        onChange={(event) => onChange(event.target.value)}
+        placeholder={`Message ${props.label}…`}
         rows={1}
         maxLength={32000}
       />

@@ -78,10 +78,11 @@ the direct Pi bridge, never session-file reads or terminal command injection.
 
 ### Skills
 
-Use **Skills** beside the image and conversation-path buttons, or type `/` to search
+Use the **/Skills** button beside the image and conversation-path buttons to search
 by name or description. Arrow keys select; Enter or Tab inserts `/skill:name` into
 the draft. Add instructions or images, then send when Pi is idle. Escape dismisses
-the picker without changing the draft.
+the picker without changing the draft. Typing `/` does not open the picker; you can
+still type a `/skill:name` invocation manually.
 
 The list comes from the selected Pi session, not a backend directory scan. It
 includes the skills Pi actually loaded from personal/project `.pi` and `.agents`

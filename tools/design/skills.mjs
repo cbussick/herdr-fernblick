@@ -178,6 +178,22 @@ for (const [engine, browserType] of [
       await page.getByTestId("pane-row").click();
       const prompt = page.locator("#agent-prompt");
       const trigger = page.getByRole("button", { name: "Skills", exact: true });
+      for (const draft of ["/", "/tmp/example", "/skill:code-review"]) {
+        await prompt.fill("");
+        await prompt.pressSequentially(draft);
+        assert.equal(
+          await page.getByTestId("skill-picker").count(),
+          0,
+          "typing slash text must not open skills",
+        );
+        assert.equal(await prompt.inputValue(), draft);
+        assert.equal(
+          await prompt.evaluate((el) => document.activeElement === el),
+          true,
+          "typing must not steal editor focus",
+        );
+        assert.equal(calls, 0, "typing must not request a skills catalogue");
+      }
       await prompt.fill("Review the mobile layout");
       await page.locator('input[type="file"]').setInputFiles({
         name: "reference.png",
@@ -283,11 +299,11 @@ for (const [engine, browserType] of [
       assert.equal(sends, 0);
       assert.equal(await page.getByLabel("Image attachments").locator("img").count(), 1);
       assert.equal(await prompt.evaluate((el) => el === document.activeElement), true);
-      await prompt.fill("/");
+      await prompt.fill("");
+      await trigger.click();
       await page.getByRole("option").first().waitFor();
-      const slashInput = width < 768 ? page.getByRole("combobox") : prompt;
-      await slashInput.press("ArrowDown");
-      await slashInput.press("Tab");
+      await page.getByRole("combobox").press("ArrowDown");
+      await page.getByRole("combobox").press("Tab");
       assert.equal(await prompt.inputValue(), "/skill:code-review ");
       assert.equal(sends, 0);
       await trigger.click();
@@ -316,8 +332,12 @@ for (const [engine, browserType] of [
       await page.getByRole("option").filter({ hasText: "frontend-design" }).click();
       assert.equal(await prompt.inputValue(), "/skill:frontend-design ");
       await prompt.fill("/nothing-matches");
+      assert.equal(await page.getByTestId("skill-picker").count(), 0);
+      await trigger.click();
+      await page.getByRole("combobox").fill("nothing-matches");
       await page.getByText("No matching skills. Try a name or description.").waitFor();
-      await (width < 768 ? page.getByRole("combobox") : prompt).press("Escape");
+      await page.getByRole("combobox").press("Escape");
+      assert.equal(await prompt.inputValue(), "/nothing-matches");
       mode = "error";
       await trigger.click();
       await page.getByText("Skills offline").waitFor();

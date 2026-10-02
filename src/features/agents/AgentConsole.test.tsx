@@ -38,6 +38,15 @@ async function flush() {
     await new Promise((r) => setTimeout(r, 15));
   });
 }
+async function openSkills() {
+  await act(async () =>
+    renderer.root
+      .findAllByType("button")
+      .find((button) => button.children.includes(" Skills"))!
+      .props.onClick(),
+  );
+  await flush();
+}
 beforeEach(async () => {
   vi.stubGlobal("IS_REACT_ACT_ENVIRONMENT", true);
   mocks.live = {
@@ -91,40 +100,64 @@ afterEach(async () => {
   client.clear();
   vi.unstubAllGlobals();
 });
-it("browses actual skills without sending, preserves text and images, and selects by slash keyboard", async () => {
+it("browses actual skills without sending, preserves text and images, and supports keyboard search", async () => {
   mocks.live.snapshot = { ...mocks.live.snapshot!, capabilities: { skills: true }, busy: true };
   await act(async () => renderer.update(render()));
   const file = new File(["image"], "image.png", { type: "image/png" });
   await act(async () => {
     renderer.root.findByType("textarea").props.onChange({ target: { value: "check my diff" } });
     renderer.root.findByProps({ type: "file" }).props.onChange({ target: { files: [file] } });
-    renderer.root
-      .findAllByType("button")
-      .find((button) => button.children.includes(" Skills"))!
-      .props.onClick();
   });
-  await flush();
+  await openSkills();
   expect(mocks.skills).toHaveBeenCalledOnce();
   await act(async () => renderer.root.findByProps({ role: "option" }).props.onClick());
   expect(renderer.root.findByType("textarea").props.value).toBe("/skill:review check my diff");
   expect(renderer.root.findAllByProps({ "aria-label": "Image attachments" })).toHaveLength(1);
   expect(renderer.root.findByProps({ "aria-label": "Send message" }).props.disabled).toBe(true);
   expect(mocks.command).not.toHaveBeenCalled();
+  await openSkills();
   await act(async () =>
-    renderer.root.findByType("textarea").props.onChange({ target: { value: "/rev" } }),
+    renderer.root.findByProps({ role: "combobox" }).props.onChange({ target: { value: "rev" } }),
   );
-  await flush();
   expect(renderer.root.findAllByProps({ role: "option" })).toHaveLength(1);
   await act(async () =>
-    renderer.root.findByType("textarea").props.onKeyDown({
+    renderer.root.findByProps({ role: "combobox" }).props.onKeyDown({
       key: "Enter",
       nativeEvent: {},
       preventDefault() {},
     }),
   );
-  expect(renderer.root.findByType("textarea").props.value).toBe("/skill:review ");
+  expect(renderer.root.findByType("textarea").props.value).toBe("/skill:review check my diff");
   expect(mocks.command).not.toHaveBeenCalled();
 });
+
+it.each([
+  ["/", "/skill:review /"],
+  ["/rev", "/skill:review /rev"],
+  ["/tmp/example", "/skill:review /tmp/example"],
+  ["/compact", "/skill:review /compact"],
+  ["/skill:review", "/skill:review "],
+])(
+  "keeps %s in the editor without opening or fetching skills until the button is pressed",
+  async (draft, selected) => {
+    mocks.live.snapshot = { ...mocks.live.snapshot!, capabilities: { skills: true } };
+    await act(async () => renderer.update(render()));
+    await act(async () =>
+      renderer.root.findByType("textarea").props.onChange({ target: { value: draft } }),
+    );
+    await flush();
+    expect(renderer.root.findAllByProps({ "data-testid": "skill-picker" })).toHaveLength(0);
+    expect(renderer.root.findByType("textarea").props.value).toBe(draft);
+    expect(renderer.root.findByType("textarea").props.placeholder).not.toContain("/ for skills");
+    expect(mocks.skills).not.toHaveBeenCalled();
+    expect(mocks.command).not.toHaveBeenCalled();
+    await openSkills();
+    expect(mocks.skills).toHaveBeenCalledOnce();
+    await act(async () => renderer.root.findByProps({ role: "option" }).props.onClick());
+    expect(renderer.root.findByType("textarea").props.value).toBe(selected);
+    expect(mocks.command).not.toHaveBeenCalled();
+  },
+);
 
 it("shows skill errors and empty states, hides stale choices on disconnect, and keeps slash drafts", async () => {
   mocks.live.snapshot = { ...mocks.live.snapshot!, capabilities: { skills: true } };
@@ -133,7 +166,7 @@ it("shows skill errors and empty states, hides stale choices on disconnect, and 
   await act(async () =>
     renderer.root.findByType("textarea").props.onChange({ target: { value: "/" } }),
   );
-  await flush();
+  await openSkills();
   expect(JSON.stringify(renderer.toJSON())).toContain("Skills offline");
   expect(renderer.root.findAllByProps({ role: "option" })).toHaveLength(0);
   mocks.skills.mockResolvedValueOnce({ skills: [], truncated: false });
@@ -150,7 +183,7 @@ it("shows skill errors and empty states, hides stale choices on disconnect, and 
   expect(JSON.stringify(renderer.toJSON())).toContain("Connect to Pi live chat");
   expect(renderer.root.findByType("textarea").props.value).toBe("/");
   await act(async () =>
-    renderer.root.findByType("textarea").props.onKeyDown({
+    renderer.root.findByProps({ role: "combobox" }).props.onKeyDown({
       key: "Escape",
       nativeEvent: {},
       preventDefault() {},
@@ -162,9 +195,7 @@ it("shows skill errors and empty states, hides stale choices on disconnect, and 
 });
 
 it("does not send or fetch skills on a legacy bridge", async () => {
-  await act(async () =>
-    renderer.root.findByType("textarea").props.onChange({ target: { value: "/" } }),
-  );
+  await openSkills();
   expect(JSON.stringify(renderer.toJSON())).toContain("Run /reload in Pi to enable skills");
   expect(mocks.skills).not.toHaveBeenCalled();
   await act(async () =>

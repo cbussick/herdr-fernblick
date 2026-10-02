@@ -82,7 +82,8 @@ mutations are never automatically retried.
 active extension's public `pi.getCommands()`. Snapshots advertise
 `capabilities.skills: true`; older bridges keep ordinary chat working and show a
 reload notice rather than accepting unsupported skill sends. Skills are fetched
-on opening the picker (also while Pi is busy), not on every keystroke or snapshot.
+on opening the picker from the **/Skills** button (also while Pi is busy), not on
+keystrokes or snapshots. Typing `/` does not activate the picker.
 Each catalogue is bounded to 1,000 entries and 512 KiB of entry JSON, with an
 explicit truncation notice. Metadata contains name, description, source path and
 personal/project/temporary scope, never skill bodies.
