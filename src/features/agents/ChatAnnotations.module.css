@@ -3,9 +3,9 @@
 .popover,
 .highlight,
 .reply-action {
-  --annotation-ink: #514593;
-  --annotation-soft: #eeebfc;
-  --annotation-border: #c9c1ea;
+  --annotation-ink: var(--color-accent);
+  --annotation-soft: var(--color-accent-soft);
+  --annotation-border: var(--color-border-strong);
 }
 
 .toolbar {
@@ -56,8 +56,8 @@
 
 .highlight {
   color: inherit;
-  background: var(--annotation-soft);
-  border-bottom: 2px solid var(--annotation-border);
+  background: #fff0a6;
+  border-bottom: 2px solid #d5ad28;
 }
 
 .reply-action {
@@ -142,7 +142,7 @@
 }
 
 .send:hover:not(:disabled) {
-  background: #403477;
+  background: var(--color-accent-hover);
 }
 
 .preview {
@@ -203,7 +203,7 @@
   line-height: 1.6;
   white-space: pre-wrap;
   overflow-wrap: anywhere;
-  border-left: 3px solid var(--annotation-border);
+  border-left: 3px solid #d5ad28;
 }
 
 .note p {
