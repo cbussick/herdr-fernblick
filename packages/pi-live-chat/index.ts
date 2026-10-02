@@ -12,6 +12,7 @@ import {
 import { ImageHistory, IMAGE_METADATA } from "./imageHistory.js";
 import { TranscriptProjector } from "./projector.js";
 import { prepareImages } from "./images.js";
+import { skillCatalog, skillPrompt } from "./skills.js";
 import { projectTree, contentText } from "./tree.js";
 import { processIdentity, socketPath, validateSocket } from "./security.js";
 import { receiveFrames, writeFrame } from "./transport.js";
@@ -184,7 +185,7 @@ export default function liveChat(pi: ExtensionAPI) {
       return {
         type: "snapshot",
         version: 2,
-        capabilities: { boards: true },
+        capabilities: { boards: true, skills: true },
         identity,
         epoch,
         seq: ++seq,
@@ -336,6 +337,19 @@ export default function liveChat(pi: ExtensionAPI) {
           reject("A command is already in flight");
           return;
         }
+        if (command.action === "skills") {
+          try {
+            writeFrame(client, {
+              type: "skills",
+              id: command.id,
+              target: command.target,
+              ...skillCatalog(pi),
+            });
+          } catch {
+            reject("Skills unavailable in this Pi session");
+          }
+          return;
+        }
         if (command.action === "tree") {
           try {
             writeFrame(client, {
@@ -421,6 +435,7 @@ export default function liveChat(pi: ExtensionAPI) {
                 throw new Error("Stale session or connection");
               if (fresh.busy || sendPending)
                 throw new Error("Pi is busy or a previous send is unresolved");
+              const prompt = skillPrompt(pi, command.text);
               if (images.length)
                 pi.appendEntry(IMAGE_METADATA, imageHistory.remember(images, command.attachments));
               sendPending = true;
@@ -444,11 +459,11 @@ export default function liveChat(pi: ExtensionAPI) {
               pi.sendUserMessage(
                 images.length
                   ? [
-                      ...(command.text ? [{ type: "text" as const, text: command.text }] : []),
+                      ...(prompt.text ? [{ type: "text" as const, text: prompt.text }] : []),
                       ...images,
                     ]
-                  : command.text,
-                { expandPromptTemplates: false },
+                  : prompt.text,
+                { expandPromptTemplates: prompt.expandPromptTemplates },
               );
               writeFrame(client, {
                 type: "ack",

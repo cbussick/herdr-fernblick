@@ -131,7 +131,7 @@ class HttpError extends Error {
 
 function getAgentRoute(pathname: string) {
   const match = pathname.match(
-    /^\/api\/agents\/([^/]+)(?:\/(output|chat|prompt|stop|tree|tree-navigation|keys|restart))?$/,
+    /^\/api\/agents\/([^/]+)(?:\/(output|chat|prompt|stop|tree|tree-navigation|skills|keys|restart))?$/,
   );
   if (!match) return null;
 
@@ -291,7 +291,7 @@ async function handleApi(
 
   if (
     request.method === "POST" &&
-    ["prompt", "stop", "tree", "tree-navigation"].includes(route.action)
+    ["prompt", "stop", "tree", "tree-navigation", "skills"].includes(route.action)
   ) {
     requireSameOrigin(request);
     const raw = await readJson(request);
@@ -312,7 +312,7 @@ async function handleApi(
       if (route.action === "tree-navigation") {
         if (!body.entryId) throw new HttpError(400, "Entry ID required");
         input = { action: "navigate", entryId: body.entryId };
-      } else input = { action: route.action as "tree" | "stop" };
+      } else input = { action: route.action as "tree" | "stop" | "skills" };
     }
     const reply = await bridge.request(await service.getAgent(route.target), target, input);
     if (reply.type === "ack" && reply.outcome === "rejected")

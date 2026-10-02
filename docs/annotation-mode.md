@@ -1,0 +1,47 @@
+# Chat annotations (HER-6)
+
+## Interaction
+
+Select text within one assistant response to reveal a small **Comment** action. There is no permanent entry button or mode toggle. Selection alone leaves focus, copying and touch selection handles intact. Tap/click **Comment** to open and focus the editor. Enter adds the comment to the pending tray; Shift+Enter inserts a newline and Escape cancels. With a keyboard selection, Tab focuses the action and Enter opens it; Alt+Enter opens it directly. Select the entire response if you want to comment on the whole reply. The action floats next to the selected passage on all devices; there is no composer-docked selection panel. On touch-capable devices, it prefers beside a multiline selection when there is room, with 20px clearance from its handles. Otherwise it leaves 84px below the selection for the native menu, flipping above when needed. A viewport-filling selection falls back to its visible interior rather than clamping the button into the menu space. Mouse-only desktop keeps its tighter placement. Touch capability is detected even when native selection handles emit no pointer events or an iPad uses a trackpad.
+
+Saved passages get a pale-yellow underline/highlight. The tray above the ordinary composer shows the pending count and latest comment; expand it to review, edit or remove comments. **Send comments** immediately forwards one prompt containing each original passage, its response ID/character offsets, and its comment. Labels use `**Comment 1**` rather than Markdown headings, and render in actual bold in Fernblick’s user-message transcript. Assistant source text remains verbatim to preserve selection offsets. Sending does not fill, send, upload or clear the ordinary text/image draft.
+
+Dismissing a selection leaves saved comments available to send. Switching to Terminal and back also retains saved comments, but dismisses the transient selection action. Like the existing composer, annotations are held in the mounted conversation view, not persisted: leaving the agent or reloading the page loses unsent comments.
+
+## Design
+
+A contextual action replaces the former full-width mode toolbar and per-response buttons. The user preferred a custom text-adjacent context menu over the trial composer-docked panel. Touch placement now reserves estimated native-menu space instead of assuming the menu always appears above the passage. The iPad menu cannot be measured or overlaid with CSS, so this is a spacing heuristic to evaluate on-device, not a guarantee against every system-menu shape or position. It asks for an explicit tap before opening an editor, keeping copying and reading unchanged. This is an inline review, not a second full-screen editor: the entry bubble and comment editor stay near the passage; only the pending batch uses the composer boundary. Existing Manrope and the blue/white conversation layout stay intact (`#f5f9fd` canvas, `#ffffff` surface, `#17374f` text). Buttons, labels and UI borders use the existing blue theme tokens. Yellow highlight `#fff0a6` and underline/quote marker `#d5ad28` identify annotated passages without introducing a second UI accent. No decorative animation or new font/dependency.
+
+Plannotator's installed `anchorMessageFeedback` was the reference for pairing a quoted older assistant response with user feedback. Fernblick uses its existing guarded prompt endpoint, not Plannotator's extension transport or session fallback.
+
+## Boundaries
+
+- Only assistant response text is selectable for annotation: no user messages, thinking, tools, speaker labels, or cross-message ranges. Links and overlapping highlights preserve the original text and offsets.
+- The combined prompt, including headers and quotes, must fit the existing 32,000-character limit. Nothing is silently truncated.
+- Comments can be collected while the agent works. Sending requires the same idle, connected, current-protocol state as an ordinary prompt. There is no automatic queue or retry.
+- The batch captures the runtime/session/epoch. A changed session or conversation path retains the visible comments but blocks sending them to the replacement; discard the old batch to start another. Live text changes do not relocate a highlight onto a different matching passage.
+- Only an acknowledged forwarding clears the submitted batch. Failed/uncertain forwarding retains it with a check-Pi-before-retrying warning. An ACK is not a Pi receipt.
+- Annotation sending shares the existing submission lock with the ordinary composer and conversation navigation.
+
+## Verification
+
+```sh
+npm run check
+PLAYWRIGHT_MODULE=/tmp/fernblick-design-tools/node_modules/playwright/index.mjs \
+  node tools/design/verify-annotations.mjs http://100.71.229.1:5186
+node tools/design/verify-dev-proxy.mjs http://100.71.229.1:5186
+```
+
+The browser script intercepts all API traffic and replaces SSE with synthetic fixtures; it never commands existing agents. Chromium and WebKit run phone (390×844), portrait iPad (834×1194), landscape iPad (1194×834), and mouse-only desktop (1440×1000) flows. It covers absence of permanent entry controls, passive selection and copying, assistant-only selection, cross-message rejection, touch/keyboard activation, highlights across links, Enter/Shift+Enter/IME/Escape, bold sent labels, editing/removing, Terminal switching, idle/protocol/connection gates, direct sending, failure retention, no automatic retry, in-flight locking, ordinary text/image preservation, and epoch replacement. Screenshots go to ignored `design-gallery/annotations/`. Native-menu **footprint fixtures** above and below the selection, modeled on the reported screenshot, verify that the floating touch action does not overlap those menu rectangles and remains tappable. Tests also require text-adjacent placement rather than a docked panel. The fixture is not the actual iPad system menu: physical-device testing remains necessary. Tests also cover selection changes without pointer events and Escape dismissal. For a quick targeted check, append `webkit:834` (or another browser/width pair) to the browser command.
+
+`verify-dev-proxy.mjs` additionally exercises the real frontend proxy and backend origin guard with an intentionally invalid empty prompt body. Same-origin requests must reach body validation (400); foreign origins must still be rejected (403). No agent lookup or prompt forwarding occurs. This catches deployment/proxy errors that the fixture-only browser checks cannot.
+
+Unit tests cover prompt serialization, repeated/mutated quote anchors, overlapping link highlights and escaping, viewport placement (including left/right touch placement, reserved menu spacing, screen-edge fallback and offset visual viewports), comment limits, editing, in-flight state and runtime/session/epoch ownership. Physical mobile selection handles and the software keyboard still warrant hands-on testing.
+
+## Local review server
+
+The HER-6 frontend preview binds **only** to the Tailnet interface on port 5186. Its ignored Vite config is `node_modules/.cache/annotation-preview.mts`; the process log is `/tmp/fernblick-her-6-vite.log` and its PID record is `/tmp/fernblick-her-6-vite.pid`.
+
+The proxy must use object options with `changeOrigin: false` so the browser-visible `Host` continues to match `Origin`. Vite's string shorthand rewrites `Host` and causes the backend to reject valid sends with “Cross-origin request rejected.” Both the running preview configuration and the checked-in `vite.config.ts` now preserve Host. The preview was restarted with this correction. A real Vite-to-backend regression test covers successful same-origin forwarding to a fake bridge, plus rejection of missing and foreign origins. It uses isolated loopback servers and a temporary cache, never live agents.
+
+It proxies `/api` to the already-running backend at `http://100.71.229.1:8787`. This intentionally shows and controls the **existing agents**; it is not an isolated agent stack. No second backend or Pi socket is started. Browser verification uses fixtures instead. Keep the preview private with the existing Tailnet access policy.

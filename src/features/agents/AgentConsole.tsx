@@ -15,14 +15,16 @@ import { getAgentTabLabel, getAgentTarget, getStatusLabel } from "./agentPresent
 import { getAgentOutput, sendAgentKey, chatCommand, uploadImage } from "../../shared/api/apiClient";
 import { useLiveChat } from "./useLiveChat";
 import { ChatTranscript } from "./ChatTranscript";
+import { useChatAnnotations } from "./useChatAnnotations";
+import { AnnotationPopover, AnnotationSelectionAction, AnnotationTray } from "./ChatAnnotations";
+import { annotationPrompt } from "./annotations";
 import { CloseTabButton } from "./CloseTabButton";
 import { ConversationTreeDialog } from "./ConversationTreeDialog";
+import { SkillComposer } from "./SkillComposer";
 import { Whiteboard } from "../whiteboard/Whiteboard";
 import { boardApi } from "../whiteboard/boardApi";
 import type { BoardPromptContext } from "../whiteboard/ConversationDock";
-import { WhiteboardButton } from "../whiteboard/WhiteboardButton";
-import whiteboardStyles from "../whiteboard/WhiteboardButton.module.css";
-import { BackIcon, BranchIcon, CloseIcon, ImageIcon, SendIcon } from "../../shared/ui/Icons";
+import { BackIcon, CloseIcon } from "../../shared/ui/Icons";
 import { IconButton, StatusIndicator, TabKindIcon } from "../../shared/ui";
 import { StateIcon, StateNotice } from "../../shared/ui/StateFeedback";
 
@@ -37,6 +39,7 @@ type OutgoingDraft = {
   attachments: Attachment[];
   target: Target;
   board?: BoardPromptContext;
+  annotationIds?: string[];
 };
 function submissionId() {
   // getRandomValues also works on the dashboard's non-HTTPS private IP origin.
@@ -69,6 +72,7 @@ export function AgentConsole({ agent, onBack }: AgentConsoleProps) {
   const [attachmentError, setAttachmentError] = useState("");
   const [treeTarget, setTreeTarget] = useState<Target | null>(null);
   const [boardTarget, setBoardTarget] = useState<Target | null>(null);
+  const [chatImageOpen, setChatImageOpen] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const uploadedIds = useRef(new Map<File, string>());
   const previews = useRef(new Set<string>());
@@ -156,6 +160,11 @@ export function AgentConsole({ agent, onBack }: AgentConsoleProps) {
         resetSend();
         return;
       }
+      if (draft.annotationIds) {
+        annotations.acknowledge(draft.annotationIds);
+        resetSend();
+        return;
+      }
       setPrompt((current) => (current === draft.text ? "" : current));
       setAttachments((current) =>
         current.filter((attachment) => !draft.attachments.includes(attachment)),
@@ -176,6 +185,12 @@ export function AgentConsole({ agent, onBack }: AgentConsoleProps) {
     // ACK confirms forwarding only. No Pi receipt, hidden backup, or automatic retry.
   });
   const resetSend = send.reset;
+  const annotations = useChatAnnotations(
+    snapshot,
+    view === "chat" && !treeTarget && !boardTarget && !chatImageOpen,
+    outputRef,
+    send.isPending,
+  );
   const stop = useMutation({
     mutationFn: () => {
       if (!snapshot) throw new Error("Live chat unavailable");
@@ -194,23 +209,38 @@ export function AgentConsole({ agent, onBack }: AgentConsoleProps) {
     };
   }, []);
   useEffect(() => {
-    if (outputRef.current && shouldFollowRef.current)
+    if (view === "terminal" && outputRef.current && shouldFollowRef.current)
       outputRef.current.scrollTop = outputRef.current.scrollHeight;
-  }, [snapshot?.epoch, snapshot?.seq, outputQuery.data?.revision, view]);
+  }, [snapshot?.epoch, snapshot?.seq, outputQuery.data?.revision, view, annotations.interacting]);
   function trackScroll() {
     const el = outputRef.current;
     if (el) shouldFollowRef.current = el.scrollHeight - el.scrollTop - el.clientHeight < 48;
   }
   const composerSending = send.isPending;
-  const canSend = Boolean(
+  const canForward = Boolean(
     snapshot &&
     snapshot.version === 2 &&
     !live.error &&
     !snapshot.busy &&
     !snapshot.sendPending &&
-    (prompt.trim() || attachments.length) &&
     !send.isPending,
   );
+  const canSend =
+    canForward &&
+    !annotations.editor &&
+    (!prompt.trimStart().startsWith("/skill:") || Boolean(snapshot?.capabilities?.skills)) &&
+    Boolean(prompt.trim() || attachments.length);
+  const canSendAnnotations =
+    canForward && annotations.entries.length > 0 && !annotations.stale && !annotations.editor;
+  function sendAnnotations() {
+    if (!canSendAnnotations || !annotations.owner) return;
+    send.mutate({
+      text: annotationPrompt(annotations.entries),
+      attachments: [],
+      target: annotations.owner,
+      annotationIds: annotations.entries.map((entry) => entry.id),
+    });
+  }
   function clearAttachments() {
     for (const url of previews.current) URL.revokeObjectURL(url);
     previews.current.clear();
@@ -331,6 +361,11 @@ export function AgentConsole({ agent, onBack }: AgentConsoleProps) {
           <span>The agent is waiting for a decision.</span>
         </div>
       ) : null}
+      {view === "chat" && snapshot ? (
+        <span role="status" className={a11yStyles["sr-only"]}>
+          {annotations.notice}
+        </span>
+      ) : null}
       <section
         className={consoleStyles["output-panel"] + " " + consoleStyles[`output-panel--${view}`]}
         data-testid="output-panel"
@@ -404,6 +439,10 @@ export function AgentConsole({ agent, onBack }: AgentConsoleProps) {
             truncated={snapshot.truncated}
             agentName={getAgentTabLabel(agent)}
             showThinking={showThinking}
+            transcriptRef={outputRef}
+            annotations={annotations.stale ? [] : annotations.entries}
+            interacting={annotations.interacting}
+            onImageOpenChange={setChatImageOpen}
             before={
               <>
                 {live.error ? <StateNotice kind="unavailable">{live.error}</StateNotice> : null}
@@ -434,6 +473,27 @@ export function AgentConsole({ agent, onBack }: AgentConsoleProps) {
           />
         )}
       </section>
+      {view === "chat" ? (
+        <AnnotationTray
+          annotations={annotations}
+          canSend={canSendAnnotations}
+          sending={composerSending && Boolean(send.variables?.annotationIds)}
+          locked={composerSending}
+          blockedReason={
+            live.error
+              ? "Reconnect to Pi before sending comments."
+              : !snapshot || snapshot.version !== 2
+                ? "An up-to-date Pi connection is required to send comments."
+                : snapshot.busy || snapshot.sendPending
+                  ? "You can keep annotating. Send when the agent is idle."
+                  : annotations.editor
+                    ? "Save or cancel the open comment before sending."
+                    : ""
+          }
+          sendError={send.isError && send.variables?.annotationIds ? send.error.message : undefined}
+          onSend={sendAnnotations}
+        />
+      ) : null}
       {view === "terminal" ? (
         <div className={consoleStyles["key-controls"]} aria-label="Terminal controls">
           {keyControls.map((control) => (
@@ -488,81 +548,39 @@ export function AgentConsole({ agent, onBack }: AgentConsoleProps) {
                 ))}
               </div>
             ) : null}
-            <label htmlFor="agent-prompt" className={a11yStyles["sr-only"]}>
-              Message {getAgentTabLabel(agent)}
-            </label>
-            <div
-              className={
-                consoleStyles["prompt-composer__row"] + " " + whiteboardStyles["composer-row"]
-              }
-            >
-              <input
-                ref={fileInputRef}
-                className={a11yStyles["sr-only"]}
-                type="file"
-                accept="image/png,image/jpeg,image/gif,image/webp"
-                multiple
-                disabled={composerSending}
-                onChange={(event) => selectImages(event.target.files)}
-              />
-              <button
-                type="button"
-                className={consoleStyles["prompt-composer__attach"]}
-                disabled={composerSending || attachments.length >= 4}
-                title="Attach images"
-                aria-label="Attach images"
-                onClick={() => fileInputRef.current?.click()}
-              >
-                <ImageIcon />
-              </button>
-              <button
-                type="button"
-                className={consoleStyles["prompt-composer__tree"]}
-                aria-label="Open conversation paths"
-                title="Conversation paths"
-                disabled={!snapshot || Boolean(live.error) || composerSending}
-                onClick={() => snapshot && setTreeTarget(targetOf(snapshot))}
-              >
-                <BranchIcon />
-              </button>
-              <WhiteboardButton
-                className={consoleStyles["prompt-composer__tree"]}
-                disabled={!snapshot || snapshot.version !== 2 || composerSending}
-                onClick={() => snapshot && setBoardTarget(targetOf(snapshot))}
-              />
-              <textarea
-                id="agent-prompt"
-                value={prompt}
-                disabled={composerSending}
-                onChange={(event) => changePrompt(event.target.value)}
-                placeholder={`Send to ${getAgentTabLabel(agent)} when idle…`}
-                rows={1}
-                maxLength={32000}
-              />
-              <button
-                type="submit"
-                aria-label="Send message"
-                aria-busy={composerSending}
-                disabled={!canSend}
-              >
-                {composerSending ? (
-                  <span
-                    className={consoleStyles["prompt-composer__spinner"]}
-                    data-testid="send-spinner"
-                    aria-hidden="true"
-                  />
-                ) : (
-                  <SendIcon />
-                )}
-              </button>
-            </div>
+            <input
+              ref={fileInputRef}
+              className={a11yStyles["sr-only"]}
+              type="file"
+              accept="image/png,image/jpeg,image/gif,image/webp"
+              multiple
+              disabled={composerSending}
+              onChange={(event) => selectImages(event.target.files)}
+            />
+            <SkillComposer
+              pane={agent.pane_id}
+              target={snapshot ? targetOf(snapshot) : undefined}
+              available={Boolean(snapshot?.capabilities?.skills)}
+              connected={Boolean(snapshot && !live.error)}
+              prompt={prompt}
+              onChange={changePrompt}
+              label={getAgentTabLabel(agent)}
+              sending={composerSending}
+              canSend={canSend}
+              canAttach={attachments.length < 4}
+              canOpenTree={Boolean(snapshot && !live.error && !annotations.editor)}
+              onAttach={() => fileInputRef.current?.click()}
+              onOpenTree={() => snapshot && setTreeTarget(targetOf(snapshot))}
+              canOpenBoard={Boolean(snapshot?.version === 2 && !live.error && !annotations.editor)}
+              onOpenBoard={() => snapshot && setBoardTarget(targetOf(snapshot))}
+            />
           </div>
           {attachmentError ? (
             <StateNotice kind="info" role="alert">
               {attachmentError}
             </StateNotice>
           ) : null}
-          {send.isError ? (
+          {send.isError && !send.variables?.annotationIds ? (
             <StateNotice kind="unavailable" role="alert">
               {send.error.message} Draft retained; check Pi before retrying.
             </StateNotice>
@@ -584,6 +602,10 @@ export function AgentConsole({ agent, onBack }: AgentConsoleProps) {
             {snapshot.status.cost.toFixed(2)} · {snapshot.status.provider}
           </span>
         </div>
+      ) : null}
+      {annotations.selection ? <AnnotationSelectionAction annotations={annotations} /> : null}
+      {view === "chat" && annotations.editor ? (
+        <AnnotationPopover annotations={annotations} />
       ) : null}
       {treeTarget ? (
         <ConversationTreeDialog

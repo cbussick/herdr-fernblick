@@ -11,8 +11,10 @@ import { NewTabDialog } from "../features/agents/NewTabDialog";
 import { ShellConsole } from "../features/agents/ShellConsole";
 import { FernblickMark } from "../shared/ui/FernblickMark";
 import { StateIcon } from "../shared/ui/StateFeedback";
+import { useSinglePaneLayout } from "./useSinglePaneLayout";
 
 export function App() {
+  const singlePane = useSinglePaneLayout();
   const [selectedPaneId, setSelectedPaneId] = useState<string | null>(null);
   const [createDialogOpen, setCreateDialogOpen] = useState(false);
   const [workspaceDialogOpen, setWorkspaceDialogOpen] = useState(false);
@@ -31,7 +33,11 @@ export function App() {
   const detailOpen = selectedAgent || selectedTab;
 
   return (
-    <div className={appStyles["app-shell"]} data-detail-open={detailOpen ? true : undefined}>
+    <div
+      className={appStyles["app-shell"]}
+      data-detail-open={detailOpen ? true : undefined}
+      data-single-pane={singlePane ? true : undefined}
+    >
       <a href="#main-content" className={appStyles["skip-link"]}>
         Skip to content
       </a>

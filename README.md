@@ -80,6 +80,21 @@ the direct Pi bridge, never session-file reads or terminal command injection.
 
 Open **Whiteboard** from live Chat for a fullscreen, persistent Excalidraw canvas. Its chat panel uses the same transcript as main chat: side-by-side on landscape tablet/desktop, compact and expandable below the canvas on smaller screens. Type there to send a current board image with read/edit access for that request (empty boards skip the image). Share drawing sends an immutable image-only PNG snapshot. Agent tools are hidden by default and backend-authorized; editing access ends on completion, revocation, disconnect, or expiry. Native scenes remain editable after sending. [Permission, persistence, conflicts, and limits](docs/whiteboard.md).
 
+### Skills
+
+Use the **/Skills** button beside the image and conversation-path buttons to search
+by name or description. Arrow keys select; Enter or Tab inserts `/skill:name` into
+the draft. Add instructions or images, then send when Pi is idle. Escape dismisses
+the picker without changing the draft. Typing `/` does not open the picker; you can
+still type a `/skill:name` invocation manually.
+
+The list comes from the selected Pi session, not a backend directory scan. It
+includes the skills Pi actually loaded from personal/project `.pi` and `.agents`
+folders, configured paths, packages and explicit CLI resources. Source paths and
+scope are shown in the picker. Pi owns trust, filtering and duplicate precedence.
+After updating the bridge or changing skills, run `/reload` in Pi. Other agent
+providers are not yet supported by live chat or the skills picker.
+
 ### Removed legacy queue
 
 The Fernblick SQLite queue, dispatcher, HTTP routes, UI and guarded delivery
@@ -95,6 +110,7 @@ No Pi-native queue was added.
 - Read the latest 600 lines as plain terminal text
 - Stream ordinary Pi model chat, thinking and tool output; send idle text prompts and request Stop
 - Send terminal keys only from Terminal view
+- Select assistant text in Chat, tap **Comment**, then send the pending comments directly without changing the ordinary draft. No annotation mode is required. [Interaction and limitations](docs/annotation-mode.md).
 
 The HTTP API does not expose a shell or arbitrary Herdr method proxy. Access to this application still grants effective control of the agents, which may execute commands and modify files with their Unix account's permissions.
 

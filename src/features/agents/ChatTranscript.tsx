@@ -1,9 +1,18 @@
-import { useCallback, useEffect, useLayoutEffect, useRef, useState, type ReactNode } from "react";
+import {
+  useCallback,
+  useEffect,
+  useLayoutEffect,
+  useRef,
+  useState,
+  type ReactNode,
+  type RefObject,
+} from "react";
 import { createPortal } from "react-dom";
 import type { ChatMessage } from "../../../packages/pi-live-chat/protocol";
 import { CloseIcon, ImageIcon, LightbulbIcon } from "../../shared/ui/Icons";
 import { StateIcon, StateNotice } from "../../shared/ui/StateFeedback";
 import { ChatMessageText } from "./ChatMessageText";
+import { annotationHighlights, type Annotation } from "./annotations";
 import styles from "./Console.module.css";
 import a11yStyles from "../../styles/accessibility.module.css";
 
@@ -16,6 +25,10 @@ export interface ChatTranscriptProps {
   testId?: string;
   before?: ReactNode;
   after?: ReactNode;
+  transcriptRef?: RefObject<HTMLElement | null>;
+  annotations?: Annotation[];
+  interacting?: boolean;
+  onImageOpenChange?: (open: boolean) => void;
 }
 function ChatAttachment({ url, onOpen }: { url: string; onOpen: () => void }) {
   const [unavailable, setUnavailable] = useState(false);
@@ -47,6 +60,10 @@ export function ChatTranscript({
   testId = "chat-transcript",
   before,
   after,
+  transcriptRef,
+  annotations = [],
+  interacting = false,
+  onImageOpenChange,
 }: ChatTranscriptProps) {
   const output = useRef<HTMLDivElement>(null);
   const following = useRef(true);
@@ -56,11 +73,11 @@ export function ChatTranscript({
   const lightbox = useRef<HTMLDialogElement>(null);
   const alignScroll = useCallback(() => {
     const element = output.current;
-    if (!element) return;
+    if (!element || interacting) return;
     element.scrollTop = following.current ? element.scrollHeight : readerTop.current;
     // Ignore our own scroll event, including browser clamping after a resize.
     appliedTop.current = element.scrollTop;
-  }, []);
+  }, [interacting]);
   // Parent-driven expansion changes geometry even when messages are unchanged.
   useLayoutEffect(alignScroll);
   useEffect(() => {
@@ -78,12 +95,19 @@ export function ChatTranscript({
     };
   }, [alignScroll]);
   useEffect(() => {
+    onImageOpenChange?.(Boolean(image));
+    return () => onImageOpenChange?.(false);
+  }, [image, onImageOpenChange]);
+  useEffect(() => {
     if (image && lightbox.current && !lightbox.current.open) lightbox.current.showModal();
   }, [image]);
   return (
     <>
       <div
-        ref={output}
+        ref={(node) => {
+          output.current = node;
+          if (transcriptRef) transcriptRef.current = node;
+        }}
         id={id}
         className={styles["chat-transcript"]}
         data-ui="chat-transcript"
@@ -148,7 +172,14 @@ export function ChatTranscript({
                 data-role={message.role}
               >
                 <span>{message.role === "user" ? "You" : agentName}</span>
-                {message.text ? <ChatMessageText text={message.text} /> : null}
+                {message.text ? (
+                  <ChatMessageText
+                    text={message.text}
+                    annotationSource={message.role === "assistant" ? message.id : undefined}
+                    annotationFeedback={message.role === "user"}
+                    highlights={annotationHighlights(message, annotations)}
+                  />
+                ) : null}
                 {message.attachments?.length ? (
                   <div className={styles["chat-message__attachments"]}>
                     {message.attachments.map((url, index) => (
