@@ -75,9 +75,6 @@ it("positions above a selection, flips below when needed, and clamps to the visu
     left: 18,
     top: 168,
   });
-  expect(
-    positionAnnotationPopover({ left: 10, top: 400, bottom: 430 }, size, viewport, true),
-  ).toEqual({ left: 12, top: 442 });
   expect(positionAnnotationPopover({ left: 10, top: 50, bottom: 70 }, size, viewport)).toEqual({
     left: 12,
     top: 82,

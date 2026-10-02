@@ -13,13 +13,13 @@ import {
   type AnnotationSource,
 } from "./annotations";
 
-type AnnotationSelection = {
+type AnnotationAnchor = {
   source: AnnotationSource;
   target: Target;
   anchor: () => DOMRect;
-  preferBelow?: boolean;
 };
-export type AnnotationEditor = AnnotationSelection & { id?: string; comment: string };
+type AnnotationSelection = AnnotationAnchor & { docked: boolean };
+export type AnnotationEditor = AnnotationAnchor & { id?: string; comment: string };
 
 export function useChatAnnotations(
   snapshot: Snapshot | undefined,
@@ -59,7 +59,7 @@ export function useChatAnnotations(
   }
 
   const available = Boolean(snapshot);
-  const capture = useEffectEvent((preferBelow = false) => {
+  const capture = useEffectEvent((touch = false) => {
     if (!snapshot || !transcript.current || editor) return;
     const active = document.activeElement;
     if (active?.closest('[data-ui="annotation-action"], [data-ui="annotation-popover"]')) return;
@@ -77,7 +77,12 @@ export function useChatAnnotations(
         ? {
             source: selected.source,
             target: targetOf(snapshot),
-            preferBelow,
+            // Native selection handles may emit selectionchange without a new
+            // pointer event, including iPads with a trackpad attached.
+            docked:
+              touch ||
+              navigator.maxTouchPoints > 0 ||
+              window.matchMedia("(any-pointer: coarse)").matches,
             anchor: () => selected.range.getBoundingClientRect(),
           }
         : null,

@@ -4,6 +4,12 @@ import assert from "node:assert/strict";
 import fs from "node:fs/promises";
 const { chromium, webkit } = await import(process.env.PLAYWRIGHT_MODULE || "playwright");
 const base = process.argv[2] || "http://100.71.229.1:5186";
+// Optional third argument runs one case, e.g. webkit:834.
+const only = process.argv[3];
+assert.ok(
+  !only || /^(chromium|webkit):(390|834|1194|1440)$/.test(only),
+  "Unknown browser/viewport case",
+);
 const out = "design-gallery/annotations";
 await fs.mkdir(out, { recursive: true });
 const target = {
@@ -66,17 +72,16 @@ const agent = {
   revision: 1,
 };
 for (const engine of [chromium, webkit]) {
+  if (only && !only.startsWith(`${engine.name()}:`)) continue;
   const browser = await engine.launch({ headless: true });
-  for (const viewport of [
-    { width: 390, height: 844 },
-    { width: 834, height: 1194 },
-    { width: 1440, height: 1000 },
+  for (const { touch, ...viewport } of [
+    { width: 390, height: 844, touch: true },
+    { width: 834, height: 1194, touch: true },
+    { width: 1194, height: 834, touch: true },
+    { width: 1440, height: 1000, touch: false },
   ]) {
-    const page = await browser.newPage({
-      viewport,
-      reducedMotion: "reduce",
-      hasTouch: viewport.width < 1000,
-    });
+    if (only && only !== `${engine.name()}:${viewport.width}`) continue;
+    const page = await browser.newPage({ viewport, reducedMotion: "reduce", hasTouch: touch });
     const errors = [];
     page.on("pageerror", (error) => errors.push(error.message));
     const sends = [];
@@ -161,12 +166,13 @@ for (const engine of [chromium, webkit]) {
         ({ selector, start, end, touch }) => {
           const element = document.querySelector(selector);
           document.activeElement?.blur();
-          element.dispatchEvent(
-            new PointerEvent("pointerdown", {
-              bubbles: true,
-              pointerType: touch ? "touch" : "mouse",
-            }),
-          );
+          if (touch !== null)
+            element.dispatchEvent(
+              new PointerEvent("pointerdown", {
+                bubbles: true,
+                pointerType: touch ? "touch" : "mouse",
+              }),
+            );
           const nodes = [];
           const walker = document.createTreeWalker(element, NodeFilter.SHOW_TEXT);
           while (walker.nextNode()) nodes.push(walker.currentNode);
@@ -183,12 +189,13 @@ for (const engine of [chromium, webkit]) {
           const selection = window.getSelection();
           selection.removeAllRanges();
           selection.addRange(range);
-          element.dispatchEvent(
-            new PointerEvent("pointerup", {
-              bubbles: true,
-              pointerType: touch ? "touch" : "mouse",
-            }),
-          );
+          if (touch !== null)
+            element.dispatchEvent(
+              new PointerEvent("pointerup", {
+                bubbles: true,
+                pointerType: touch ? "touch" : "mouse",
+              }),
+            );
         },
         { selector, start, end, touch },
       );
@@ -198,7 +205,7 @@ for (const engine of [chromium, webkit]) {
     const action = page.getByRole("button", { name: "Comment", exact: true });
     async function openComment() {
       await action.waitFor();
-      if (viewport.width < 1000) await action.tap();
+      if (touch) await action.tap();
       else await action.click();
       await comment.waitFor();
     }
@@ -237,6 +244,18 @@ for (const engine of [chromium, webkit]) {
         0,
       );
       assert.equal(await action.count(), 0, "no permanent annotation entry control");
+      if (touch) {
+        // iPad native selection handles need not emit any pointer events.
+        await select(source, 0, 30, null);
+        await page.getByTestId("annotation-selection-dock").waitFor();
+        assert.equal(await comment.count(), 0);
+        assert.equal(
+          await page.evaluate(() => window.getSelection().toString()),
+          messages[3].text.slice(0, 30),
+        );
+        await page.getByRole("button", { name: "Cancel selection" }).click();
+        await action.waitFor({ state: "hidden" });
+      }
       await select(source, 0, 30);
       await action.waitFor();
       assert.equal(await comment.count(), 0, "selecting reveals an action, not an editor");
@@ -294,12 +313,65 @@ for (const engine of [chromium, webkit]) {
         source,
         passageStart,
         passageStart + "The phone view remains focused on one task.".length,
-        viewport.width < 1000,
+        touch,
       );
       await action.waitFor();
       assert.equal(await comment.count(), 0, "touch and mouse selection leave the editor closed");
+      // Headless WebKit cannot show iPad system chrome. Reserve its below-selection
+      // menu footprint from the reported screenshot to catch app-button collisions.
+      if (touch) {
+        await page.getByTestId("annotation-selection-dock").waitFor();
+        assert.equal(
+          await page.locator("[data-ui=annotation-action]").count(),
+          1,
+          "no covered duplicate floating action",
+        );
+        const actionBounds = await action.boundingBox();
+        const transcriptBounds = await page.getByTestId("chat-transcript").boundingBox();
+        assert.ok(
+          actionBounds.y >= transcriptBounds.y + transcriptBounds.height + 60,
+          "touch action reserves space below native selection menus",
+        );
+        await page.evaluate(() => {
+          const rect = window.getSelection().getRangeAt(0).getBoundingClientRect();
+          const menu = document.createElement("div");
+          menu.dataset.testid = "native-selection-menu-fixture";
+          const width = Math.min(450, innerWidth - 24);
+          Object.assign(menu.style, {
+            position: "fixed",
+            zIndex: "2147483647",
+            left: `${Math.max(12, Math.min(rect.left, innerWidth - width - 12))}px`,
+            top: `${rect.bottom + 12}px`,
+            width: `${width}px`,
+            height: "44px",
+            borderRadius: "22px",
+            background: "#f0f0f0",
+            color: "#222",
+            display: "grid",
+            placeItems: "center",
+            font: "15px sans-serif",
+          });
+          menu.textContent = "Copy     Search     Translate";
+          document.body.append(menu);
+        });
+        for (const control of [action, page.getByRole("button", { name: "Cancel selection" })]) {
+          assert.equal(
+            await control.evaluate((button) => {
+              const rect = button.getBoundingClientRect();
+              return button.contains(
+                document.elementFromPoint(rect.x + rect.width / 2, rect.y + rect.height / 2),
+              );
+            }),
+            true,
+            "The native selection-menu footprint must not hide annotation controls",
+          );
+        }
+      }
       await page.screenshot({ path: `${out}/${engine.name()}-${viewport.width}-selection.png` });
       await openComment();
+      await page
+        .getByTestId("native-selection-menu-fixture")
+        .evaluateAll((menus) => menus.forEach((menu) => menu.remove()));
       assert.equal(
         await comment.evaluate((input) => input === document.activeElement),
         true,

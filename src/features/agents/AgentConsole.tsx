@@ -500,6 +500,7 @@ export function AgentConsole({ agent, onBack }: AgentConsoleProps) {
           onSend={sendAnnotations}
         />
       ) : null}
+      {annotations.selection ? <AnnotationSelectionAction annotations={annotations} /> : null}
       {view === "terminal" ? (
         <div className={consoleStyles["key-controls"]} aria-label="Terminal controls">
           {keyControls.map((control) => (
@@ -649,7 +650,6 @@ export function AgentConsole({ agent, onBack }: AgentConsoleProps) {
           </span>
         </div>
       ) : null}
-      {annotations.selection ? <AnnotationSelectionAction annotations={annotations} /> : null}
       {view === "chat" && annotations.editor ? (
         <AnnotationPopover annotations={annotations} />
       ) : null}

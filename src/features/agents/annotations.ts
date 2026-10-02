@@ -75,7 +75,6 @@ export function positionAnnotationPopover(
   anchor: { left: number; top: number; bottom: number },
   size: { width: number; height: number },
   viewport: { left: number; top: number; width: number; height: number },
-  preferBelow = false,
 ) {
   const gap = 12;
   const left = Math.max(
@@ -84,12 +83,7 @@ export function positionAnnotationPopover(
   );
   const above = anchor.top - size.height - gap;
   const below = anchor.bottom + gap;
-  const preferred =
-    preferBelow && below + size.height <= viewport.top + viewport.height - gap
-      ? below
-      : above >= viewport.top + gap
-        ? above
-        : below;
+  const preferred = above >= viewport.top + gap ? above : below;
   const top = Math.max(
     viewport.top + gap,
     Math.min(preferred, viewport.top + viewport.height - size.height - gap),

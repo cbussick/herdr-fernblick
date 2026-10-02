@@ -6,7 +6,7 @@ import { positionAnnotationPopover } from "./annotations";
 import type { ChatAnnotations } from "./useChatAnnotations";
 import styles from "./ChatAnnotations.module.css";
 
-function useAnchoredOverlay(anchor: () => DOMRect, preferBelow = false) {
+function useAnchoredOverlay(anchor: () => DOMRect) {
   const ref = useRef<HTMLDivElement>(null);
   const [position, setPosition] = useState({ left: 12, top: 12 });
   useLayoutEffect(() => {
@@ -21,9 +21,7 @@ function useAnchoredOverlay(anchor: () => DOMRect, preferBelow = false) {
         height: viewport?.height ?? window.innerHeight,
       };
       element.style.maxHeight = `${Math.max(120, bounds.height - 24)}px`;
-      setPosition(
-        positionAnnotationPopover(anchor(), element.getBoundingClientRect(), bounds, preferBelow),
-      );
+      setPosition(positionAnnotationPopover(anchor(), element.getBoundingClientRect(), bounds));
     }
     place();
     const observer = new ResizeObserver(place);
@@ -39,14 +37,27 @@ function useAnchoredOverlay(anchor: () => DOMRect, preferBelow = false) {
       window.visualViewport?.removeEventListener("resize", place);
       window.visualViewport?.removeEventListener("scroll", place);
     };
-  }, [anchor, preferBelow]);
+  }, [anchor]);
   return { ref, position };
 }
 
-export function AnnotationSelectionAction({ annotations }: { annotations: ChatAnnotations }) {
-  const { anchor, preferBelow } = annotations.selection!;
-  // Native touch Copy/Look Up menus usually sit above the selected passage.
-  const { ref, position } = useAnchoredOverlay(anchor, preferBelow);
+function CommentAction({ annotations }: { annotations: ChatAnnotations }) {
+  return (
+    <button
+      type="button"
+      className={styles.send}
+      aria-keyshortcuts="Alt+Enter"
+      title="Comment on selection (Alt+Enter)"
+      onMouseDown={(event) => event.preventDefault()}
+      onClick={annotations.openSelection}
+    >
+      <MessageIcon /> Comment
+    </button>
+  );
+}
+
+function FloatingSelectionAction({ annotations }: { annotations: ChatAnnotations }) {
+  const { ref, position } = useAnchoredOverlay(annotations.selection!.anchor);
   return createPortal(
     <div
       ref={ref}
@@ -54,18 +65,36 @@ export function AnnotationSelectionAction({ annotations }: { annotations: ChatAn
       data-ui="annotation-action"
       style={position}
     >
-      <button
-        type="button"
-        className={styles.send}
-        aria-keyshortcuts="Alt+Enter"
-        title="Comment on selection (Alt+Enter)"
-        onMouseDown={(event) => event.preventDefault()}
-        onClick={annotations.openSelection}
-      >
-        <MessageIcon /> Comment
-      </button>
+      <CommentAction annotations={annotations} />
     </div>,
     document.body,
+  );
+}
+
+export function AnnotationSelectionAction({ annotations }: { annotations: ChatAnnotations }) {
+  if (!annotations.selection!.docked) return <FloatingSelectionAction annotations={annotations} />;
+  // System selection menus can appear above OR below a passage and cannot be
+  // measured or covered with CSS. Keep touch controls out of the transcript.
+  return (
+    <section
+      className={styles["selection-dock"]}
+      data-ui="annotation-action"
+      data-testid="annotation-selection-dock"
+      aria-label="Selected passage"
+    >
+      <div className={styles["selection-dock__surface"]}>
+        <blockquote>{annotations.selection!.source.quote}</blockquote>
+        <CommentAction annotations={annotations} />
+        <button
+          type="button"
+          className={styles["selection-dismiss"]}
+          aria-label="Cancel selection"
+          onClick={annotations.close}
+        >
+          <CloseIcon />
+        </button>
+      </div>
+    </section>
   );
 }
 
