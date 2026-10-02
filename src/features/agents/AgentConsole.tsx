@@ -13,14 +13,8 @@ import { AnnotationPopover, AnnotationSelectionAction, AnnotationTray } from "./
 import { annotationHighlights, annotationPrompt } from "./annotations";
 import { CloseTabButton } from "./CloseTabButton";
 import { ConversationTreeDialog } from "./ConversationTreeDialog";
-import {
-  BackIcon,
-  BranchIcon,
-  CloseIcon,
-  ImageIcon,
-  LightbulbIcon,
-  SendIcon,
-} from "../../shared/ui/Icons";
+import { SkillComposer } from "./SkillComposer";
+import { BackIcon, CloseIcon, ImageIcon, LightbulbIcon } from "../../shared/ui/Icons";
 import { IconButton, StatusIndicator, TabKindIcon } from "../../shared/ui";
 import { StateIcon, StateNotice } from "../../shared/ui/StateFeedback";
 
@@ -203,7 +197,11 @@ export function AgentConsole({ agent, onBack }: AgentConsoleProps) {
     !snapshot.sendPending &&
     !send.isPending,
   );
-  const canSend = canForward && !annotations.editor && Boolean(prompt.trim() || attachments.length);
+  const canSend =
+    canForward &&
+    !annotations.editor &&
+    (!prompt.trimStart().startsWith("/skill:") || Boolean(snapshot?.capabilities?.skills)) &&
+    Boolean(prompt.trim() || attachments.length);
   const canSendAnnotations =
     canForward && annotations.entries.length > 0 && !annotations.stale && !annotations.editor;
   function sendAnnotations() {
@@ -554,72 +552,33 @@ export function AgentConsole({ agent, onBack }: AgentConsoleProps) {
                 ))}
               </div>
             ) : null}
-            <label htmlFor="agent-prompt" className={a11yStyles["sr-only"]}>
-              Message {getAgentTabLabel(agent)}
-            </label>
-            <div className={consoleStyles["prompt-composer__row"]}>
-              <input
-                ref={fileInputRef}
-                className={a11yStyles["sr-only"]}
-                type="file"
-                accept="image/png,image/jpeg,image/gif,image/webp"
-                multiple
-                disabled={composerSending}
-                onChange={(event) => selectImages(event.target.files)}
-              />
-              <button
-                type="button"
-                className={consoleStyles["prompt-composer__attach"]}
-                disabled={composerSending || attachments.length >= 4}
-                title="Attach images"
-                aria-label="Attach images"
-                onClick={() => fileInputRef.current?.click()}
-              >
-                <ImageIcon />
-              </button>
-              <button
-                type="button"
-                className={consoleStyles["prompt-composer__tree"]}
-                aria-label="Open conversation paths"
-                title="Conversation paths"
-                disabled={
-                  !snapshot || Boolean(live.error) || composerSending || Boolean(annotations.editor)
-                }
-                onClick={() => snapshot && setTreeTarget(targetOf(snapshot))}
-              >
-                <BranchIcon />
-              </button>
-              <textarea
-                id="agent-prompt"
-                value={prompt}
-                disabled={composerSending}
-                onChange={(event) => {
-                  if (send.isError) {
-                    send.reset();
-                  }
-                  setPrompt(event.target.value);
-                }}
-                placeholder={`Send to ${getAgentTabLabel(agent)} when idle…`}
-                rows={1}
-                maxLength={32000}
-              />
-              <button
-                type="submit"
-                aria-label="Send message"
-                aria-busy={composerSending && !send.variables?.annotationIds}
-                disabled={!canSend}
-              >
-                {composerSending && !send.variables?.annotationIds ? (
-                  <span
-                    className={consoleStyles["prompt-composer__spinner"]}
-                    data-testid="send-spinner"
-                    aria-hidden="true"
-                  />
-                ) : (
-                  <SendIcon />
-                )}
-              </button>
-            </div>
+            <input
+              ref={fileInputRef}
+              className={a11yStyles["sr-only"]}
+              type="file"
+              accept="image/png,image/jpeg,image/gif,image/webp"
+              multiple
+              disabled={composerSending}
+              onChange={(event) => selectImages(event.target.files)}
+            />
+            <SkillComposer
+              pane={agent.pane_id}
+              target={snapshot ? targetOf(snapshot) : undefined}
+              available={Boolean(snapshot?.capabilities?.skills)}
+              connected={Boolean(snapshot && !live.error)}
+              prompt={prompt}
+              onChange={(text) => {
+                if (send.isError) send.reset();
+                setPrompt(text);
+              }}
+              label={getAgentTabLabel(agent)}
+              sending={composerSending}
+              canSend={canSend}
+              canAttach={attachments.length < 4}
+              canOpenTree={Boolean(snapshot && !live.error && !annotations.editor)}
+              onAttach={() => fileInputRef.current?.click()}
+              onOpenTree={() => snapshot && setTreeTarget(targetOf(snapshot))}
+            />
           </div>
           {attachmentError ? (
             <StateNotice kind="info" role="alert">

@@ -63,23 +63,19 @@
   border-radius: var(--radius-sm);
 }
 
-/* Narrow screens and portrait tablets use single-pane navigation. */
-@media (width < 48rem), (width < 75rem) and (orientation: portrait) {
-  .workspace {
-    display: block;
-  }
+/* One shared layout decision keeps keyboard-induced viewport changes from
+   revealing the sidebar on a portrait tablet. Grid still stretches the console
+   to the available height when the viewport's orientation query flips. */
+.app-shell[data-single-pane] .workspace {
+  grid-template-columns: minmax(0, 1fr);
+}
 
-  .console-empty {
-    height: 100%;
-  }
+.app-shell[data-single-pane][data-detail-open] [data-ui="agent-list"] {
+  display: none;
+}
 
-  .app-shell[data-detail-open] [data-ui="agent-list"] {
-    display: none;
-  }
-
-  .app-shell:not([data-detail-open]) .console-empty {
-    display: none;
-  }
+.app-shell[data-single-pane]:not([data-detail-open]) .console-empty {
+  display: none;
 }
 
 .console-empty {

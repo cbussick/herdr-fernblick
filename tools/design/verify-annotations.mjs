@@ -449,6 +449,23 @@ for (const engine of [chromium, webkit]) {
           "base64",
         ),
       });
+      // Integration with the skills composer must not couple comment sending to
+      // ordinary text, attachments, or an unavailable /skill: invocation.
+      await page.locator("#agent-prompt").fill("/skill:unavailable Keep my ordinary draft");
+      assert.equal(
+        await page.getByRole("button", { name: "Send message", exact: true }).isDisabled(),
+        true,
+      );
+      assert.equal(
+        await tray.getByRole("button", { name: "Send comments", exact: true }).isEnabled(),
+        true,
+      );
+      await page.locator("#agent-prompt").fill("");
+      assert.equal(
+        await tray.getByRole("button", { name: "Send comments", exact: true }).isEnabled(),
+        true,
+      );
+      await page.locator("#agent-prompt").fill("Keep my ordinary draft");
       failure = true;
       await tray.getByRole("button", { name: "Send comments", exact: true }).click();
       await tray.getByRole("alert").waitFor();

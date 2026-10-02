@@ -18,6 +18,7 @@ import {
   ackSchema,
   treeResponseSchema,
   navigationResponseSchema,
+  skillsResponseSchema,
   type Target,
 } from "../../../packages/pi-live-chat/protocol";
 
@@ -138,6 +139,23 @@ export async function uploadImage(file: File) {
       body: file,
     }),
   );
+}
+export async function getAgentSkills(pane: string, target: Target, signal?: AbortSignal) {
+  const response = skillsResponseSchema.parse(
+    await request(`/api/agents/${encodeURIComponent(pane)}/skills`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ target }),
+      signal,
+    }),
+  );
+  if (
+    response.target.runtime !== target.runtime ||
+    response.target.epoch !== target.epoch ||
+    response.target.sessionId !== target.sessionId
+  )
+    throw new Error("Pi session changed. Reopen Skills.");
+  return response;
 }
 export async function getAgentTree(pane: string, target: Target) {
   const response = treeResponseSchema.parse(

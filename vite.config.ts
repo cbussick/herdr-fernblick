@@ -7,9 +7,8 @@ export default defineConfig({
   server: {
     proxy: {
       "/api": {
-        target: "http://127.0.0.1:8787",
-        // Keep Host aligned with the browser Origin for the backend CSRF guard.
-        // Vite\'s string shorthand enables changeOrigin and breaks valid sends.
+        target: process.env.FERNBLICK_API_TARGET ?? "http://127.0.0.1:8787",
+        // Preserve the browser-facing host for the API's same-origin guard.
         changeOrigin: false,
       },
     },

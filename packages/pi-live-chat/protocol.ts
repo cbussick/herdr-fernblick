@@ -55,6 +55,7 @@ export const snapshotSchema = z.object({
   busy: z.boolean(),
   sendPending: z.boolean(),
   truncated: z.boolean(),
+  capabilities: z.object({ skills: z.literal(true) }).optional(),
   messages: z.array(messageSchema).max(MAX_MESSAGES),
   status: z.object({
     cwd: z.string().max(4096),
@@ -96,13 +97,32 @@ export const piTreeSchema = z.object({
   leafId: id.nullable(),
 });
 export type PiTree = z.infer<typeof piTreeSchema>;
+export const MAX_SKILLS = 1000;
+export const skillSchema = z.object({
+  name: z
+    .string()
+    .min(1)
+    .max(256)
+    .regex(/^[^\s]+$/),
+  description: z.string().max(2048),
+  path: z.string().max(4096),
+  scope: z.enum(["user", "project", "temporary"]),
+});
+export type AgentSkill = z.infer<typeof skillSchema>;
+export const skillsResponseSchema = z.object({
+  type: z.literal("skills"),
+  id: z.string().uuid(),
+  target: targetSchema,
+  skills: z.array(skillSchema).max(MAX_SKILLS),
+  truncated: z.boolean(),
+});
 export const commandSchema = z
   .discriminatedUnion("action", [
     z.object({
       type: z.literal("command"),
       id: z.string().uuid(),
       target: targetSchema,
-      action: z.literal("tree"),
+      action: z.enum(["tree", "skills"]),
     }),
     z.object({
       type: z.literal("command"),
@@ -151,7 +171,12 @@ export const navigationResponseSchema = z.object({
     .object({ text: z.string().max(MAX_TEXT), attachments: z.array(uploadIdSchema).max(4) })
     .optional(),
 });
-export const responseSchema = z.union([ackSchema, treeResponseSchema, navigationResponseSchema]);
+export const responseSchema = z.union([
+  ackSchema,
+  treeResponseSchema,
+  navigationResponseSchema,
+  skillsResponseSchema,
+]);
 export type BridgeResponse = z.infer<typeof responseSchema>;
 export type Identity = z.infer<typeof identitySchema>;
 export type Snapshot = z.infer<typeof snapshotSchema>;

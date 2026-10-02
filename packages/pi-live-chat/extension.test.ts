@@ -65,7 +65,7 @@ function fakePi(session = "session") {
       name: string,
       command: { handler: (args: string, ctx: ExtensionCommandContext) => Promise<void> },
     ) => commands.set(name, command),
-    getCommands: () => [...commands.keys()].map((name) => ({ name })),
+    getCommands: vi.fn(() => [...commands.keys()].map((name) => ({ name }))),
     appendEntry: vi.fn((customType: string, data: unknown) => {
       branch.push({ type: "custom", id: randomUUID(), customType, data });
     }),
@@ -255,6 +255,72 @@ it("uses real Pi 0.99.1 command dispatch and navigateTree(user.id) to reach the 
     session.dispose();
   }
 }, 20_000);
+
+it("lists skills on demand while busy and revalidates selected skills before forwarding images", async () => {
+  const t = await setup();
+  const command = {
+    name: "skill:review",
+    description: "Review code",
+    source: "skill",
+    sourceInfo: { path: "/home/.agents/skills/review/SKILL.md", scope: "user" },
+  };
+  t.pi.getCommands.mockReturnValue([command]);
+  t.setIdle(false);
+  const id = randomUUID();
+  writeFrame(t.connections[0], {
+    type: "command",
+    id,
+    action: "skills",
+    target: targetOf(t.latest()!),
+  });
+  expect(await t.ack(id)).toMatchObject({
+    type: "skills",
+    skills: [{ name: "review", path: command.sourceInfo.path, scope: "user" }],
+  });
+  expect(t.latest()?.capabilities?.skills).toBe(true);
+  expect(t.pi.sendUserMessage).not.toHaveBeenCalled();
+  expect(await t.ack(t.command("send", targetOf(t.latest()!), "/skill:review"))).toMatchObject({
+    outcome: "rejected",
+  });
+  t.setIdle(true);
+  t.pi.getCommands.mockReturnValue([]);
+  expect(await t.ack(t.command("send", targetOf(t.latest()!), "/skill:review"))).toMatchObject({
+    outcome: "rejected",
+    reason: expect.stringContaining("unavailable"),
+  });
+  expect(t.pi.sendUserMessage).not.toHaveBeenCalled();
+  t.pi.getCommands.mockReturnValue([command]);
+  vi.stubEnv("FERNBLICK_UPLOAD_DIR", t.dir);
+  const attachment = `${randomUUID()}.png`;
+  await writeFile(join(t.dir, attachment), Buffer.from([137, 80, 78, 71, 13, 10, 26, 10]), {
+    mode: 0o600,
+  });
+  const sendId = randomUUID();
+  writeFrame(t.connections[0], {
+    type: "command",
+    id: sendId,
+    action: "send",
+    target: targetOf(t.latest()!),
+    text: "/skill:review\ncheck this",
+    attachments: [attachment],
+  });
+  expect(await t.ack(sendId)).toMatchObject({ outcome: "invoked" });
+  expect(t.pi.sendUserMessage).toHaveBeenCalledWith(
+    [
+      { type: "text", text: "/skill:review check this" },
+      expect.objectContaining({ type: "image", mimeType: "image/png" }),
+    ],
+    { expandPromptTemplates: true },
+  );
+});
+
+it("keeps ordinary slash messages literal", async () => {
+  const t = await setup();
+  expect(await t.ack(t.command("send", targetOf(t.latest()!), "/reload"))).toMatchObject({
+    outcome: "invoked",
+  });
+  expect(t.pi.sendUserMessage).toHaveBeenCalledWith("/reload", { expandPromptTemplates: false });
+});
 
 it("acknowledges forwarding without text matching and gates further sends using native working/idle events", async () => {
   const t = await setup();
