@@ -9,7 +9,7 @@ Fernblick is a remote view onto coding agents, not an analytics dashboard. Its v
 - Palette: sky/navigation `#e7f2fc`, mist/canvas `#f5f9fd`, white/surface `#ffffff`, navy/text `#17374f`, blue/action `#14669f`, pale blue/selection `#dceefc`. Keep distinct semantic warning, danger and success colors.
 - Type: locally hosted Manrope variable for the interface; the existing monospace stack for terminal output and Pi session metadata. The font's complete SIL OFL 1.1 license is included in `src/styles/fonts/` and distributed at `/licenses/Manrope-OFL.txt` in both app and Storybook builds. See [font provenance](../../src/styles/fonts/README.md).
 - Phone: one pane at a time, left-aligned workspace grouping, a reachable labeled Create control, and two header rows so status never competes with edit/view controls.
-- iPad: single-pane/mobile navigation in portrait, persistent workspace rail in landscape. A rail is shown at widths of at least 768px in landscape, or at least 1200px regardless of orientation. Rotation keeps the selected agent.
+- iPad: single-pane/mobile navigation in portrait, persistent workspace rail in landscape. Below 1200px, portrait touch-screen dimensions keep the layout single-pane even if the software keyboard makes the viewport landscape. Desktop windows still use viewport orientation. A rail is shown at widths of at least 768px in landscape, or at least 1200px regardless of orientation. Rotation keeps the selected agent and draft.
 - Desktop: rail plus a bounded conversation column, a one-row console header from 1152px, and a bounded composer instead of a viewport-wide input.
 - Grouping: workspace containers correspond to actual projects, not arbitrary dashboard cards. The flat agent view uses white, bordered row surfaces. Expanded tool results use a white output area inside the same bordered accordion as their blue `read` header, with no gap or separate bubble corners. Distinct chat corners communicate speaker, not decoration.
 - Accessibility: 44px console touch targets, visible focus, improved secondary-text contrast, safe-area padding and existing reduced-motion support. Existing status pulses and startup/send spinners respect reduced motion; no decorative animation.
@@ -60,6 +60,22 @@ node tools/design/verify.mjs http://100.71.229.1:5197 http://127.0.0.1:5198
 ```
 
 The gallery server exposes only static synthetic artifacts and binds to the Tailnet interface, not a public interface. A separate loopback listener can serve the same directory with `python3 -m http.server 5197 --bind 127.0.0.1 --directory design-gallery`; this supports standard localhost forwarding. Restrict access in the Tailnet policy if needed. After editing `gallery.html`, copy it to `design-gallery/index.html` or recapture.
+
+## Keyboard layout regression
+
+```sh
+PLAYWRIGHT_MODULE=/tmp/fernblick-design-tools/node_modules/playwright/index.mjs \
+  node tools/design/keyboard-layout.mjs http://<dev-host>:<vite-port>
+```
+
+This synthetic Chromium/WebKit check holds touch-screen dimensions in portrait
+while shrinking the usable viewport, reproducing the keyboard-induced CSS
+orientation flip at 768, 834 and 1024px widths. It checks full-width chat, composer
+and skills-search focus, keyboard dismissal, physical rotation with the keyboard
+open, draft preservation, back navigation and overview search. All API requests
+and SSE are fixtures; no real agents are controlled. It simulates viewport changes,
+not a physical iPadOS keyboard. Hook tests in `npm run check` also cover desktop
+resizing, coarse-pointer detection, legacy orientation events and cleanup.
 
 ## Proposal regression comparison
 
