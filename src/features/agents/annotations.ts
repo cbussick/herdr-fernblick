@@ -9,14 +9,17 @@ export type AnnotationSource = {
 export type Annotation = AnnotationSource & { id: string; comment: string };
 export type TextHighlight = { start: number; end: number };
 
+export const annotationPromptIntro =
+  "Please address these comments on your earlier responses. Each quoted passage is context; the comment below it is my feedback.";
+
 // Like Plannotator, keep the original passage next to its feedback. Message IDs and
 // offsets disambiguate repeated passages and comments on older assistant responses.
 export function annotationPrompt(annotations: Annotation[]) {
   return [
-    "Please address these comments on your earlier responses. Each quoted passage is context; the comment below it is my feedback.",
+    annotationPromptIntro,
     ...annotations.map(
       (annotation, index) =>
-        `### Comment ${index + 1} (response ${annotation.messageId}, characters ${annotation.start + 1}–${annotation.end})\n\n${annotation.quote
+        `**Comment ${index + 1}** (response ${annotation.messageId}, characters ${annotation.start + 1}–${annotation.end})\n\n${annotation.quote
           .split("\n")
           .map((line) => `> ${line}`)
           .join("\n")}\n\n${annotation.comment}`,
@@ -72,6 +75,7 @@ export function positionAnnotationPopover(
   anchor: { left: number; top: number; bottom: number },
   size: { width: number; height: number },
   viewport: { left: number; top: number; width: number; height: number },
+  preferBelow = false,
 ) {
   const gap = 12;
   const left = Math.max(
@@ -79,12 +83,16 @@ export function positionAnnotationPopover(
     Math.min(anchor.left, viewport.left + viewport.width - size.width - gap),
   );
   const above = anchor.top - size.height - gap;
+  const below = anchor.bottom + gap;
+  const preferred =
+    preferBelow && below + size.height <= viewport.top + viewport.height - gap
+      ? below
+      : above >= viewport.top + gap
+        ? above
+        : below;
   const top = Math.max(
     viewport.top + gap,
-    Math.min(
-      above >= viewport.top + gap ? above : anchor.bottom + gap,
-      viewport.top + viewport.height - size.height - gap,
-    ),
+    Math.min(preferred, viewport.top + viewport.height - size.height - gap),
   );
   return { left, top };
 }

@@ -195,6 +195,13 @@ for (const engine of [chromium, webkit]) {
     };
     const source = '[data-annotation-source="a1"]';
     const comment = page.getByRole("textbox", { name: "Your comment" });
+    const action = page.getByRole("button", { name: "Comment", exact: true });
+    async function openComment() {
+      await action.waitFor();
+      if (viewport.width < 1000) await action.tap();
+      else await action.click();
+      await comment.waitFor();
+    }
     const tray = page.getByRole("region", { name: "Pending annotations" });
     const update = (patch) =>
       page.evaluate((value) => window.updateAnnotationSnapshot(value), patch);
@@ -224,14 +231,50 @@ for (const engine of [chromium, webkit]) {
       await page.getByRole("tab", { name: "Agents", exact: true }).click();
       await page.getByTestId("pane-row").first().click();
       await page.locator(source).waitFor();
+      assert.equal(await page.getByRole("button", { name: "Annotate", exact: true }).count(), 0);
+      assert.equal(
+        await page.getByRole("button", { name: "Comment on response", exact: true }).count(),
+        0,
+      );
+      assert.equal(await action.count(), 0, "no permanent annotation entry control");
       await select(source, 0, 30);
-      assert.equal(await comment.count(), 0, "selection does nothing outside annotation mode");
-      await page.getByRole("button", { name: "Annotate", exact: true }).click();
+      await action.waitFor();
+      assert.equal(await comment.count(), 0, "selecting reveals an action, not an editor");
+      assert.equal(
+        await action.evaluate((button) => button === document.activeElement),
+        false,
+        "selection does not steal focus",
+      );
+      assert.equal(
+        await page.evaluate(() => window.getSelection().toString()),
+        messages[3].text.slice(0, 30),
+      );
+      await page.keyboard.press("Control+c");
+      assert.equal(
+        await page.evaluate(() => window.getSelection().toString()),
+        messages[3].text.slice(0, 30),
+        "copy selection stays intact",
+      );
+      await page.locator("#agent-prompt").click();
+      await action.waitFor({ state: "hidden" });
+      await select(source, 0, 30);
+      await action.waitFor();
+      await page.keyboard.press("Escape");
+      await action.waitFor({ state: "hidden" });
+      await select(source, 0, 30);
+      await action.waitFor();
+      // A view change must not resurrect a range from a detached transcript.
+      await page
+        .getByRole("button", { name: "Switch to Terminal view" })
+        .evaluate((button) => button.click());
+      await page.getByRole("button", { name: "Switch to Chat view" }).click();
+      await page.locator(source).waitFor();
+      assert.equal(await action.count(), 0);
       await select('[data-testid="chat-transcript"] article:first-of-type p', 0, 20);
-      assert.equal(await comment.count(), 0, "user messages cannot be annotated");
+      assert.equal(await action.count(), 0, "user messages cannot be annotated");
       await page.getByTestId("chat-tool").locator("summary").click();
       await select('[data-testid="chat-tool"] pre', 0, 10);
-      assert.equal(await comment.count(), 0, "tool output cannot be annotated");
+      assert.equal(await action.count(), 0, "tool output cannot be annotated");
       await page.getByTestId("chat-tool").locator("summary").click();
       await page.evaluate(() => {
         const range = document.createRange();
@@ -244,7 +287,7 @@ for (const engine of [chromium, webkit]) {
           new PointerEvent("pointerup", { bubbles: true, pointerType: "mouse" }),
         );
       });
-      assert.equal(await comment.count(), 0, "cross-message selections are rejected");
+      assert.equal(await action.count(), 0, "cross-message selections are rejected");
       await page.locator("#agent-prompt").fill("Keep my ordinary draft");
       const passageStart = messages[3].text.indexOf("The phone view");
       await select(
@@ -253,26 +296,27 @@ for (const engine of [chromium, webkit]) {
         passageStart + "The phone view remains focused on one task.".length,
         viewport.width < 1000,
       );
-      await comment.waitFor();
-      if (viewport.width < 1000)
-        assert.notEqual(
-          await page.evaluate(() => document.activeElement?.id),
-          "annotation-comment",
-          "touch selection must not steal focus",
-        );
+      await action.waitFor();
+      assert.equal(await comment.count(), 0, "touch and mouse selection leave the editor closed");
+      await page.screenshot({ path: `${out}/${engine.name()}-${viewport.width}-selection.png` });
+      await openComment();
+      assert.equal(
+        await comment.evaluate((input) => input === document.activeElement),
+        true,
+        "explicit activation focuses the editor",
+      );
       await comment.fill("Keep the status visible on smaller screens, too.");
       await assertLayout();
       await page.screenshot({ path: `${out}/${engine.name()}-${viewport.width}-popover.png` });
       await comment.press("Enter");
       await comment.waitFor({ state: "hidden" });
       assert.ok(await page.locator(`${source} mark`).count());
-      await page.getByRole("button", { name: "Annotate", exact: true }).click();
-      assert.equal(await tray.count(), 1, "mode-off preserves pending comments");
+      assert.equal(await action.count(), 0, "saving dismisses the contextual action");
       await page.getByRole("button", { name: "Switch to Terminal view" }).click();
       await page.getByRole("button", { name: "Switch to Chat view" }).click();
       assert.equal(await tray.count(), 1, "terminal switch preserves comments");
-      await page.getByRole("button", { name: "Annotate", exact: true }).click();
       await select('[data-annotation-source="a2"]', 4, 44);
+      await openComment();
       await save("Use the new layout reference.");
       await tray.getByRole("button", { name: /2 pending comments/ }).click();
       await tray.getByRole("button", { name: "Edit comment 1" }).click();
@@ -281,6 +325,9 @@ for (const engine of [chromium, webkit]) {
       await assertLayout();
       assert.equal(sends.length, 0, "saving comments never sends a prompt");
       await update({ busy: true });
+      // SSE fixture delivery schedules a React update; wait for that commit,
+      // rather than reading the previous render's button state on fast browsers.
+      await page.getByRole("button", { name: "Stop", exact: true }).waitFor();
       assert.equal(
         await tray.getByRole("button", { name: "Send comments", exact: true }).isDisabled(),
         true,
@@ -319,6 +366,8 @@ for (const engine of [chromium, webkit]) {
       assert.equal(sends.length, 1);
       assert.match(sends[0].text, /Keep the status visible on every screen/);
       assert.match(sends[0].text, /response a2/);
+      assert.match(sends[0].text, /\*\*Comment 1\*\*/);
+      assert.doesNotMatch(sends[0].text, /### Comment/);
       assert.deepEqual(sends[0].attachments, []);
       assert.equal(await page.locator("#agent-prompt").inputValue(), "Keep my ordinary draft");
       await page.waitForTimeout(150);
@@ -349,11 +398,32 @@ for (const engine of [chromium, webkit]) {
         "annotation sends preserve ordinary image drafts",
       );
       await page.getByRole("button", { name: "Remove image 1" }).click();
-      // Whole-response control is the keyboard/touch fallback; Escape cancels.
-      await page.getByRole("button", { name: "Comment on response", exact: true }).first().click();
+      await update({
+        messages: [...messages, { id: "feedback", role: "user", text: sends[1].text }],
+      });
+      const label = page
+        .getByTestId("chat-transcript")
+        .locator("strong")
+        .filter({ hasText: /^Comment 1$/ });
+      await label.waitFor();
+      assert.equal(
+        await label.count(),
+        1,
+        "sent labels render in actual bold, not literal Markdown",
+      );
+      // Selecting a whole response is supported without any permanent control.
+      await select(source, 0, messages[3].text.length);
+      await action.waitFor();
+      await page.keyboard.press("Tab");
+      assert.equal(await action.evaluate((button) => button === document.activeElement), true);
+      await page.keyboard.press("Enter");
+      await comment.waitFor();
       await comment.press("Escape");
       assert.equal(await tray.count(), 0);
-      await page.getByRole("button", { name: "Comment on response", exact: true }).first().click();
+      await select(source, 0, messages[3].text.length);
+      await action.waitFor();
+      await page.keyboard.press("Alt+Enter");
+      await comment.waitFor();
       await comment.fill("first line");
       await comment.dispatchEvent("keydown", { key: "Enter", isComposing: true });
       assert.equal(await comment.count(), 1, "IME confirmation is not comment submission");
@@ -366,6 +436,7 @@ for (const engine of [chromium, webkit]) {
       await tray.getByRole("button", { name: "Remove comment 1" }).click();
       await tray.waitFor({ state: "hidden" });
       await select(source, 0, 30);
+      await openComment();
       await save("Do not send this into a replacement session.");
       await update({ epoch: "a0000000-0000-4000-8000-000000000003" });
       await tray.getByRole("button", { name: "Discard old comments" }).waitFor();

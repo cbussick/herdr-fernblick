@@ -6,31 +6,66 @@ import { positionAnnotationPopover } from "./annotations";
 import type { ChatAnnotations } from "./useChatAnnotations";
 import styles from "./ChatAnnotations.module.css";
 
-export function AnnotationToolbar({
-  annotations,
-  disabled,
-}: {
-  annotations: ChatAnnotations;
-  disabled: boolean;
-}) {
-  return (
-    <div className={styles.toolbar}>
+function useAnchoredOverlay(anchor: () => DOMRect, preferBelow = false) {
+  const ref = useRef<HTMLDivElement>(null);
+  const [position, setPosition] = useState({ left: 12, top: 12 });
+  useLayoutEffect(() => {
+    function place() {
+      const element = ref.current;
+      if (!element) return;
+      const viewport = window.visualViewport;
+      const bounds = {
+        left: viewport?.offsetLeft ?? 0,
+        top: viewport?.offsetTop ?? 0,
+        width: viewport?.width ?? window.innerWidth,
+        height: viewport?.height ?? window.innerHeight,
+      };
+      element.style.maxHeight = `${Math.max(120, bounds.height - 24)}px`;
+      setPosition(
+        positionAnnotationPopover(anchor(), element.getBoundingClientRect(), bounds, preferBelow),
+      );
+    }
+    place();
+    const observer = new ResizeObserver(place);
+    if (ref.current) observer.observe(ref.current);
+    window.addEventListener("resize", place);
+    window.addEventListener("scroll", place, true);
+    window.visualViewport?.addEventListener("resize", place);
+    window.visualViewport?.addEventListener("scroll", place);
+    return () => {
+      observer.disconnect();
+      window.removeEventListener("resize", place);
+      window.removeEventListener("scroll", place, true);
+      window.visualViewport?.removeEventListener("resize", place);
+      window.visualViewport?.removeEventListener("scroll", place);
+    };
+  }, [anchor, preferBelow]);
+  return { ref, position };
+}
+
+export function AnnotationSelectionAction({ annotations }: { annotations: ChatAnnotations }) {
+  const { anchor, preferBelow } = annotations.selection!;
+  // Native touch Copy/Look Up menus usually sit above the selected passage.
+  const { ref, position } = useAnchoredOverlay(anchor, preferBelow);
+  return createPortal(
+    <div
+      ref={ref}
+      className={styles["selection-action"]}
+      data-ui="annotation-action"
+      style={position}
+    >
       <button
         type="button"
-        className={styles.toggle}
-        aria-pressed={annotations.enabled}
-        disabled={disabled || Boolean(annotations.editor)}
-        onClick={() => annotations.setEnabled(!annotations.enabled)}
+        className={styles.send}
+        aria-keyshortcuts="Alt+Enter"
+        title="Comment on selection (Alt+Enter)"
+        onMouseDown={(event) => event.preventDefault()}
+        onClick={annotations.openSelection}
       >
-        <PencilIcon /> Annotate
+        <MessageIcon /> Comment
       </button>
-      <span className={styles.hint}>
-        {annotations.enabled ? "Select a passage to comment" : "Comment on agent responses"}
-      </span>
-      <span role="status" className={a11yStyles["sr-only"]}>
-        {annotations.notice}
-      </span>
-    </div>
+    </div>,
+    document.body,
   );
 }
 
@@ -137,43 +172,11 @@ export function AnnotationTray({
 
 export function AnnotationPopover({ annotations }: { annotations: ChatAnnotations }) {
   const editor = annotations.editor!;
-  const { anchor, source, autoFocus } = editor;
-  const popover = useRef<HTMLDivElement>(null);
+  const { ref: popover, position } = useAnchoredOverlay(editor.anchor);
   const input = useRef<HTMLTextAreaElement>(null);
-  const [position, setPosition] = useState({ left: 12, top: 12 });
   useLayoutEffect(() => {
-    if (autoFocus) input.current?.focus({ preventScroll: true });
-  }, [source, autoFocus]);
-  useLayoutEffect(() => {
-    function place() {
-      const element = popover.current;
-      if (!element) return;
-      const viewport = window.visualViewport;
-      const bounds = {
-        left: viewport?.offsetLeft ?? 0,
-        top: viewport?.offsetTop ?? 0,
-        width: viewport?.width ?? window.innerWidth,
-        height: viewport?.height ?? window.innerHeight,
-      };
-      element.style.maxHeight = `${Math.max(120, bounds.height - 24)}px`;
-      const rect = element.getBoundingClientRect();
-      setPosition(positionAnnotationPopover(anchor(), rect, bounds));
-    }
-    place();
-    const observer = new ResizeObserver(place);
-    if (popover.current) observer.observe(popover.current);
-    window.addEventListener("resize", place);
-    window.addEventListener("scroll", place, true);
-    window.visualViewport?.addEventListener("resize", place);
-    window.visualViewport?.addEventListener("scroll", place);
-    return () => {
-      observer.disconnect();
-      window.removeEventListener("resize", place);
-      window.removeEventListener("scroll", place, true);
-      window.visualViewport?.removeEventListener("resize", place);
-      window.visualViewport?.removeEventListener("scroll", place);
-    };
-  }, [anchor, annotations.error, annotations.editorStale]);
+    input.current?.focus({ preventScroll: true });
+  }, [editor.source]);
   return createPortal(
     <div
       ref={popover}

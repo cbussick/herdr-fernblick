@@ -24,8 +24,25 @@ it("serializes older-response anchors, verbatim multiline quotes and comments in
   expect(
     annotationPrompt([entry, { ...entry, messageId: "response-2", comment: "Change this." }]),
   ).toBe(
-    "Please address these comments on your earlier responses. Each quoted passage is context; the comment below it is my feedback.\n\n### Comment 1 (response response-1, characters 13–29)\n\n> line one\n> line two\n\nKeep both lines.\n\n### Comment 2 (response response-2, characters 13–29)\n\n> line one\n> line two\n\nChange this.",
+    "Please address these comments on your earlier responses. Each quoted passage is context; the comment below it is my feedback.\n\n**Comment 1** (response response-1, characters 13–29)\n\n> line one\n> line two\n\nKeep both lines.\n\n**Comment 2** (response response-2, characters 13–29)\n\n> line one\n> line two\n\nChange this.",
   );
+});
+it("renders generated user comment labels in bold without formatting assistant source text", () => {
+  const text = annotationPrompt([
+    { ...entry, comment: "<script>unsafe</script> https://example.com" },
+  ]);
+  const html = renderToStaticMarkup(<ChatMessageText text={text} annotationFeedback />);
+  expect(html).toContain("<strong>Comment 1</strong>");
+  expect(html).not.toContain("**Comment 1**");
+  expect(html).not.toContain("<script>");
+  expect(html).toContain('href="https://example.com"');
+  const assistant = renderToStaticMarkup(<ChatMessageText text={text} annotationSource="a1" />);
+  expect(assistant).not.toContain("<strong>");
+  expect(assistant).toContain("**Comment 1**");
+  const ordinary = renderToStaticMarkup(
+    <ChatMessageText text="**Comment 1** (response a1)" annotationFeedback />,
+  );
+  expect(ordinary).not.toContain("<strong>");
 });
 it("highlights only an exact quote at its original offset, not duplicate or changed text", () => {
   const message = { id: "response-1", role: "assistant" as const, text: "again again" };
@@ -58,6 +75,9 @@ it("positions above a selection, flips below when needed, and clamps to the visu
     left: 18,
     top: 168,
   });
+  expect(
+    positionAnnotationPopover({ left: 10, top: 400, bottom: 430 }, size, viewport, true),
+  ).toEqual({ left: 12, top: 442 });
   expect(positionAnnotationPopover({ left: 10, top: 50, bottom: 70 }, size, viewport)).toEqual({
     left: 12,
     top: 82,

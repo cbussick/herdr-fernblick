@@ -13,14 +13,13 @@ import {
   type AnnotationSource,
 } from "./annotations";
 
-export type AnnotationEditor = {
+type AnnotationSelection = {
   source: AnnotationSource;
   target: Target;
-  id?: string;
-  comment: string;
   anchor: () => DOMRect;
-  autoFocus: boolean;
+  preferBelow?: boolean;
 };
+export type AnnotationEditor = AnnotationSelection & { id?: string; comment: string };
 
 export function useChatAnnotations(
   snapshot: Snapshot | undefined,
@@ -28,76 +27,140 @@ export function useChatAnnotations(
   transcript: RefObject<HTMLElement | null>,
   sending: boolean,
 ) {
-  const [enabled, setEnabled] = useState(false);
   const [entries, setEntries] = useState<Annotation[]>([]);
   const [owner, setOwner] = useState<Target | null>(null);
   const [editor, setEditor] = useState<AnnotationEditor | null>(null);
+  const [candidate, setCandidate] = useState<AnnotationSelection | null>(null);
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
   const nextId = useRef(0);
   const stale = Boolean(owner && entries.length && snapshot && !matchesTarget(snapshot, owner));
   const editorStale = Boolean(editor && (!snapshot || !matchesTarget(snapshot, editor.target)));
+  const selection =
+    visible &&
+    !sending &&
+    !stale &&
+    !editor &&
+    snapshot &&
+    candidate &&
+    matchesTarget(snapshot, candidate.target)
+      ? candidate
+      : null;
 
-  function begin(source: AnnotationSource, anchor: () => DOMRect, autoFocus = true) {
-    if (!snapshot || stale || sending || editor?.comment.trim()) return;
-    setEditor({ source, target: targetOf(snapshot), comment: "", anchor, autoFocus });
+  function begin(source: AnnotationSource, anchor: () => DOMRect) {
+    if (!snapshot || stale || sending || editor) return;
+    setCandidate(null);
+    setEditor({ source, target: targetOf(snapshot), comment: "", anchor });
     setError("");
     setNotice("");
   }
+  function openSelection() {
+    if (selection) begin(selection.source, selection.anchor);
+  }
 
   const available = Boolean(snapshot);
-  const capture = useEffectEvent((autoFocus: boolean) => {
-    if (
-      !snapshot ||
-      !transcript.current ||
-      document.activeElement?.closest('[data-ui="annotation-popover"]')
-    )
+  const capture = useEffectEvent((preferBelow = false) => {
+    if (!snapshot || !transcript.current || editor) return;
+    const active = document.activeElement;
+    if (active?.closest('[data-ui="annotation-action"], [data-ui="annotation-popover"]')) return;
+    if (active?.matches('input, textarea, [contenteditable="true"]')) {
+      setCandidate(null);
       return;
+    }
     const selected = readAnnotationSelection(
       window.getSelection(),
       transcript.current,
       snapshot.messages,
     );
-    if (selected) begin(selected.source, () => selected.range.getBoundingClientRect(), autoFocus);
+    setCandidate(
+      selected
+        ? {
+            source: selected.source,
+            target: targetOf(snapshot),
+            preferBelow,
+            anchor: () => selected.range.getBoundingClientRect(),
+          }
+        : null,
+    );
+  });
+  const shortcut = useEffectEvent((event: KeyboardEvent) => {
+    if (!selection || event.isComposing) return;
+    if (event.key === "Escape") {
+      setCandidate(null);
+      window.getSelection()?.removeAllRanges();
+    } else if (event.key === "Enter" && event.altKey) {
+      event.preventDefault();
+      openSelection();
+    } else if (
+      event.key === "Tab" &&
+      !event.shiftKey &&
+      !document.activeElement?.closest('[data-ui="annotation-action"]')
+    ) {
+      // Make the contextual action reachable from a keyboard-selected passage
+      // without moving focus merely because a selection exists.
+      event.preventDefault();
+      document
+        .querySelector<HTMLButtonElement>('[data-ui="annotation-action"] button')
+        ?.focus({ preventScroll: true });
+    }
   });
   useEffect(() => {
-    if (!enabled || !visible || !available || stale || sending) return;
+    if (!visible || !available || stale || sending || typeof document === "undefined") return;
     let timer: ReturnType<typeof setTimeout> | undefined;
     let touch = false;
-    function down(event: PointerEvent) {
-      touch = event.pointerType === "touch";
+    let dragging = false;
+    function inAnnotationUI(target: EventTarget | null) {
+      return (
+        target instanceof Element &&
+        target.closest('[data-ui="annotation-action"], [data-ui="annotation-popover"]')
+      );
     }
-    function up() {
-      if (!touch) capture(true);
+    function down(event: PointerEvent) {
+      if (inAnnotationUI(event.target)) return;
+      touch = event.pointerType === "touch";
+      dragging = true;
+      setCandidate(null);
+    }
+    function up(event: PointerEvent) {
+      dragging = false;
+      if (!touch && !inAnnotationUI(event.target)) capture();
     }
     function keyboard(event: KeyboardEvent) {
-      if (event.key === "Shift" || event.key.startsWith("Arrow")) capture(true);
+      if (event.key === "Shift" || event.key.startsWith("Arrow")) capture();
     }
     function selectionChanged() {
       clearTimeout(timer);
-      // Touch selection handles settle after pointerup; do not steal focus or
-      // open the software keyboard until the user taps the comment field.
-      timer = setTimeout(() => {
-        if (touch) capture(false);
-      }, 450);
+      // Let native touch selection handles settle. Revealing the action never
+      // focuses it, opens the keyboard, clears the selection, or intercepts Copy.
+      timer = setTimeout(
+        () => {
+          if (!dragging || touch) capture(touch);
+        },
+        touch ? 450 : 120,
+      );
     }
     document.addEventListener("pointerdown", down);
     document.addEventListener("pointerup", up);
     document.addEventListener("pointercancel", up);
+    document.addEventListener("keydown", shortcut);
     document.addEventListener("keyup", keyboard);
     document.addEventListener("selectionchange", selectionChanged);
     return () => {
+      // Captured DOM ranges must not survive hiding/replacing the transcript.
+      setCandidate(null);
       clearTimeout(timer);
       document.removeEventListener("pointerdown", down);
       document.removeEventListener("pointerup", up);
       document.removeEventListener("pointercancel", up);
+      document.removeEventListener("keydown", shortcut);
       document.removeEventListener("keyup", keyboard);
       document.removeEventListener("selectionchange", selectionChanged);
     };
-  }, [enabled, visible, available, stale, sending]);
+  }, [visible, available, stale, sending]);
 
   function close() {
     setEditor(null);
+    setCandidate(null);
     setError("");
     window.getSelection()?.removeAllRanges();
     transcript.current?.focus({ preventScroll: true });
@@ -124,15 +187,9 @@ export function useChatAnnotations(
     close();
   }
   function edit(entry: Annotation, anchor: () => DOMRect) {
-    if (!owner || sending) return;
-    setEditor({
-      source: entry,
-      target: owner,
-      id: entry.id,
-      comment: entry.comment,
-      anchor,
-      autoFocus: true,
-    });
+    if (!owner || sending || editor) return;
+    setCandidate(null);
+    setEditor({ source: entry, target: owner, id: entry.id, comment: entry.comment, anchor });
     setError("");
   }
   function remove(id: string) {
@@ -145,16 +202,17 @@ export function useChatAnnotations(
     setNotice("Comments forwarded to Pi.");
   }
   return {
-    enabled,
-    setEnabled,
     entries,
     owner,
     stale,
+    selection,
     editor,
     editorStale,
     error,
     notice,
+    interacting: Boolean(selection || editor),
     begin,
+    openSelection,
     close,
     save,
     edit,
@@ -163,7 +221,9 @@ export function useChatAnnotations(
     setComment: (comment: string) =>
       setEditor((current) => (current ? { ...current, comment } : null)),
     clear: () => {
+      if (sending) return;
       setEntries([]);
+      setCandidate(null);
       setEditor(null);
       setOwner(null);
       setError("");

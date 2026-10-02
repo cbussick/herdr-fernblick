@@ -9,9 +9,8 @@ import { getAgentOutput, sendAgentKey, chatCommand, uploadImage } from "../../sh
 import { useLiveChat } from "./useLiveChat";
 import { ChatMessageText } from "./ChatMessageText";
 import { useChatAnnotations } from "./useChatAnnotations";
-import { AnnotationPopover, AnnotationToolbar, AnnotationTray } from "./ChatAnnotations";
+import { AnnotationPopover, AnnotationSelectionAction, AnnotationTray } from "./ChatAnnotations";
 import { annotationHighlights, annotationPrompt } from "./annotations";
-import annotationStyles from "./ChatAnnotations.module.css";
 import { CloseTabButton } from "./CloseTabButton";
 import { ConversationTreeDialog } from "./ConversationTreeDialog";
 import {
@@ -20,7 +19,6 @@ import {
   CloseIcon,
   ImageIcon,
   LightbulbIcon,
-  MessageIcon,
   SendIcon,
 } from "../../shared/ui/Icons";
 import { IconButton, StatusIndicator, TabKindIcon } from "../../shared/ui";
@@ -185,9 +183,13 @@ export function AgentConsole({ agent, onBack }: AgentConsoleProps) {
       lightboxRef.current.showModal();
   }, [lightboxImage]);
   useEffect(() => {
-    if (outputRef.current && shouldFollowRef.current && (view !== "chat" || !annotations.enabled))
+    if (
+      outputRef.current &&
+      shouldFollowRef.current &&
+      (view !== "chat" || !annotations.interacting)
+    )
       outputRef.current.scrollTop = outputRef.current.scrollHeight;
-  }, [snapshot?.epoch, snapshot?.seq, outputQuery.data?.revision, view, annotations.enabled]);
+  }, [snapshot?.epoch, snapshot?.seq, outputQuery.data?.revision, view, annotations.interacting]);
   function trackScroll() {
     const el = outputRef.current;
     if (el) shouldFollowRef.current = el.scrollHeight - el.scrollTop - el.clientHeight < 48;
@@ -307,10 +309,9 @@ export function AgentConsole({ agent, onBack }: AgentConsoleProps) {
         </div>
       ) : null}
       {view === "chat" && snapshot ? (
-        <AnnotationToolbar
-          annotations={annotations}
-          disabled={composerSending || Boolean(treeTarget)}
-        />
+        <span role="status" className={a11yStyles["sr-only"]}>
+          {annotations.notice}
+        </span>
       ) : null}
       <section
         className={consoleStyles["output-panel"] + " " + consoleStyles[`output-panel--${view}`]}
@@ -438,35 +439,13 @@ export function AgentConsole({ agent, onBack }: AgentConsoleProps) {
                       <ChatMessageText
                         text={message.text}
                         annotationSource={message.role === "assistant" ? message.id : undefined}
+                        annotationFeedback={message.role === "user"}
                         highlights={
                           annotations.stale
                             ? []
                             : annotationHighlights(message, annotations.entries)
                         }
                       />
-                    ) : null}
-                    {message.role === "assistant" && message.text && annotations.enabled ? (
-                      <button
-                        type="button"
-                        className={annotationStyles["reply-action"]}
-                        disabled={
-                          composerSending || annotations.stale || Boolean(annotations.editor)
-                        }
-                        onClick={(event) => {
-                          const button = event.currentTarget;
-                          annotations.begin(
-                            {
-                              messageId: message.id,
-                              quote: message.text,
-                              start: 0,
-                              end: message.text.length,
-                            },
-                            () => button.getBoundingClientRect(),
-                          );
-                        }}
-                      >
-                        <MessageIcon /> Comment on response
-                      </button>
                     ) : null}
                     {message.attachments?.length ? (
                       <div className={consoleStyles["chat-message__attachments"]}>
@@ -670,6 +649,7 @@ export function AgentConsole({ agent, onBack }: AgentConsoleProps) {
           </span>
         </div>
       ) : null}
+      {annotations.selection ? <AnnotationSelectionAction annotations={annotations} /> : null}
       {view === "chat" && annotations.editor ? (
         <AnnotationPopover annotations={annotations} />
       ) : null}
