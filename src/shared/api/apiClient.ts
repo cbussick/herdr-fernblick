@@ -23,11 +23,13 @@ import {
 
 export class ApiError extends Error {
   readonly status: number;
+  readonly code?: string;
 
-  constructor(status: number, message: string) {
+  constructor(status: number, message: string, code?: string) {
     super(message);
     this.name = "ApiError";
     this.status = status;
+    this.code = code;
   }
 }
 
@@ -130,12 +132,13 @@ export async function getAgentOutput(target: string) {
   return terminalOutputSchema.parse(body);
 }
 
-export async function uploadImage(file: File) {
+export async function uploadImage(file: File, signal?: AbortSignal) {
   return imageUploadSchema.parse(
     await request("/api/uploads/images", {
       method: "POST",
       headers: { "Content-Type": file.type },
       body: file,
+      signal,
     }),
   );
 }

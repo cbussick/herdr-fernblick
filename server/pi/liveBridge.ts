@@ -19,6 +19,16 @@ import {
   validateSocket,
 } from "../../packages/pi-live-chat/security.js";
 import { receiveFrames, writeFrame } from "../../packages/pi-live-chat/transport.js";
+import {
+  boardRequestSchema,
+  type BoardGrant,
+  type BoardRequest,
+} from "../../packages/pi-live-chat/boardProtocol.js";
+import { BoardStore } from "../boards/storage.js";
+
+export function boardSessionKey(snapshot: Snapshot) {
+  return JSON.stringify([resolve(snapshot.identity.herdrSocket), snapshot.identity.sessionId]);
+}
 
 export class LiveChatError extends Error {
   constructor(
@@ -32,6 +42,8 @@ export class LiveChatError extends Error {
 interface Peer {
   socket: Socket;
   snapshot?: Snapshot;
+  boardGrant?: BoardGrant;
+  boardRequests: number;
 }
 interface Pending {
   peer: Peer;
@@ -78,6 +90,69 @@ export class LiveBridge {
   private listeners = new Map<() => void, string | undefined>();
   private pending = new Map<string, Pending>();
   private server = createServer((socket) => this.accept(socket));
+  private boards?: BoardStore;
+  setBoardStore(boards: BoardStore) {
+    this.boards = boards;
+  }
+  private clearBoardAccess(peer: Peer) {
+    const grant = peer.boardGrant;
+    peer.boardGrant = undefined;
+    if (!grant) return;
+    this.boards?.revoke(grant.grantId);
+    if (!peer.socket.destroyed)
+      writeFrame(peer.socket, { type: "board-revoke", grantId: grant.grantId });
+  }
+  revokeBoardAccess(target: Target) {
+    for (const peer of this.peers) {
+      if (peer.snapshot && matchesTarget(peer.snapshot, target)) this.clearBoardAccess(peer);
+    }
+    this.boards?.revokeTarget(target);
+  }
+  private async boardRequest(peer: Peer, request: BoardRequest) {
+    if (++peer.boardRequests > 4) {
+      peer.socket.destroy();
+      return;
+    }
+    const validate = () => {
+      if (
+        !this.boards ||
+        !this.peers.has(peer) ||
+        peer.socket.destroyed ||
+        !peer.snapshot ||
+        !matchesTarget(peer.snapshot, request.target) ||
+        peer.boardGrant?.grantId !== request.grantId ||
+        BoardStore.idFor(boardSessionKey(peer.snapshot)) !== request.boardId
+      )
+        throw new LiveChatError(403, "Board access is not authorized for this request");
+    };
+    try {
+      validate();
+      const identity = peer.snapshot!.identity;
+      const info = await this.inspectProcess(identity.pid);
+      validate();
+      if (
+        !info.alive ||
+        !info.foreground ||
+        info.start !== identity.processStart ||
+        info.pane !== identity.pane ||
+        !info.herdrSocket ||
+        resolve(info.herdrSocket) !== resolve(this.herdrSocket)
+      )
+        throw new LiveChatError(403, "Board agent process is no longer current");
+      const data = await this.boards!.handle(request, validate);
+      writeFrame(peer.socket, { type: "board-reply", id: request.id, ok: true, data });
+      if (request.action === "revoke") this.clearBoardAccess(peer);
+    } catch (error) {
+      writeFrame(peer.socket, {
+        type: "board-reply",
+        id: request.id,
+        ok: false,
+        error: error instanceof Error ? error.message.slice(0, 1024) : "Board operation failed",
+      });
+    } finally {
+      peer.boardRequests--;
+    }
+  }
   constructor(
     readonly path: string,
     private readonly herdrSocket: string,
@@ -115,7 +190,7 @@ export class LiveBridge {
       socket.destroy();
       return;
     }
-    const peer: Peer = { socket };
+    const peer: Peer = { socket, boardRequests: 0 };
     this.peers.add(peer);
     const handshake = setTimeout(() => {
       if (!peer.snapshot) socket.destroy();
@@ -123,6 +198,7 @@ export class LiveBridge {
     handshake.unref();
     socket.on("error", () => {});
     socket.on("close", () => {
+      this.clearBoardAccess(peer);
       clearTimeout(handshake);
       this.peers.delete(peer);
       for (const [id, pending] of this.pending)
@@ -139,6 +215,11 @@ export class LiveBridge {
       this.notify(peer.snapshot?.identity.pane);
     });
     receiveFrames(socket, (raw) => {
+      const boardRequest = boardRequestSchema.safeParse(raw);
+      if (boardRequest.success) {
+        void this.boardRequest(peer, boardRequest.data);
+        return;
+      }
       const reply = responseSchema.safeParse(raw);
       if (reply.success) {
         const pending = this.pending.get(reply.data.id);
@@ -162,6 +243,13 @@ export class LiveBridge {
             socket.destroy();
             return;
           }
+          if (
+            response.type === "ack" &&
+            response.outcome === "rejected" &&
+            pending.command.action === "send" &&
+            pending.command.board?.grantId === peer.boardGrant?.grantId
+          )
+            this.clearBoardAccess(peer);
           clearTimeout(pending.timer);
           this.pending.delete(response.id);
           pending.resolve(response);
@@ -183,6 +271,8 @@ export class LiveBridge {
         socket.destroy();
         return;
       }
+      if (prev && (prev.epoch !== next.epoch || (prev.busy && !next.busy && !next.sendPending)))
+        this.clearBoardAccess(peer);
       peer.snapshot = next;
       clearTimeout(handshake);
       this.notify(next.identity.pane);
@@ -254,7 +344,13 @@ export class LiveBridge {
     agent: Agent,
     target: Target,
     input:
-      | { action: "send"; text: string; attachments: string[]; requestId?: string }
+      | {
+          action: "send";
+          text: string;
+          attachments: string[];
+          requestId?: string;
+          board?: BoardGrant;
+        }
       | { action: "stop" | "tree" }
       | { action: "navigate"; entryId: string },
   ) {
@@ -285,6 +381,11 @@ export class LiveBridge {
       (peer.snapshot.busy || peer.snapshot.sendPending)
     )
       throw new LiveChatError(409, "Pi is busy or a previous send is unresolved");
+    if (command.action === "send" && command.board && !peer.snapshot.capabilities?.boards)
+      throw new LiveChatError(409, "Run /reload in Pi to enable whiteboard tools");
+    if (command.action === "send" || command.action === "stop" || command.action === "navigate")
+      this.clearBoardAccess(peer);
+    if (command.action === "send" && command.board) peer.boardGrant = command.board;
     const id = command.id;
     return new Promise<BridgeResponse>((done, reject) => {
       const timer = setTimeout(() => {

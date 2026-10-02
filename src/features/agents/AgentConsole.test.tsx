@@ -6,15 +6,21 @@ import { randomUUID } from "node:crypto";
 import type { Agent } from "../../shared/api/contracts";
 import type { Snapshot } from "../../../packages/pi-live-chat/protocol";
 import { AgentConsole } from "./AgentConsole";
+import { ChatTranscript } from "./ChatTranscript";
 import { ConversationTreeDialog } from "./ConversationTreeDialog";
+import { Whiteboard } from "../whiteboard/Whiteboard";
+import type { WhiteboardConversation } from "../whiteboard/ConversationDock";
 const mocks = vi.hoisted(() => ({
   live: {} as { snapshot?: Snapshot; error?: string },
   command: vi.fn(),
+  boardPrompt: vi.fn(),
   upload: vi.fn(),
 }));
+vi.mock("../whiteboard/boardApi", () => ({ boardApi: { prompt: mocks.boardPrompt } }));
 vi.mock("./useLiveChat", () => ({ useLiveChat: () => mocks.live }));
 vi.mock("./CloseTabButton", () => ({ CloseTabButton: () => null }));
 vi.mock("./ConversationTreeDialog", () => ({ ConversationTreeDialog: () => null }));
+vi.mock("../whiteboard/Whiteboard", () => ({ Whiteboard: () => null }));
 vi.mock("../../shared/api/apiClient", () => ({
   chatCommand: mocks.command,
   uploadImage: mocks.upload,
@@ -42,6 +48,7 @@ beforeEach(async () => {
     snapshot: {
       type: "snapshot",
       version: 2,
+      capabilities: { boards: true },
       identity: {
         runtime: randomUUID(),
         pid: 1,
@@ -65,6 +72,7 @@ beforeEach(async () => {
     id: args[5] ?? randomUUID(),
     outcome: "invoked",
   }));
+  mocks.boardPrompt.mockReset().mockResolvedValue({ type: "ack", outcome: "invoked" });
   mocks.upload.mockReset().mockResolvedValue({ id: `${randomUUID()}.png` });
   client = new QueryClient({
     defaultOptions: { queries: { retry: false }, mutations: { retry: false } },
@@ -204,6 +212,234 @@ it("blocks an already-open tree during recovery and closes it on epoch replaceme
   expect(mocks.command).not.toHaveBeenCalled();
 });
 
+it("keeps the chat draft mounted through whiteboard Back and disconnects", async () => {
+  await act(async () =>
+    renderer.root.findByType("textarea").props.onChange({ target: { value: "chat draft stays" } }),
+  );
+  await act(async () =>
+    renderer.root.findByProps({ "aria-label": "Open whiteboard" }).props.onClick(),
+  );
+  expect(renderer.root.findByType(Whiteboard).props.structured).toBe(true);
+  expect(renderer.root.findByType("textarea").props.value).toBe("chat draft stays");
+  mocks.live.error = "Reconnecting…";
+  await act(async () => renderer.update(render()));
+  expect(renderer.root.findByType(Whiteboard).props.agentState).toBe("disconnected");
+  await act(async () => renderer.root.findByType(Whiteboard).props.onClose());
+  expect(renderer.root.findByType("textarea").props.value).toBe("chat draft stays");
+  expect(mocks.command).not.toHaveBeenCalled();
+});
+
+it("keeps the captured board through a missing live snapshot and same-session recovery", async () => {
+  const initial = mocks.live.snapshot!;
+  await act(async () =>
+    renderer.root.findByProps({ "aria-label": "Open whiteboard" }).props.onClick(),
+  );
+  const captured = renderer.root.findByType(Whiteboard).props.target;
+  // A transport-level unavailable frame removes the live snapshot. It does not
+  // establish that the conversation or Pi runtime has actually been replaced.
+  mocks.live = { error: "Temporarily unavailable" };
+  await act(async () => renderer.update(render()));
+  expect(renderer.root.findAllByType(Whiteboard)).toHaveLength(1);
+  expect(renderer.root.findByType(Whiteboard).props.agentState).toBe("disconnected");
+  expect(renderer.root.findByType(Whiteboard).props.target).toBe(captured);
+  for (const state of [
+    { seq: 2, sendPending: true, busy: false },
+    { seq: 3, sendPending: false, busy: true },
+    { seq: 4, sendPending: false, busy: false },
+  ]) {
+    mocks.live = { snapshot: { ...initial, ...state } };
+    await act(async () => renderer.update(render()));
+    expect(renderer.root.findByType(Whiteboard).props.target).toBe(captured);
+    expect(renderer.root.findByType(Whiteboard).props.agentState).toBe(
+      state.sendPending ? "waiting" : state.busy ? "working" : "ready",
+    );
+  }
+  expect(mocks.command).not.toHaveBeenCalled();
+  expect(mocks.upload).not.toHaveBeenCalled();
+});
+
+it.each(["epoch", "runtime", "sessionId"] as const)(
+  "still closes the old board when recovery confirms a different %s",
+  async (field) => {
+    const initial = mocks.live.snapshot!;
+    await act(async () =>
+      renderer.root.findByProps({ "aria-label": "Open whiteboard" }).props.onClick(),
+    );
+    mocks.live = { error: "Temporarily unavailable" };
+    await act(async () => renderer.update(render()));
+    expect(renderer.root.findAllByType(Whiteboard)).toHaveLength(1);
+    const replacement =
+      field === "epoch"
+        ? { ...initial, epoch: randomUUID() }
+        : { ...initial, identity: { ...initial.identity, [field]: randomUUID() } };
+    mocks.live = { snapshot: replacement };
+    await act(async () => renderer.update(render()));
+    expect(renderer.root.findAllByType(Whiteboard)).toHaveLength(0);
+    expect(mocks.command).not.toHaveBeenCalled();
+  },
+);
+
+async function openBoard() {
+  await act(async () =>
+    renderer.root.findByProps({ "aria-label": "Open whiteboard" }).props.onClick(),
+  );
+}
+function boardConversation(): WhiteboardConversation {
+  return renderer.root.findByType(Whiteboard).props.conversation;
+}
+it("supplies the same conversation and thinking preference to main chat and whiteboard", async () => {
+  mocks.live.snapshot = {
+    ...mocks.live.snapshot!,
+    messages: [
+      { id: "u", role: "user", text: "Earlier question" },
+      { id: "a", role: "assistant", text: "Earlier answer" },
+      { id: "t", role: "tool", toolName: "board_read", text: "Read the scene" },
+    ],
+    truncated: true,
+  };
+  await act(async () => renderer.update(render()));
+  await openBoard();
+  const main = renderer.root.findByType(ChatTranscript);
+  expect(main.props.messages).toBe(boardConversation().snapshot!.messages);
+  expect(main.props.truncated).toBe(boardConversation().snapshot!.truncated);
+  expect(main.props.showThinking).toBe(boardConversation().showThinking);
+  expect(main.props.agentName).toBe(boardConversation().agentName);
+});
+it("shares the text draft and live conversation but never sends hidden chat images from the board", async () => {
+  const file = new File(["image"], "image.png", { type: "image/png" });
+  await act(async () => {
+    renderer.root
+      .findByType("textarea")
+      .props.onChange({ target: { value: "Existing chat draft" } });
+    renderer.root.findByProps({ type: "file" }).props.onChange({ target: { files: [file] } });
+  });
+  await openBoard();
+  expect(boardConversation().draft).toBe("Existing chat draft");
+  expect(boardConversation().snapshot).toBe(mocks.live.snapshot);
+  await act(async () => boardConversation().onDraftChange("Finish the handwriting"));
+  expect(renderer.root.findByType("textarea").props.value).toBe("Finish the handwriting");
+  await act(async () =>
+    boardConversation().onSend({
+      boardId: "a".repeat(64),
+      revision: 1,
+      text: boardConversation().draft,
+      uploadId: "33333333-3333-4333-8333-333333333333.png",
+    }),
+  );
+  await flush();
+  expect(mocks.boardPrompt).toHaveBeenCalledOnce();
+  expect(mocks.boardPrompt.mock.calls[0][1]).toMatchObject({
+    text: "Finish the handwriting",
+    uploadId: "33333333-3333-4333-8333-333333333333.png",
+    boardId: "a".repeat(64),
+    revision: 1,
+  });
+  expect(mocks.command).not.toHaveBeenCalled();
+  expect(mocks.upload).not.toHaveBeenCalled();
+  expect(boardConversation().draft).toBe("");
+  expect(renderer.root.findAllByProps({ "aria-label": "Image attachments" })).toHaveLength(1);
+});
+it("retains uncertain dock text and its error across Back/reopen and reconnect without replay", async () => {
+  mocks.boardPrompt.mockRejectedValueOnce(new Error("Delivery uncertain"));
+  await openBoard();
+  await act(async () => boardConversation().onDraftChange("Keep this question"));
+  await act(async () =>
+    boardConversation().onSend({
+      boardId: "a".repeat(64),
+      revision: 1,
+      text: boardConversation().draft,
+    }),
+  );
+  await flush();
+  expect(boardConversation().draft).toBe("Keep this question");
+  expect(boardConversation().error).toContain("Delivery uncertain");
+  mocks.live.error = "Reconnecting";
+  await act(async () => renderer.update(render()));
+  delete mocks.live.error;
+  await act(async () => renderer.update(render()));
+  await act(async () => renderer.root.findByType(Whiteboard).props.onClose());
+  await openBoard();
+  expect(boardConversation().draft).toBe("Keep this question");
+  expect(boardConversation().error).toContain("Draft retained");
+  expect(mocks.boardPrompt).toHaveBeenCalledOnce();
+});
+it("locks dock submissions synchronously against duplicate taps or shortcuts", async () => {
+  await openBoard();
+  await act(async () => boardConversation().onDraftChange("Send exactly once"));
+  const submit = boardConversation().onSend;
+  await act(async () => {
+    submit({ boardId: "a".repeat(64), revision: 1, text: "Send exactly once" });
+    submit({ boardId: "a".repeat(64), revision: 1, text: "Send exactly once" });
+  });
+  await flush();
+  expect(mocks.boardPrompt).toHaveBeenCalledOnce();
+});
+it.each([
+  "busy",
+  "pending",
+  "disconnected",
+  "missing",
+  "legacy",
+  "closed",
+  "epoch",
+  "runtime",
+  "sessionId",
+])("revalidates a captured dock send against %s state", async (state) => {
+  await openBoard();
+  await act(async () => boardConversation().onDraftChange("Do not send stale text"));
+  const submit = boardConversation().onSend;
+  if (state === "closed")
+    await act(async () => renderer.root.findByType(Whiteboard).props.onClose());
+  else if (state === "disconnected") mocks.live.error = "Reconnecting";
+  else if (state === "missing") mocks.live = { error: "Unavailable" };
+  else if (state === "busy") mocks.live.snapshot = { ...mocks.live.snapshot!, busy: true };
+  else if (state === "pending")
+    mocks.live.snapshot = { ...mocks.live.snapshot!, sendPending: true };
+  else if (state === "legacy") mocks.live.snapshot = { ...mocks.live.snapshot!, version: 1 };
+  else if (state === "epoch")
+    mocks.live.snapshot = { ...mocks.live.snapshot!, epoch: randomUUID() };
+  else
+    mocks.live.snapshot = {
+      ...mocks.live.snapshot!,
+      identity: { ...mocks.live.snapshot!.identity, [state]: randomUUID() },
+    };
+  await act(async () => renderer.update(render()));
+  await act(async () =>
+    submit({ boardId: "a".repeat(64), revision: 1, text: "Do not send stale text" }),
+  );
+  await flush();
+  expect(mocks.boardPrompt).not.toHaveBeenCalled();
+  expect(mocks.upload).not.toHaveBeenCalled();
+});
+it("does not clear a replacement session's draft when an old dock send is acknowledged", async () => {
+  let resolve!: (value: unknown) => void;
+  mocks.boardPrompt.mockImplementationOnce(
+    () =>
+      new Promise((done) => {
+        resolve = done;
+      }),
+  );
+  await openBoard();
+  await act(async () => boardConversation().onDraftChange("Identical text in another session"));
+  await act(async () =>
+    boardConversation().onSend({
+      boardId: "a".repeat(64),
+      revision: 1,
+      text: boardConversation().draft,
+    }),
+  );
+  await flush();
+  mocks.live.snapshot = { ...mocks.live.snapshot!, epoch: randomUUID() };
+  await act(async () => renderer.update(render()));
+  expect(renderer.root.findAllByType(Whiteboard)).toHaveLength(0);
+  await act(async () => resolve({ type: "ack", outcome: "invoked" }));
+  await flush();
+  expect(renderer.root.findByType("textarea").props.value).toBe(
+    "Identical text in another session",
+  );
+  expect(mocks.boardPrompt).toHaveBeenCalledOnce();
+});
+
 it("requires reloading a legacy extension instead of accepting an unconfirmable send", async () => {
   mocks.live.snapshot = { ...mocks.live.snapshot!, version: 1 };
   await act(async () => renderer.update(render()));
@@ -286,6 +522,15 @@ it("locks the composer only through upload and forwarding, then uses Pi busy/idl
   expect(renderer.root.findByProps({ "aria-label": "Attach images" }).props.disabled).toBe(false);
   expect(renderer.root.findAllByProps({ "data-testid": "send-spinner" })).toHaveLength(0);
   expect(renderer.root.findByProps({ "aria-label": "Send message" }).props.disabled).toBe(true);
+});
+it("styles the whiteboard entry like the adjacent conversation-paths action", () => {
+  const board = renderer.root.findByProps({ "aria-label": "Open whiteboard" });
+  const paths = renderer.root.findByProps({ "aria-label": "Open conversation paths" });
+  expect(board.props.className).toBe(paths.props.className);
+  const icon = board.findByType("svg");
+  expect(icon.props.strokeWidth).toBe("2");
+  expect(icon.props.width).toBeUndefined();
+  expect(icon.props.height).toBeUndefined();
 });
 it("shows a starting placeholder instead of an unknown/error state before Pi is ready", async () => {
   mocks.live = {};

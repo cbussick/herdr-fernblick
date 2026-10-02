@@ -15,6 +15,7 @@ import { prepareImages } from "./images.js";
 import { projectTree, contentText } from "./tree.js";
 import { processIdentity, socketPath, validateSocket } from "./security.js";
 import { receiveFrames, writeFrame } from "./transport.js";
+import { BoardTools, type BoardConnection } from "./boardTools.js";
 
 const singleton = Symbol.for("fernblick.pi-live-chat.owner.v1");
 const owners = globalThis as typeof globalThis & { [singleton]?: object };
@@ -23,11 +24,13 @@ export default function liveChat(pi: ExtensionAPI) {
   const owner = {};
   const privateCommand = `fernblick-bridge-${randomUUID().replaceAll("-", "")}`;
   let context: ExtensionContext | undefined;
+  let boards: BoardTools | undefined;
   let identity: Identity | undefined;
   let socket: Socket | undefined;
   let retry: ReturnType<typeof setTimeout> | undefined;
   let publishTimer: ReturnType<typeof setTimeout> | undefined;
   let generation = 0;
+  let inputGeneration = 0;
   let delay = 250;
   let epoch = randomUUID();
   let seq = 0;
@@ -54,8 +57,11 @@ export default function liveChat(pi: ExtensionAPI) {
   // Commands are instance-unique so global + explicit loads cannot steal dispatch.
   // The fallback guard also consumes a token deferred across reload or shutdown.
   pi.on("input", (event) => {
+    inputGeneration++;
+    boards?.input(event);
     if (event.text.startsWith("/fernblick-bridge")) return { action: "handled" };
   });
+  pi.on("before_agent_start", (event, ctx) => boards?.beforeAgentStart(event.prompt, ctx, event));
   pi.registerCommand(privateCommand, {
     description: "Private one-use Fernblick navigation gateway",
     handler: async (args, ctx) => {
@@ -142,6 +148,8 @@ export default function liveChat(pi: ExtensionAPI) {
     sendPending = false;
   }
   function stop() {
+    boards?.revoke("Whiteboard session stopped");
+    boards = undefined;
     generation++;
     finishHandoff();
     if (navigation) {
@@ -176,6 +184,7 @@ export default function liveChat(pi: ExtensionAPI) {
       return {
         type: "snapshot",
         version: 2,
+        capabilities: { boards: true },
         identity,
         epoch,
         seq: ++seq,
@@ -193,6 +202,27 @@ export default function liveChat(pi: ExtensionAPI) {
       };
     } catch {
       stop();
+      return;
+    }
+  }
+  function boardConnection(): BoardConnection | undefined {
+    if (owners[singleton] !== owner || !context || !identity || !socket) return;
+    try {
+      if (
+        context.sessionManager.getSessionId() !== identity.sessionId ||
+        context.sessionManager.getSessionFile() !== identity.sessionFile
+      )
+        return;
+      return {
+        client: socket,
+        target: {
+          runtime: identity.runtime,
+          epoch,
+          sessionId: identity.sessionId,
+        },
+        sessionFile: identity.sessionFile,
+      };
+    } catch {
       return;
     }
   }
@@ -239,12 +269,14 @@ export default function liveChat(pi: ExtensionAPI) {
         sessionId: context.sessionManager.getSessionId(),
         sessionFile,
       };
+      boards?.revoke("Whiteboard connection replaced");
       const client = connect(path);
       socket = client;
       client.unref();
       client.on("error", () => {});
       client.on("close", () => {
         if (socket !== client || current !== generation) return;
+        boards?.revoke("Whiteboard socket disconnected");
         socket = undefined;
         scheduleReconnect();
       });
@@ -253,6 +285,7 @@ export default function liveChat(pi: ExtensionAPI) {
           client.destroy();
           return;
         }
+        boards?.revoke("Whiteboard connection renewed");
         delay = 250;
         epoch = randomUUID();
         seq = 0;
@@ -262,6 +295,7 @@ export default function liveChat(pi: ExtensionAPI) {
         if (value) writeFrame(client, value);
       });
       receiveFrames(client, (raw) => {
+        if (boards?.consume(raw, client)) return;
         const parsed = commandSchema.safeParse(raw);
         if (!parsed.success) {
           client.destroy();
@@ -269,7 +303,12 @@ export default function liveChat(pi: ExtensionAPI) {
         }
         const command = parsed.data;
         const reject = (reason: string) =>
-          writeFrame(client, { type: "ack", id: command.id, outcome: "rejected", reason });
+          writeFrame(client, {
+            type: "ack",
+            id: command.id,
+            outcome: "rejected",
+            reason,
+          });
         if (client !== socket || current !== generation || !context) {
           reject("Runtime unavailable");
           return;
@@ -288,7 +327,12 @@ export default function liveChat(pi: ExtensionAPI) {
           return;
         }
         seen.add(command.id);
-        if (preparing) {
+        // Stop revokes permission immediately, including during async preparation.
+        if (command.action === "stop") {
+          inputGeneration++;
+          boards?.revoke("Whiteboard access stopped by user");
+        }
+        if (preparing && command.action !== "stop") {
           reject("A command is already in flight");
           return;
         }
@@ -358,14 +402,17 @@ export default function liveChat(pi: ExtensionAPI) {
             return;
           }
           preparing = true;
+          const inputAtPreparation = inputGeneration;
           void (async () => {
             let invoked = false;
+            let boardStaged = false;
             try {
               const images = await prepareImages(command.attachments);
               const fresh = snapshot();
               // Async preparation is not an acceptance or queue. Recheck immediately.
               if (
                 current !== generation ||
+                inputAtPreparation !== inputGeneration ||
                 client !== socket ||
                 client.destroyed ||
                 !fresh ||
@@ -384,6 +431,15 @@ export default function liveChat(pi: ExtensionAPI) {
                 publish();
               }, 15_000);
               handoffTimer.unref();
+              // Stage only after image preparation and final target/busy checks.
+              // The token stays in this private socket scope, never in model input.
+              boards?.revoke("Whiteboard request replaced by a new send");
+              if (command.board) {
+                const binding = boardConnection();
+                if (!boards || !binding) throw new Error("Whiteboard tools unavailable");
+                boards.stage(command.board, command.text, binding);
+                boardStaged = true;
+              }
               invoked = true;
               pi.sendUserMessage(
                 images.length
@@ -394,13 +450,21 @@ export default function liveChat(pi: ExtensionAPI) {
                   : command.text,
                 { expandPromptTemplates: false },
               );
-              writeFrame(client, { type: "ack", id: command.id, outcome: "invoked" });
+              writeFrame(client, {
+                type: "ack",
+                id: command.id,
+                outcome: "invoked",
+              });
             } catch (error) {
+              if (boardStaged && current === generation && client === socket)
+                boards?.revoke("Whiteboard send failed");
               if (invoked) client.destroy();
-              else
+              else {
+                if (current === generation) finishHandoff();
                 reject(
                   error instanceof Error ? error.message.slice(0, 512) : "Image preparation failed",
                 );
+              }
             } finally {
               if (current === generation) {
                 preparing = false;
@@ -411,7 +475,11 @@ export default function liveChat(pi: ExtensionAPI) {
         } else {
           try {
             context.abort();
-            writeFrame(client, { type: "ack", id: command.id, outcome: "invoked" });
+            writeFrame(client, {
+              type: "ack",
+              id: command.id,
+              outcome: "invoked",
+            });
           } catch {
             client.destroy();
           }
@@ -428,6 +496,7 @@ export default function liveChat(pi: ExtensionAPI) {
     if (ctx.mode !== "tui") return;
     owners[singleton] = owner;
     context = ctx;
+    boards = new BoardTools(pi, boardConnection);
     active = !ctx.isIdle();
     sendPending = uiBlocked = false;
     seen.clear();
@@ -439,14 +508,16 @@ export default function liveChat(pi: ExtensionAPI) {
     void open();
   });
   pi.on("session_shutdown", () => stop());
-  pi.on("agent_start", () => {
+  pi.on("agent_start", (_event, ctx) => {
     if (!context) return;
+    boards?.agentStart(ctx);
     active = true;
     finishHandoff();
     publish();
   });
   pi.on("agent_settled", (_e, ctx) => {
     if (!context) return;
+    boards?.revoke("Whiteboard request settled");
     context = ctx;
     active = false;
     finishHandoff();
@@ -461,11 +532,21 @@ export default function liveChat(pi: ExtensionAPI) {
   });
   function reconcile(event: { type: string }, ctx: ExtensionContext) {
     if (!context) return;
+    inputGeneration++;
+    boards?.revoke("Whiteboard context changed");
     context = ctx;
     if (event.type === "session_tree") epoch = randomUUID();
     projector.reconcile(ctx.sessionManager.getBranch(), event.type !== "session_tree");
     publish();
   }
+  const revokeBoardContext = () => {
+    inputGeneration++;
+    boards?.revoke("Whiteboard context is changing");
+  };
+  pi.on("session_before_switch", revokeBoardContext);
+  pi.on("session_before_fork", revokeBoardContext);
+  pi.on("session_before_tree", revokeBoardContext);
+  pi.on("session_before_compact", revokeBoardContext);
   pi.on("session_tree", reconcile);
   pi.on("session_compact", reconcile);
   pi.on("model_select", reconcile);

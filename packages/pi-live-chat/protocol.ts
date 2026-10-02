@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { boardGrantSchema } from "./boardProtocol.js";
 
 export const MAX_FRAME = 4 * 1024 * 1024;
 export const MAX_TEXT = 32_000;
@@ -49,6 +50,7 @@ export const messageSchema = z.object({
 export const snapshotSchema = z.object({
   type: z.literal("snapshot"),
   version: z.union([z.literal(1), z.literal(2)]),
+  capabilities: z.object({ boards: z.literal(true) }).optional(),
   identity: identitySchema,
   epoch: z.string().uuid(),
   seq: z.number().int().nonnegative(),
@@ -118,6 +120,7 @@ export const commandSchema = z
       action: z.literal("send"),
       text: z.string().trim().max(MAX_TEXT),
       attachments: z.array(uploadIdSchema).max(4).default([]),
+      board: boardGrantSchema.optional(),
     }),
     z.object({
       type: z.literal("command"),

@@ -120,6 +120,37 @@ it("creates a tab before starting Pi in its root pane", async () => {
   });
 });
 
+it("isolates development extensions while explicitly retaining Herdr session reporting", async () => {
+  vi.stubEnv("FERNBLICK_PI_ISOLATED", "1");
+  vi.stubEnv("FERNBLICK_PI_GLOBAL", "1");
+  vi.stubEnv("FERNBLICK_HERDR_EXTENSION", "/private/herdr-agent-state.ts");
+  try {
+    const request = vi.fn(async <T>(method: string, _params: unknown, schema: z.ZodType<T>) =>
+      schema.parse(
+        method === "tab.create"
+          ? {
+              type: "tab_created",
+              tab: { label: "Demo", tab_id: "w1:t2", workspace_id: "w1" },
+              root_pane: { pane_id: "w1:p2", revision: 0 },
+            }
+          : { type: "agent_started", agent },
+      ),
+    );
+    await new HerdrService({ request } as unknown as HerdrClient).createPiAgent("w1");
+    expect(request.mock.calls[1][1]).toMatchObject({
+      args: [
+        "--no-extensions",
+        "--extension",
+        expect.stringContaining("pi-live-chat/index"),
+        "--extension",
+        "/private/herdr-agent-state.ts",
+      ],
+    });
+  } finally {
+    vi.unstubAllEnvs();
+  }
+});
+
 it("generates a valid default agent name while letting Herdr choose the tab name", async () => {
   const request = vi.fn(async <T>(method: string, _params: unknown, schema: z.ZodType<T>) => {
     if (method === "tab.create") {

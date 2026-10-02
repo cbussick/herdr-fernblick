@@ -159,6 +159,10 @@
 
 .chat-transcript {
   display: grid;
+  min-width: 0;
+  min-height: 0;
+  overflow-wrap: anywhere;
+  font-size: 1rem;
   height: 100%;
   max-width: 48rem;
   align-content: start;
@@ -167,6 +171,8 @@
   margin-inline: auto;
   overflow: auto;
   overscroll-behavior: contain;
+  overflow-anchor: none;
+  scrollbar-gutter: stable;
 }
 
 .chat-transcript[data-empty] {
@@ -182,6 +188,7 @@
 
 .chat-message {
   display: grid;
+  min-width: 0;
   max-width: 92%;
   gap: var(--space-2);
 }
@@ -242,6 +249,8 @@
 }
 
 .chat-message__attachments button {
+  min-width: 44px;
+  min-height: 44px;
   padding: 0;
   overflow: hidden;
   background: transparent;
@@ -321,8 +330,8 @@
   top: calc(1rem + var(--space-2));
   right: calc(1rem + var(--space-2));
   display: grid;
-  width: 2.5rem;
-  height: 2.5rem;
+  width: 2.75rem;
+  height: 2.75rem;
   padding: 0;
   place-items: center;
   color: #fff;

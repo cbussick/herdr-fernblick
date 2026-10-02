@@ -4,7 +4,7 @@ A small mobile web controller for agents running inside Herdr. Dashboard and Ter
 
 ## Interface
 
-React 19 and TypeScript, built with Vite. The light-blue interface is smartphone-first, with single-pane navigation on portrait iPads and a persistent workspace sidebar on landscape iPads and desktop. All styles use CSS Modules; icons are custom SVGs and Manrope is bundled locally, with no external font requests.
+React 19 and TypeScript, built with Vite. The light-blue interface is smartphone-first, with single-pane navigation on portrait iPads and a persistent workspace sidebar on landscape iPads and desktop. Fernblick styles use CSS Modules; icons are custom SVGs and Manrope is bundled locally, with no external font requests. The lazy-loaded Excalidraw whiteboard uses its vendor stylesheet and locally served fonts.
 
 Manrope is licensed under the SIL Open Font License 1.1. Its complete copyright notice and license ship at `/licenses/Manrope-OFL.txt`; see [font provenance](src/styles/fonts/README.md). See [styling and development conventions](docs/development.md) and the [three-viewport screenshot gallery tooling](tools/design/README.md).
 
@@ -76,6 +76,10 @@ paths restore search, filters, labels, active-branch display and edit-and-branch
 including available images from a restored prompt. Tree data and navigation use
 the direct Pi bridge, never session-file reads or terminal command injection.
 
+### Whiteboard
+
+Open **Whiteboard** from live Chat for a fullscreen, persistent Excalidraw canvas. Its chat panel uses the same transcript as main chat: side-by-side on landscape tablet/desktop, compact and expandable below the canvas on smaller screens. Type there to send a current board image with read/edit access for that request (empty boards skip the image). Share drawing sends an immutable image-only PNG snapshot. Agent tools are hidden by default and backend-authorized; editing access ends on completion, revocation, disconnect, or expiry. Native scenes remain editable after sending. [Permission, persistence, conflicts, and limits](docs/whiteboard.md).
+
 ### Removed legacy queue
 
 The Fernblick SQLite queue, dispatcher, HTTP routes, UI and guarded delivery
@@ -96,14 +100,18 @@ The HTTP API does not expose a shell or arbitrary Herdr method proxy. Access to 
 
 ## Configuration
 
-| Variable               | Default                                 | Purpose                                                               |
-| ---------------------- | --------------------------------------- | --------------------------------------------------------------------- |
-| `HOST`                 | `127.0.0.1`                             | Address for the HTTP server                                           |
-| `PORT`                 | `8787`                                  | HTTP port                                                             |
-| `HERDR_SOCKET_PATH`    | `~/.config/herdr/herdr.sock`            | Herdr session socket                                                  |
-| `FERNBLICK_PI_SOCKET`  | `~/.local/share/fernblick/live/pi.sock` | Private Pi bridge socket (also configure Pi)                          |
-| `FERNBLICK_UPLOAD_DIR` | `/tmp/fernblick`                        | Shared private upload directory; configure backend and Pi identically |
-| `FERNBLICK_PI_GLOBAL`  | unset                                   | Set to `1` to use a globally installed extension for created agents   |
+| Variable                    | Default                                 | Purpose                                                                    |
+| --------------------------- | --------------------------------------- | -------------------------------------------------------------------------- |
+| `HOST`                      | `127.0.0.1`                             | Address for the HTTP server                                                |
+| `PORT`                      | `8787`                                  | HTTP port                                                                  |
+| `HERDR_SOCKET_PATH`         | `~/.config/herdr/herdr.sock`            | Herdr session socket                                                       |
+| `FERNBLICK_PI_SOCKET`       | `~/.local/share/fernblick/live/pi.sock` | Private Pi bridge socket (also configure Pi)                               |
+| `FERNBLICK_UPLOAD_DIR`      | `/tmp/fernblick`                        | Shared private upload directory; configure backend and Pi identically      |
+| `FERNBLICK_PI_GLOBAL`       | unset                                   | Set to `1` to use a globally installed extension for created agents        |
+| `FERNBLICK_BOARD_DIR`       | `~/.local/share/fernblick/boards`       | Private persistent whiteboard scenes and sent snapshots                    |
+| `FERNBLICK_API_TARGET`      | `http://127.0.0.1:8787`                 | Vite development API proxy target                                          |
+| `FERNBLICK_PI_ISOLATED`     | unset                                   | Set to `1` to disable auto-discovered Pi extensions for development agents |
+| `FERNBLICK_HERDR_EXTENSION` | unset                                   | Herdr state extension path to explicitly retain with isolated Pi loading   |
 
 ## Checks
 

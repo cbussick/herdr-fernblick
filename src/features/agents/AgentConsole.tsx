@@ -1,23 +1,28 @@
 import a11yStyles from "../../styles/accessibility.module.css";
 import consoleStyles from "./Console.module.css";
-import { useEffect, useRef, useState, type FormEvent, type RefObject } from "react";
+import {
+  useEffect,
+  useLayoutEffect,
+  useRef,
+  useState,
+  type FormEvent,
+  type RefObject,
+} from "react";
 import { useMutation, useQuery } from "@tanstack/react-query";
 import type { Agent, KeyName } from "../../shared/api/contracts";
-import { targetOf, type Target } from "../../../packages/pi-live-chat/protocol";
+import { matchesTarget, targetOf, type Target } from "../../../packages/pi-live-chat/protocol";
 import { getAgentTabLabel, getAgentTarget, getStatusLabel } from "./agentPresentation";
 import { getAgentOutput, sendAgentKey, chatCommand, uploadImage } from "../../shared/api/apiClient";
 import { useLiveChat } from "./useLiveChat";
-import { ChatMessageText } from "./ChatMessageText";
+import { ChatTranscript } from "./ChatTranscript";
 import { CloseTabButton } from "./CloseTabButton";
 import { ConversationTreeDialog } from "./ConversationTreeDialog";
-import {
-  BackIcon,
-  BranchIcon,
-  CloseIcon,
-  ImageIcon,
-  LightbulbIcon,
-  SendIcon,
-} from "../../shared/ui/Icons";
+import { Whiteboard } from "../whiteboard/Whiteboard";
+import { boardApi } from "../whiteboard/boardApi";
+import type { BoardPromptContext } from "../whiteboard/ConversationDock";
+import { WhiteboardButton } from "../whiteboard/WhiteboardButton";
+import whiteboardStyles from "../whiteboard/WhiteboardButton.module.css";
+import { BackIcon, BranchIcon, CloseIcon, ImageIcon, SendIcon } from "../../shared/ui/Icons";
 import { IconButton, StatusIndicator, TabKindIcon } from "../../shared/ui";
 import { StateIcon, StateNotice } from "../../shared/ui/StateFeedback";
 
@@ -27,7 +32,12 @@ interface AgentConsoleProps {
 }
 type AgentView = "chat" | "terminal";
 type Attachment = { file?: File; id?: string; previewUrl: string };
-type OutgoingDraft = { text: string; attachments: Attachment[]; target: Target };
+type OutgoingDraft = {
+  text: string;
+  attachments: Attachment[];
+  target: Target;
+  board?: BoardPromptContext;
+};
 function submissionId() {
   // getRandomValues also works on the dashboard's non-HTTPS private IP origin.
   const bytes = crypto.getRandomValues(new Uint8Array(16));
@@ -44,27 +54,6 @@ function initialShowThinking() {
     return true;
   }
 }
-function ChatAttachment({ url, onOpen }: { url: string; onOpen: () => void }) {
-  const [unavailable, setUnavailable] = useState(false);
-  if (unavailable) {
-    return (
-      <div
-        className={consoleStyles["chat-attachment-unavailable"]}
-        role="img"
-        aria-label="Attachment unavailable"
-      >
-        <ImageIcon />
-        <span>Attachment no longer available</span>
-      </div>
-    );
-  }
-  return (
-    <button type="button" aria-label="Open attached image" onClick={onOpen}>
-      <img src={url} alt="User attachment" loading="lazy" onError={() => setUnavailable(true)} />
-    </button>
-  );
-}
-
 const keyControls: { key: KeyName; label: string }[] = [
   { key: "esc", label: "Esc" },
   { key: "ctrl+c", label: "Ctrl+C" },
@@ -79,17 +68,33 @@ export function AgentConsole({ agent, onBack }: AgentConsoleProps) {
   const [attachments, setAttachments] = useState<Attachment[]>([]);
   const [attachmentError, setAttachmentError] = useState("");
   const [treeTarget, setTreeTarget] = useState<Target | null>(null);
+  const [boardTarget, setBoardTarget] = useState<Target | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const uploadedIds = useRef(new Map<File, string>());
   const previews = useRef(new Set<string>());
   const [view, setView] = useState<AgentView>("chat");
   const [showThinking, setShowThinking] = useState(initialShowThinking);
-  const [lightboxImage, setLightboxImage] = useState<string | null>(null);
-  const lightboxRef = useRef<HTMLDialogElement>(null);
   const outputRef = useRef<HTMLElement>(null);
   const shouldFollowRef = useRef(true);
   const live = useLiveChat(agent.pane_id, view === "chat", agent.agent_session?.value);
   const snapshot = live.snapshot;
+  const sendLock = useRef(false);
+  const liveContext = useRef({
+    snapshot,
+    lastSnapshot: snapshot,
+    boardTarget,
+    prompt,
+    error: live.error,
+  });
+  useLayoutEffect(() => {
+    liveContext.current = {
+      snapshot,
+      lastSnapshot: snapshot ?? liveContext.current.lastSnapshot,
+      boardTarget,
+      prompt,
+      error: live.error,
+    };
+  });
   const initializing = view === "chat" && !snapshot && !live.error;
   const starting = initializing && !agent.agent_session;
   // Discard a captured tree target before rendering commands for a replacement session.
@@ -102,6 +107,17 @@ export function AgentConsole({ agent, onBack }: AgentConsoleProps) {
   ) {
     setTreeTarget(null);
   }
+  if (
+    boardTarget &&
+    snapshot &&
+    (boardTarget.runtime !== snapshot.identity.runtime ||
+      boardTarget.epoch !== snapshot.epoch ||
+      boardTarget.sessionId !== snapshot.identity.sessionId)
+  ) {
+    // Missing live state pauses sending; only a confirmed identity change closes
+    // the board. Unmount then aborts in-flight work and retains the old draft.
+    setBoardTarget(null);
+  }
   const outputQuery = useQuery({
     queryKey: ["agent-output", target],
     queryFn: () => getAgentOutput(target),
@@ -110,6 +126,16 @@ export function AgentConsole({ agent, onBack }: AgentConsoleProps) {
   });
   const send = useMutation({
     mutationFn: async (draft: OutgoingDraft) => {
+      if (draft.board) {
+        return boardApi.prompt(agent.pane_id, {
+          target: draft.target,
+          boardId: draft.board.boardId,
+          revision: draft.board.revision,
+          ...(draft.board.uploadId ? { uploadId: draft.board.uploadId } : {}),
+          text: draft.text,
+          requestId: submissionId(),
+        });
+      }
       const ids: string[] = [];
       for (const attachment of draft.attachments) {
         if (attachment.id) ids.push(attachment.id);
@@ -125,6 +151,11 @@ export function AgentConsole({ agent, onBack }: AgentConsoleProps) {
       return chatCommand(agent.pane_id, draft.target, "prompt", draft.text, ids, submissionId());
     },
     onSuccess: (_ack, draft) => {
+      const latest = liveContext.current.lastSnapshot;
+      if (latest && !matchesTarget(latest, draft.target)) {
+        resetSend();
+        return;
+      }
       setPrompt((current) => (current === draft.text ? "" : current));
       setAttachments((current) =>
         current.filter((attachment) => !draft.attachments.includes(attachment)),
@@ -136,6 +167,9 @@ export function AgentConsole({ agent, onBack }: AgentConsoleProps) {
       }
       setAttachmentError("");
       resetSend();
+    },
+    onSettled: () => {
+      sendLock.current = false;
     },
     gcTime: 0,
     retry: false,
@@ -159,10 +193,6 @@ export function AgentConsole({ agent, onBack }: AgentConsoleProps) {
       for (const url of urls) URL.revokeObjectURL(url);
     };
   }, []);
-  useEffect(() => {
-    if (lightboxImage && lightboxRef.current && !lightboxRef.current.open)
-      lightboxRef.current.showModal();
-  }, [lightboxImage]);
   useEffect(() => {
     if (outputRef.current && shouldFollowRef.current)
       outputRef.current.scrollTop = outputRef.current.scrollHeight;
@@ -213,10 +243,37 @@ export function AgentConsole({ agent, onBack }: AgentConsoleProps) {
     setAttachments((current) => [...current, ...additions]);
     if (fileInputRef.current) fileInputRef.current.value = "";
   }
+  function changePrompt(text: string) {
+    if (send.isError) send.reset();
+    setPrompt(text);
+  }
+  function sendDraft(draft: OutgoingDraft) {
+    // React's pending state may not have rendered before a second tap/shortcut.
+    if (sendLock.current) return;
+    sendLock.current = true;
+    send.mutate(draft);
+  }
   function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     if (canSend && snapshot)
-      send.mutate({ text: prompt, attachments: [...attachments], target: targetOf(snapshot) });
+      sendDraft({ text: prompt, attachments: [...attachments], target: targetOf(snapshot) });
+  }
+  function submitBoardPrompt(expected: Target, board: BoardPromptContext) {
+    const current = liveContext.current;
+    if (
+      current.boardTarget !== expected ||
+      !current.snapshot ||
+      current.snapshot.version !== 2 ||
+      current.error ||
+      current.snapshot.busy ||
+      current.snapshot.sendPending ||
+      !current.snapshot.capabilities?.boards ||
+      !matchesTarget(current.snapshot, expected) ||
+      !board.text.trim()
+    )
+      return;
+    // Only the board's prepared PNG may accompany the grant, never queued chat images.
+    sendDraft({ text: board.text, attachments: [], target: expected, board });
   }
   return (
     <main className={consoleStyles["console"]} data-testid="console" id="main-content">
@@ -341,92 +398,40 @@ export function AgentConsole({ agent, onBack }: AgentConsoleProps) {
             <p>{starting ? "Starting Pi…" : "Connecting to Pi live chat…"}</p>
           </div>
         ) : (
-          <div
-            ref={outputRef as RefObject<HTMLDivElement>}
-            className={consoleStyles["chat-transcript"]}
-            data-testid="chat-transcript"
-            data-empty={!snapshot.messages.length || undefined}
-            tabIndex={0}
-            onScroll={trackScroll}
-          >
-            {live.error ? <StateNotice kind="unavailable">{live.error}</StateNotice> : null}
-            {snapshot.version !== 2 ? (
-              <StateNotice kind="info">
-                Run /reload in Pi to update the chat connection.
-              </StateNotice>
-            ) : null}
-            {snapshot.truncated ? (
-              <StateNotice kind="info">
-                Showing a bounded recent transcript; some content is omitted.
-              </StateNotice>
-            ) : null}
-            {snapshot.messages
-              .filter((message) => showThinking || message.role !== "thinking")
-              .map((message) =>
-                message.role === "status" ? (
-                  <StateNotice kind="info" key={message.id}>
-                    {message.text}
+          <ChatTranscript
+            key={JSON.stringify(targetOf(snapshot))}
+            messages={snapshot.messages}
+            truncated={snapshot.truncated}
+            agentName={getAgentTabLabel(agent)}
+            showThinking={showThinking}
+            before={
+              <>
+                {live.error ? <StateNotice kind="unavailable">{live.error}</StateNotice> : null}
+                {snapshot.version !== 2 ? (
+                  <StateNotice kind="info">
+                    Run /reload in Pi to update the chat connection.
                   </StateNotice>
-                ) : message.role === "thinking" ? (
-                  <div className={consoleStyles["chat-thinking"]} key={message.id}>
-                    <LightbulbIcon />
-                    <span className={a11yStyles["sr-only"]}>Thinking: </span>
-                    <ChatMessageText text={message.text} />
+                ) : null}
+              </>
+            }
+            after={
+              <>
+                {snapshot.busy ? (
+                  <div className={consoleStyles["chat-working"]} role="status">
+                    <StatusIndicator status="working" label="Working" />
+                    <button
+                      type="button"
+                      disabled={stop.isPending || Boolean(live.error)}
+                      onClick={() => stop.mutate()}
+                    >
+                      {stop.isPending ? "Requesting stop…" : "Stop"}
+                    </button>
+                    {stop.isSuccess ? <span>Abort invoked; waiting for Pi events.</span> : null}
                   </div>
-                ) : message.role === "tool" ? (
-                  <details
-                    className={
-                      consoleStyles["chat-tool"] +
-                      " " +
-                      (message.isError ? consoleStyles["chat-tool--error"] : "")
-                    }
-                    data-testid="chat-tool"
-                    key={message.id}
-                  >
-                    <summary>{message.toolName}</summary>
-                    <pre>{message.text}</pre>
-                  </details>
-                ) : (
-                  <article
-                    className={
-                      consoleStyles["chat-message"] +
-                      " " +
-                      (message.role === "user" ? consoleStyles["chat-message--user"] : "")
-                    }
-                    key={message.id}
-                  >
-                    <span>{message.role === "user" ? "You" : getAgentTabLabel(agent)}</span>
-                    {message.text ? <ChatMessageText text={message.text} /> : null}
-                    {message.attachments?.length ? (
-                      <div className={consoleStyles["chat-message__attachments"]}>
-                        {message.attachments.map((url, i) => (
-                          <ChatAttachment key={i} url={url} onOpen={() => setLightboxImage(url)} />
-                        ))}
-                      </div>
-                    ) : null}
-                  </article>
-                ),
-              )}
-            {!snapshot.messages.length ? (
-              <div className={consoleStyles["terminal-state"]}>
-                <StateIcon kind="empty" />
-                <p>No messages yet.</p>
-              </div>
-            ) : null}
-            {snapshot.busy ? (
-              <div className={consoleStyles["chat-working"]} role="status">
-                <StatusIndicator status="working" label="Working" />
-                <button
-                  type="button"
-                  disabled={stop.isPending || Boolean(live.error)}
-                  onClick={() => stop.mutate()}
-                >
-                  {stop.isPending ? "Requesting stop…" : "Stop"}
-                </button>
-                {stop.isSuccess ? <span>Abort invoked; waiting for Pi events.</span> : null}
-              </div>
-            ) : null}
-          </div>
+                ) : null}
+              </>
+            }
+          />
         )}
       </section>
       {view === "terminal" ? (
@@ -486,7 +491,11 @@ export function AgentConsole({ agent, onBack }: AgentConsoleProps) {
             <label htmlFor="agent-prompt" className={a11yStyles["sr-only"]}>
               Message {getAgentTabLabel(agent)}
             </label>
-            <div className={consoleStyles["prompt-composer__row"]}>
+            <div
+              className={
+                consoleStyles["prompt-composer__row"] + " " + whiteboardStyles["composer-row"]
+              }
+            >
               <input
                 ref={fileInputRef}
                 className={a11yStyles["sr-only"]}
@@ -516,16 +525,16 @@ export function AgentConsole({ agent, onBack }: AgentConsoleProps) {
               >
                 <BranchIcon />
               </button>
+              <WhiteboardButton
+                className={consoleStyles["prompt-composer__tree"]}
+                disabled={!snapshot || snapshot.version !== 2 || composerSending}
+                onClick={() => snapshot && setBoardTarget(targetOf(snapshot))}
+              />
               <textarea
                 id="agent-prompt"
                 value={prompt}
                 disabled={composerSending}
-                onChange={(event) => {
-                  if (send.isError) {
-                    send.reset();
-                  }
-                  setPrompt(event.target.value);
-                }}
+                onChange={(event) => changePrompt(event.target.value)}
                 placeholder={`Send to ${getAgentTabLabel(agent)} when idle…`}
                 rows={1}
                 maxLength={32000}
@@ -597,26 +606,37 @@ export function AgentConsole({ agent, onBack }: AgentConsoleProps) {
           }}
         />
       ) : null}
-      {lightboxImage ? (
-        <dialog
-          ref={lightboxRef}
-          className={consoleStyles["image-lightbox"]}
-          aria-label="Image preview"
-          onClose={() => setLightboxImage(null)}
-          onClick={(event) => {
-            if (event.target === event.currentTarget) event.currentTarget.close();
+      {boardTarget ? (
+        <Whiteboard
+          key={boardTarget.sessionId}
+          pane={agent.pane_id}
+          target={boardTarget}
+          agentState={
+            !snapshot || live.error
+              ? "disconnected"
+              : snapshot.version !== 2
+                ? "unsupported"
+                : snapshot.sendPending || composerSending
+                  ? "waiting"
+                  : snapshot.busy
+                    ? "working"
+                    : "ready"
+          }
+          structured={Boolean(snapshot?.capabilities?.boards)}
+          conversation={{
+            snapshot,
+            agentName: getAgentTabLabel(agent),
+            showThinking,
+            draft: prompt,
+            sending: composerSending,
+            error: send.isError
+              ? `${send.error.message} Draft retained; check the conversation before retrying.`
+              : undefined,
+            onDraftChange: changePrompt,
+            onSend: (board) => submitBoardPrompt(boardTarget, board),
           }}
-        >
-          <button
-            type="button"
-            className={consoleStyles["image-lightbox__close"]}
-            aria-label="Close image preview"
-            onClick={() => lightboxRef.current?.close()}
-          >
-            <CloseIcon />
-          </button>
-          <img src={lightboxImage} alt="Expanded user attachment" />
-        </dialog>
+          onClose={() => setBoardTarget(null)}
+        />
       ) : null}
     </main>
   );

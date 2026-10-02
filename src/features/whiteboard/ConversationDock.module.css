@@ -1,0 +1,155 @@
+.dock {
+  display: flex;
+  flex: 0 1 auto;
+  flex-direction: column;
+  min-width: 0;
+  min-height: 0;
+  max-height: 65%;
+  border-top: 1px solid var(--color-border-strong);
+  background: var(--color-surface);
+  font-size: 0.875rem;
+}
+
+.activity button,
+.composer button {
+  flex: 0 0 auto;
+  min-height: 44px;
+  padding: 0.5rem 0.75rem;
+  border: 1px solid var(--color-border-strong);
+  border-radius: var(--radius-sm);
+  color: var(--color-text);
+  background: var(--color-surface);
+  font-size: 0.8125rem;
+  font-weight: 650;
+}
+
+.activity {
+  display: flex;
+  flex: 0 0 auto;
+  align-items: center;
+  gap: 0.5rem;
+  min-height: 3.5rem;
+  padding: 0.375rem 1rem;
+  background: var(--color-surface-subtle);
+  font-size: 0.8125rem;
+  line-height: 1.5;
+}
+
+.activity[data-warning="true"] {
+  background: var(--color-warning-soft);
+}
+
+.activity__text {
+  flex: 1;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.activity__text p {
+  margin: 0;
+}
+
+/* Size the shared chat viewport, never change its message rendering. */
+.dock > [data-ui="chat-transcript"] {
+  flex: 1 1 auto;
+  width: 100%;
+  height: clamp(4rem, 12dvh, 8rem);
+  min-height: 0;
+  max-width: none;
+  padding: 0.75rem 1rem;
+  margin: 0;
+  background: var(--color-canvas);
+}
+
+.dock[data-expanded="true"] {
+  flex: 1 1 0;
+  max-height: none;
+}
+
+.dock[data-expanded="true"] > [data-ui="chat-transcript"] {
+  height: 0;
+}
+
+.history {
+  display: none;
+  flex: 0 1 auto;
+  max-height: 30%;
+  overflow: auto;
+}
+
+.dock[data-expanded="true"] .history {
+  display: block;
+}
+
+.activity__text p + p {
+  color: var(--color-text-secondary);
+  font-size: 0.75rem;
+}
+
+.composer {
+  display: flex;
+  flex: 0 0 auto;
+  align-items: flex-end;
+  gap: 0.5rem;
+  padding: 0.5rem 1rem 0.75rem;
+  border-top: 1px solid var(--color-border);
+}
+
+.composer textarea {
+  flex: 1;
+  width: 100%;
+  min-width: 0;
+  min-height: 44px;
+  max-height: 7rem;
+  padding: 0.625rem 0.75rem;
+  resize: none;
+  border: 1px solid var(--color-border-strong);
+  border-radius: var(--radius-sm);
+  color: var(--color-text);
+  background: var(--color-surface);
+  font-size: 1rem;
+  line-height: 1.4;
+  field-sizing: content;
+}
+
+.composer button {
+  border-color: var(--color-accent);
+  color: var(--color-on-accent);
+  background: var(--color-accent);
+}
+
+@media (width >= 64rem) and (orientation: landscape) {
+  .dock {
+    max-height: none;
+    border-top: 0;
+    border-left: 1px solid var(--color-border-strong);
+  }
+
+  .dock > [data-ui="chat-transcript"] {
+    height: 0;
+  }
+
+  .history {
+    display: block;
+  }
+}
+
+/* Follow the actual dialog height, including visual-viewport keyboard resizing. */
+@container whiteboard-workspace (height < 28rem) {
+  .dock {
+    max-height: 100%;
+  }
+
+  .dock > [data-ui="chat-transcript"] {
+    height: 3rem;
+    padding-block: 0.375rem;
+  }
+}
+
+@media (width <= 480px) {
+  .activity,
+  .dock > [data-ui="chat-transcript"],
+  .composer {
+    padding-inline: 0.5rem;
+  }
+}

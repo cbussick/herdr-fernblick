@@ -19,7 +19,18 @@ const extensionTsPath = fileURLToPath(
 const fernblickExtensionPath = existsSync(extensionJsPath) ? extensionJsPath : extensionTsPath;
 // Users who installed the standalone package globally can opt out of explicit loading.
 const extensionArgs = () =>
-  process.env.FERNBLICK_PI_GLOBAL === "1" ? [] : ["--extension", fernblickExtensionPath];
+  process.env.FERNBLICK_PI_ISOLATED === "1"
+    ? [
+        "--no-extensions",
+        "--extension",
+        fernblickExtensionPath,
+        ...(process.env.FERNBLICK_HERDR_EXTENSION
+          ? ["--extension", process.env.FERNBLICK_HERDR_EXTENSION]
+          : []),
+      ]
+    : process.env.FERNBLICK_PI_GLOBAL === "1"
+      ? []
+      : ["--extension", fernblickExtensionPath];
 const delay = (milliseconds: number) => new Promise((resolve) => setTimeout(resolve, milliseconds));
 
 const tabSchema = z.object({

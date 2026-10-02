@@ -4,6 +4,7 @@ import { HerdrClient } from "./herdr/HerdrClient.js";
 import { HerdrService } from "./herdr/herdrService.js";
 import { createHttpServer } from "./http/server.js";
 import { LiveBridge } from "./pi/liveBridge.js";
+import { BoardStore } from "./boards/storage.js";
 import { socketPath } from "../packages/pi-live-chat/security.js";
 
 const projectRoot = resolve(process.cwd());
@@ -13,12 +14,17 @@ const port = Number.parseInt(process.env.PORT ?? "8787", 10);
 const service = new HerdrService(new HerdrClient(herdrSocket));
 const bridge = new LiveBridge(socketPath(), herdrSocket);
 await bridge.start();
-const server = createHttpServer(service, join(projectRoot, "dist"), bridge);
+const boards = new BoardStore(
+  process.env.FERNBLICK_BOARD_DIR ?? join(homedir(), ".local/share/fernblick/boards"),
+);
+const server = createHttpServer(service, join(projectRoot, "dist"), bridge, boards);
 server.on("close", () => {
+  boards.close();
   void bridge.close();
 });
 for (const signal of ["SIGTERM", "SIGINT"] as const)
   process.once(signal, () => {
+    boards.close();
     server.close();
     server.closeAllConnections();
     void bridge.close().finally(() => process.exit(0));

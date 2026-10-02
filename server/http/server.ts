@@ -21,6 +21,8 @@ import {
 import type { HerdrService } from "../herdr/herdrService.js";
 import { LiveBridge, LiveChatError } from "../pi/liveBridge.js";
 import { liveEvents } from "../pi/liveEvents.js";
+import { BoardStore, BoardError } from "../boards/storage.js";
+import { createBoardRoutes } from "./boardRoutes.js";
 import {
   targetSchema as chatTargetSchema,
   sendInputSchema,
@@ -50,13 +52,17 @@ const contentTypes: Record<string, string> = {
   ".json": "application/json; charset=utf-8",
   ".txt": "text/plain; charset=utf-8",
   ".woff2": "font/woff2",
+  ".woff": "font/woff",
+  ".ttf": "font/ttf",
   ".svg": "image/svg+xml",
 };
 
 function setSecurityHeaders(response: ServerResponse) {
   response.setHeader(
     "Content-Security-Policy",
-    "default-src 'self'; connect-src 'self'; img-src 'self' blob: data:; style-src 'self'; script-src 'self'; base-uri 'none'; frame-ancestors 'none'; form-action 'self'",
+    // Excalidraw positions its canvas/text with inline styles and embeds fonts on export.
+    // Scripts and all network requests remain same-origin; embeds stay disabled.
+    "default-src 'self'; connect-src 'self'; img-src 'self' blob: data:; font-src 'self' data:; style-src 'self' 'unsafe-inline'; script-src 'self'; worker-src 'self' blob:; base-uri 'none'; frame-ancestors 'none'; form-action 'self'",
   );
   response.setHeader("Cross-Origin-Opener-Policy", "same-origin");
   response.setHeader("Permissions-Policy", "camera=(), geolocation=(), microphone=()");
@@ -346,13 +352,21 @@ function serveStatic(request: IncomingMessage, response: ServerResponse, publicD
   return true;
 }
 
-export function createHttpServer(service: HerdrService, publicDir: string, bridge: LiveBridge) {
+export function createHttpServer(
+  service: HerdrService,
+  publicDir: string,
+  bridge: LiveBridge,
+  boards?: BoardStore,
+) {
+  if (boards) bridge.setBoardStore(boards);
+  const handleBoard = boards ? createBoardRoutes(service, bridge, boards) : undefined;
   return createServer(async (request, response) => {
     setSecurityHeaders(response);
 
     try {
       const handled = request.url?.startsWith("/api/")
-        ? await handleApi(request, response, service, bridge)
+        ? (await handleBoard?.(request, response)) ||
+          (await handleApi(request, response, service, bridge))
         : serveStatic(request, response, publicDir);
 
       if (!handled) sendJson(response, 404, { error: "Not found" });
@@ -361,8 +375,15 @@ export function createHttpServer(service: HerdrService, publicDir: string, bridg
         sendJson(response, 400, { error: "Invalid request" });
         return;
       }
-      if (error instanceof HttpError || error instanceof LiveChatError) {
-        sendJson(response, error.status, { error: error.message });
+      if (
+        error instanceof HttpError ||
+        error instanceof LiveChatError ||
+        error instanceof BoardError
+      ) {
+        sendJson(response, error.status, {
+          error: error.message,
+          ...(error instanceof BoardError && error.code ? { code: error.code } : {}),
+        });
         return;
       }
       if (error instanceof HerdrRequestError) {

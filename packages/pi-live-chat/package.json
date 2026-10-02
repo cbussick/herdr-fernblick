@@ -7,6 +7,8 @@
   ],
   "files": [
     "index.ts",
+    "boardTools.ts",
+    "boardProtocol.ts",
     "images.ts",
     "imageHistory.ts",
     "tree.ts",
