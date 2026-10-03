@@ -198,6 +198,18 @@ export function AgentConsole({ agent, onBack }: AgentConsoleProps) {
     },
     retry: false,
   });
+  const resetStop = stop.reset;
+  useEffect(() => {
+    // Stop feedback belongs to this busy interval and live target only. Reset
+    // also detaches late ACKs so they cannot leak into a subsequent run.
+    resetStop();
+  }, [
+    snapshot?.busy,
+    snapshot?.identity.runtime,
+    snapshot?.identity.sessionId,
+    snapshot?.epoch,
+    resetStop,
+  ]);
   const keyMutation = useMutation({
     mutationFn: (key: KeyName) => sendAgentKey(target, key),
     retry: false,

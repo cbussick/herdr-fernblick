@@ -261,6 +261,72 @@ it("does not erase a newer draft when Pi sends more chat updates", async () => {
   await act(async () => renderer.update(render()));
   expect(renderer.root.findByType("textarea").props.value).toBe("new draft");
 });
+it.each(["idle", "epoch", "runtime", "session"] as const)(
+  "clears stop feedback after %s before the next working run",
+  async (transition) => {
+    mocks.live.snapshot = { ...mocks.live.snapshot!, busy: true };
+    await act(async () => renderer.update(render()));
+    expect(JSON.stringify(renderer.toJSON())).not.toContain("Abort invoked");
+    await act(async () =>
+      renderer.root
+        .findAllByType("button")
+        .find((b) => b.children.includes("Stop"))!
+        .props.onClick(),
+    );
+    await flush();
+    expect(JSON.stringify(renderer.toJSON())).toContain("Abort invoked; waiting for Pi events.");
+    const snapshot = mocks.live.snapshot!;
+    mocks.live.snapshot =
+      transition === "idle"
+        ? { ...snapshot, busy: false }
+        : transition === "epoch"
+          ? { ...snapshot, epoch: randomUUID() }
+          : {
+              ...snapshot,
+              identity: {
+                ...snapshot.identity,
+                ...(transition === "runtime" ? { runtime: randomUUID() } : { sessionId: "new" }),
+              },
+            };
+    await act(async () => renderer.update(render()));
+    mocks.live.snapshot = { ...mocks.live.snapshot!, busy: true, seq: 3 };
+    await act(async () => renderer.update(render()));
+    expect(JSON.stringify(renderer.toJSON())).not.toContain("Abort invoked");
+    expect(renderer.root.findAllByType("button").some((b) => b.children.includes("Stop"))).toBe(
+      true,
+    );
+  },
+);
+
+it("ignores a late stop ACK after the agent becomes idle and starts again", async () => {
+  let acknowledge!: () => void;
+  mocks.command.mockImplementationOnce(
+    () =>
+      new Promise<void>((resolve) => {
+        acknowledge = resolve;
+      }),
+  );
+  mocks.live.snapshot = { ...mocks.live.snapshot!, busy: true };
+  await act(async () => renderer.update(render()));
+  await act(async () =>
+    renderer.root
+      .findAllByType("button")
+      .find((b) => b.children.includes("Stop"))!
+      .props.onClick(),
+  );
+  await flush();
+  mocks.live.snapshot = { ...mocks.live.snapshot!, busy: false };
+  await act(async () => renderer.update(render()));
+  mocks.live.snapshot = { ...mocks.live.snapshot!, busy: true };
+  await act(async () => renderer.update(render()));
+  await act(async () => acknowledge());
+  await flush();
+  expect(JSON.stringify(renderer.toJSON())).not.toContain("Abort invoked");
+  expect(
+    renderer.root.findAllByType("button").find((b) => b.children.includes("Stop"))?.props.disabled,
+  ).toBe(false);
+});
+
 it("preserves the conversation on a disconnect while disabling send and stop", async () => {
   mocks.live = {
     snapshot: {
