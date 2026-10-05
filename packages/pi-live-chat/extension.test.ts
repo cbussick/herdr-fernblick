@@ -12,7 +12,13 @@ import type {
 } from "@earendil-works/pi-coding-agent";
 import { afterEach, expect, it, vi } from "vitest";
 import liveChat from "./index.js";
-import { snapshotSchema, targetOf, type Snapshot } from "./protocol.js";
+import {
+  footerRequestEvent,
+  footerUpdateEvent,
+  snapshotSchema,
+  targetOf,
+  type Snapshot,
+} from "./protocol.js";
 import { receiveFrames, writeFrame } from "./transport.js";
 import { boardRequestSchema, type BoardGrant, type BoardRequest } from "./boardProtocol.js";
 
@@ -61,7 +67,21 @@ function fakePi(session = "session") {
       getSessionFile: () => `/${session}.jsonl`,
     },
   } as unknown as ExtensionContext;
+  const eventHandlers = new Map<string, ((value: unknown) => void)[]>();
   const pi = {
+    events: {
+      on: (name: string, handler: (value: unknown) => void) => {
+        eventHandlers.set(name, [...(eventHandlers.get(name) ?? []), handler]);
+        return () =>
+          eventHandlers.set(
+            name,
+            (eventHandlers.get(name) ?? []).filter((h) => h !== handler),
+          );
+      },
+      emit: (name: string, value: unknown) => {
+        for (const handler of eventHandlers.get(name) ?? []) handler(value);
+      },
+    },
     on: (event: string, handler: Handler) => {
       handlers.set(event, [...(handlers.get(event) ?? []), handler]);
     },
@@ -104,7 +124,7 @@ afterEach(async () => {
   vi.unstubAllEnvs();
   vi.useRealTimers();
 });
-async function setup() {
+async function setup(beforeStart?: (pi: ReturnType<typeof fakePi>) => void) {
   const dir = await mkdtemp(join(tmpdir(), "fb-ext-"));
   const path = join(dir, "pi.sock");
   vi.stubEnv("FERNBLICK_PI_SOCKET", path);
@@ -129,6 +149,7 @@ async function setup() {
   function latest() {
     return frames.filter((v) => snapshotSchema.safeParse(v).success).at(-1) as Snapshot | undefined;
   }
+  beforeStart?.(pi);
   expect(pi.emit("session_start")).toEqual([undefined]);
   await vi.waitFor(() => expect(latest()).toBeDefined());
   const command = (action: "send" | "stop", target = targetOf(latest()!), text = "hello") => {
@@ -965,4 +986,85 @@ it("staged grants expire and do not attach to a later same-text request", async 
   await Promise.all(t.emit("before_agent_start", { prompt: "Update this board" }));
   await vi.waitFor(() => expect(boardRequests(t).map((r) => r.action)).toEqual(["revoke"]));
   expect(t.pi.getActiveTools()).not.toContain("board_read");
+});
+
+it("requests footer replay on startup/reconnect and forwards session-bound updates through the real socket", async () => {
+  const lines = ["\x1b[38;2;246;226;183mreal footer high\x1b[0m", "\x1b[2m↑20k $1.234\x1b[0m"];
+  const replay = vi.fn();
+  const t = await setup(({ pi, ctx }) => {
+    pi.events.on(footerRequestEvent, (request) => {
+      replay(request);
+      pi.events.emit(footerUpdateEvent, { version: 1, ...(request as object), lines });
+    });
+    expect(ctx.mode).toBe("tui");
+  });
+  expect(replay).toHaveBeenCalledWith({ sessionId: "session", sessionFile: "/session.jsonl" });
+  expect(t.latest()?.status.footerLines).toEqual(lines);
+  const next = ["Branch changed", "Fresh limits and extension status"];
+  t.pi.events.emit(footerUpdateEvent, {
+    version: 1,
+    sessionId: "session",
+    sessionFile: "/session.jsonl",
+    lines: next,
+  });
+  await vi.waitFor(() => expect(t.latest()?.status.footerLines).toEqual(next));
+  t.pi.events.emit(footerUpdateEvent, {
+    version: 1,
+    sessionId: "old",
+    sessionFile: "/session.jsonl",
+    lines: ["stale"],
+  });
+  t.pi.events.emit(footerUpdateEvent, {
+    version: 1,
+    sessionId: "session",
+    sessionFile: "/old.jsonl",
+    lines: ["stale"],
+  });
+  t.pi.events.emit(footerUpdateEvent, {
+    version: 1,
+    sessionId: "session",
+    sessionFile: "/session.jsonl",
+    lines: ["x".repeat(8193)],
+  });
+  t.emit("message_update", { message: { role: "assistant", content: "new", id: "m" } });
+  await new Promise((r) => setTimeout(r, 100));
+  expect(t.latest()?.status.footerLines).toEqual(next);
+  t.connections.at(-1)!.destroy();
+  await vi.waitFor(() => expect(t.connections.length).toBe(2));
+  await vi.waitFor(() => expect(t.latest()?.status.footerLines).toEqual(lines));
+  expect(replay.mock.calls.length).toBeGreaterThanOrEqual(3);
+});
+
+it("falls back without a publisher, clears on withdrawal/context change, and never inherits footer state on replacement", async () => {
+  const t = await setup();
+  expect(t.latest()?.status.footerLines).toBeUndefined();
+  const publication = {
+    version: 1,
+    sessionId: "session",
+    sessionFile: "/session.jsonl",
+    lines: ["current"],
+  };
+  t.pi.events.emit(footerUpdateEvent, publication);
+  await vi.waitFor(() => expect(t.latest()?.status.footerLines).toEqual(["current"]));
+  t.pi.events.emit(footerUpdateEvent, { ...publication, lines: null });
+  await vi.waitFor(() => expect(t.latest()?.status.footerLines).toBeUndefined());
+  t.pi.events.emit(footerUpdateEvent, publication);
+  await vi.waitFor(() => expect(t.latest()?.status.footerLines).toEqual(["current"]));
+  t.emit("thinking_level_select");
+  await vi.waitFor(() => expect(t.latest()?.status.footerLines).toBeUndefined());
+  t.pi.events.emit(footerUpdateEvent, publication);
+  await vi.waitFor(() => expect(t.latest()?.status.footerLines).toEqual(["current"]));
+  t.emit("session_shutdown");
+  t.pi.events.emit(footerUpdateEvent, publication);
+  const replacement = fakePi("replacement");
+  cleanup.push(() => {
+    replacement.emit("session_shutdown");
+  });
+  replacement.emit("session_start");
+  await vi.waitFor(() => expect(t.latest()?.identity.sessionId).toBe("replacement"));
+  expect(t.latest()?.status.footerLines).toBeUndefined();
+  replacement.pi.events.emit(footerUpdateEvent, publication);
+  replacement.emit("model_select");
+  await new Promise((r) => setTimeout(r, 100));
+  expect(t.latest()?.status.footerLines).toBeUndefined();
 });

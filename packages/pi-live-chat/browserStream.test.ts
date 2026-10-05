@@ -1,7 +1,7 @@
 import { randomUUID } from "node:crypto";
 import { expect, it } from "vitest";
 import { browserFrame, readBrowserFrame } from "./browserStream.js";
-import type { Snapshot } from "./protocol.js";
+import { snapshotSchema, type Snapshot } from "./protocol.js";
 export function fixture(): Snapshot {
   return {
     type: "snapshot",
@@ -67,4 +67,30 @@ it("starts fresh after reconnect, navigation, or runtime replacement", () => {
     expect(browserFrame(before, next).type).toBe("snapshot");
     expect(readBrowserFrame(before, browserFrame(before, next))).toEqual(next);
   }
+});
+
+it("preserves optional footer lines in full snapshots and patches and removes them when absent", () => {
+  const before = fixture();
+  const after = {
+    ...before,
+    seq: 2,
+    status: { ...before.status, footerLines: ["model · cwd", "full totals"] },
+  };
+  expect(readBrowserFrame(undefined, after).status.footerLines).toEqual(after.status.footerLines);
+  expect(readBrowserFrame(before, browserFrame(before, after))).toEqual(after);
+  const cleared = { ...before, seq: 3 };
+  expect(readBrowserFrame(after, browserFrame(after, cleared)).status.footerLines).toBeUndefined();
+  for (const lines of [[], ["one", "two", "three"], ["x".repeat(8193)], [123], null]) {
+    expect(
+      snapshotSchema.safeParse({ ...before, status: { ...before.status, footerLines: lines } })
+        .success,
+    ).toBe(false);
+    expect(() =>
+      readBrowserFrame(before, {
+        ...browserFrame(before, after),
+        status: { ...before.status, footerLines: lines },
+      }),
+    ).toThrow();
+  }
+  expect(snapshotSchema.safeParse(before).success).toBe(true);
 });

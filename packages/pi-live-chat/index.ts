@@ -3,6 +3,9 @@ import { connect, type Socket } from "node:net";
 import type { ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-agent";
 import {
   commandSchema,
+  footerPublicationSchema,
+  footerRequestEvent,
+  footerUpdateEvent,
   matchesTarget,
   MAX_TEXT,
   type Command,
@@ -25,6 +28,33 @@ export default function liveChat(pi: ExtensionAPI) {
   const owner = {};
   const privateCommand = `fernblick-bridge-${randomUUID().replaceAll("-", "")}`;
   let context: ExtensionContext | undefined;
+  let footerLines: string[] | undefined;
+
+  pi.events.on(footerUpdateEvent, (raw: unknown) => {
+    if (!context) return;
+    const parsed = footerPublicationSchema.safeParse(raw);
+    if (!parsed.success) return;
+    try {
+      if (
+        parsed.data.sessionId !== context.sessionManager.getSessionId() ||
+        parsed.data.sessionFile !== context.sessionManager.getSessionFile()
+      )
+        return;
+      footerLines = parsed.data.lines ?? undefined;
+      publish();
+    } catch {
+      stop();
+    }
+  });
+
+  function requestFooter() {
+    footerLines = undefined;
+    if (!context) return;
+    pi.events.emit(footerRequestEvent, {
+      sessionId: context.sessionManager.getSessionId(),
+      sessionFile: context.sessionManager.getSessionFile(),
+    });
+  }
   let boards: BoardTools | undefined;
   let identity: Identity | undefined;
   let socket: Socket | undefined;
@@ -160,6 +190,7 @@ export default function liveChat(pi: ExtensionAPI) {
       navigation = undefined;
     }
     context = undefined;
+    footerLines = undefined;
     identity = undefined;
     preparing = false;
     clearTimeout(retry);
@@ -194,6 +225,7 @@ export default function liveChat(pi: ExtensionAPI) {
         truncated: projector.truncated,
         messages,
         status: {
+          footerLines,
           cwd: context.cwd,
           model: context.model?.id,
           provider: context.model?.provider,
@@ -292,6 +324,7 @@ export default function liveChat(pi: ExtensionAPI) {
         seq = 0;
         // Fresh authoritative history plus the still-streaming provisional overlay.
         projector.reconcile(context.sessionManager.getBranch(), true);
+        requestFooter();
         const value = snapshot();
         if (value) writeFrame(client, value);
       });
@@ -511,6 +544,7 @@ export default function liveChat(pi: ExtensionAPI) {
     if (ctx.mode !== "tui") return;
     owners[singleton] = owner;
     context = ctx;
+    requestFooter();
     boards = new BoardTools(pi, boardConnection);
     active = !ctx.isIdle();
     sendPending = uiBlocked = false;
@@ -543,6 +577,7 @@ export default function liveChat(pi: ExtensionAPI) {
     if (!context) return;
     context = ctx;
     projector.reconcile(ctx.sessionManager.getBranch());
+    requestFooter();
     publish();
   });
   function reconcile(event: { type: string }, ctx: ExtensionContext) {
@@ -552,6 +587,7 @@ export default function liveChat(pi: ExtensionAPI) {
     context = ctx;
     if (event.type === "session_tree") epoch = randomUUID();
     projector.reconcile(ctx.sessionManager.getBranch(), event.type !== "session_tree");
+    requestFooter();
     publish();
   }
   const revokeBoardContext = () => {
@@ -565,6 +601,7 @@ export default function liveChat(pi: ExtensionAPI) {
   pi.on("session_tree", reconcile);
   pi.on("session_compact", reconcile);
   pi.on("model_select", reconcile);
+  pi.on("thinking_level_select", reconcile);
   pi.on("session_info_changed", reconcile);
   function hydrateMessage(value: unknown) {
     const current = generation;

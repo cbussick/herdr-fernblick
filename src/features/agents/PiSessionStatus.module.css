@@ -1,0 +1,24 @@
+.status {
+  display: flex;
+  width: 100%;
+  min-width: 0;
+  max-width: 50rem;
+  max-height: 25dvh;
+  align-self: center;
+  box-sizing: border-box;
+  flex-direction: column;
+  flex-shrink: 0;
+  gap: var(--space-1);
+  padding: var(--space-1) var(--space-5) var(--space-2);
+  color: var(--color-text-secondary);
+  font: 0.6875rem/1.5 var(--font-mono);
+  overflow-y: auto;
+  overflow-wrap: anywhere;
+  white-space: pre-wrap;
+}
+
+/* Preserve the footer's pale terminal colors on the app's existing navy surface. */
+.status[data-mirrored] {
+  color: var(--color-surface);
+  background: var(--color-text);
+}

@@ -15,6 +15,7 @@ import { getAgentTabLabel, getAgentTarget, getStatusLabel } from "./agentPresent
 import { getAgentOutput, sendAgentKey, chatCommand, uploadImage } from "../../shared/api/apiClient";
 import { useLiveChat } from "./useLiveChat";
 import { ChatTranscript } from "./ChatTranscript";
+import { PiSessionStatus } from "./PiSessionStatus";
 import { useChatAnnotations } from "./useChatAnnotations";
 import { AnnotationPopover, AnnotationSelectionAction, AnnotationTray } from "./ChatAnnotations";
 import { annotationPrompt } from "./annotations";
@@ -604,16 +605,8 @@ export function AgentConsole({ agent, onBack }: AgentConsoleProps) {
           ) : null}
         </form>
       )}
-      {view === "chat" && snapshot ? (
-        <div className={consoleStyles["pi-status-line"]} aria-label="Pi session status">
-          <span>
-            {snapshot.status.model ?? "Unknown model"} · {snapshot.status.cwd}
-          </span>
-          <span>
-            {snapshot.status.totalTokens.toLocaleString()} displayed tokens · $
-            {snapshot.status.cost.toFixed(2)} · {snapshot.status.provider}
-          </span>
-        </div>
+      {view === "chat" && snapshot && !live.error ? (
+        <PiSessionStatus status={snapshot.status} />
       ) : null}
       {annotations.selection ? <AnnotationSelectionAction annotations={annotations} /> : null}
       {view === "chat" && annotations.editor ? (

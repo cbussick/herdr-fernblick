@@ -787,3 +787,21 @@ it("clears the acknowledged draft without requiring a Pi receipt", async () => {
   expect(renderer.root.findAllByProps({ "data-testid": "send-spinner" })).toHaveLength(0);
   expect(JSON.stringify(renderer.toJSON())).not.toContain("Waiting for Pi");
 });
+
+it("shows only the current connected session's footer and drops it on recovery/runtime replacement", async () => {
+  mocks.live.snapshot!.status.footerLines = ["current full footer", "all-session accounting"];
+  await act(async () => renderer.update(render()));
+  expect(JSON.stringify(renderer.toJSON())).toContain("current full footer");
+  mocks.live.error = "Reconnecting";
+  await act(async () => renderer.update(render()));
+  expect(renderer.root.findAllByProps({ "data-testid": "pi-session-status" })).toHaveLength(0);
+  mocks.live.error = undefined;
+  mocks.live.snapshot = {
+    ...mocks.live.snapshot!,
+    identity: { ...mocks.live.snapshot!.identity, runtime: randomUUID(), sessionId: "replacement" },
+    status: { cwd: "/replacement", totalTokens: 0, cost: 0 },
+  };
+  await act(async () => renderer.update(render()));
+  expect(JSON.stringify(renderer.toJSON())).not.toContain("current full footer");
+  expect(JSON.stringify(renderer.toJSON())).toContain("/replacement");
+});

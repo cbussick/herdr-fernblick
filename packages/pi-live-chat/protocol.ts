@@ -19,6 +19,15 @@ export const sendInputSchema = z
 export const MAX_MESSAGES = 512;
 export const MAX_SNAPSHOT = 2 * 1024 * 1024;
 const id = z.string().min(1).max(256);
+export const footerRequestEvent = "pi.status-footer.request.v1";
+export const footerUpdateEvent = "pi.status-footer.update.v1";
+export const footerLinesSchema = z.array(z.string().max(8192)).min(1).max(2);
+export const footerPublicationSchema = z.object({
+  version: z.literal(1),
+  sessionId: id,
+  sessionFile: z.string().startsWith("/").max(4096),
+  lines: footerLinesSchema.nullable(),
+});
 export const identitySchema = z.object({
   runtime: z.string().uuid(),
   pid: z.number().int().positive(),
@@ -61,6 +70,7 @@ export const snapshotSchema = z.object({
   truncated: z.boolean(),
   messages: z.array(messageSchema).max(MAX_MESSAGES),
   status: z.object({
+    footerLines: footerLinesSchema.optional(),
     cwd: z.string().max(4096),
     model: z.string().max(256).optional(),
     provider: z.string().max(256).optional(),

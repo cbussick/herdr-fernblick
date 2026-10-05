@@ -164,7 +164,7 @@ revalidates identity/epoch/busy state immediately before invoking Pi. History im
 references are non-context custom metadata, not delivery records. Original images
 are served by upload ID; resized/re-encoded images can require a temporary copy.
 See package limits for old/unreferenced images and oversized trees.
-Usage totals cover retained ordinary entries.
+Fallback usage totals cover retained ordinary entries; the optional custom footer mirror uses the publisher’s full-session accounting.
 Sends consumed by another extension without starting a turn remain unresolved;
 inspect Pi and reload the extension before sending again. Drafts are memory-only
 in the open console, not persistent across page reload/navigation.
@@ -176,7 +176,49 @@ Navigation is serialized, with a four-second nonce deadline; an operation alread
 inside Pi may complete after timeout/disconnect. Such outcomes remain uncertain,
 never success ACKs, and should be checked in Pi before manual retry.
 
+## Footer mirror
+
+The optional publisher in cb-dotfiles `pi/extensions/status-footer.ts` computes
+its existing ANSI content once per render and publishes it before terminal-width
+truncation. Live chat validates and forwards it as optional `status.footerLines`.
+The publisher remains the only formatter/accounting implementation. Its branch,
+extension statuses, context usage and 60-second Codex refreshes flow through the
+same output. Request/replay handles either extension startup order; session/file
+identity, shutdown clearing and canceled refresh generations prevent old-session
+output from surviving replacement. No footer state is persisted.
+
+Both socket snapshots and SSE full/patch frames validate at most two lines of
+8,192 characters each. The browser renders escaped React text with a small
+whitelisted SGR interpreter, not HTML or a terminal emulator. OSC links,
+clipboard operations, cursor actions and unsupported control sequences are
+discarded. Full lines wrap independently of terminal width and scroll vertically
+when needed. A disconnected console hides its old status while reconnecting.
+Without the publisher, legacy metadata remains available.
+
+Activation requires later approval for integrating **both** repositories,
+reloading affected Pi sessions, and rebuilding/restarting Fernblick. The task
+worktrees do not change the installed footer symlink or active Pi settings.
+
 ## Verification
+
+Footer regression tests cover optional/bounded snapshot and patch payloads,
+real socket replay/update/withdrawal, reconnect, stale-session rejection,
+replacement, ANSI mapping and safe React rendering. Console tests cover status
+invalidation on disconnect/replacement. The publisher has Node tests in the
+dotfiles repository, loaded through real Pi jiti with a stub Codex executable;
+they never access account credentials or the running terminal.
+
+Run the synthetic Chromium/WebKit footer check against a static worktree build:
+
+```sh
+PLAYWRIGHT_MODULE=/tmp/fernblick-design-tools/node_modules/playwright/index.mjs \
+  node tools/design/pi-footer.mjs http://127.0.0.1:<static-port>
+```
+
+Every API/SSE call is intercepted. It covers 320/390px phones, a short keyboard-like
+viewport, iPad and desktop, RGB styling, inert HTML, fallback patches, oversized
+segments, vertical scrolling, composer visibility and horizontal overflow.
+Screenshots go to ignored `design-gallery/pi-footer/`.
 
 HER-5 adds unit/socket/HTTP tests for per-session discovery, current-skill validation,
 shadowed commands, legacy capability guards, stale replies, bounds and image

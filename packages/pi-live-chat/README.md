@@ -64,6 +64,31 @@ must be regular, private, single-link files owned by that user. Only validated
 UUID upload IDs—not arbitrary paths—are accepted. Missing temporary files remain
 unavailable; no automatic retry or send occurs.
 
+## Custom footer mirror
+
+When the optional cb-dotfiles `status-footer.ts` publisher is installed, chat uses
+its full ANSI footer lines, before terminal-width truncation. The browser wraps
+them on a navy surface to keep the terminal's pale colors readable. Long output
+scrolls vertically within a bounded area. Only terminal colors and common text
+attributes become styles; HTML, links and terminal actions are inert.
+
+The versioned Pi event contract is `pi.status-footer.request.v1` (request with
+`sessionId`, `sessionFile`) and `pi.status-footer.update.v1` (publication with
+`version: 1`, the same session identity, and `lines: string[] | null`). Lines are
+limited to two, each at most 8,192 characters. Null withdraws the publisher.
+Startup, reconnect and context changes request fresh output. Updates are
+session-bound; reload/shutdown clears state. Snapshots carry optional
+`status.footerLines`; old publishers/consumers retain the previous fallback.
+The fallback's displayed-token accounting still covers only projected history,
+not the full session totals produced by the custom footer.
+
+No footer is replaced by this extension, no terminal is scraped and no account
+API is called by Fernblick. The installed footer owns formatting and Codex
+refreshes. Both repository changes need later user-approved activation: install
+the updated dotfiles footer and live-chat package, reload Pi, and rebuild/restart
+Fernblick. Do not edit active global settings or restart the app as part of a
+review handoff.
+
 ## Behavior and limits
 
 - Long-lived bidirectional Unix connection starts only at `session_start`, only
