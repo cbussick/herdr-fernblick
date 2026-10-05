@@ -235,18 +235,41 @@ export class HerdrService {
   }
 
   async readPane(paneId: string, lines: number) {
-    const result = await this.client.request(
-      "pane.read",
-      {
-        pane_id: paneId,
-        source: "recent_unwrapped",
-        format: "text",
-        lines,
-        strip_ansi: true,
-      },
-      agentReadResultSchema,
-    );
-    return result.read;
+    return this.readTerminal("pane.read", { pane_id: paneId }, lines);
+  }
+
+  private async readTerminal(
+    method: "pane.read" | "agent.read",
+    target: { pane_id: string } | { target: string },
+    lines: number,
+  ) {
+    const params = { ...target, format: "text", strip_ansi: true };
+    try {
+      const result = await this.client.request(
+        method,
+        { ...params, source: "recent_unwrapped", lines },
+        agentReadResultSchema,
+      );
+      return result.read;
+    } catch (error) {
+      // Herdr must scroll to harvest alternate-screen history, which is unsafe
+      // while an agent is active. Keep the console usable with a passive snapshot.
+      // Match this specific refusal, not a generic busy/transport error.
+      if (
+        !(error instanceof HerdrRequestError) ||
+        !error.message.includes(
+          "alternate-screen history can only be captured by scrolling while idle",
+        )
+      ) {
+        throw error;
+      }
+      const result = await this.client.request(
+        method,
+        { ...params, source: "visible" },
+        agentReadResultSchema,
+      );
+      return result.read;
+    }
   }
 
   async sendPaneInput(paneId: string, text: string) {
@@ -267,18 +290,7 @@ export class HerdrService {
   }
 
   async readAgent(target: string, lines: number) {
-    const result = await this.client.request(
-      "agent.read",
-      {
-        target,
-        source: "recent_unwrapped",
-        format: "text",
-        lines,
-        strip_ansi: true,
-      },
-      agentReadResultSchema,
-    );
-    return result.read;
+    return this.readTerminal("agent.read", { target }, lines);
   }
 
   async sendKey(target: string, key: KeyName) {
