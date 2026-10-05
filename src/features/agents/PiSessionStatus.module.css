@@ -22,3 +22,32 @@
   color: var(--color-surface);
   background: var(--color-text);
 }
+
+.segment {
+  color: var(--terminal-foreground, inherit);
+  background-color: var(--terminal-background, transparent);
+}
+
+.segment[data-bold] {
+  font-weight: 700;
+}
+
+.segment[data-dim] {
+  opacity: 0.65;
+}
+
+.segment[data-italic] {
+  font-style: italic;
+}
+
+.segment[data-underline] {
+  text-decoration: underline;
+}
+
+.segment[data-strike] {
+  text-decoration: line-through;
+}
+
+.segment[data-underline][data-strike] {
+  text-decoration: underline line-through;
+}

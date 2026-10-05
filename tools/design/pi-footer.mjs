@@ -107,6 +107,13 @@ for (const [engine, browserType] of [
           .evaluate((e) => getComputedStyle(e).color),
         "rgb(246, 226, 183)",
       );
+      assert.equal(
+        await footer
+          .locator("[data-dim]")
+          .first()
+          .evaluate((e) => getComputedStyle(e).opacity),
+        "0.65",
+      );
       assert.equal(await footer.evaluate((e) => e.scrollWidth <= e.clientWidth + 1), true);
       assert.equal(
         await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth),

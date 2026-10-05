@@ -1,10 +1,11 @@
 export type TerminalTextStyle = {
   color?: string;
   backgroundColor?: string;
-  fontWeight?: "bold";
-  opacity?: number;
-  fontStyle?: "italic";
-  textDecoration?: string;
+  bold?: boolean;
+  dim?: boolean;
+  italic?: boolean;
+  underline?: boolean;
+  strike?: boolean;
 };
 export type TerminalTextSpan = { text: string; style: TerminalTextStyle };
 
@@ -54,16 +55,17 @@ export function terminalTextSpans(line: string): TerminalTextSpan[] {
     for (let n = 0; n < codes.length; n++) {
       const code = codes[n];
       if (code === 0) style = {};
-      else if (code === 1) style.fontWeight = "bold";
-      else if (code === 2) style.opacity = 0.65;
-      else if (code === 3) style.fontStyle = "italic";
-      else if (code === 4) style.textDecoration = "underline";
-      else if (code === 9) style.textDecoration = "line-through";
+      else if (code === 1) style.bold = true;
+      else if (code === 2) style.dim = true;
+      else if (code === 3) style.italic = true;
+      else if (code === 4) style.underline = true;
+      else if (code === 9) style.strike = true;
       else if (code === 22) {
-        delete style.fontWeight;
-        delete style.opacity;
-      } else if (code === 23) delete style.fontStyle;
-      else if (code === 24 || code === 29) delete style.textDecoration;
+        delete style.bold;
+        delete style.dim;
+      } else if (code === 23) delete style.italic;
+      else if (code === 24) delete style.underline;
+      else if (code === 29) delete style.strike;
       else if (code === 39) delete style.color;
       else if (code === 49) delete style.backgroundColor;
       else if (code === 38 || code === 48) {

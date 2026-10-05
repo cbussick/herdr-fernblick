@@ -8,11 +8,11 @@ it("maps the actual footer's RGB, dim separators and resets into bounded styles"
     ),
   ).toEqual([
     { text: "model high", style: { color: "rgb(246, 226, 183)" } },
-    { text: " · ", style: { opacity: 0.65 } },
+    { text: " · ", style: { dim: true } },
     { text: "~/cwd", style: { color: "rgb(171, 223, 167)" } },
   ]);
   expect(terminalTextSpans("\x1b[2m↑20k $1.234\x1b[0m plain")).toEqual([
-    { text: "↑20k $1.234", style: { opacity: 0.65 } },
+    { text: "↑20k $1.234", style: { dim: true } },
     { text: " plain", style: {} },
   ]);
 });
@@ -24,9 +24,9 @@ it("supports status text's basic/bright/indexed colors and attributes without st
   expect(spans[0]).toEqual({
     text: "styled",
     style: {
-      fontWeight: "bold",
-      fontStyle: "italic",
-      textDecoration: "underline",
+      bold: true,
+      italic: true,
+      underline: true,
       color: "#cd0000",
       backgroundColor: "#0000ee",
     },
@@ -40,6 +40,15 @@ it("supports status text's basic/bright/indexed colors and attributes without st
       (s) => s.style,
     ),
   ).toEqual([{}, {}, {}]);
+});
+
+it("tracks underline and strike independently across selective resets", () => {
+  expect(terminalTextSpans("\x1b[4;9mA\x1b[29mB\x1b[9;24mC\x1b[0mD")).toEqual([
+    { text: "A", style: { underline: true, strike: true } },
+    { text: "B", style: { underline: true } },
+    { text: "C", style: { strike: true } },
+    { text: "D", style: {} },
+  ]);
 });
 
 it.each([

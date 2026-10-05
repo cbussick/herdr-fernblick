@@ -18,8 +18,8 @@ it("renders both full footer lines as escaped text with colors rather than the a
     />,
   );
   expect(html.match(/data-testid="pi-footer-line"/g)).toHaveLength(2);
-  expect(html).toContain("color:rgb(246, 226, 183)");
-  expect(html).toContain("opacity:0.65");
+  expect(html).toContain("--terminal-foreground:rgb(246, 226, 183)");
+  expect(html).toContain('data-dim=""');
   expect(html).toContain("real-model high");
   expect(html).toContain("~/full/path");
   expect(html).toContain("&lt;img src=x onerror=alert(1)&gt;");
