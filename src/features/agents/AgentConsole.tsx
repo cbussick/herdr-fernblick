@@ -438,6 +438,7 @@ export function AgentConsole({ agent, onBack }: AgentConsoleProps) {
         <AnnotationTray
           annotations={annotations}
           canSend={canSendAnnotations}
+          canAdd={!live.error && annotations.canBegin}
           sending={composerSending && Boolean(send.variables?.annotationIds)}
           locked={composerSending}
           blockedReason={

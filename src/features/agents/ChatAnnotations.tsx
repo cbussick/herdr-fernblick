@@ -70,6 +70,7 @@ export function AnnotationSelectionAction({ annotations }: { annotations: ChatAn
 export function AnnotationTray({
   annotations,
   canSend,
+  canAdd,
   sending,
   locked,
   blockedReason,
@@ -78,6 +79,7 @@ export function AnnotationTray({
 }: {
   annotations: ChatAnnotations;
   canSend: boolean;
+  canAdd: boolean;
   sending: boolean;
   locked: boolean;
   blockedReason: string;
@@ -85,7 +87,21 @@ export function AnnotationTray({
   onSend: () => void;
 }) {
   const [expanded, setExpanded] = useState(false);
-  if (!annotations.entries.length) return null;
+  const generalAction = (
+    <button
+      type="button"
+      className={styles.general}
+      disabled={!canAdd || locked}
+      onClick={(event) => {
+        const button = event.currentTarget;
+        annotations.begin(null, () => button.getBoundingClientRect());
+      }}
+    >
+      <MessageIcon /> Add general comment
+    </button>
+  );
+  const editDisabled = locked || annotations.stale || Boolean(annotations.editor);
+  if (!annotations.entries.length) return <div className={styles.tray}>{generalAction}</div>;
   const count = annotations.entries.length;
   const latest = annotations.entries.at(-1)!;
   return (
@@ -114,14 +130,29 @@ export function AnnotationTray({
             {annotations.entries.map((entry, index) => (
               <li key={entry.id}>
                 <div className={styles.note}>
-                  <blockquote>{entry.quote}</blockquote>
-                  <p>{entry.comment}</p>
+                  {entry.quote !== undefined ? (
+                    <blockquote>{entry.quote}</blockquote>
+                  ) : (
+                    <small>General comment</small>
+                  )}
+                  <button
+                    type="button"
+                    className={styles["comment-text"]}
+                    aria-label={`Edit text of comment ${index + 1}: ${entry.comment}`}
+                    disabled={editDisabled}
+                    onClick={(event) => {
+                      const button = event.currentTarget;
+                      annotations.edit(entry, () => button.getBoundingClientRect());
+                    }}
+                  >
+                    {entry.comment}
+                  </button>
                 </div>
                 <div className={styles.actions}>
                   <button
                     type="button"
                     aria-label={`Edit comment ${index + 1}`}
-                    disabled={locked || annotations.stale || Boolean(annotations.editor)}
+                    disabled={editDisabled}
                     onClick={(event) => {
                       const button = event.currentTarget;
                       annotations.edit(entry, () => button.getBoundingClientRect());
@@ -142,10 +173,21 @@ export function AnnotationTray({
             ))}
           </ol>
         ) : (
-          <p className={styles.preview}>
-            “{latest.quote}” <span>{latest.comment}</span>
-          </p>
+          <button
+            type="button"
+            className={styles.preview}
+            aria-label={`Edit latest comment: ${latest.comment}`}
+            disabled={editDisabled}
+            onClick={(event) => {
+              const button = event.currentTarget;
+              annotations.edit(latest, () => button.getBoundingClientRect());
+            }}
+          >
+            {latest.quote !== undefined ? `“${latest.quote}”` : "General comment"}{" "}
+            <span>{latest.comment}</span>
+          </button>
         )}
+        {generalAction}
         {annotations.stale ? (
           <div className={styles.warning} role="alert">
             <p>
@@ -172,6 +214,11 @@ export function AnnotationPopover({ annotations }: { annotations: ChatAnnotation
   const editor = annotations.editor!;
   const { ref: popover, position } = useAnchoredOverlay(editor.anchor);
   const input = useRef<HTMLTextAreaElement>(null);
+  const title = editor.id
+    ? "Edit comment"
+    : editor.source
+      ? "Comment on passage"
+      : "General comment";
   useLayoutEffect(() => {
     input.current?.focus({ preventScroll: true });
   }, [editor.source]);
@@ -181,7 +228,7 @@ export function AnnotationPopover({ annotations }: { annotations: ChatAnnotation
       className={styles.popover}
       data-ui="annotation-popover"
       role="dialog"
-      aria-label={editor.id ? "Edit comment" : "Comment on passage"}
+      aria-label={title}
       style={position}
       onKeyDown={(event) => {
         if (event.key === "Escape") {
@@ -192,12 +239,16 @@ export function AnnotationPopover({ annotations }: { annotations: ChatAnnotation
       }}
     >
       <div className={styles["popover-header"]}>
-        <strong>{editor.id ? "Edit comment" : "Comment on passage"}</strong>
+        <strong>{title}</strong>
         <button type="button" aria-label="Cancel comment" onClick={annotations.close}>
           <CloseIcon />
         </button>
       </div>
-      <blockquote>{editor.source.quote}</blockquote>
+      {editor.source ? (
+        <blockquote>{editor.source.quote}</blockquote>
+      ) : (
+        <p className={styles.footnote}>Not tied to a passage.</p>
+      )}
       <label htmlFor="annotation-comment" className={a11yStyles["sr-only"]}>
         Your comment
       </label>
@@ -233,11 +284,21 @@ export function AnnotationPopover({ annotations }: { annotations: ChatAnnotation
         </p>
       ) : null}
       <div className={styles["popover-footer"]}>
-        <span>
-          Enter to save
-          <br />
-          Shift + Enter for a new line
-        </span>
+        {editor.id ? (
+          <button
+            type="button"
+            className={styles.delete}
+            onClick={() => annotations.remove(editor.id!)}
+          >
+            <TrashIcon /> Delete comment
+          </button>
+        ) : (
+          <span>
+            Enter to save
+            <br />
+            Shift + Enter for a new line
+          </span>
+        )}
         <button
           type="button"
           className={styles.send}

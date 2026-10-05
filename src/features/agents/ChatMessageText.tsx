@@ -1,7 +1,11 @@
 import { Fragment, useMemo, type ReactNode } from "react";
 import { splitMessageLinks } from "./chatMessageLinks";
 import { formatMessageText, type MessagePart } from "./chatMessageFormatting";
-import { annotationPromptIntro, type TextHighlight } from "./annotations";
+import {
+  annotationGeneralPromptIntro,
+  annotationPromptIntro,
+  type TextHighlight,
+} from "./annotations";
 import annotationStyles from "./ChatAnnotations.module.css";
 import styles from "./ChatMessageText.module.css";
 
@@ -9,7 +13,9 @@ import styles from "./ChatMessageText.module.css";
 function annotationLabels(value: string) {
   const parts = [];
   let end = 0;
-  for (const match of value.matchAll(/^\*\*(Comment [1-9]\d*)\*\*(?= \(response [^\n]*\))/gm)) {
+  for (const match of value.matchAll(
+    /^\*\*(Comment [1-9]\d*)\*\*(?= \((?:response [^\n]*|general comment)\))/gm,
+  )) {
     parts.push(value.slice(end, match.index));
     parts.push(<strong key={match.index}>{match[1]}</strong>);
     end = match.index + match[0].length;
@@ -30,7 +36,11 @@ export function ChatMessageText({
   highlights?: TextHighlight[];
 }) {
   const emphasizeLabels =
-    annotationFeedback && !annotationSource && text.startsWith(`${annotationPromptIntro}\n\n`);
+    annotationFeedback &&
+    !annotationSource &&
+    [annotationPromptIntro, annotationGeneralPromptIntro].some((intro) =>
+      text.startsWith(`${intro}\n\n`),
+    );
   const parts = useMemo<MessagePart[]>(() => {
     if (!emphasizeLabels) return formatMessageText(text);
     // Generated annotation prompts keep their original quotes literal.

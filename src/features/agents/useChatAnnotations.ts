@@ -19,7 +19,11 @@ type AnnotationAnchor = {
   anchor: () => DOMRect;
 };
 type AnnotationSelection = AnnotationAnchor & { touch: boolean };
-export type AnnotationEditor = AnnotationAnchor & { id?: string; comment: string };
+export type AnnotationEditor = Omit<AnnotationAnchor, "source"> & {
+  source: AnnotationSource | null;
+  id?: string;
+  comment: string;
+};
 
 export function useChatAnnotations(
   snapshot: Snapshot | undefined,
@@ -47,8 +51,8 @@ export function useChatAnnotations(
       ? candidate
       : null;
 
-  function begin(source: AnnotationSource, anchor: () => DOMRect) {
-    if (!snapshot || stale || sending || editor) return;
+  function begin(source: AnnotationSource | null, anchor: () => DOMRect) {
+    if (!visible || !snapshot || stale || sending || editor) return;
     setCandidate(null);
     setEditor({ source, target: targetOf(snapshot), comment: "", anchor });
     setError("");
@@ -172,11 +176,11 @@ export function useChatAnnotations(
   }
   function save() {
     if (!editor || !editor.comment.trim() || editorStale || stale || sending) return;
-    const entry: Annotation = {
-      ...editor.source,
+    const content = {
       id: editor.id ?? `annotation-${++nextId.current}`,
       comment: editor.comment.trim(),
     };
+    const entry: Annotation = editor.source ? { ...editor.source, ...content } : content;
     const updated = editor.id
       ? entries.map((value) => (value.id === editor.id ? entry : value))
       : [...entries, entry];
@@ -192,9 +196,15 @@ export function useChatAnnotations(
     close();
   }
   function edit(entry: Annotation, anchor: () => DOMRect) {
-    if (!owner || sending || editor) return;
+    if (!visible || !owner || stale || sending || editor) return;
     setCandidate(null);
-    setEditor({ source: entry, target: owner, id: entry.id, comment: entry.comment, anchor });
+    setEditor({
+      source: entry.messageId === undefined ? null : entry,
+      target: owner,
+      id: entry.id,
+      comment: entry.comment,
+      anchor,
+    });
     setError("");
   }
   function remove(id: string) {
@@ -216,6 +226,7 @@ export function useChatAnnotations(
     error,
     notice,
     interacting: Boolean(selection || editor),
+    canBegin: Boolean(visible && snapshot && !stale && !sending && !editor),
     begin,
     openSelection,
     close,

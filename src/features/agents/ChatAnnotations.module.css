@@ -74,6 +74,30 @@
   font-weight: 500;
 }
 
+.general,
+.delete {
+  display: inline-flex;
+  min-height: 2.75rem;
+  align-items: center;
+  gap: var(--space-2);
+  padding: 0 var(--space-3);
+  color: var(--annotation-ink);
+  font-size: 0.75rem;
+  font-weight: 700;
+  background: transparent;
+  border: 0;
+  border-radius: var(--radius-sm);
+}
+
+.delete {
+  color: var(--color-danger);
+}
+
+.general:hover:not(:disabled),
+.delete:hover:not(:disabled) {
+  background: var(--color-surface-subtle);
+}
+
 .send {
   display: inline-flex;
   min-height: 2.75rem;
@@ -96,6 +120,10 @@
 
 .preview {
   display: -webkit-box;
+  width: 100%;
+  text-align: left;
+  background: transparent;
+  border: 0;
   padding: 0 var(--space-3);
   margin-bottom: var(--space-3);
   overflow: hidden;
@@ -155,8 +183,28 @@
   border-left: 3px solid #d5ad28;
 }
 
-.note p {
+.comment-text {
+  display: block;
+  width: 100%;
+  min-height: 2.75rem;
+  padding: 0;
+  color: var(--color-text);
+  font: inherit;
+  text-align: left;
   white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  background: transparent;
+  border: 0;
+  border-radius: var(--radius-sm);
+}
+
+.comment-text:hover:not(:disabled),
+.preview:hover:not(:disabled) {
+  background: var(--color-surface-subtle);
+}
+
+.note small {
+  color: var(--color-text-secondary);
 }
 
 .actions {

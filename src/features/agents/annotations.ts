@@ -6,31 +6,41 @@ export type AnnotationSource = {
   start: number;
   end: number;
 };
-export type Annotation = AnnotationSource & { id: string; comment: string };
+// General feedback has no fabricated response ID, quote, or character offsets.
+type GeneralSource = { messageId?: never; quote?: never; start?: never; end?: never };
+export type Annotation = (AnnotationSource | GeneralSource) & { id: string; comment: string };
 export type TextHighlight = { start: number; end: number };
 
 export const annotationPromptIntro =
   "Please address these comments on your earlier responses. Each quoted passage is context; the comment below it is my feedback.";
 
+export const annotationGeneralPromptIntro =
+  "Please address these comments. Quoted passages are context for the feedback below them; general comments apply to the conversation as a whole.";
+
 // Like Plannotator, keep the original passage next to its feedback. Message IDs and
 // offsets disambiguate repeated passages and comments on older assistant responses.
 export function annotationPrompt(annotations: Annotation[]) {
   return [
-    annotationPromptIntro,
-    ...annotations.map(
-      (annotation, index) =>
-        `**Comment ${index + 1}** (response ${annotation.messageId}, characters ${annotation.start + 1}–${annotation.end})\n\n${annotation.quote
-          .split("\n")
-          .map((line) => `> ${line}`)
-          .join("\n")}\n\n${annotation.comment}`,
+    annotations.some((entry) => entry.messageId === undefined)
+      ? annotationGeneralPromptIntro
+      : annotationPromptIntro,
+    ...annotations.map((annotation, index) =>
+      annotation.messageId === undefined
+        ? `**Comment ${index + 1}** (general comment)\n\n${annotation.comment}`
+        : `**Comment ${index + 1}** (response ${annotation.messageId}, characters ${annotation.start + 1}–${annotation.end})\n\n${annotation.quote
+            .split("\n")
+            .map((line) => `> ${line}`)
+            .join("\n")}\n\n${annotation.comment}`,
     ),
   ].join("\n\n");
 }
 
 export function annotationHighlights(message: ChatMessage, annotations: Annotation[]) {
   return annotations.filter(
-    (entry) =>
-      entry.messageId === message.id && message.text.slice(entry.start, entry.end) === entry.quote,
+    (entry): entry is Annotation & AnnotationSource =>
+      entry.messageId !== undefined &&
+      entry.messageId === message.id &&
+      message.text.slice(entry.start, entry.end) === entry.quote,
   );
 }
 

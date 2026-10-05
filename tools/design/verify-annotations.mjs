@@ -248,7 +248,31 @@ for (const engine of [chromium, webkit]) {
         await page.getByRole("button", { name: "Comment on response", exact: true }).count(),
         0,
       );
-      assert.equal(await action.count(), 0, "no permanent annotation entry control");
+      assert.equal(await action.count(), 0, "passage comments still require a selection");
+      const generalAction = page.getByRole("button", { name: "Add general comment", exact: true });
+      const activate = (locator) => (touch ? locator.tap() : locator.click());
+      await activate(generalAction);
+      assert.equal(
+        await page
+          .getByRole("dialog", { name: "General comment", exact: true })
+          .locator("blockquote")
+          .count(),
+        0,
+      );
+      await comment.fill("   ");
+      await comment.press("Enter");
+      assert.equal(await comment.count(), 1, "blank general comments are rejected");
+      await save("General feedback to revise");
+      await activate(tray.getByRole("button", { name: /Edit latest comment:/ }));
+      await save("Revised general feedback");
+      await activate(tray.getByRole("button", { name: /Edit latest comment:/ }));
+      await page.getByRole("button", { name: "Delete comment", exact: true }).click();
+      await tray.waitFor({ state: "hidden" });
+      assert.equal(
+        sends.length,
+        0,
+        "adding, editing and deleting general feedback never forwards it",
+      );
       const formattedSource = '[data-annotation-source="a3"]';
       const formattedText = messages[5].text;
       assert.equal(await page.locator(formattedSource).textContent(), formattedText);
@@ -451,8 +475,10 @@ for (const engine of [chromium, webkit]) {
       await select('[data-annotation-source="a2"]', 4, 44);
       await openComment();
       await save("Use the new layout reference.");
-      await tray.getByRole("button", { name: /2 pending comments/ }).click();
-      await tray.getByRole("button", { name: "Edit comment 1" }).click();
+      await activate(generalAction);
+      await save("Also consider keyboard accessibility.");
+      await tray.getByRole("button", { name: /3 pending comments/ }).click();
+      await activate(tray.getByRole("button", { name: /Edit text of comment 1:/ }));
       await save("Keep the status visible on every screen.");
       await page.screenshot({ path: `${out}/${engine.name()}-${viewport.width}-tray.png` });
       await assertLayout();
@@ -516,6 +542,11 @@ for (const engine of [chromium, webkit]) {
       assert.equal(sends.length, 1);
       assert.match(sends[0].text, /Keep the status visible on every screen/);
       assert.match(sends[0].text, /response a2/);
+      assert.match(
+        sends[0].text,
+        /\*\*Comment 3\*\* \(general comment\)\n\nAlso consider keyboard accessibility\./,
+      );
+      assert.doesNotMatch(sends[0].text, /undefined/);
       assert.match(sends[0].text, /\*\*Comment 1\*\*/);
       assert.doesNotMatch(sends[0].text, /### Comment/);
       assert.deepEqual(sends[0].attachments, []);
@@ -534,7 +565,15 @@ for (const engine of [chromium, webkit]) {
         await page.getByRole("button", { name: "Send message", exact: true }).isDisabled(),
         true,
       );
-      assert.equal(await tray.getByRole("button", { name: "Edit comment 1" }).isDisabled(), true);
+      assert.equal(
+        await tray.getByRole("button", { name: "Edit comment 1", exact: true }).isDisabled(),
+        true,
+      );
+      assert.equal(await generalAction.isDisabled(), true);
+      assert.equal(
+        await tray.getByRole("button", { name: /Edit text of comment 1:/ }).isDisabled(),
+        true,
+      );
       while (!release) await page.waitForTimeout(10);
       release();
       hold = false;
@@ -583,7 +622,8 @@ for (const engine of [chromium, webkit]) {
       await comment.press("Enter");
       const review = tray.getByRole("button", { name: /1 pending comment/ });
       if ((await review.getAttribute("aria-expanded")) !== "true") await review.click();
-      await tray.getByRole("button", { name: "Remove comment 1" }).click();
+      await activate(tray.getByRole("button", { name: /Edit text of comment 1:/ }));
+      await page.getByRole("button", { name: "Delete comment", exact: true }).click();
       await tray.waitFor({ state: "hidden" });
       await select(source, 0, 30);
       await openComment();
@@ -595,8 +635,26 @@ for (const engine of [chromium, webkit]) {
         true,
       );
       assert.equal(sends.length, 2);
+      assert.equal(await generalAction.isDisabled(), true);
       await tray.getByRole("button", { name: "Discard old comments" }).click();
       await tray.waitFor({ state: "hidden" });
+      // A general-only batch needs no assistant text selection or synthetic anchor.
+      await activate(generalAction);
+      await save("General feedback only.");
+      await tray.getByRole("button", { name: "Send comment", exact: true }).click();
+      await tray.waitFor({ state: "hidden" });
+      assert.equal(sends.length, 3);
+      assert.match(
+        sends[2].text,
+        /\*\*Comment 1\*\* \(general comment\)\n\nGeneral feedback only\./,
+      );
+      assert.doesNotMatch(sends[2].text, /response |characters |\n> |undefined/);
+      assert.equal(await page.locator("#agent-prompt").inputValue(), "Keep my ordinary draft");
+      await update({
+        messages: [...messages, { id: "general-feedback", role: "user", text: sends[2].text }],
+      });
+      await label.waitFor();
+      assert.equal(await label.count(), 1, "general feedback labels render in bold");
       assert.deepEqual(errors, []);
       console.log(`${engine.name()} ${viewport.width}: annotation flow passed`);
     } catch (error) {

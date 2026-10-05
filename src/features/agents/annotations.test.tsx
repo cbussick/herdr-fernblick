@@ -4,6 +4,7 @@ import { renderToStaticMarkup } from "react-dom/server";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { Snapshot } from "../../../packages/pi-live-chat/protocol";
 import {
+  annotationGeneralPromptIntro,
   annotationHighlights,
   annotationPrompt,
   positionAnnotationPopover,
@@ -13,20 +14,38 @@ import {
 import { useChatAnnotations, type ChatAnnotations } from "./useChatAnnotations";
 import { ChatMessageText } from "./ChatMessageText";
 
-const entry: Annotation = {
+const entry = {
   id: "note-1",
   messageId: "response-1",
   quote: "line one\nline two",
   start: 12,
   end: 29,
   comment: "Keep both lines.",
-};
+} satisfies Annotation;
 it("serializes older-response anchors, verbatim multiline quotes and comments in review order", () => {
   expect(
     annotationPrompt([entry, { ...entry, messageId: "response-2", comment: "Change this." }]),
   ).toBe(
     "Please address these comments on your earlier responses. Each quoted passage is context; the comment below it is my feedback.\n\n**Comment 1** (response response-1, characters 13–29)\n\n> line one\n> line two\n\nKeep both lines.\n\n**Comment 2** (response response-2, characters 13–29)\n\n> line one\n> line two\n\nChange this.",
   );
+});
+it("serializes general and mixed feedback without fabricated quotes or anchors", () => {
+  const general: Annotation = { id: "general", comment: "Consider accessibility." };
+  expect(annotationPrompt([general])).toBe(
+    `${annotationGeneralPromptIntro}\n\n**Comment 1** (general comment)\n\nConsider accessibility.`,
+  );
+  const mixed = annotationPrompt([entry, general]);
+  expect(mixed).toContain("**Comment 1** (response response-1, characters 13–29)");
+  expect(mixed).toContain("**Comment 2** (general comment)\n\nConsider accessibility.");
+  expect(mixed).not.toContain("undefined");
+  const html = renderToStaticMarkup(<ChatMessageText text={mixed} annotationFeedback />);
+  expect(html).toContain("<strong>Comment 1</strong>");
+  expect(html).toContain("<strong>Comment 2</strong>");
+  expect(
+    annotationHighlights({ id: "a1", role: "assistant", text: "Consider accessibility." }, [
+      general,
+    ]),
+  ).toEqual([]);
 });
 it("formats feedback labels and preserves raw assistant source text in hidden syntax", () => {
   const text = annotationPrompt([
@@ -146,8 +165,8 @@ describe("annotation draft ownership", () => {
     });
     return null;
   }
-  async function add(comment = "Change this") {
-    await act(async () => api.begin(entry, anchor));
+  async function add(comment = "Change this", general = false) {
+    await act(async () => api.begin(general ? null : entry, anchor));
     await act(async () => api.setComment(comment));
     await act(async () => api.save());
   }
@@ -181,26 +200,54 @@ describe("annotation draft ownership", () => {
     await act(async () => api.remove(id));
     expect(api!.entries).toEqual([]);
   });
-  it("rejects blank comments and oversized combined prompts without losing the open editor", async () => {
-    await add("   ");
-    expect(api!.entries).toEqual([]);
-    await act(async () => api.setComment("x".repeat(32_000)));
+  it("adds, edits and deletes general feedback alongside passage comments", async () => {
+    await act(async () => api.begin(null, anchor));
+    expect(api!.editor?.source).toBe(null);
+    await act(async () => api.setComment("General feedback"));
     await act(async () => api.save());
-    expect(api!.error).toContain("32,000");
-    expect(api!.entries).toEqual([]);
-    expect(api!.editor?.comment).toHaveLength(32_000);
+    const general = api!.entries[0];
+    expect(general).toEqual({ id: general.id, comment: "General feedback" });
+    expect(api!.owner).toEqual({ runtime: "runtime", sessionId: "session", epoch: "epoch" });
+    await add("Passage feedback");
+    await act(async () => api.edit(general, anchor));
+    expect(api!.editor?.source).toBe(null);
+    await act(async () => api.setComment("Updated general feedback"));
+    await act(async () => api.save());
+    expect(api!.entries[0]).toEqual({ id: general.id, comment: "Updated general feedback" });
+    await act(async () => api.edit(api.entries[0], anchor));
+    await act(async () => api.remove(general.id));
+    expect(api!.editor).toBe(null);
+    expect(api!.entries.map((value) => value.comment)).toEqual(["Passage feedback"]);
   });
+  it.each([false, true])(
+    "rejects blank and oversized comments without losing the editor (general: %s)",
+    async (general) => {
+      await add("   ", general);
+      expect(api!.entries).toEqual([]);
+      await act(async () => api.setComment("x".repeat(32_000)));
+      await act(async () => api.save());
+      expect(api!.error).toContain("32,000");
+      expect(api!.entries).toEqual([]);
+      expect(api!.editor?.comment).toHaveLength(32_000);
+    },
+  );
   it.each(["epoch", "runtime", "sessionId"] as const)(
-    "retains but blocks drafts on %s replacement",
+    "retains but blocks a mixed batch on %s replacement",
     async (field) => {
       await add();
+      await add("General feedback", true);
       snapshot =
         field === "epoch"
           ? { ...snapshot!, epoch: "new" }
           : { ...snapshot!, identity: { ...snapshot!.identity, [field]: "new" } };
       await act(async () => renderer.update(<Harness />));
       expect(api!.stale).toBe(true);
-      expect(api!.entries).toHaveLength(1);
+      expect(api!.entries).toHaveLength(2);
+      expect(api!.canBegin).toBe(false);
+      await act(async () => api.begin(null, anchor));
+      expect(api!.editor).toBe(null);
+      await act(async () => api.edit(api.entries[0], anchor));
+      expect(api!.editor).toBe(null);
       await act(async () => api.begin(entry, anchor));
       expect(api!.editor).toBe(null);
       await act(async () => api.clear());
@@ -209,24 +256,27 @@ describe("annotation draft ownership", () => {
       expect(api!.entries[0].comment).toBe("New conversation comment");
     },
   );
-  it("does not save a selection captured before a conversation change", async () => {
-    await act(async () => api.begin(entry, anchor));
-    await act(async () => api.setComment("Old response"));
-    snapshot = { ...snapshot!, epoch: "new" };
-    await act(async () => renderer.update(<Harness />));
-    await act(async () => api.save());
-    expect(api!.editorStale).toBe(true);
-    expect(api!.entries).toEqual([]);
-  });
+  it.each([false, true])(
+    "does not save feedback captured before a conversation change (general: %s)",
+    async (general) => {
+      await act(async () => api.begin(general ? null : entry, anchor));
+      await act(async () => api.setComment("Old response"));
+      snapshot = { ...snapshot!, epoch: "new" };
+      await act(async () => renderer.update(<Harness />));
+      await act(async () => api.save());
+      expect(api!.editorStale).toBe(true);
+      expect(api!.entries).toEqual([]);
+    },
+  );
   it("locks mutations during forwarding and clears only the acknowledged batch", async () => {
     await add("First");
     const first = api!.entries[0].id;
-    await add("Second");
+    await add("Second", true);
     sending = true;
     await act(async () => renderer.update(<Harness />));
     await act(async () => {
       api.remove(first);
-      api.begin(entry, anchor);
+      api.begin(null, anchor);
     });
     expect(api!.entries).toHaveLength(2);
     expect(api!.editor).toBe(null);
