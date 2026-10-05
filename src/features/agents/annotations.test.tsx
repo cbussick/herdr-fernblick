@@ -28,7 +28,7 @@ it("serializes older-response anchors, verbatim multiline quotes and comments in
     "Please address these comments on your earlier responses. Each quoted passage is context; the comment below it is my feedback.\n\n**Comment 1** (response response-1, characters 13–29)\n\n> line one\n> line two\n\nKeep both lines.\n\n**Comment 2** (response response-2, characters 13–29)\n\n> line one\n> line two\n\nChange this.",
   );
 });
-it("renders generated user comment labels in bold without formatting assistant source text", () => {
+it("formats feedback labels and preserves raw assistant source text in hidden syntax", () => {
   const text = annotationPrompt([
     { ...entry, comment: "<script>unsafe</script> https://example.com" },
   ]);
@@ -38,12 +38,13 @@ it("renders generated user comment labels in bold without formatting assistant s
   expect(html).not.toContain("<script>");
   expect(html).toContain('href="https://example.com"');
   const assistant = renderToStaticMarkup(<ChatMessageText text={text} annotationSource="a1" />);
-  expect(assistant).not.toContain("<strong>");
-  expect(assistant).toContain("**Comment 1**");
+  expect(assistant).toContain("<strong>");
+  expect(assistant).toContain('aria-hidden="true" data-message-syntax="true">**</span>');
+  expect(assistant.replace(/<[^>]+>/g, "")).toContain("**Comment 1**");
   const ordinary = renderToStaticMarkup(
     <ChatMessageText text="**Comment 1** (response a1)" annotationFeedback />,
   );
-  expect(ordinary).not.toContain("<strong>");
+  expect(ordinary).toContain("<strong>Comment 1</strong>");
 });
 it("highlights only an exact quote at its original offset, not duplicate or changed text", () => {
   const message = { id: "response-1", role: "assistant" as const, text: "again again" };

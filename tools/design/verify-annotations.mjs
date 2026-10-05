@@ -31,6 +31,11 @@ const messages = [
     role: "assistant",
     text: "See https://example.com/layout for the reference. Keep the workspace list. Keep the workspace list.",
   },
+  {
+    id: "a3",
+    role: "assistant",
+    text: "Before **[Open the app → http://100.71.229.1:41227](http://100.71.229.1:41227)** then `main` and [[https://example.com|Docs]].",
+  },
 ];
 const snapshot = {
   type: "snapshot",
@@ -244,6 +249,45 @@ for (const engine of [chromium, webkit]) {
         0,
       );
       assert.equal(await action.count(), 0, "no permanent annotation entry control");
+      const formattedSource = '[data-annotation-source="a3"]';
+      const formattedText = messages[5].text;
+      assert.equal(await page.locator(formattedSource).textContent(), formattedText);
+      assert.equal(
+        await page.locator(formattedSource).innerText(),
+        "Before Open the app → http://100.71.229.1:41227 then main and Docs.",
+        "Markdown delimiters and destinations are not visible or copied",
+      );
+      assert.equal(await page.locator(`${formattedSource} a`).count(), 2);
+      assert.equal(await page.locator(`${formattedSource} a a`).count(), 0);
+      for (const quote of ["Open the app", "main", "Docs"]) {
+        const start = formattedText.indexOf(quote);
+        await select(formattedSource, start, start + quote.length, touch);
+        await action.waitFor();
+        assert.equal(await page.evaluate(() => window.getSelection().toString()), quote);
+        await openComment();
+        assert.equal(
+          await page
+            .getByRole("dialog", { name: "Comment on passage" })
+            .locator("blockquote")
+            .textContent(),
+          quote,
+          "selection after hidden syntax retains its original source offsets",
+        );
+        await comment.press("Escape");
+      }
+      const acrossStart = formattedText.indexOf("Open the app");
+      const acrossEnd = formattedText.indexOf("main") + 4;
+      await select(formattedSource, acrossStart, acrossEnd, touch);
+      await openComment();
+      assert.equal(
+        await page
+          .getByRole("dialog", { name: "Comment on passage" })
+          .locator("blockquote")
+          .textContent(),
+        formattedText.slice(acrossStart, acrossEnd),
+        "cross-format annotations keep the original Markdown quote",
+      );
+      await comment.press("Escape");
       if (touch) {
         // iPad native selection handles need not emit any pointer events.
         await select(source, 0, 30, null);
