@@ -16,6 +16,7 @@ const mocks = vi.hoisted(() => ({
   boardPrompt: vi.fn(),
   upload: vi.fn(),
   skills: vi.fn(),
+  output: vi.fn(),
 }));
 vi.mock("../whiteboard/boardApi", () => ({ boardApi: { prompt: mocks.boardPrompt } }));
 vi.mock("./useLiveChat", () => ({ useLiveChat: () => mocks.live }));
@@ -26,16 +27,16 @@ vi.mock("../../shared/api/apiClient", () => ({
   chatCommand: mocks.command,
   uploadImage: mocks.upload,
   getAgentSkills: mocks.skills,
-  getAgentOutput: vi.fn(),
+  getAgentOutput: mocks.output,
   sendAgentKey: vi.fn(),
 }));
 let renderer: ReactTestRenderer;
 let client: QueryClient;
 const agent = { agent: "pi", pane_id: "w1:p1", name: "test", agent_status: "idle" } as Agent;
-function render() {
+function render(currentAgent = agent) {
   return (
     <QueryClientProvider client={client}>
-      <AgentConsole agent={agent} onBack={() => {}} />
+      <AgentConsole agent={currentAgent} onBack={() => {}} />
     </QueryClientProvider>
   );
 }
@@ -96,6 +97,16 @@ beforeEach(async () => {
     ],
     truncated: false,
   });
+  mocks.output.mockReset().mockImplementation(async (_pane, source) => ({
+    pane_id: agent.pane_id,
+    tab_id: "w1:t1",
+    workspace_id: "w1",
+    revision: 1,
+    format: "text",
+    source,
+    text: source === "visible" ? "Current screen" : "Older terminal history",
+    truncated: false,
+  }));
   client = new QueryClient({
     defaultOptions: { queries: { retry: false }, mutations: { retry: false } },
   });
@@ -108,6 +119,46 @@ afterEach(async () => {
   client.clear();
   vi.unstubAllGlobals();
 });
+it("shows the live terminal by default and keeps loaded history when the agent starts working", async () => {
+  await act(async () =>
+    renderer.root.findByProps({ "aria-label": "Switch to Terminal view" }).props.onClick(),
+  );
+  await flush();
+  expect(mocks.output.mock.calls[0].slice(0, 2)).toEqual([agent.pane_id, "visible"]);
+  const historyButton = () =>
+    renderer.root
+      .findAllByType("button")
+      .find(
+        (button) =>
+          button.children.includes("Load history") || button.children.includes("Refresh history"),
+      )!;
+  expect(historyButton().props.disabled).toBe(false);
+  await act(async () => historyButton().props.onClick());
+  await flush();
+  expect(renderer.root.findByType("pre").children).toEqual(["Older terminal history"]);
+  await act(async () => renderer.update(render({ ...agent, agent_status: "working" })));
+  expect(historyButton().props.disabled).toBe(true);
+  expect(renderer.root.findByType("pre").children).toEqual(["Older terminal history"]);
+  expect(mocks.output.mock.calls.map((call) => call[1])).toEqual(["visible", "recent_unwrapped"]);
+});
+
+it.each(["working", "blocked", "unknown"] as const)(
+  "disables history for a %s agent",
+  async (status) => {
+    await act(async () => {
+      renderer.update(render({ ...agent, agent_status: status }));
+      renderer.root.findByProps({ "aria-label": "Switch to Terminal view" }).props.onClick();
+    });
+    await flush();
+    expect(
+      renderer.root
+        .findAllByType("button")
+        .find((button) => button.children.includes("Load history"))!.props.disabled,
+    ).toBe(true);
+    expect(mocks.output.mock.calls.map((call) => call[1])).toEqual(["visible"]);
+  },
+);
+
 it("browses actual skills without sending, preserves text and images, and supports keyboard search", async () => {
   mocks.live.snapshot = { ...mocks.live.snapshot!, capabilities: { skills: true }, busy: true };
   await act(async () => renderer.update(render()));

@@ -7,6 +7,7 @@ import {
   terminalOutputSchema,
   workspaceSchema,
   type KeyName,
+  type TerminalReadSource,
 } from "../../src/shared/api/contracts.js";
 import { HerdrClient, HerdrRequestError } from "./HerdrClient.js";
 
@@ -234,42 +235,39 @@ export class HerdrService {
     await this.client.request("tab.close", { tab_id: tabId }, okResultSchema);
   }
 
-  async readPane(paneId: string, lines: number) {
-    return this.readTerminal("pane.read", { pane_id: paneId }, lines);
+  async readPane(paneId: string, lines: number, source: TerminalReadSource = "visible") {
+    if (source === "recent_unwrapped") {
+      const dashboard = await this.getDashboard();
+      const agent = dashboard.agents.find((candidate) => candidate.pane_id === paneId);
+      if (agent) this.requireIdleHistory(agent.agent_status);
+    }
+    return this.readTerminal("pane.read", { pane_id: paneId }, lines, source);
+  }
+
+  private requireIdleHistory(status: string) {
+    if (status !== "idle" && status !== "done") {
+      throw new HerdrRequestError("agent_busy", "Load history when the agent is idle.");
+    }
   }
 
   private async readTerminal(
     method: "pane.read" | "agent.read",
     target: { pane_id: string } | { target: string },
     lines: number,
+    source: TerminalReadSource,
   ) {
-    const params = { ...target, format: "text", strip_ansi: true };
-    try {
-      const result = await this.client.request(
-        method,
-        { ...params, source: "recent_unwrapped", lines },
-        agentReadResultSchema,
-      );
-      return result.read;
-    } catch (error) {
-      // Herdr must scroll to harvest alternate-screen history, which is unsafe
-      // while an agent is active. Keep the console usable with a passive snapshot.
-      // Match this specific refusal, not a generic busy/transport error.
-      if (
-        !(error instanceof HerdrRequestError) ||
-        !error.message.includes(
-          "alternate-screen history can only be captured by scrolling while idle",
-        )
-      ) {
-        throw error;
-      }
-      const result = await this.client.request(
-        method,
-        { ...params, source: "visible" },
-        agentReadResultSchema,
-      );
-      return result.read;
-    }
+    const result = await this.client.request(
+      method,
+      {
+        ...target,
+        format: "text",
+        strip_ansi: true,
+        source,
+        ...(source === "recent_unwrapped" ? { lines } : {}),
+      },
+      agentReadResultSchema,
+    );
+    return result.read;
   }
 
   async sendPaneInput(paneId: string, text: string) {
@@ -289,8 +287,14 @@ export class HerdrService {
     return agent;
   }
 
-  async readAgent(target: string, lines: number) {
-    return this.readTerminal("agent.read", { target }, lines);
+  async readAgent(target: string, lines: number, source: TerminalReadSource = "visible") {
+    if (source === "recent_unwrapped") {
+      const agent = await this.getAgent(target);
+      this.requireIdleHistory(agent.agent_status);
+      // Pin the history read to the checked pane, even if the agent is renamed.
+      return this.readTerminal("pane.read", { pane_id: agent.pane_id }, lines, source);
+    }
+    return this.readTerminal("agent.read", { target }, lines, source);
   }
 
   async sendKey(target: string, key: KeyName) {

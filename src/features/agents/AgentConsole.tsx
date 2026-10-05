@@ -1,20 +1,14 @@
 import a11yStyles from "../../styles/accessibility.module.css";
 import consoleStyles from "./Console.module.css";
-import {
-  useEffect,
-  useLayoutEffect,
-  useRef,
-  useState,
-  type FormEvent,
-  type RefObject,
-} from "react";
-import { useMutation, useQuery } from "@tanstack/react-query";
+import { useEffect, useLayoutEffect, useRef, useState, type FormEvent } from "react";
+import { useMutation } from "@tanstack/react-query";
 import type { Agent, KeyName } from "../../shared/api/contracts";
 import { matchesTarget, targetOf, type Target } from "../../../packages/pi-live-chat/protocol";
 import { getAgentTabLabel, getAgentTarget, getStatusLabel } from "./agentPresentation";
 import { getAgentOutput, sendAgentKey, chatCommand, uploadImage } from "../../shared/api/apiClient";
 import { useLiveChat } from "./useLiveChat";
 import { ChatTranscript } from "./ChatTranscript";
+import { TerminalOutput } from "./TerminalOutput";
 import { useChatAnnotations } from "./useChatAnnotations";
 import { AnnotationPopover, AnnotationSelectionAction, AnnotationTray } from "./ChatAnnotations";
 import { annotationPrompt } from "./annotations";
@@ -79,7 +73,6 @@ export function AgentConsole({ agent, onBack }: AgentConsoleProps) {
   const [view, setView] = useState<AgentView>("chat");
   const [showThinking, setShowThinking] = useState(initialShowThinking);
   const outputRef = useRef<HTMLElement>(null);
-  const shouldFollowRef = useRef(true);
   const live = useLiveChat(agent.pane_id, view === "chat", agent.agent_session?.value);
   const snapshot = live.snapshot;
   const sendLock = useRef(false);
@@ -122,12 +115,6 @@ export function AgentConsole({ agent, onBack }: AgentConsoleProps) {
     // the board. Unmount then aborts in-flight work and retains the old draft.
     setBoardTarget(null);
   }
-  const outputQuery = useQuery({
-    queryKey: ["agent-output", target],
-    queryFn: () => getAgentOutput(target),
-    enabled: view === "terminal",
-    refetchInterval: view === "terminal" ? 1000 : false,
-  });
   const send = useMutation({
     mutationFn: async (draft: OutgoingDraft) => {
       if (draft.board) {
@@ -220,14 +207,6 @@ export function AgentConsole({ agent, onBack }: AgentConsoleProps) {
       for (const url of urls) URL.revokeObjectURL(url);
     };
   }, []);
-  useEffect(() => {
-    if (view === "terminal" && outputRef.current && shouldFollowRef.current)
-      outputRef.current.scrollTop = outputRef.current.scrollHeight;
-  }, [snapshot?.epoch, snapshot?.seq, outputQuery.data?.revision, view, annotations.interacting]);
-  function trackScroll() {
-    const el = outputRef.current;
-    if (el) shouldFollowRef.current = el.scrollHeight - el.scrollTop - el.clientHeight < 48;
-  }
   const composerSending = send.isPending;
   const canForward = Boolean(
     snapshot &&
@@ -385,43 +364,12 @@ export function AgentConsole({ agent, onBack }: AgentConsoleProps) {
         aria-label={view === "chat" ? "Agent conversation" : "Terminal output"}
       >
         {view === "terminal" ? (
-          <>
-            <div className={consoleStyles["output-panel__bar"]}>
-              <span>Agent output</span>
-              <span>ANSI</span>
-            </div>
-            {outputQuery.isPending ? (
-              <div className={consoleStyles["terminal-state"]} aria-busy="true">
-                <StateIcon kind="loading" />
-                <p>Reading agent output…</p>
-              </div>
-            ) : outputQuery.isError ? (
-              <div
-                className={
-                  consoleStyles["terminal-state"] + " " + consoleStyles["terminal-state--error"]
-                }
-                data-testid="terminal-state--error"
-                role="alert"
-              >
-                <StateIcon kind="unavailable" />
-                <p>{outputQuery.error.message}</p>
-              </div>
-            ) : !outputQuery.data.text ? (
-              <div className={consoleStyles["terminal-state"]}>
-                <StateIcon kind="terminal" />
-                <p>No agent output yet.</p>
-              </div>
-            ) : (
-              <pre
-                ref={outputRef as RefObject<HTMLPreElement>}
-                className={consoleStyles["terminal-output"]}
-                tabIndex={0}
-                onScroll={trackScroll}
-              >
-                {outputQuery.data.text}
-              </pre>
-            )}
-          </>
+          <TerminalOutput
+            key={JSON.stringify([agent.pane_id, agent.agent_session?.value])}
+            queryKey={["agent-output", agent.pane_id, agent.agent_session?.value ?? ""]}
+            read={(source, signal) => getAgentOutput(agent.pane_id, source, signal)}
+            canLoadHistory={agent.agent_status === "idle" || agent.agent_status === "done"}
+          />
         ) : live.error && !snapshot ? (
           <div
             className={

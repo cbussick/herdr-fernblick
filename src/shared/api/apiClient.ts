@@ -13,6 +13,7 @@ import {
   type CreateWorkspaceRequest,
   type CreateTabRequest,
   type KeyName,
+  type TerminalReadSource,
 } from "./contracts";
 import {
   ackSchema,
@@ -107,8 +108,15 @@ export async function restartAgent(target: string) {
   return body.agent;
 }
 
-export async function getPaneOutput(paneId: string) {
-  const body = await request(`/api/panes/${encodeURIComponent(paneId)}/output?lines=600`);
+export async function getPaneOutput(
+  paneId: string,
+  source: TerminalReadSource = "visible",
+  signal?: AbortSignal,
+) {
+  const body = await request(
+    `/api/panes/${encodeURIComponent(paneId)}/output?source=${source}&lines=600`,
+    { signal },
+  );
   return terminalOutputSchema.parse(body);
 }
 
@@ -128,8 +136,15 @@ export async function sendPaneKey(paneId: string, key: KeyName) {
   });
 }
 
-export async function getAgentOutput(target: string) {
-  const body = await request(`/api/agents/${encodeURIComponent(target)}/output?lines=600`);
+export async function getAgentOutput(
+  target: string,
+  source: TerminalReadSource = "visible",
+  signal?: AbortSignal,
+) {
+  const body = await request(
+    `/api/agents/${encodeURIComponent(target)}/output?source=${source}&lines=600`,
+    { signal },
+  );
   return terminalOutputSchema.parse(body);
 }
 

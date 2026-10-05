@@ -1,13 +1,14 @@
 import a11yStyles from "../../styles/accessibility.module.css";
 import consoleStyles from "./Console.module.css";
-import { useEffect, useRef, useState, type FormEvent } from "react";
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { useState, type FormEvent } from "react";
+import { useMutation, useQueryClient } from "@tanstack/react-query";
 import type { KeyName, ShellTab } from "../../shared/api/contracts";
 import { getPaneOutput, sendPaneInput, sendPaneKey } from "../../shared/api/apiClient";
 import { CloseTabButton } from "./CloseTabButton";
 import { BackIcon, SendIcon } from "../../shared/ui/Icons";
 import { IconButton, TabKindIcon } from "../../shared/ui";
-import { StateIcon, StateNotice } from "../../shared/ui/StateFeedback";
+import { StateNotice } from "../../shared/ui/StateFeedback";
+import { TerminalOutput } from "./TerminalOutput";
 interface ShellConsoleProps {
   tab: ShellTab;
   onBack: () => void;
@@ -21,13 +22,7 @@ const controls: { key: KeyName; label: string }[] = [
 ];
 export function ShellConsole({ tab, onBack }: ShellConsoleProps) {
   const [command, setCommand] = useState("");
-  const outputRef = useRef<HTMLPreElement>(null);
   const queryClient = useQueryClient();
-  const outputQuery = useQuery({
-    queryKey: ["pane-output", tab.pane_id],
-    queryFn: () => getPaneOutput(tab.pane_id),
-    refetchInterval: 1000,
-  });
   const inputMutation = useMutation({
     mutationFn: (text: string) => sendPaneInput(tab.pane_id, text),
     onSuccess: () => {
@@ -39,10 +34,6 @@ export function ShellConsole({ tab, onBack }: ShellConsoleProps) {
     mutationFn: (key: KeyName) => sendPaneKey(tab.pane_id, key),
     onSuccess: () => void queryClient.invalidateQueries({ queryKey: ["pane-output", tab.pane_id] }),
   });
-  useEffect(() => {
-    const output = outputRef.current;
-    if (output) output.scrollTop = output.scrollHeight;
-  }, [outputQuery.data?.revision]);
   function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     inputMutation.mutate(command);
@@ -76,36 +67,12 @@ export function ShellConsole({ tab, onBack }: ShellConsoleProps) {
         data-testid="output-panel"
         aria-label="Terminal output"
       >
-        <div className={consoleStyles["output-panel__bar"]}>
-          <span>Terminal output</span>
-          <span>ANSI</span>
-        </div>
-        {outputQuery.isPending ? (
-          <div className={consoleStyles["terminal-state"]} aria-busy="true">
-            <StateIcon kind="loading" />
-            <p>Reading terminal…</p>
-          </div>
-        ) : outputQuery.isError ? (
-          <div
-            className={
-              consoleStyles["terminal-state"] + " " + consoleStyles["terminal-state--error"]
-            }
-            data-testid="terminal-state--error"
-            role="alert"
-          >
-            <StateIcon kind="unavailable" />
-            <p>Could not read this tab. {outputQuery.error.message}</p>
-          </div>
-        ) : !outputQuery.data.text ? (
-          <div className={consoleStyles["terminal-state"]}>
-            <StateIcon kind="terminal" />
-            <p>No terminal output yet.</p>
-          </div>
-        ) : (
-          <pre ref={outputRef} className={consoleStyles["terminal-output"]} tabIndex={0}>
-            {outputQuery.data.text}
-          </pre>
-        )}
+        <TerminalOutput
+          key={tab.pane_id}
+          queryKey={["pane-output", tab.pane_id]}
+          read={(source, signal) => getPaneOutput(tab.pane_id, source, signal)}
+          canLoadHistory
+        />
       </section>
       <div className={consoleStyles["key-controls"]} aria-label="Terminal controls">
         {controls.map((control) => (

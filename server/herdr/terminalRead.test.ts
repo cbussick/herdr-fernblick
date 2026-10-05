@@ -3,113 +3,123 @@ import type { z } from "zod";
 import { HerdrRequestError, type HerdrClient } from "./HerdrClient.js";
 import { HerdrService } from "./herdrService.js";
 
-const output = {
+const agent = {
+  agent: "pi",
   pane_id: "w21:p9",
   workspace_id: "w21",
   tab_id: "w21:t9",
+  focused: false,
+  revision: 1,
+  agent_status: "working",
+};
+const output = {
+  pane_id: agent.pane_id,
+  workspace_id: agent.workspace_id,
+  tab_id: agent.tab_id,
   format: "text",
   text: "Agent is working…",
   revision: 1,
   truncated: false,
 };
-
 const historyUnavailable =
   "cannot read 600 lines while w21:p9 is working: its alternate-screen history can only be captured by scrolling while idle. Wait and retry, or use --source visible";
 
-it.each(["agent", "pane"] as const)(
-  "shows visible %s output when alternate-screen history cannot be read while working",
-  async (kind) => {
-    const request = vi.fn(
-      async <T>(_method: string, params: Record<string, unknown>, schema: z.ZodType<T>) => {
-        if (params.source === "recent_unwrapped") {
-          throw new HerdrRequestError("busy", historyUnavailable);
-        }
+function fixture(status: string, shell = false) {
+  const request = vi.fn(
+    async <T>(method: string, params: Record<string, unknown>, schema: z.ZodType<T>) => {
+      const current = { ...agent, agent_status: status };
+      if (method === "agent.get") return schema.parse({ type: "agent_info", agent: current });
+      if (method === "session.snapshot") {
         return schema.parse({
-          type: "pane_read",
-          read: { ...output, source: params.source },
+          type: "session_snapshot",
+          snapshot: { agents: shell ? [] : [current], panes: [], tabs: [], workspaces: [] },
         });
-      },
-    );
-    const service = new HerdrService({ request } as unknown as HerdrClient);
-    const read = () =>
-      kind === "agent" ? service.readAgent("w21:p9", 600) : service.readPane("w21:p9", 600);
+      }
+      if (params.source === "recent_unwrapped" && status === "working")
+        throw new HerdrRequestError("busy", historyUnavailable);
+      return schema.parse({ type: "pane_read", read: { ...output, source: params.source } });
+    },
+  );
+  return { request, service: new HerdrService({ request } as unknown as HerdrClient) };
+}
 
-    await expect(read()).resolves.toMatchObject({
-      text: "Agent is working…",
+it.each(["agent", "pane"] as const)(
+  "reads only the visible %s screen by default, even while working",
+  async (kind) => {
+    const { request, service } = fixture("working");
+    const read =
+      kind === "agent" ? service.readAgent.bind(service) : service.readPane.bind(service);
+    await expect(read(agent.pane_id, 600)).resolves.toMatchObject({
       source: "visible",
+      text: output.text,
     });
-    expect(request).toHaveBeenCalledTimes(2);
-    expect(request.mock.calls[1]).toEqual([
+    expect(request).toHaveBeenCalledExactlyOnceWith(
       `${kind}.read`,
       {
-        [kind === "agent" ? "target" : "pane_id"]: "w21:p9",
+        [kind === "agent" ? "target" : "pane_id"]: agent.pane_id,
         source: "visible",
         format: "text",
         strip_ansi: true,
       },
       expect.anything(),
-    ]);
-  },
-);
-
-it.each(["agent", "pane"] as const)("preserves %s history when available", async (kind) => {
-  const request = vi.fn(
-    async <T>(_method: string, params: Record<string, unknown>, schema: z.ZodType<T>) =>
-      schema.parse({ type: "pane_read", read: { ...output, source: params.source } }),
-  );
-  const service = new HerdrService({ request } as unknown as HerdrClient);
-  const read = () =>
-    kind === "agent" ? service.readAgent("w21:p9", 600) : service.readPane("w21:p9", 600);
-
-  await expect(read()).resolves.toMatchObject({ source: "recent_unwrapped" });
-  expect(request).toHaveBeenCalledTimes(1);
-  expect(request.mock.calls[0][1]).toMatchObject({ source: "recent_unwrapped", lines: 600 });
-});
-
-it.each(["agent", "pane"] as const)(
-  "resumes %s history reads after a visible fallback",
-  async (kind) => {
-    let working = true;
-    const request = vi.fn(
-      async <T>(_method: string, params: Record<string, unknown>, schema: z.ZodType<T>) => {
-        if (working && params.source === "recent_unwrapped") {
-          throw new HerdrRequestError("busy", historyUnavailable);
-        }
-        return schema.parse({ type: "pane_read", read: { ...output, source: params.source } });
-      },
     );
-    const service = new HerdrService({ request } as unknown as HerdrClient);
-    const read = () =>
-      kind === "agent" ? service.readAgent("w21:p9", 600) : service.readPane("w21:p9", 600);
-
-    await expect(read()).resolves.toMatchObject({ source: "visible" });
-    working = false;
-    await expect(read()).resolves.toMatchObject({ source: "recent_unwrapped" });
-    expect(request).toHaveBeenCalledTimes(3);
   },
 );
 
-it.each([
-  new HerdrRequestError("busy", "another read is in progress; retry"),
-  new HerdrRequestError("unavailable", "socket unavailable"),
-  new HerdrRequestError("not_found", "pane not found"),
-  new Error(historyUnavailable),
-])("does not mask unrelated read errors: %s", async (error) => {
-  const request = vi.fn().mockRejectedValue(error);
-  const service = new HerdrService({ request } as unknown as HerdrClient);
-
-  await expect(service.readAgent("w21:p9", 600)).rejects.toBe(error);
-  expect(request).toHaveBeenCalledTimes(1);
+it.each(["idle", "done"])("loads history explicitly when the agent is %s", async (status) => {
+  const { request, service } = fixture(status);
+  await expect(service.readAgent("agent-name", 600, "recent_unwrapped")).resolves.toMatchObject({
+    source: "recent_unwrapped",
+  });
+  expect(request.mock.calls[0][0]).toBe("agent.get");
+  expect(request.mock.calls[1]).toEqual([
+    "pane.read",
+    {
+      pane_id: agent.pane_id,
+      source: "recent_unwrapped",
+      lines: 600,
+      format: "text",
+      strip_ansi: true,
+    },
+    expect.anything(),
+  ]);
 });
 
-it("propagates a failed visible read without retrying again", async () => {
-  const error = new HerdrRequestError("not_found", "pane disappeared");
+it.each(["working", "blocked", "unknown"])(
+  "rejects history reads for a %s agent before attempting to scroll",
+  async (status) => {
+    const { request, service } = fixture(status);
+    await expect(service.readAgent(agent.pane_id, 600, "recent_unwrapped")).rejects.toThrow("idle");
+    await expect(service.readPane(agent.pane_id, 600, "recent_unwrapped")).rejects.toThrow("idle");
+    expect(request.mock.calls.map(([method]) => method)).toEqual(["agent.get", "session.snapshot"]);
+  },
+);
+
+it("loads shell history on demand after checking for an agent in the pane", async () => {
+  const { request, service } = fixture("idle", true);
+  await expect(service.readPane(agent.pane_id, 600, "recent_unwrapped")).resolves.toMatchObject({
+    source: "recent_unwrapped",
+  });
+  expect(request.mock.calls.map(([method]) => method)).toEqual(["session.snapshot", "pane.read"]);
+});
+
+it("surfaces a history race instead of silently substituting the visible screen", async () => {
+  const { request, service } = fixture("idle");
+  const error = new HerdrRequestError("busy", historyUnavailable);
+  request
+    .mockImplementationOnce(async (_method, _params, schema) =>
+      schema.parse({ type: "agent_info", agent: { ...agent, agent_status: "idle" } }),
+    )
+    .mockRejectedValueOnce(error);
+  await expect(service.readAgent(agent.pane_id, 600, "recent_unwrapped")).rejects.toBe(error);
+  expect(request).toHaveBeenCalledTimes(2);
+});
+
+it("does not retry failed visible reads or attempt history", async () => {
   const request = vi
     .fn()
-    .mockRejectedValueOnce(new HerdrRequestError("busy", historyUnavailable))
-    .mockRejectedValueOnce(error);
+    .mockRejectedValue(new HerdrRequestError("unavailable", "socket unavailable"));
   const service = new HerdrService({ request } as unknown as HerdrClient);
-
-  await expect(service.readPane("w21:p9", 600)).rejects.toBe(error);
-  expect(request).toHaveBeenCalledTimes(2);
+  await expect(service.readAgent(agent.pane_id, 600)).rejects.toThrow("socket unavailable");
+  expect(request).toHaveBeenCalledTimes(1);
 });

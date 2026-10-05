@@ -138,6 +138,40 @@
   text-transform: none;
 }
 
+.terminal-header {
+  min-width: 0;
+}
+
+.terminal-actions {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: var(--space-2);
+}
+
+.terminal-actions button {
+  min-height: 2.75rem;
+  padding: var(--space-2) var(--space-3);
+  color: var(--color-accent);
+  background: var(--color-accent-soft);
+  border: 1px solid var(--color-border-strong);
+  border-radius: var(--radius-sm);
+  font: inherit;
+}
+
+.terminal-actions button:disabled {
+  cursor: not-allowed;
+  opacity: 0.5;
+}
+
+.terminal-hint {
+  margin: 0;
+  padding: var(--space-2) var(--space-3);
+  color: var(--color-terminal-muted);
+  font-size: 0.6875rem;
+  border-bottom: 1px solid var(--color-border);
+}
+
 .terminal-output,
 .terminal-state {
   min-height: 0;
