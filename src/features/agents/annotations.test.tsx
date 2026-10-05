@@ -187,6 +187,28 @@ describe("annotation draft ownership", () => {
     await act(async () => renderer.unmount());
     vi.unstubAllGlobals();
   });
+  it("requires an existing comment to start general feedback and hides the action after clearing", async () => {
+    expect(api!.canAddGeneral).toBe(false);
+    await act(async () => api.begin(null, anchor));
+    expect(api!.editor).toBe(null);
+    await add();
+    expect(api!.canAddGeneral).toBe(true);
+    await act(async () => api.clear());
+    expect(api!.canAddGeneral).toBe(false);
+    await act(async () => api.begin(null, anchor));
+    expect(api!.editor).toBe(null);
+  });
+  it("closes a new general editor if its last existing comment is removed", async () => {
+    await add();
+    const id = api!.entries[0].id;
+    await act(async () => api.begin(null, anchor));
+    await act(async () => api.setComment("General feedback"));
+    await act(async () => api.remove(id));
+    expect(api!.editor).toBe(null);
+    expect(api!.canAddGeneral).toBe(false);
+    await act(async () => api.save());
+    expect(api!.entries).toEqual([]);
+  });
   it("adds, edits and removes comments without any transport side effect", async () => {
     await add();
     expect(api!.entries).toHaveLength(1);
@@ -201,20 +223,20 @@ describe("annotation draft ownership", () => {
     expect(api!.entries).toEqual([]);
   });
   it("adds, edits and deletes general feedback alongside passage comments", async () => {
+    await add("Passage feedback");
     await act(async () => api.begin(null, anchor));
     expect(api!.editor?.source).toBe(null);
     await act(async () => api.setComment("General feedback"));
     await act(async () => api.save());
-    const general = api!.entries[0];
+    const general = api!.entries[1];
     expect(general).toEqual({ id: general.id, comment: "General feedback" });
     expect(api!.owner).toEqual({ runtime: "runtime", sessionId: "session", epoch: "epoch" });
-    await add("Passage feedback");
     await act(async () => api.edit(general, anchor));
     expect(api!.editor?.source).toBe(null);
     await act(async () => api.setComment("Updated general feedback"));
     await act(async () => api.save());
-    expect(api!.entries[0]).toEqual({ id: general.id, comment: "Updated general feedback" });
-    await act(async () => api.edit(api.entries[0], anchor));
+    expect(api!.entries[1]).toEqual({ id: general.id, comment: "Updated general feedback" });
+    await act(async () => api.edit(api.entries[1], anchor));
     await act(async () => api.remove(general.id));
     expect(api!.editor).toBe(null);
     expect(api!.entries.map((value) => value.comment)).toEqual(["Passage feedback"]);
@@ -222,12 +244,14 @@ describe("annotation draft ownership", () => {
   it.each([false, true])(
     "rejects blank and oversized comments without losing the editor (general: %s)",
     async (general) => {
+      if (general) await add();
+      const saved = api!.entries;
       await add("   ", general);
-      expect(api!.entries).toEqual([]);
+      expect(api!.entries).toEqual(saved);
       await act(async () => api.setComment("x".repeat(32_000)));
       await act(async () => api.save());
       expect(api!.error).toContain("32,000");
-      expect(api!.entries).toEqual([]);
+      expect(api!.entries).toEqual(saved);
       expect(api!.editor?.comment).toHaveLength(32_000);
     },
   );
@@ -259,13 +283,15 @@ describe("annotation draft ownership", () => {
   it.each([false, true])(
     "does not save feedback captured before a conversation change (general: %s)",
     async (general) => {
+      if (general) await add();
+      const saved = api!.entries;
       await act(async () => api.begin(general ? null : entry, anchor));
       await act(async () => api.setComment("Old response"));
       snapshot = { ...snapshot!, epoch: "new" };
       await act(async () => renderer.update(<Harness />));
       await act(async () => api.save());
       expect(api!.editorStale).toBe(true);
-      expect(api!.entries).toEqual([]);
+      expect(api!.entries).toEqual(saved);
     },
   );
   it("locks mutations during forwarding and clears only the acknowledged batch", async () => {

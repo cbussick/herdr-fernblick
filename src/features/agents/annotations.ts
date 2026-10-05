@@ -9,7 +9,8 @@ export type AnnotationSource = {
 // General feedback has no fabricated response ID, quote, or character offsets.
 type GeneralSource = { messageId?: never; quote?: never; start?: never; end?: never };
 export type Annotation = (AnnotationSource | GeneralSource) & { id: string; comment: string };
-export type TextHighlight = { start: number; end: number };
+export type TextHighlight = { start: number; end: number; id?: string };
+export type AnnotationEditHandler = (id: string, anchor: () => DOMRect) => void;
 
 export const annotationPromptIntro =
   "Please address these comments on your earlier responses. Each quoted passage is context; the comment below it is my feedback.";

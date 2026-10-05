@@ -52,7 +52,7 @@ export function useChatAnnotations(
       : null;
 
   function begin(source: AnnotationSource | null, anchor: () => DOMRect) {
-    if (!visible || !snapshot || stale || sending || editor) return;
+    if (!visible || !snapshot || stale || sending || editor || (!source && !entries.length)) return;
     setCandidate(null);
     setEditor({ source, target: targetOf(snapshot), comment: "", anchor });
     setError("");
@@ -175,7 +175,15 @@ export function useChatAnnotations(
     transcript.current?.focus({ preventScroll: true });
   }
   function save() {
-    if (!editor || !editor.comment.trim() || editorStale || stale || sending) return;
+    if (
+      !editor ||
+      !editor.comment.trim() ||
+      editorStale ||
+      stale ||
+      sending ||
+      (!editor.source && !entries.length)
+    )
+      return;
     const content = {
       id: editor.id ?? `annotation-${++nextId.current}`,
       comment: editor.comment.trim(),
@@ -210,7 +218,11 @@ export function useChatAnnotations(
   function remove(id: string) {
     if (sending) return;
     setEntries((current) => current.filter((entry) => entry.id !== id));
-    if (editor?.id === id) close();
+    if (
+      editor?.id === id ||
+      (editor && !editor.source && entries.length === 1 && entries[0].id === id)
+    )
+      close();
   }
   function acknowledge(ids: string[]) {
     setEntries((current) => current.filter((entry) => !ids.includes(entry.id)));
@@ -227,6 +239,7 @@ export function useChatAnnotations(
     notice,
     interacting: Boolean(selection || editor),
     canBegin: Boolean(visible && snapshot && !stale && !sending && !editor),
+    canAddGeneral: Boolean(visible && snapshot && entries.length && !stale && !sending && !editor),
     begin,
     openSelection,
     close,

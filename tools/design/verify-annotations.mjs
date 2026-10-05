@@ -251,28 +251,8 @@ for (const engine of [chromium, webkit]) {
       assert.equal(await action.count(), 0, "passage comments still require a selection");
       const generalAction = page.getByRole("button", { name: "Add general comment", exact: true });
       const activate = (locator) => (touch ? locator.tap() : locator.click());
-      await activate(generalAction);
-      assert.equal(
-        await page
-          .getByRole("dialog", { name: "General comment", exact: true })
-          .locator("blockquote")
-          .count(),
-        0,
-      );
-      await comment.fill("   ");
-      await comment.press("Enter");
-      assert.equal(await comment.count(), 1, "blank general comments are rejected");
-      await save("General feedback to revise");
-      await activate(tray.getByRole("button", { name: /Edit latest comment:/ }));
-      await save("Revised general feedback");
-      await activate(tray.getByRole("button", { name: /Edit latest comment:/ }));
-      await page.getByRole("button", { name: "Delete comment", exact: true }).click();
-      await tray.waitFor({ state: "hidden" });
-      assert.equal(
-        sends.length,
-        0,
-        "adding, editing and deleting general feedback never forwards it",
-      );
+      assert.equal(await generalAction.count(), 0, "general feedback cannot start a batch");
+      assert.equal(await tray.count(), 0);
       const formattedSource = '[data-annotation-source="a3"]';
       const formattedText = messages[5].text;
       assert.equal(await page.locator(formattedSource).textContent(), formattedText);
@@ -312,6 +292,33 @@ for (const engine of [chromium, webkit]) {
         "cross-format annotations keep the original Markdown quote",
       );
       await comment.press("Escape");
+      await select(formattedSource, acrossStart, acrossEnd, touch);
+      await openComment();
+      await save("Formatted passage feedback.");
+      const linkedHighlight = page.locator(`${formattedSource} a mark`).first();
+      const pageCount = browser
+        .contexts()
+        .reduce((count, context) => count + context.pages().length, 0);
+      await activate(linkedHighlight);
+      assert.equal(await comment.inputValue(), "Formatted passage feedback.");
+      assert.equal(
+        await page
+          .getByRole("dialog", { name: "Edit comment", exact: true })
+          .locator("blockquote")
+          .textContent(),
+        formattedText.slice(acrossStart, acrossEnd),
+      );
+      assert.equal(
+        browser.contexts().reduce((count, context) => count + context.pages().length, 0),
+        pageCount,
+        "editing a highlighted link does not navigate",
+      );
+      await page.getByRole("button", { name: "Delete comment", exact: true }).click();
+      assert.equal(
+        await generalAction.count(),
+        0,
+        "removing the last comment hides general feedback",
+      );
       if (touch) {
         // iPad native selection handles need not emit any pointer events.
         await select(source, 0, 30, null);
@@ -469,12 +476,44 @@ for (const engine of [chromium, webkit]) {
       await comment.waitFor({ state: "hidden" });
       assert.ok(await page.locator(`${source} mark`).count());
       assert.equal(await action.count(), 0, "saving dismisses the contextual action");
+      assert.equal(await generalAction.count(), 1);
+      assert.equal(await tray.getByRole("button", { name: /Edit latest comment:/ }).count(), 0);
+      assert.equal(
+        await tray
+          .getByText("Keep the status visible on smaller screens, too.", { exact: true })
+          .count(),
+        0,
+        "collapsed tray has no comment preview",
+      );
+      const highlight = page.locator(`${source} mark`).first();
+      await activate(highlight);
+      assert.equal(await comment.inputValue(), "Keep the status visible on smaller screens, too.");
+      await save("Keep the status visible on every screen.");
+      await highlight.focus();
+      await highlight.press("Enter");
+      assert.equal(await comment.inputValue(), "Keep the status visible on every screen.");
+      await comment.press("Escape");
       await page.getByRole("button", { name: "Switch to Terminal view" }).click();
       await page.getByRole("button", { name: "Switch to Chat view" }).click();
       assert.equal(await tray.count(), 1, "terminal switch preserves comments");
       await select('[data-annotation-source="a2"]', 4, 44);
       await openComment();
       await save("Use the new layout reference.");
+      // Selection over a saved highlight remains passive, and overlapping
+      // highlights edit the latest matching comment without losing the older one.
+      await select('[data-annotation-source="a2"]', 8, 25, touch);
+      await action.waitFor();
+      assert.equal(await comment.count(), 0);
+      await openComment();
+      await save("Overlapping feedback.");
+      await activate(
+        page
+          .locator('[data-annotation-source="a2"] mark')
+          .filter({ hasText: messages[4].text.slice(8, 25) })
+          .first(),
+      );
+      assert.equal(await comment.inputValue(), "Overlapping feedback.");
+      await page.getByRole("button", { name: "Delete comment", exact: true }).click();
       await activate(generalAction);
       await save("Also consider keyboard accessibility.");
       await tray.getByRole("button", { name: /3 pending comments/ }).click();
@@ -571,6 +610,11 @@ for (const engine of [chromium, webkit]) {
       );
       assert.equal(await generalAction.isDisabled(), true);
       assert.equal(
+        await page.locator(`${source} mark[role="button"]`).count(),
+        0,
+        "highlight editing is locked during forwarding",
+      );
+      assert.equal(
         await tray.getByRole("button", { name: /Edit text of comment 1:/ }).isDisabled(),
         true,
       );
@@ -638,9 +682,16 @@ for (const engine of [chromium, webkit]) {
       assert.equal(await generalAction.isDisabled(), true);
       await tray.getByRole("button", { name: "Discard old comments" }).click();
       await tray.waitFor({ state: "hidden" });
-      // A general-only batch needs no assistant text selection or synthetic anchor.
+      assert.equal(await generalAction.count(), 0);
+      // Existing general feedback remains sendable if its passage comment is
+      // removed, but adding it always requires a batch to have been started.
+      await select(source, 0, 30);
+      await openComment();
+      await save("Temporary passage comment.");
       await activate(generalAction);
       await save("General feedback only.");
+      await activate(page.locator(`${source} mark`).first());
+      await page.getByRole("button", { name: "Delete comment", exact: true }).click();
       await tray.getByRole("button", { name: "Send comment", exact: true }).click();
       await tray.waitFor({ state: "hidden" });
       assert.equal(sends.length, 3);

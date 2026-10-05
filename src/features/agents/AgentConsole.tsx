@@ -403,6 +403,14 @@ export function AgentConsole({ agent, onBack }: AgentConsoleProps) {
             transcriptRef={outputRef}
             annotations={annotations.stale ? [] : annotations.entries}
             interacting={annotations.interacting}
+            onAnnotationEdit={
+              annotations.canBegin
+                ? (id, anchor) => {
+                    const entry = annotations.entries.find((value) => value.id === id);
+                    if (entry) annotations.edit(entry, anchor);
+                  }
+                : undefined
+            }
             onImageOpenChange={setChatImageOpen}
             before={
               <>
@@ -438,7 +446,7 @@ export function AgentConsole({ agent, onBack }: AgentConsoleProps) {
         <AnnotationTray
           annotations={annotations}
           canSend={canSendAnnotations}
-          canAdd={!live.error && annotations.canBegin}
+          canAdd={!live.error && annotations.canAddGeneral}
           sending={composerSending && Boolean(send.variables?.annotationIds)}
           locked={composerSending}
           blockedReason={

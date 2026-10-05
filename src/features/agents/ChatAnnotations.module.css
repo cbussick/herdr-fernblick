@@ -28,6 +28,15 @@
   border-bottom: 2px solid #d5ad28;
 }
 
+.highlight[role="button"] {
+  cursor: pointer;
+}
+
+.highlight[role="button"]:focus-visible {
+  outline: 2px solid var(--color-accent);
+  outline-offset: 2px;
+}
+
 .tray {
   width: 100%;
   max-width: 50rem;
@@ -118,28 +127,6 @@
   background: var(--color-accent-hover);
 }
 
-.preview {
-  display: -webkit-box;
-  width: 100%;
-  text-align: left;
-  background: transparent;
-  border: 0;
-  padding: 0 var(--space-3);
-  margin-bottom: var(--space-3);
-  overflow: hidden;
-  color: var(--color-text-secondary);
-  font-size: 0.75rem;
-  line-height: 1.6;
-  overflow-wrap: anywhere;
-  -webkit-line-clamp: 2;
-  -webkit-box-orient: vertical;
-}
-
-.preview span {
-  color: var(--color-text);
-  font-weight: 650;
-}
-
 .list {
   max-height: min(28dvh, 18rem);
   padding: 0 var(--space-3);
@@ -198,8 +185,7 @@
   border-radius: var(--radius-sm);
 }
 
-.comment-text:hover:not(:disabled),
-.preview:hover:not(:disabled) {
+.comment-text:hover:not(:disabled) {
   background: var(--color-surface-subtle);
 }
 

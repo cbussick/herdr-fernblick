@@ -101,9 +101,8 @@ export function AnnotationTray({
     </button>
   );
   const editDisabled = locked || annotations.stale || Boolean(annotations.editor);
-  if (!annotations.entries.length) return <div className={styles.tray}>{generalAction}</div>;
+  if (!annotations.entries.length) return null;
   const count = annotations.entries.length;
-  const latest = annotations.entries.at(-1)!;
   return (
     <section className={styles.tray} aria-label="Pending annotations" aria-busy={sending}>
       <div className={styles["tray-surface"]}>
@@ -172,21 +171,7 @@ export function AnnotationTray({
               </li>
             ))}
           </ol>
-        ) : (
-          <button
-            type="button"
-            className={styles.preview}
-            aria-label={`Edit latest comment: ${latest.comment}`}
-            disabled={editDisabled}
-            onClick={(event) => {
-              const button = event.currentTarget;
-              annotations.edit(latest, () => button.getBoundingClientRect());
-            }}
-          >
-            {latest.quote !== undefined ? `“${latest.quote}”` : "General comment"}{" "}
-            <span>{latest.comment}</span>
-          </button>
-        )}
+        ) : null}
         {generalAction}
         {annotations.stale ? (
           <div className={styles.warning} role="alert">

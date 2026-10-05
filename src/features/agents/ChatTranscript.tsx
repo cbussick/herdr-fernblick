@@ -12,7 +12,7 @@ import type { ChatMessage } from "../../../packages/pi-live-chat/protocol";
 import { CloseIcon, ImageIcon, LightbulbIcon } from "../../shared/ui/Icons";
 import { StateIcon, StateNotice } from "../../shared/ui/StateFeedback";
 import { ChatMessageText } from "./ChatMessageText";
-import { annotationHighlights, type Annotation } from "./annotations";
+import { annotationHighlights, type Annotation, type AnnotationEditHandler } from "./annotations";
 import styles from "./Console.module.css";
 import a11yStyles from "../../styles/accessibility.module.css";
 
@@ -27,6 +27,7 @@ export interface ChatTranscriptProps {
   after?: ReactNode;
   transcriptRef?: RefObject<HTMLElement | null>;
   annotations?: Annotation[];
+  onAnnotationEdit?: AnnotationEditHandler;
   interacting?: boolean;
   onImageOpenChange?: (open: boolean) => void;
 }
@@ -62,6 +63,7 @@ export function ChatTranscript({
   after,
   transcriptRef,
   annotations = [],
+  onAnnotationEdit,
   interacting = false,
   onImageOpenChange,
 }: ChatTranscriptProps) {
@@ -178,6 +180,7 @@ export function ChatTranscript({
                     annotationSource={message.role === "assistant" ? message.id : undefined}
                     annotationFeedback={message.role === "user"}
                     highlights={annotationHighlights(message, annotations)}
+                    onAnnotationEdit={onAnnotationEdit}
                   />
                 ) : null}
                 {message.attachments?.length ? (

@@ -5,6 +5,7 @@ import {
   annotationGeneralPromptIntro,
   annotationPromptIntro,
   type TextHighlight,
+  type AnnotationEditHandler,
 } from "./annotations";
 import annotationStyles from "./ChatAnnotations.module.css";
 import styles from "./ChatMessageText.module.css";
@@ -29,11 +30,13 @@ export function ChatMessageText({
   annotationSource,
   annotationFeedback = false,
   highlights = [],
+  onAnnotationEdit,
 }: {
   text: string;
   annotationSource?: string;
   annotationFeedback?: boolean;
   highlights?: TextHighlight[];
+  onAnnotationEdit?: AnnotationEditHandler;
 }) {
   const emphasizeLabels =
     annotationFeedback &&
@@ -67,12 +70,48 @@ export function ChatMessageText({
     ].sort((a, b) => a - b);
     return boundaries.slice(0, -1).map((point, i) => {
       const segment = text.slice(point, boundaries[i + 1]);
-      return highlights.some((range) => range.start <= point && range.end > point) ? (
-        <mark key={point} className={annotationStyles.highlight}>
+      // On overlapping passages, the latest pending comment wins the shared
+      // segment; the full pending list still exposes every comment.
+      const highlight = highlights.findLast((range) => range.start <= point && range.end > point);
+      if (!highlight)
+        return (
+          <Fragment key={point}>{emphasizeLabels ? annotationLabels(segment) : segment}</Fragment>
+        );
+      const id = highlight.id;
+      const editable = Boolean(id && onAnnotationEdit);
+      return (
+        <mark
+          key={point}
+          className={annotationStyles.highlight}
+          data-annotation-id={id}
+          role={editable ? "button" : undefined}
+          tabIndex={editable ? 0 : undefined}
+          aria-label={editable ? "Edit comment on highlighted text" : undefined}
+          onClick={(event) => {
+            // Dragging or long-pressing a saved passage must keep native
+            // selection/copying intact, rather than opening its editor.
+            if (!id || !onAnnotationEdit || window.getSelection()?.isCollapsed === false) return;
+            event.preventDefault();
+            event.stopPropagation();
+            const element = event.currentTarget;
+            onAnnotationEdit(id, () => element.getBoundingClientRect());
+          }}
+          onKeyDown={(event) => {
+            if (
+              !id ||
+              !onAnnotationEdit ||
+              event.nativeEvent.isComposing ||
+              (event.key !== "Enter" && event.key !== " ")
+            )
+              return;
+            event.preventDefault();
+            event.stopPropagation();
+            const element = event.currentTarget;
+            onAnnotationEdit(id, () => element.getBoundingClientRect());
+          }}
+        >
           {segment}
         </mark>
-      ) : (
-        <Fragment key={point}>{emphasizeLabels ? annotationLabels(segment) : segment}</Fragment>
       );
     });
   }
