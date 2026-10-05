@@ -7,6 +7,7 @@ import {
   terminalOutputSchema,
   workspaceSchema,
   type KeyName,
+  type TerminalReadSource,
 } from "../../src/shared/api/contracts.js";
 import { HerdrClient, HerdrRequestError } from "./HerdrClient.js";
 
@@ -234,15 +235,35 @@ export class HerdrService {
     await this.client.request("tab.close", { tab_id: tabId }, okResultSchema);
   }
 
-  async readPane(paneId: string, lines: number) {
+  async readPane(paneId: string, lines: number, source: TerminalReadSource = "visible") {
+    if (source === "recent_unwrapped") {
+      const dashboard = await this.getDashboard();
+      const agent = dashboard.agents.find((candidate) => candidate.pane_id === paneId);
+      if (agent) this.requireIdleHistory(agent.agent_status);
+    }
+    return this.readTerminal("pane.read", { pane_id: paneId }, lines, source);
+  }
+
+  private requireIdleHistory(status: string) {
+    if (status !== "idle" && status !== "done") {
+      throw new HerdrRequestError("agent_busy", "Load history when the agent is idle.");
+    }
+  }
+
+  private async readTerminal(
+    method: "pane.read" | "agent.read",
+    target: { pane_id: string } | { target: string },
+    lines: number,
+    source: TerminalReadSource,
+  ) {
     const result = await this.client.request(
-      "pane.read",
+      method,
       {
-        pane_id: paneId,
-        source: "recent_unwrapped",
+        ...target,
         format: "text",
-        lines,
         strip_ansi: true,
+        source,
+        ...(source === "recent_unwrapped" ? { lines } : {}),
       },
       agentReadResultSchema,
     );
@@ -266,19 +287,14 @@ export class HerdrService {
     return agent;
   }
 
-  async readAgent(target: string, lines: number) {
-    const result = await this.client.request(
-      "agent.read",
-      {
-        target,
-        source: "recent_unwrapped",
-        format: "text",
-        lines,
-        strip_ansi: true,
-      },
-      agentReadResultSchema,
-    );
-    return result.read;
+  async readAgent(target: string, lines: number, source: TerminalReadSource = "visible") {
+    if (source === "recent_unwrapped") {
+      const agent = await this.getAgent(target);
+      this.requireIdleHistory(agent.agent_status);
+      // Pin the history read to the checked pane, even if the agent is renamed.
+      return this.readTerminal("pane.read", { pane_id: agent.pane_id }, lines, source);
+    }
+    return this.readTerminal("agent.read", { target }, lines, source);
   }
 
   async sendKey(target: string, key: KeyName) {

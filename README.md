@@ -107,7 +107,8 @@ No Pi-native queue was added.
 ## Available controls
 
 - List detected agents and their Herdr status
-- Read the latest 600 lines as plain terminal text
+- Show the current terminal screen as plain text, refreshed every second
+- Load up to 600 lines of terminal history on demand when the agent is idle. History is a scrollable snapshot; **Return to live** resumes the current screen. Shell history can also be loaded, subject to Herdr's safe-read restrictions.
 - Stream ordinary Pi model chat, thinking and tool output; send idle text prompts and request Stop
 - Send terminal keys only from Terminal view
 - Select assistant text in Chat, tap **Comment**, then send the pending comments directly without changing the ordinary draft. No annotation mode is required. [Interaction and limitations](docs/annotation-mode.md).

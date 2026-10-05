@@ -118,6 +118,9 @@ export const paneInputRequestSchema = z.object({
   text: z.string().trim().min(1).max(32_000),
 });
 
+export const terminalReadSourceSchema = z.enum(["visible", "recent_unwrapped"]);
+export type TerminalReadSource = z.infer<typeof terminalReadSourceSchema>;
+
 export const terminalOutputSchema = z.object({
   format: z.string(),
   pane_id: z.string(),

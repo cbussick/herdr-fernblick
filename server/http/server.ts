@@ -10,6 +10,7 @@ import {
   paneInputRequestSchema,
   renameAgentRequestSchema,
   renameTabRequestSchema,
+  terminalReadSourceSchema,
 } from "../../src/shared/api/contracts.js";
 import { HerdrRequestError } from "../herdr/HerdrClient.js";
 import {
@@ -240,7 +241,8 @@ async function handleApi(
   const paneRoute = getPaneRoute(url.pathname);
   if (paneRoute && request.method === "GET" && paneRoute.action === "output") {
     const lines = linesSchema.parse(url.searchParams.get("lines") ?? undefined);
-    sendJson(response, 200, await service.readPane(paneRoute.paneId, lines));
+    const source = terminalReadSourceSchema.parse(url.searchParams.get("source") ?? "visible");
+    sendJson(response, 200, await service.readPane(paneRoute.paneId, lines, source));
     return true;
   }
   if (paneRoute && request.method === "POST" && paneRoute.action === "input") {
@@ -279,7 +281,8 @@ async function handleApi(
 
   if (request.method === "GET" && route.action === "output") {
     const lines = linesSchema.parse(url.searchParams.get("lines") ?? undefined);
-    sendJson(response, 200, await service.readAgent(route.target, lines));
+    const source = terminalReadSourceSchema.parse(url.searchParams.get("source") ?? "visible");
+    sendJson(response, 200, await service.readAgent(route.target, lines, source));
     return true;
   }
 
@@ -387,7 +390,7 @@ export function createHttpServer(
         return;
       }
       if (error instanceof HerdrRequestError) {
-        const status = error.code === "unavailable" ? 503 : 502;
+        const status = error.code === "unavailable" ? 503 : error.code === "agent_busy" ? 409 : 502;
         sendJson(response, status, { error: error.message, code: error.code });
         return;
       }

@@ -1,6 +1,6 @@
 import { randomUUID } from "node:crypto";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
-import { chatCommand, getAgentSkills, ApiError } from "./apiClient";
+import { chatCommand, getAgentSkills, getAgentOutput, getPaneOutput, ApiError } from "./apiClient";
 const target = { runtime: randomUUID(), epoch: randomUUID(), sessionId: "s" };
 const fetchMock = vi.fn();
 let controller: AbortController;
@@ -14,6 +14,28 @@ afterEach(() => {
   vi.restoreAllMocks();
   vi.unstubAllGlobals();
 });
+it.each([getAgentOutput, getPaneOutput])(
+  "requests visible output by default and history explicitly",
+  async (getOutput) => {
+    const output = {
+      pane_id: "w1:p1",
+      tab_id: "w1:t1",
+      workspace_id: "w1",
+      revision: 1,
+      source: "visible",
+      format: "text",
+      text: "screen",
+      truncated: false,
+    };
+    fetchMock.mockImplementation(async () => Response.json(output));
+    await getOutput("w1:p1");
+    expect(fetchMock.mock.calls[0][0]).toContain("/w1%3Ap1/output?source=visible&lines=600");
+    await getOutput("w1:p1", "recent_unwrapped", controller.signal);
+    expect(fetchMock.mock.calls[1][0]).toContain("source=recent_unwrapped&lines=600");
+    expect(fetchMock.mock.calls[1][1].signal).toBe(controller.signal);
+  },
+);
+
 it("accepts only a skills catalogue for the requested session identity", async () => {
   const reply = { type: "skills", id: randomUUID(), target, skills: [], truncated: false };
   fetchMock.mockResolvedValueOnce(Response.json(reply));

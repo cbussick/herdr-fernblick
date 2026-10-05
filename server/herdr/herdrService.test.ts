@@ -14,7 +14,7 @@ const agent = {
   workspace_id: "w1",
 };
 
-it("uses the raw protocol spelling for recent unwrapped output", async () => {
+it("uses passive visible output by default", async () => {
   const request = vi.fn(
     async <T>(_method: string, params: Record<string, unknown>, schema: z.ZodType<T>) =>
       schema.parse({
@@ -37,7 +37,7 @@ it("uses the raw protocol spelling for recent unwrapped output", async () => {
 
   expect(request).toHaveBeenCalledWith(
     "agent.read",
-    expect.objectContaining({ source: "recent_unwrapped" }),
+    expect.objectContaining({ source: "visible" }),
     expect.anything(),
   );
 });
