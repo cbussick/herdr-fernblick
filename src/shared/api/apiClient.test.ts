@@ -1,6 +1,13 @@
 import { randomUUID } from "node:crypto";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
-import { chatCommand, getAgentSkills, getAgentOutput, getPaneOutput, ApiError } from "./apiClient";
+import {
+  chatCommand,
+  compactAgentConversation,
+  getAgentSkills,
+  getAgentOutput,
+  getPaneOutput,
+  ApiError,
+} from "./apiClient";
 const target = { runtime: randomUUID(), epoch: randomUUID(), sessionId: "s" };
 const fetchMock = vi.fn();
 let controller: AbortController;
@@ -35,6 +42,41 @@ it.each([getAgentOutput, getPaneOutput])(
     expect(fetchMock.mock.calls[1][1].signal).toBe(controller.signal);
   },
 );
+
+it("requires confirmed compaction for the current target, not a forwarding ACK", async () => {
+  const reply = { type: "compacted", id: randomUUID(), target };
+  fetchMock.mockResolvedValueOnce(Response.json(reply));
+  expect(await compactAgentConversation("w1:p1", target)).toEqual(reply);
+  expect(fetchMock.mock.calls[0][0]).toBe("/api/agents/w1%3Ap1/compact");
+  expect(JSON.parse(fetchMock.mock.calls[0][1].body)).toEqual({ target });
+  expect(AbortSignal.timeout).toHaveBeenCalledWith(125_000);
+  for (const invalid of [
+    { type: "ack", id: randomUUID(), outcome: "invoked" },
+    { ...reply, target: { ...target, epoch: randomUUID() } },
+    { ...reply, target: { ...target, sessionId: "other" } },
+  ]) {
+    fetchMock.mockResolvedValueOnce(Response.json(invalid));
+    await expect(compactAgentConversation("w1:p1", target)).rejects.toThrow("confirmation");
+  }
+});
+
+it("does not retry failed, timed-out or disconnected compaction", async () => {
+  fetchMock.mockResolvedValueOnce(Response.json({ error: "Nothing to compact" }, { status: 409 }));
+  await expect(compactAgentConversation("w1:p1", target)).rejects.toThrow("Nothing to compact");
+  fetchMock.mockRejectedValueOnce(new TypeError("Connection lost"));
+  await expect(compactAgentConversation("w1:p1", target)).rejects.toThrow("uncertain");
+  fetchMock.mockImplementationOnce(
+    (_url, init) =>
+      new Promise((_done, reject) =>
+        init.signal.addEventListener("abort", () => reject(init.signal.reason)),
+      ),
+  );
+  const pending = compactAgentConversation("w1:p1", target);
+  const assertion = expect(pending).rejects.toThrow("uncertain");
+  controller.abort();
+  await assertion;
+  expect(fetchMock).toHaveBeenCalledTimes(3);
+});
 
 it("accepts only a skills catalogue for the requested session identity", async () => {
   const reply = { type: "skills", id: randomUUID(), target, skills: [], truncated: false };

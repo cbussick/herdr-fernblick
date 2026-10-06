@@ -16,6 +16,8 @@ import { annotationPrompt } from "./annotations";
 import { CloseTabButton } from "./CloseTabButton";
 import { ConversationTreeDialog } from "./ConversationTreeDialog";
 import { SkillComposer } from "./SkillComposer";
+import { ConversationCompaction } from "./ConversationCompaction";
+import { useConversationCompaction } from "./useConversationCompaction";
 import { Whiteboard } from "../whiteboard/Whiteboard";
 import { boardApi } from "../whiteboard/boardApi";
 import type { BoardPromptContext } from "../whiteboard/ConversationDock";
@@ -76,6 +78,11 @@ export function AgentConsole({ agent, onBack }: AgentConsoleProps) {
   const outputRef = useRef<HTMLElement>(null);
   const live = useLiveChat(agent.pane_id, view === "chat", agent.agent_session?.value);
   const snapshot = live.snapshot;
+  const compact = useConversationCompaction(
+    agent.pane_id,
+    snapshot,
+    Boolean(snapshot && !live.error),
+  );
   const sendLock = useRef(false);
   const liveContext = useRef({
     snapshot,
@@ -215,7 +222,8 @@ export function AgentConsole({ agent, onBack }: AgentConsoleProps) {
     !live.error &&
     !snapshot.busy &&
     !snapshot.sendPending &&
-    !send.isPending,
+    !send.isPending &&
+    !compact.pending,
   );
   const canSend =
     canForward &&
@@ -225,8 +233,8 @@ export function AgentConsole({ agent, onBack }: AgentConsoleProps) {
   const canSendAnnotations =
     canForward && annotations.entries.length > 0 && !annotations.stale && !annotations.editor;
   function sendAnnotations() {
-    if (!canSendAnnotations || !annotations.owner) return;
-    send.mutate({
+    if (!canSendAnnotations || !annotations.owner || compact.locked()) return;
+    sendDraft({
       text: annotationPrompt(annotations.entries),
       attachments: [],
       target: annotations.owner,
@@ -271,7 +279,7 @@ export function AgentConsole({ agent, onBack }: AgentConsoleProps) {
   }
   function sendDraft(draft: OutgoingDraft) {
     // React's pending state may not have rendered before a second tap/shortcut.
-    if (sendLock.current) return;
+    if (sendLock.current || compact.locked()) return;
     sendLock.current = true;
     send.mutate(draft);
   }
@@ -429,7 +437,7 @@ export function AgentConsole({ agent, onBack }: AgentConsoleProps) {
                     <StatusIndicator status="working" label="Working" />
                     <button
                       type="button"
-                      disabled={stop.isPending || Boolean(live.error)}
+                      disabled={stop.isPending || Boolean(live.error) || compact.pending}
                       onClick={() => stop.mutate()}
                     >
                       {stop.isPending ? "Requesting stop…" : "Stop"}
@@ -538,13 +546,42 @@ export function AgentConsole({ agent, onBack }: AgentConsoleProps) {
               sending={composerSending}
               canSend={canSend}
               canAttach={attachments.length < 4}
-              canOpenTree={Boolean(snapshot && !live.error && !annotations.editor)}
+              canOpenTree={Boolean(
+                snapshot && !live.error && !annotations.editor && !compact.pending,
+              )}
               onAttach={() => fileInputRef.current?.click()}
               onOpenTree={() => snapshot && setTreeTarget(targetOf(snapshot))}
-              canOpenBoard={Boolean(snapshot?.version === 2 && !live.error && !annotations.editor)}
+              canOpenBoard={Boolean(
+                snapshot?.version === 2 && !live.error && !annotations.editor && !compact.pending,
+              )}
               onOpenBoard={() => snapshot && setBoardTarget(targetOf(snapshot))}
             />
           </div>
+          <ConversationCompaction
+            target={snapshot ? targetOf(snapshot) : undefined}
+            supported={!snapshot || Boolean(snapshot.capabilities?.compact)}
+            enabled={
+              canForward &&
+              Boolean(snapshot?.capabilities?.compact) &&
+              !stop.isPending &&
+              !treeTarget &&
+              !boardTarget &&
+              !annotations.editor
+            }
+            pending={compact.pending}
+            notice={compact.notice}
+            onCompact={(expected) => {
+              if (
+                canForward &&
+                !sendLock.current &&
+                !stop.isPending &&
+                !treeTarget &&
+                !boardTarget &&
+                !annotations.editor
+              )
+                void compact.start(expected);
+            }}
+          />
           {attachmentError ? (
             <StateNotice kind="info" role="alert">
               {attachmentError}
@@ -579,6 +616,7 @@ export function AgentConsole({ agent, onBack }: AgentConsoleProps) {
             Boolean(live.error) ||
             snapshot.busy ||
             snapshot.sendPending ||
+            compact.pending ||
             composerSending
           }
           onClose={() => setTreeTarget(null)}
@@ -600,7 +638,7 @@ export function AgentConsole({ agent, onBack }: AgentConsoleProps) {
               ? "disconnected"
               : snapshot.version !== 2
                 ? "unsupported"
-                : snapshot.sendPending || composerSending
+                : snapshot.sendPending || composerSending || compact.pending
                   ? "waiting"
                   : snapshot.busy
                     ? "working"

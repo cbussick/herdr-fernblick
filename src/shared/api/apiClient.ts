@@ -17,6 +17,8 @@ import {
 } from "./contracts";
 import {
   ackSchema,
+  COMPACT_TIMEOUT_MS,
+  compactionResponseSchema,
   treeResponseSchema,
   navigationResponseSchema,
   skillsResponseSchema,
@@ -193,6 +195,32 @@ export async function navigateAgentTree(pane: string, target: Target, entryId: s
       body: JSON.stringify({ target, entryId }),
     }),
   );
+}
+
+export async function compactAgentConversation(pane: string, target: Target) {
+  let body: unknown;
+  try {
+    body = await request(`/api/agents/${encodeURIComponent(pane)}/compact`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ target }),
+      signal: AbortSignal.timeout(COMPACT_TIMEOUT_MS + 5000),
+    });
+  } catch (error) {
+    if (error instanceof ApiError) throw error;
+    throw new Error("Compaction outcome uncertain. Check Pi before trying again.", {
+      cause: error,
+    });
+  }
+  const result = compactionResponseSchema.safeParse(body);
+  if (
+    !result.success ||
+    result.data.target.runtime !== target.runtime ||
+    result.data.target.sessionId !== target.sessionId ||
+    result.data.target.epoch !== target.epoch
+  )
+    throw new Error("No valid compaction confirmation. Check Pi before trying again.");
+  return result.data;
 }
 
 export async function chatCommand(

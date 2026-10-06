@@ -3,6 +3,7 @@ import { boardGrantSchema } from "./boardProtocol.js";
 
 export const MAX_FRAME = 4 * 1024 * 1024;
 export const MAX_TEXT = 32_000;
+export const COMPACT_TIMEOUT_MS = 120_000;
 export const MAX_IMAGE_BYTES = 10 * 1024 * 1024;
 export const uploadIdPattern =
   /^[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12}\.(?:png|jpg|gif|webp)$/;
@@ -60,7 +61,11 @@ export const snapshotSchema = z.object({
   type: z.literal("snapshot"),
   version: z.union([z.literal(1), z.literal(2)]),
   capabilities: z
-    .object({ boards: z.literal(true).optional(), skills: z.literal(true).optional() })
+    .object({
+      boards: z.literal(true).optional(),
+      skills: z.literal(true).optional(),
+      compact: z.literal(true).optional(),
+    })
     .optional(),
   identity: identitySchema,
   epoch: z.string().uuid(),
@@ -135,7 +140,7 @@ export const commandSchema = z
       type: z.literal("command"),
       id: z.string().uuid(),
       target: targetSchema,
-      action: z.enum(["tree", "skills"]),
+      action: z.enum(["tree", "skills", "compact"]),
     }),
     z.object({
       type: z.literal("command"),
@@ -185,11 +190,17 @@ export const navigationResponseSchema = z.object({
     .object({ text: z.string().max(MAX_TEXT), attachments: z.array(uploadIdSchema).max(4) })
     .optional(),
 });
+export const compactionResponseSchema = z.object({
+  type: z.literal("compacted"),
+  id: z.string().uuid(),
+  target: targetSchema,
+});
 export const responseSchema = z.union([
   ackSchema,
   treeResponseSchema,
   navigationResponseSchema,
   skillsResponseSchema,
+  compactionResponseSchema,
 ]);
 export type BridgeResponse = z.infer<typeof responseSchema>;
 export type Identity = z.infer<typeof identitySchema>;

@@ -552,6 +552,13 @@
   background: var(--color-canvas);
 }
 
+/* Confirmation and notices may outgrow a keyboard-shortened viewport.
+   Keep every composer control reachable without overflowing the app shell. */
+.prompt-composer:has(> [data-ui="conversation-compaction"]) {
+  min-height: 0;
+  overflow-y: auto;
+}
+
 .prompt-composer > [data-ui="state-notice"] {
   margin-top: var(--space-2);
 }

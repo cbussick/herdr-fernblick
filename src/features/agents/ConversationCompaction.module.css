@@ -1,0 +1,48 @@
+.compaction {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-2);
+  padding-top: var(--space-2);
+  color: var(--color-text-secondary);
+  font-size: 0.75rem;
+}
+
+.compaction button[type="button"] {
+  width: auto;
+  min-height: 2.75rem;
+  padding: var(--space-2) var(--space-3);
+  color: var(--color-accent);
+  background: var(--color-accent-soft);
+  border: 1px solid var(--color-border-strong);
+  border-radius: var(--radius-sm);
+  font: inherit;
+  font-weight: 700;
+}
+
+.compaction button[type="button"]:disabled {
+  cursor: not-allowed;
+  opacity: 0.5;
+}
+
+.compaction .explanation {
+  margin: 0;
+  color: var(--color-text-secondary);
+  font: inherit;
+}
+
+.confirmation {
+  width: 100%;
+}
+
+.confirmation .explanation {
+  max-width: 65ch;
+  margin-bottom: var(--space-2);
+  line-height: 1.5;
+}
+
+.actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+}

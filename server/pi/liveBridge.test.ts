@@ -209,6 +209,90 @@ it("carries the browser request ID through HTTP and requires the current send br
   }
 });
 
+it("guards compact HTTP targets and waits for callback confirmation with a longer deadline", async () => {
+  const p = await peer();
+  const service = { getAgent: vi.fn(async () => agent) } as unknown as HerdrService;
+  const server = createHttpServer(service, dir, bridge);
+  await new Promise<void>((done) => server.listen(0, "127.0.0.1", done));
+  const base = `http://127.0.0.1:${(server.address() as { port: number }).port}`;
+  const commands: { id: string; target: unknown }[] = [];
+  receiveFrames(p.socket, (raw) => commands.push(raw as { id: string; target: unknown }));
+  const request = (origin = base, target = targetOf(p.snapshot)) =>
+    fetch(base + "/api/agents/w1:p1/compact", {
+      method: "POST",
+      headers: { Origin: origin, "Content-Type": "application/json" },
+      body: JSON.stringify({ target }),
+    });
+  const timer = vi.spyOn(globalThis, "setTimeout");
+  try {
+    expect((await request("https://elsewhere.test")).status).toBe(403);
+    expect((await request()).status).toBe(409);
+    writeFrame(p.socket, { ...p.snapshot, capabilities: { compact: true }, seq: 2, busy: true });
+    await vi.waitFor(() => expect(bridge.current(agent).snapshot.busy).toBe(true));
+    expect((await request()).status).toBe(409);
+    writeFrame(p.socket, { ...p.snapshot, capabilities: { compact: true }, seq: 3 });
+    await vi.waitFor(() => expect(bridge.current(agent).snapshot.seq).toBe(3));
+    expect((await request(base, { ...targetOf(p.snapshot), epoch: randomUUID() })).status).toBe(
+      409,
+    );
+    expect(commands).toHaveLength(0);
+    let settled = false;
+    const pending = request().then((r) => {
+      settled = true;
+      return r;
+    });
+    await vi.waitFor(() => expect(commands).toHaveLength(1));
+    expect(timer.mock.calls.some((c) => c[1] === 120_000)).toBe(true);
+    expect(settled).toBe(false);
+    expect((await request()).status).toBe(409);
+    writeFrame(p.socket, { type: "compacted", id: commands[0].id, target: commands[0].target });
+    const response = await pending;
+    expect(response.status).toBe(200);
+    expect(await response.json()).toMatchObject({
+      type: "compacted",
+      target: targetOf(p.snapshot),
+    });
+    const failure = request();
+    await vi.waitFor(() => expect(commands).toHaveLength(2));
+    writeFrame(p.socket, {
+      type: "ack",
+      id: commands[1].id,
+      outcome: "rejected",
+      reason: "Nothing to compact",
+    });
+    const failed = await failure;
+    expect(failed.status).toBe(409);
+    expect(await failed.json()).toEqual({ error: "Nothing to compact" });
+  } finally {
+    timer.mockRestore();
+    server.closeAllConnections();
+    await new Promise<void>((done) => server.close(() => done()));
+  }
+});
+
+it.each(["ack", "wrong-target", "disconnect"])(
+  "never confirms or retries compaction on %s",
+  async (mode) => {
+    const p = await peer({ ...makeSnapshot(), capabilities: { compact: true } });
+    const commands: { id: string; target: unknown }[] = [];
+    receiveFrames(p.socket, (raw) => commands.push(raw as { id: string; target: unknown }));
+    const result = bridge.request(agent, targetOf(p.snapshot), { action: "compact" });
+    const rejected = expect(result).rejects.toThrow("uncertain");
+    await vi.waitFor(() => expect(commands).toHaveLength(1));
+    if (mode === "disconnect") p.socket.destroy();
+    else if (mode === "ack")
+      writeFrame(p.socket, { type: "ack", id: commands[0].id, outcome: "invoked" });
+    else
+      writeFrame(p.socket, {
+        type: "compacted",
+        id: commands[0].id,
+        target: { ...targetOf(p.snapshot), epoch: randomUUID() },
+      });
+    await rejected;
+    expect(commands).toHaveLength(1);
+  },
+);
+
 it("guards the skills HTTP route and refuses skill sends to legacy peers without forwarding", async () => {
   const p = await peer();
   const service = { getAgent: vi.fn(async () => agent) } as unknown as HerdrService;

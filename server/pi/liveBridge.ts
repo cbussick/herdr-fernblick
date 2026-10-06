@@ -6,6 +6,7 @@ import type { Agent } from "../../src/shared/api/contracts.js";
 import {
   responseSchema,
   commandSchema,
+  COMPACT_TIMEOUT_MS,
   matchesTarget,
   snapshotSchema,
   type BridgeResponse,
@@ -208,7 +209,7 @@ export class LiveBridge {
           pending.reject(
             new LiveChatError(
               409,
-              "Connection lost; outcome uncertain. Draft retained. Check Pi before sending again.",
+              "Connection lost; outcome uncertain. Draft retained. Check Pi before trying again.",
             ),
           );
         }
@@ -234,7 +235,9 @@ export class LiveBridge {
                 ? pending.command.action === "tree"
                 : response.type === "skills"
                   ? pending.command.action === "skills"
-                  : pending.command.action === "navigate";
+                  : response.type === "compacted"
+                    ? pending.command.action === "compact"
+                    : pending.command.action === "navigate";
           const validTarget =
             response.type === "ack" ||
             (response.target.runtime === pending.command.target.runtime &&
@@ -353,7 +356,7 @@ export class LiveBridge {
           requestId?: string;
           board?: BoardGrant;
         }
-      | { action: "stop" | "tree" | "skills" }
+      | { action: "stop" | "tree" | "skills" | "compact" }
       | { action: "navigate"; entryId: string },
   ) {
     const command = commandSchema.parse({
@@ -376,6 +379,8 @@ export class LiveBridge {
       !peer.snapshot.capabilities?.skills
     )
       throw new LiveChatError(409, "Run /reload in Pi to enable skills in Fernblick");
+    if (command.action === "compact" && !peer.snapshot.capabilities?.compact)
+      throw new LiveChatError(409, "Run /reload in Pi to enable conversation compaction");
     if (this.pending.has(command.id)) throw new LiveChatError(409, "Command already in flight");
     if (!matchesTarget(peer.snapshot, target))
       throw new LiveChatError(
@@ -385,28 +390,33 @@ export class LiveBridge {
     if ([...this.pending.values()].some((p) => p.peer === peer))
       throw new LiveChatError(409, "A command is already in flight");
     if (
-      (command.action === "send" || command.action === "navigate") &&
+      (command.action === "send" ||
+        command.action === "navigate" ||
+        command.action === "compact") &&
       (peer.snapshot.busy || peer.snapshot.sendPending)
     )
       throw new LiveChatError(409, "Pi is busy or a previous send is unresolved");
     if (command.action === "send" && command.board && !peer.snapshot.capabilities?.boards)
       throw new LiveChatError(409, "Run /reload in Pi to enable whiteboard tools");
-    if (command.action === "send" || command.action === "stop" || command.action === "navigate")
+    if (["send", "stop", "navigate", "compact"].includes(command.action))
       this.clearBoardAccess(peer);
     if (command.action === "send" && command.board) peer.boardGrant = command.board;
     const id = command.id;
     return new Promise<BridgeResponse>((done, reject) => {
-      const timer = setTimeout(() => {
-        this.pending.delete(id);
-        reject(
-          new LiveChatError(
-            409,
-            "No acknowledgement; outcome uncertain. Draft retained. Check Pi before sending again.",
-          ),
-        );
-        // Never retry a side-effecting command on this or another connection.
-        peer.socket.destroy();
-      }, 5000);
+      const timer = setTimeout(
+        () => {
+          this.pending.delete(id);
+          reject(
+            new LiveChatError(
+              409,
+              "No confirmed result; outcome uncertain. Draft retained. Check Pi before trying again.",
+            ),
+          );
+          // Never retry a side-effecting command on this or another connection.
+          peer.socket.destroy();
+        },
+        command.action === "compact" ? COMPACT_TIMEOUT_MS : 5000,
+      );
       timer.unref();
       this.pending.set(id, { peer, command, resolve: done, reject, timer });
       if (!writeFrame(peer.socket, command)) {

@@ -5,6 +5,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type {
   ExtensionAPI,
+  CompactOptions,
   ExtensionContext,
   ExtensionCommandContext,
   ExtensionToolContext,
@@ -57,6 +58,7 @@ function fakePi(session = "session") {
     isIdle: () => idle,
     hasPendingMessages: () => false,
     abort: vi.fn(),
+    compact: vi.fn(),
     sessionManager: {
       getBranch: () => branch,
       getEntries: () => branch,
@@ -152,7 +154,11 @@ async function setup(beforeStart?: (pi: ReturnType<typeof fakePi>) => void) {
   beforeStart?.(pi);
   expect(pi.emit("session_start")).toEqual([undefined]);
   await vi.waitFor(() => expect(latest()).toBeDefined());
-  const command = (action: "send" | "stop", target = targetOf(latest()!), text = "hello") => {
+  const command = (
+    action: "send" | "stop" | "compact",
+    target = targetOf(latest()!),
+    text = "hello",
+  ) => {
     const id = randomUUID();
     writeFrame(connections.at(-1)!, {
       type: "command",
@@ -173,6 +179,117 @@ async function setup(beforeStart?: (pi: ReturnType<typeof fakePi>) => void) {
   };
   return { ...pi, latest, command, ack, connections, frames, server, dir };
 }
+it("compacts through callbacks, serializes until completion and reconciles persisted chat", async () => {
+  const t = await setup();
+  expect(t.latest()?.capabilities?.compact).toBe(true);
+  const compact = vi.mocked(t.ctx.compact);
+  const id = t.command("compact");
+  await vi.waitFor(() => expect(compact).toHaveBeenCalledOnce());
+  expect(t.pi.sendUserMessage).not.toHaveBeenCalled();
+  expect(t.frames.some((v) => typeof v === "object" && v && "id" in v && v.id === id)).toBe(false);
+  await vi.waitFor(() => expect(t.latest()?.sendPending).toBe(true));
+  expect(await t.ack(t.command("compact"))).toMatchObject({
+    outcome: "rejected",
+    reason: "A command is already in flight",
+  });
+  expect(await t.ack(t.command("send"))).toMatchObject({ outcome: "rejected" });
+  t.branch.push({
+    type: "message",
+    id: "retained",
+    message: { role: "user", content: "retained", timestamp: 1 },
+  });
+  const options = compact.mock.calls[0][0]!;
+  options.onComplete!({} as Parameters<NonNullable<CompactOptions["onComplete"]>>[0]);
+  expect(await t.ack(id)).toMatchObject({ type: "compacted", target: targetOf(t.latest()!) });
+  await vi.waitFor(() => expect(t.latest()?.sendPending).toBe(false));
+  expect(t.latest()?.messages.some((m) => m.text === "retained")).toBe(true);
+  options.onError!(new Error("late duplicate callback"));
+  expect(
+    t.frames.filter((v) => typeof v === "object" && v && "id" in v && v.id === id),
+  ).toHaveLength(1);
+});
+
+it("rejects busy, stale and repeated compaction commands without invoking Pi", async () => {
+  const t = await setup();
+  t.setIdle(false);
+  expect(await t.ack(t.command("compact"))).toMatchObject({
+    outcome: "rejected",
+    reason: expect.stringContaining("busy"),
+  });
+  t.setIdle(true);
+  expect(
+    await t.ack(t.command("compact", { ...targetOf(t.latest()!), epoch: randomUUID() })),
+  ).toMatchObject({ outcome: "rejected", reason: expect.stringContaining("Stale") });
+  const id = t.command("compact");
+  await vi.waitFor(() => expect(t.ctx.compact).toHaveBeenCalledOnce());
+  writeFrame(t.connections.at(-1)!, {
+    type: "command",
+    action: "compact",
+    id,
+    target: targetOf(t.latest()!),
+  });
+  expect(await t.ack(id)).toMatchObject({
+    outcome: "rejected",
+    reason: expect.stringContaining("already seen"),
+  });
+  expect(t.ctx.compact).toHaveBeenCalledOnce();
+});
+
+it("reports callback and synchronous compaction errors and unlocks commands", async () => {
+  const t = await setup();
+  const compact = vi.mocked(t.ctx.compact);
+  const id = t.command("compact");
+  await vi.waitFor(() => expect(compact).toHaveBeenCalledOnce());
+  compact.mock.calls[0][0]!.onError!(new Error("Nothing to compact (session too small)"));
+  expect(await t.ack(id)).toMatchObject({
+    outcome: "rejected",
+    reason: expect.stringContaining("too small"),
+  });
+  await vi.waitFor(() => expect(t.latest()?.sendPending).toBe(false));
+  compact.mockImplementationOnce(() => {
+    throw new Error("Runtime unavailable");
+  });
+  expect(await t.ack(t.command("compact"))).toMatchObject({
+    outcome: "rejected",
+    reason: "Runtime unavailable",
+  });
+});
+
+it("keeps compaction locked across disconnect, never replays, and cannot confirm on the new socket", async () => {
+  const t = await setup();
+  const id = t.command("compact");
+  await vi.waitFor(() => expect(t.ctx.compact).toHaveBeenCalledOnce());
+  const options = vi.mocked(t.ctx.compact).mock.calls[0][0]!;
+  t.connections.at(-1)!.destroy();
+  await vi.waitFor(() => expect(t.connections).toHaveLength(2));
+  await vi.waitFor(() => expect(t.latest()?.sendPending).toBe(true));
+  expect(await t.ack(t.command("compact"))).toMatchObject({ outcome: "rejected" });
+  options.onComplete!({} as Parameters<NonNullable<CompactOptions["onComplete"]>>[0]);
+  await vi.waitFor(() => expect(t.latest()?.sendPending).toBe(false));
+  expect(t.frames.some((v) => typeof v === "object" && v && "id" in v && v.id === id)).toBe(false);
+  expect(t.ctx.compact).toHaveBeenCalledOnce();
+});
+
+it("does not report compaction success after a target change or shutdown", async () => {
+  const t = await setup();
+  const id = t.command("compact");
+  await vi.waitFor(() => expect(t.ctx.compact).toHaveBeenCalledOnce());
+  const options = vi.mocked(t.ctx.compact).mock.calls[0][0]!;
+  t.emit("session_tree");
+  options.onComplete!({} as Parameters<NonNullable<CompactOptions["onComplete"]>>[0]);
+  expect(await t.ack(id)).toMatchObject({
+    outcome: "rejected",
+    reason: expect.stringContaining("uncertain"),
+  });
+  const second = t.command("compact");
+  await vi.waitFor(() => expect(t.ctx.compact).toHaveBeenCalledTimes(2));
+  t.emit("session_shutdown");
+  vi.mocked(t.ctx.compact).mock.calls[1][0]!.onError!(new Error("cancelled"));
+  expect(t.frames.some((v) => typeof v === "object" && v && "id" in v && v.id === second)).toBe(
+    false,
+  );
+});
+
 it("uses real Pi 0.99.1 command dispatch and navigateTree(user.id) to reach the root without model work", async () => {
   const t = await setup();
   t.emit("session_shutdown");
@@ -298,6 +415,97 @@ it("uses real Pi 0.99.1 command dispatch and navigateTree(user.id) to reach the 
       type: "session_shutdown",
       reason: "quit",
     });
+    session.dispose();
+  }
+}, 20_000);
+
+it("confirms real Pi compaction only after persistence and forwards real callback errors without provider calls", async () => {
+  const t = await setup();
+  t.emit("session_shutdown");
+  vi.stubEnv("PI_OFFLINE", "1");
+  const { createAgentSession, DefaultResourceLoader, SessionManager, SettingsManager } =
+    await import("@earendil-works/pi-coding-agent");
+  const manager = SessionManager.create(t.dir, join(t.dir, "sessions"));
+  manager.appendMessage({ role: "user", content: "older context ".repeat(100), timestamp: 1 });
+  manager.appendMessage({ role: "user", content: "retained context ".repeat(100), timestamp: 2 });
+  const settingsManager = SettingsManager.inMemory({ compaction: { keepRecentTokens: 1 } });
+  const agentDir = join(t.dir, "isolated-agent");
+  let release!: () => void;
+  const resourceLoader = new DefaultResourceLoader({
+    cwd: t.dir,
+    agentDir,
+    settingsManager,
+    noExtensions: true,
+    noSkills: true,
+    noPromptTemplates: true,
+    noThemes: true,
+    noContextFiles: true,
+    extensionFactories: [
+      liveChat,
+      (pi) => {
+        pi.on("session_before_compact", async (event) => {
+          await new Promise<void>((resolve) => {
+            release = resolve;
+          });
+          return {
+            compaction: {
+              summary: "Older conversation summarized",
+              firstKeptEntryId: event.preparation.firstKeptEntryId,
+              tokensBefore: event.preparation.tokensBefore,
+            },
+          };
+        });
+      },
+    ],
+  });
+  await resourceLoader.reload();
+  const { session } = await createAgentSession({
+    cwd: t.dir,
+    agentDir,
+    resourceLoader,
+    settingsManager,
+    sessionManager: manager,
+    model: {
+      id: "fixture",
+      name: "Fixture",
+      api: "anthropic-messages",
+      provider: "anthropic",
+      baseUrl: "https://example.invalid",
+      contextWindow: 200000,
+      maxTokens: 1000,
+      reasoning: false,
+      input: ["text"],
+      cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
+    },
+    tools: [],
+  });
+  const stream = vi.fn(() => {
+    throw new Error("Provider must not be called");
+  });
+  session.agent.streamFunction = stream;
+  try {
+    await session.bindExtensions({ mode: "tui" });
+    await vi.waitFor(() => expect(t.latest()?.identity.sessionId).toBe(manager.getSessionId()));
+    const id = t.command("compact");
+    await vi.waitFor(() => expect(release).toBeDefined());
+    expect(session.isIdle).toBe(false);
+    expect(manager.getBranch().some((e) => e.type === "compaction")).toBe(false);
+    expect(t.frames.some((v) => typeof v === "object" && v && "id" in v && v.id === id)).toBe(
+      false,
+    );
+    release();
+    expect(await t.ack(id)).toMatchObject({ type: "compacted" });
+    expect(manager.getBranch().at(-1)?.type).toBe("compaction");
+    expect(session.isIdle).toBe(true);
+    await vi.waitFor(() => expect(t.latest()?.sendPending).toBe(false));
+    expect(await t.ack(t.command("compact"))).toMatchObject({
+      type: "ack",
+      outcome: "rejected",
+      reason: "Already compacted",
+    });
+    expect(stream).not.toHaveBeenCalled();
+  } finally {
+    await session.extensionRunner?.emit({ type: "session_shutdown", reason: "quit" });
     session.dispose();
   }
 }, 20_000);
@@ -887,7 +1095,7 @@ it("delivers visual board content to Pi while activating request-scoped edit too
 });
 it("advertises boards, dispatches private RPCs before commands, and gates read-only tools until matching activation", async () => {
   const t = await setup();
-  expect(t.latest()?.capabilities).toEqual({ boards: true, skills: true });
+  expect(t.latest()?.capabilities).toEqual({ boards: true, skills: true, compact: true });
   expect(t.tools.get("board_read")).toMatchObject({
     exposure: "hidden",
     defaultActive: false,

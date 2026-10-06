@@ -78,6 +78,36 @@ completes, with the new target epoch and optional restored `{text,attachments}`.
 Opening the original dialog makes one request, without focus/reconnect polling;
 mutations are never automatically retried.
 
+`POST .../compact` accepts `{target}` for peers advertising
+`capabilities.compact: true`. The separate **Compact conversation** action below
+the composer opens an inline explanation/confirmation; it never uses the skills
+menu, ordinary `/compact` text, or terminal keys. It summarizes older model context
+without clearing the visible history or starting a new session. Draft text and
+images remain editable and unchanged. Keyboard-shortened viewports can scroll
+the composer to keep confirmation and feedback reachable.
+
+Both backend and extension revalidate idle/runtime/session/epoch state and
+serialize the operation. The extension calls void `ctx.compact({onComplete,onError})`;
+only the completion callback produces a correlated `{type:"compacted",id,target}`
+response, after branch/footer reconciliation. Errors are rejected explicitly.
+This operation has a 120-second backend result deadline and a 125-second browser
+deadline (other commands retain their existing deadlines). Disconnect, target
+replacement, malformed result or timeout is uncertain, never a success inferred
+from an ACK or an idle event. No operation is automatically retried. The extension
+keeps its in-flight guard across socket reconnection until a terminal callback;
+a missing callback therefore requires inspecting/reloading Pi, not an automatic
+unlock or second compaction. Progress/results are transient, not persisted or
+replayed after reconnection.
+
+Verified pinned Pi 0.99.1 and installed Pi 1.0.4 source contracts: `ctx.compact`
+returns void; manual compaction aborts active work internally, hence the idle
+precondition matters; `isIdle()` excludes compaction; `session_compact` is emitted
+after persistence but before final idle-state cleanup; `onComplete` runs after
+that cleanup. Cancellation, already-compacted/small sessions and provider errors
+reach `onError`. A real isolated Pi 0.99.1 fixture uses a custom compaction hook
+to verify persistence, busy/idle state, callback completion and already-compacted
+failure, without provider calls.
+
 `POST .../skills` accepts `{target}` and returns a correlated catalogue from the
 active extension's public `pi.getCommands()`. Snapshots advertise
 `capabilities.skills: true`; older bridges keep ordinary chat working and show a
@@ -219,6 +249,22 @@ Every API/SSE call is intercepted. It covers 320/390px phones, a short keyboard-
 viewport, iPad and desktop, RGB styling, inert HTML, fallback patches, oversized
 segments, vertical scrolling, composer visibility and horizontal overflow.
 Screenshots go to ignored `design-gallery/pi-footer/`.
+
+HER-13 adds unit/socket/HTTP coverage for callback success/errors, native busy
+and stale targets, duplicate invocation, serialization, legacy peers, invalid
+ACKs, disconnect/reconnect, replacement/shutdown and draft/image preservation.
+Run the synthetic Chromium/WebKit check against a static worktree build:
+
+```sh
+PLAYWRIGHT_MODULE=/tmp/fernblick-design-tools/node_modules/playwright/index.mjs \
+  node tools/design/compact.mjs http://127.0.0.1:<static-port>
+```
+
+All API/SSE traffic is intercepted; no existing agents are controlled. It covers
+320/390px phones, keyboard-height layout, portrait/landscape iPad and desktop,
+confirmation focus, 44px targets, progress vs completion, draft/images and overflow.
+Screenshots go to ignored `design-gallery/compact/`. Physical-device keyboard
+behavior and live provider compaction remain manual verification.
 
 HER-5 adds unit/socket/HTTP tests for per-session discovery, current-skill validation,
 shadowed commands, legacy capability guards, stale replies, bounds and image

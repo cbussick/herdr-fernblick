@@ -134,6 +134,14 @@ review handoff.
   during async Pi preflight, clears on `agent_start` or `agent_settled`, and expires
   without retry if no run begins. Expiry never overrides native busy/UI-prompt or
   pending-message checks.
+- Manual compaction is a dedicated `compact` operation advertised by
+  `capabilities.compact`, not a chat command or keystroke. It requires an idle
+  current target and serializes until `ctx.compact` calls `onComplete` or
+  `onError`. Only completion after persistence produces `compacted`; a forwarding
+  ACK is insufficient. Branch/footer state is reconciled and drafts/images stay
+  unchanged. Backend/browser deadlines are 120/125 seconds. Disconnect or timeout
+  is uncertain and never retried; the runtime guard stays held across reconnect
+  until a callback. If no callback arrives, inspect/reload Pi manually.
 - Stop invokes void `ctx.abort()`. Working/stopped state comes from later Pi
   events, not the ACK or Herdr status. `agent_end` alone is not final settlement.
 - Conversation paths are requested on open from public `getTree()/getLeafId()`,

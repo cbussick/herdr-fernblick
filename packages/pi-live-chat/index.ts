@@ -216,7 +216,7 @@ export default function liveChat(pi: ExtensionAPI) {
       return {
         type: "snapshot",
         version: 2,
-        capabilities: { boards: true, skills: true },
+        capabilities: { boards: true, skills: true, compact: true },
         identity,
         epoch,
         seq: ++seq,
@@ -393,6 +393,48 @@ export default function liveChat(pi: ExtensionAPI) {
             });
           } catch (error) {
             reject(error instanceof Error ? error.message : "Tree unavailable");
+          }
+          return;
+        }
+        if (command.action === "compact") {
+          if (value.busy || sendPending) {
+            reject("Pi is busy or a previous send is unresolved");
+            return;
+          }
+          // compact() returns void and aborts active work internally. Guard before
+          // invocation, then retain serialization until a terminal callback, even
+          // if the socket disconnects or the backend deadline expires.
+          preparing = true;
+          boards?.revoke("Whiteboard context is compacting");
+          let settled = false;
+          const finish = (error?: Error) => {
+            if (settled) return;
+            settled = true;
+            if (current !== generation) return;
+            const fresh = snapshot();
+            if (!fresh) return;
+            const valid =
+              client === socket && !client.destroyed && matchesTarget(fresh, command.target);
+            preparing = false;
+            if (!valid && client === socket && !client.destroyed)
+              reject(
+                "Session changed; compaction outcome uncertain. Check Pi before trying again.",
+              );
+            if (valid) {
+              if (error) reject(error.message.slice(0, 512));
+              else {
+                projector.reconcile(context!.sessionManager.getBranch());
+                requestFooter();
+                writeFrame(client, { type: "compacted", id: command.id, target: command.target });
+              }
+            }
+            publish();
+          };
+          publish();
+          try {
+            context.compact({ onComplete: () => finish(), onError: finish });
+          } catch (error) {
+            finish(error instanceof Error ? error : new Error("Compaction failed"));
           }
           return;
         }

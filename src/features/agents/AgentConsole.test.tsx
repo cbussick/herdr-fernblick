@@ -13,6 +13,7 @@ import type { WhiteboardConversation } from "../whiteboard/ConversationDock";
 const mocks = vi.hoisted(() => ({
   live: {} as { snapshot?: Snapshot; error?: string },
   command: vi.fn(),
+  compact: vi.fn(),
   boardPrompt: vi.fn(),
   upload: vi.fn(),
   skills: vi.fn(),
@@ -25,6 +26,7 @@ vi.mock("./ConversationTreeDialog", () => ({ ConversationTreeDialog: () => null 
 vi.mock("../whiteboard/Whiteboard", () => ({ Whiteboard: () => null }));
 vi.mock("../../shared/api/apiClient", () => ({
   chatCommand: mocks.command,
+  compactAgentConversation: mocks.compact,
   uploadImage: mocks.upload,
   getAgentSkills: mocks.skills,
   getAgentOutput: mocks.output,
@@ -84,6 +86,7 @@ beforeEach(async () => {
     id: args[5] ?? randomUUID(),
     outcome: "invoked",
   }));
+  mocks.compact.mockReset().mockResolvedValue({ type: "compacted" });
   mocks.boardPrompt.mockReset().mockResolvedValue({ type: "ack", outcome: "invoked" });
   mocks.upload.mockReset().mockResolvedValue({ id: `${randomUUID()}.png` });
   mocks.skills.mockReset().mockResolvedValue({
@@ -119,6 +122,126 @@ afterEach(async () => {
   client.clear();
   vi.unstubAllGlobals();
 });
+async function confirmCompact() {
+  await act(async () =>
+    renderer.root
+      .findAllByType("button")
+      .find((b) => b.children.includes("Compact conversation"))!
+      .props.onClick(),
+  );
+}
+function compactNow() {
+  return renderer.root.findAllByType("button").find((b) => b.children.includes("Compact now"))!;
+}
+async function enableCompact() {
+  mocks.live.snapshot = { ...mocks.live.snapshot!, capabilities: { compact: true } };
+  await act(async () => renderer.update(render()));
+}
+it("explains and compacts separately from Skills, waits for completion and preserves text/images", async () => {
+  await enableCompact();
+  let complete!: () => void;
+  mocks.compact.mockImplementation(
+    () =>
+      new Promise<void>((resolve) => {
+        complete = resolve;
+      }),
+  );
+  const file = new File(["image"], "image.png", { type: "image/png" });
+  await act(async () => {
+    renderer.root.findByType("textarea").props.onChange({ target: { value: "keep my draft" } });
+    renderer.root.findByProps({ type: "file" }).props.onChange({ target: { files: [file] } });
+  });
+  await confirmCompact();
+  expect(JSON.stringify(renderer.toJSON())).toContain("does not clear the conversation");
+  const click = compactNow().props.onClick;
+  await act(async () => {
+    click();
+    click();
+  });
+  await flush();
+  expect(mocks.compact).toHaveBeenCalledOnce();
+  expect(mocks.command).not.toHaveBeenCalled();
+  expect(mocks.upload).not.toHaveBeenCalled();
+  expect(renderer.root.findByProps({ "aria-label": "Send message" }).props.disabled).toBe(true);
+  expect(JSON.stringify(renderer.toJSON())).toContain("waiting for Pi to finish");
+  expect(JSON.stringify(renderer.toJSON())).not.toContain("Conversation compacted.");
+  expect(renderer.root.findByType("textarea").props.disabled).toBe(false);
+  await act(async () => complete());
+  await flush();
+  expect(JSON.stringify(renderer.toJSON())).toContain("Conversation compacted.");
+  expect(renderer.root.findByType("textarea").props.value).toBe("keep my draft");
+  expect(renderer.root.findAllByProps({ "aria-label": "Image attachments" })).toHaveLength(1);
+});
+
+it.each(["unsupported", "busy", "pending", "disconnected"])(
+  "disables compact when %s",
+  async (mode) => {
+    await enableCompact();
+    if (mode === "unsupported") mocks.live.snapshot = { ...mocks.live.snapshot!, capabilities: {} };
+    if (mode === "busy") mocks.live.snapshot = { ...mocks.live.snapshot!, busy: true };
+    if (mode === "pending") mocks.live.snapshot = { ...mocks.live.snapshot!, sendPending: true };
+    if (mode === "disconnected") mocks.live.error = "Connection lost";
+    await act(async () => renderer.update(render()));
+    const button = renderer.root
+      .findAllByType("button")
+      .find((b) => b.children.includes("Compact conversation"))!;
+    expect(button.props.disabled).toBe(true);
+    expect(mocks.compact).not.toHaveBeenCalled();
+  },
+);
+
+it("invalidates an open compact confirmation on replacement and rechecks busy state before execution", async () => {
+  await enableCompact();
+  await confirmCompact();
+  const oldClick = compactNow().props.onClick;
+  mocks.live.snapshot = { ...mocks.live.snapshot!, busy: true };
+  await act(async () => renderer.update(render()));
+  expect(compactNow().props.disabled).toBe(true);
+  await act(async () => oldClick());
+  expect(mocks.compact).not.toHaveBeenCalled();
+  mocks.live.snapshot = { ...mocks.live.snapshot!, busy: false };
+  await act(async () => renderer.update(render()));
+  await confirmCompact();
+  mocks.live.snapshot = { ...mocks.live.snapshot!, epoch: randomUUID() };
+  await act(async () => renderer.update(render()));
+  expect(compactNow()).toBeUndefined();
+});
+
+it.each(["disconnect", "replacement", "error"])(
+  "retains draft and reports %s without retry or false compact success",
+  async (mode) => {
+    await enableCompact();
+    let complete!: () => void;
+    let fail!: (error: Error) => void;
+    mocks.compact.mockImplementation(
+      () =>
+        new Promise<void>((resolve, reject) => {
+          complete = resolve;
+          fail = reject;
+        }),
+    );
+    await act(async () =>
+      renderer.root.findByType("textarea").props.onChange({ target: { value: "retain me" } }),
+    );
+    await confirmCompact();
+    await act(async () => compactNow().props.onClick());
+    await flush();
+    if (mode === "disconnect") mocks.live.error = "Connection lost";
+    if (mode === "replacement")
+      mocks.live.snapshot = { ...mocks.live.snapshot!, epoch: randomUUID() };
+    await act(async () => renderer.update(render()));
+    if (mode !== "error") expect(JSON.stringify(renderer.toJSON())).toContain("outcome uncertain");
+    await act(async () => (mode === "error" ? fail(new Error("Nothing to compact")) : complete()));
+    await flush();
+    expect(JSON.stringify(renderer.toJSON())).not.toContain("Conversation compacted.");
+    expect(JSON.stringify(renderer.toJSON())).toContain(
+      mode === "error" ? "Nothing to compact" : "outcome uncertain",
+    );
+    expect(renderer.root.findByType("textarea").props.value).toBe("retain me");
+    expect(mocks.compact).toHaveBeenCalledOnce();
+  },
+);
+
 it("shows the live terminal by default and keeps loaded history when the agent starts working", async () => {
   await act(async () =>
     renderer.root.findByProps({ "aria-label": "Switch to Terminal view" }).props.onClick(),
