@@ -36,6 +36,19 @@ const messages = [
     role: "assistant",
     text: "Before **[Open the app → http://100.71.229.1:41227](http://100.71.229.1:41227)** then `main` and [[https://example.com|Docs]].",
   },
+  {
+    id: "a4",
+    role: "assistant",
+    text:
+      "## Implementation notes\n\n3. **Preserve annotations**\n   - Nested detail\n4. Check copying\n\n> First quoted line\n> Second quoted line\n\n- [x] Implemented\n- [ ] Reviewed\n\n```js\nconst value = '<tag>';\n  // " +
+      "long code line ".repeat(35) +
+      "\n```\n\nAfter the code toolbar.\n\n| Feature | Result | Details |\n| :--- | ---: | :---: |\n| **Lists** | Ready | nested |\n| Code | Copied | final cell |",
+  },
+  {
+    id: "u2",
+    role: "user",
+    text: "### User formatting\n\n- **First**\n- Second\n\n> Quoted text\n\n- [x] Done\n\n| Name | Value |\n| --- | --- |\n| a | b |\n\n~~~txt\nuser code\n~~~",
+  },
 ];
 const snapshot = {
   type: "snapshot",
@@ -95,6 +108,11 @@ for (const engine of [chromium, webkit]) {
     let release;
     await page.addInitScript((initial) => {
       window.annotationSnapshot = initial;
+      window.markdownCopies = [];
+      Object.defineProperty(navigator, "clipboard", {
+        configurable: true,
+        value: { writeText: async (text) => window.markdownCopies.push(text) },
+      });
       window.annotationStreams = new Set();
       window.EventSource = class {
         constructor() {
@@ -180,7 +198,13 @@ for (const engine of [chromium, webkit]) {
             );
           const nodes = [];
           const walker = document.createTreeWalker(element, NodeFilter.SHOW_TEXT);
-          while (walker.nextNode()) nodes.push(walker.currentNode);
+          while (walker.nextNode()) {
+            if (
+              element.closest("[data-message-control]") ||
+              !walker.currentNode.parentElement.closest("[data-message-control]")
+            )
+              nodes.push(walker.currentNode);
+          }
           function point(offset) {
             for (const node of nodes) {
               if (offset <= node.textContent.length) return [node, offset];
@@ -253,6 +277,120 @@ for (const engine of [chromium, webkit]) {
       const activate = (locator) => (touch ? locator.tap() : locator.click());
       assert.equal(await generalAction.count(), 0, "general feedback cannot start a batch");
       assert.equal(await tray.count(), 0);
+      const blockSource = '[data-annotation-source="a4"]';
+      const blockText = messages[6].text;
+      const blocks = page.locator(blockSource);
+      assert.equal(await blocks.locator("h2").innerText(), "Implementation notes");
+      assert.equal(await blocks.locator("ol").getAttribute("start"), "3");
+      assert.equal(await blocks.locator("ol ul li").count(), 1);
+      assert.equal(
+        await blocks.locator("blockquote").innerText(),
+        "First quoted line\nSecond quoted line",
+      );
+      assert.equal(await blocks.getByRole("checkbox").count(), 2);
+      assert.equal(await blocks.getByRole("checkbox").first().isChecked(), true);
+      assert.equal(await blocks.getByRole("checkbox").last().isChecked(), false);
+      assert.equal(await blocks.getByRole("checkbox").first().isDisabled(), true);
+      assert.equal(await blocks.locator("th").count(), 3);
+      assert.equal(await blocks.locator('td[data-align="right"]').first().innerText(), "Ready");
+      assert.equal(
+        await blocks.locator('td[data-align="center"]').last().innerText(),
+        "final cell",
+      );
+      assert.equal(
+        await blocks.evaluate((element) => {
+          const copy = element.cloneNode(true);
+          copy.querySelectorAll("[data-message-control]").forEach((control) => control.remove());
+          return copy.textContent;
+        }),
+        blockText,
+        "block rendering retains every original source character exactly once",
+      );
+      const codePayload = "const value = '<tag>';\n  // " + "long code line ".repeat(35);
+      assert.equal(await blocks.locator("pre").innerText(), codePayload);
+      const copyCode = blocks.getByRole("button", { name: "Copy code" });
+      await activate(copyCode);
+      assert.equal(await copyCode.innerText(), "Copied");
+      assert.deepEqual(await page.evaluate(() => window.markdownCopies), [codePayload]);
+      await select(`${blockSource} button`, 0, 4, touch);
+      assert.equal(await action.count(), 0, "copy controls cannot become annotation passages");
+      assert.ok(
+        await blocks
+          .locator("blockquote")
+          .evaluate((element) => parseFloat(getComputedStyle(element).marginTop) > 0),
+        "block spacing survives hidden source spans",
+      );
+      assert.ok(
+        await page
+          .locator(`${source} p`)
+          .nth(1)
+          .evaluate((element) => parseFloat(getComputedStyle(element).marginTop) > 0),
+        "ordinary paragraphs retain readable spacing",
+      );
+      if (viewport.width === 390)
+        assert.equal(
+          await blocks
+            .getByRole("region", { name: "Message table" })
+            .evaluate((element) => element.scrollWidth > element.clientWidth),
+          true,
+        );
+      await blocks
+        .getByRole("region", { name: "Message table" })
+        .screenshot({ path: `${out}/${engine.name()}-${viewport.width}-table.png` });
+      assert.equal(
+        await blocks
+          .locator("pre")
+          .evaluate((element) => element.scrollWidth > element.clientWidth),
+        true,
+      );
+      await blocks
+        .getByTestId("chat-code-block")
+        .screenshot({ path: `${out}/${engine.name()}-${viewport.width}-code.png` });
+      const userBlocks = page.locator('[data-message-id="u2"]');
+      assert.equal(await userBlocks.locator("h3").innerText(), "User formatting");
+      assert.equal(await userBlocks.locator("table").count(), 1);
+      assert.equal(await userBlocks.getByRole("checkbox").isDisabled(), true);
+      for (const quote of [
+        "Nested detail",
+        "Second quoted line",
+        "Implemented",
+        "const value",
+        "After the code toolbar.",
+        "final cell",
+      ]) {
+        const start = blockText.indexOf(quote);
+        await select(blockSource, start, start + quote.length, touch);
+        await openComment();
+        assert.equal(
+          await page
+            .getByRole("dialog", { name: "Comment on passage" })
+            .locator("blockquote")
+            .textContent(),
+          quote,
+        );
+        await comment.press("Escape");
+      }
+      const blockStart = blockText.indexOf("Implementation notes");
+      const blockEnd = blockText.indexOf("final cell") + "final cell".length;
+      await select(blockSource, blockStart, blockEnd, touch);
+      await openComment();
+      assert.equal(
+        await page
+          .getByRole("dialog", { name: "Comment on passage" })
+          .locator("blockquote")
+          .textContent(),
+        blockText.slice(blockStart, blockEnd),
+        "cross-block quotes exclude controls and keep raw offsets",
+      );
+      await save("Block feedback");
+      await page.keyboard.press("Escape");
+      const tableMark = blocks.locator("td mark").last();
+      await activate(tableMark);
+      assert.equal(await comment.inputValue(), "Block feedback");
+      await page.getByRole("button", { name: "Delete comment", exact: true }).click();
+      await blocks.locator("h2").scrollIntoViewIfNeeded();
+      await page.screenshot({ path: `${out}/${engine.name()}-${viewport.width}-markdown.png` });
+      await assertLayout();
       const formattedSource = '[data-annotation-source="a3"]';
       const formattedText = messages[5].text;
       assert.equal(await page.locator(formattedSource).textContent(), formattedText);
@@ -377,8 +515,8 @@ for (const engine of [chromium, webkit]) {
       await page.getByTestId("chat-tool").locator("summary").click();
       await page.evaluate(() => {
         const range = document.createRange();
-        range.setStart(document.querySelector('[data-annotation-source="a1"]').firstChild, 0);
-        range.setEnd(document.querySelector('[data-annotation-source="a2"]').firstChild, 2);
+        range.setStart(document.querySelector('[data-annotation-source="a1"] p').firstChild, 0);
+        range.setEnd(document.querySelector('[data-annotation-source="a2"] p').firstChild, 2);
         const selection = window.getSelection();
         selection.removeAllRanges();
         selection.addRange(range);

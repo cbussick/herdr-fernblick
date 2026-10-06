@@ -1,5 +1,6 @@
 import { Fragment, useMemo, type ReactNode } from "react";
 import { splitMessageLinks } from "./chatMessageLinks";
+import { ChatCodeBlock } from "./ChatCodeBlock";
 import { formatMessageText, type MessagePart } from "./chatMessageFormatting";
 import {
   annotationGeneralPromptIntro,
@@ -131,6 +132,77 @@ export function ChatMessageText({
       return <Fragment key={index}>{highlighted(part.start, part.end)}</Fragment>;
     const content = part.children.map(render);
     switch (part.kind) {
+      case "paragraph":
+        return <p key={index}>{content}</p>;
+      case "heading": {
+        const Heading = `h${part.depth ?? 2}` as "h1" | "h2" | "h3" | "h4" | "h5" | "h6";
+        return <Heading key={index}>{content}</Heading>;
+      }
+      case "blockquote":
+        return <blockquote key={index}>{content}</blockquote>;
+      case "list":
+        return part.ordered ? (
+          <ol key={index} start={part.listStart}>
+            {content}
+          </ol>
+        ) : (
+          <ul key={index}>{content}</ul>
+        );
+      case "listItem":
+        return (
+          <li key={index} className={typeof part.checked === "boolean" ? styles.task : undefined}>
+            {typeof part.checked === "boolean" ? (
+              <input
+                type="checkbox"
+                checked={part.checked}
+                disabled
+                aria-label={part.checked ? "Completed task" : "Incomplete task"}
+              />
+            ) : null}
+            {content}
+          </li>
+        );
+      case "codeBlock":
+        return (
+          <ChatCodeBlock key={index} value={part.value ?? ""} language={part.language}>
+            {content}
+          </ChatCodeBlock>
+        );
+      case "table":
+        return (
+          <div
+            key={index}
+            className={styles["table-scroll"]}
+            tabIndex={0}
+            role="region"
+            aria-label="Message table"
+          >
+            <table>
+              <tbody>{content}</tbody>
+            </table>
+          </div>
+        );
+      case "tableRow":
+        return <tr key={index}>{content}</tr>;
+      case "tableCell": {
+        const Cell = part.header ? "th" : "td";
+        return (
+          <Cell
+            key={index}
+            scope={part.header ? "col" : undefined}
+            data-align={part.align ?? undefined}
+          >
+            {content}
+          </Cell>
+        );
+      }
+      case "break":
+        return (
+          <Fragment key={index}>
+            {content}
+            <br />
+          </Fragment>
+        );
       case "strong":
         return <strong key={index}>{content}</strong>;
       case "emphasis":
@@ -150,5 +222,13 @@ export function ChatMessageText({
     }
   }
 
-  return <p data-annotation-source={annotationSource}>{parts.map(render)}</p>;
+  return (
+    <div
+      className={styles.message}
+      data-ui="chat-message-text"
+      data-annotation-source={annotationSource}
+    >
+      {emphasizeLabels ? <p>{parts.map(render)}</p> : parts.map(render)}
+    </div>
+  );
 }

@@ -1,3 +1,51 @@
+.message {
+  min-width: 0;
+}
+
+.message :where(p) {
+  margin: 0;
+  white-space: pre-wrap;
+}
+
+.message :where(h1, h2, h3, h4, h5, h6) {
+  margin: 0;
+  font-size: 1.1em;
+  font-weight: 750;
+  line-height: 1.35;
+  white-space: normal;
+}
+
+.message h1 {
+  font-size: 1.4em;
+}
+
+.message h2 {
+  font-size: 1.25em;
+}
+
+.message :where(ul, ol) {
+  padding-inline-start: 1.5em;
+  margin: 0;
+  white-space: normal;
+}
+
+.message li + li {
+  margin-top: 0.25em;
+}
+
+.message :where(blockquote) {
+  padding-inline-start: 0.85em;
+  margin: 0;
+  color: var(--color-text-secondary);
+  border-inline-start: 3px solid var(--color-border-strong);
+}
+
+.message
+  :where(p, h1, h2, h3, h4, h5, h6, ul, ol, blockquote, .code-block, .table-scroll)
+  ~ :where(p, h1, h2, h3, h4, h5, h6, ul, ol, blockquote, .code-block, .table-scroll) {
+  margin-top: 0.75em;
+}
+
 .syntax {
   display: none;
 }
@@ -8,4 +56,116 @@
   font-size: 0.9em;
   background: var(--color-surface-subtle);
   border-radius: var(--radius-sm);
+}
+
+.code-block {
+  min-width: 0;
+  overflow: hidden;
+  background: var(--color-surface-subtle);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-sm);
+  white-space: normal;
+}
+
+.code-toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-2);
+  padding-inline: var(--space-3);
+  color: var(--color-text-secondary);
+  font-size: 0.75rem;
+  border-bottom: 1px solid var(--color-border);
+  user-select: none;
+}
+
+.code-toolbar button {
+  min-width: 44px;
+  min-height: 44px;
+  padding: var(--space-2);
+  color: var(--color-accent);
+  font: inherit;
+  font-weight: 700;
+  background: transparent;
+  border: 0;
+  cursor: pointer;
+}
+
+.code-toolbar button:hover {
+  background: var(--color-accent-soft);
+}
+
+.message :where(button, pre, .table-scroll):focus-visible {
+  outline: 2px solid var(--color-accent);
+  outline-offset: -2px;
+}
+
+.copy-status {
+  flex-basis: 100%;
+}
+
+.code-block pre {
+  padding: var(--space-3);
+  margin: 0;
+  overflow: auto;
+  font: 0.875em/1.6 var(--font-mono);
+  white-space: pre;
+  overflow-wrap: normal;
+  tab-size: 4;
+}
+
+.task {
+  position: relative;
+  padding-inline-start: 1.5em;
+  list-style: none;
+}
+
+.task > input {
+  position: absolute;
+  inset-inline-start: 0;
+  top: 0.3em;
+  width: 1em;
+  height: 1em;
+  margin: 0;
+  accent-color: var(--color-accent);
+}
+
+.table-scroll {
+  max-width: 100%;
+  overflow: auto;
+  white-space: normal;
+}
+
+.table-scroll table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.9em;
+}
+
+.table-scroll :where(th, td) {
+  min-width: 7rem;
+  padding: var(--space-2) var(--space-3);
+  text-align: left;
+  vertical-align: top;
+  border: 1px solid var(--color-border-strong);
+}
+
+.table-scroll th {
+  background: var(--color-surface-subtle);
+}
+
+.table-scroll [data-align="right"] {
+  text-align: right;
+}
+
+.table-scroll [data-align="center"] {
+  text-align: center;
+}
+
+.clipboard {
+  position: fixed;
+  top: 0;
+  left: -9999px;
+  opacity: 0;
 }

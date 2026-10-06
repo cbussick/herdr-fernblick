@@ -1,4 +1,8 @@
 import { fromMarkdown } from "mdast-util-from-markdown";
+import { gfmTableFromMarkdown } from "mdast-util-gfm-table";
+import { gfmTaskListItemFromMarkdown } from "mdast-util-gfm-task-list-item";
+import { gfmTable } from "micromark-extension-gfm-table";
+import { gfmTaskListItem } from "micromark-extension-gfm-task-list-item";
 import type { Nodes } from "mdast";
 import { splitMessageLinks } from "./chatMessageLinks";
 
@@ -6,10 +10,32 @@ type TextPart =
   | { kind: "text"; start: number; end: number }
   | { kind: "syntax"; start: number; end: number };
 type FormattedPart = {
-  kind: "strong" | "emphasis" | "code" | "link";
+  kind:
+    | "strong"
+    | "emphasis"
+    | "code"
+    | "link"
+    | "paragraph"
+    | "heading"
+    | "blockquote"
+    | "list"
+    | "listItem"
+    | "codeBlock"
+    | "table"
+    | "tableRow"
+    | "tableCell"
+    | "break";
   start: number;
   end: number;
   href?: string;
+  depth?: 1 | 2 | 3 | 4 | 5 | 6;
+  ordered?: boolean;
+  listStart?: number;
+  checked?: boolean | null;
+  language?: string;
+  value?: string;
+  header?: boolean;
+  align?: "left" | "right" | "center" | null;
   children: MessagePart[];
 };
 export type MessagePart = TextPart | FormattedPart;
@@ -24,12 +50,50 @@ function webDestination(value: string) {
   }
 }
 
-// Inline formatting only: keep message whitespace and block syntax unchanged.
-// Every part covers an original source range, including the non-visible syntax.
-// This lets annotation Range offsets remain anchored in the original message.
+// Every leaf covers an original source range, including non-visible syntax.
+// Capture container prefixes from the parser rather than guessing with regexes:
+// nested quotes/lists, lazy continuation lines and tabs all retain raw offsets.
 export function formatMessageText(text: string): MessagePart[] {
+  const prefixes: { start: number; end: number }[] = [];
+  const fences: { start: number; end: number }[] = [];
+  const tree = fromMarkdown(text, {
+    extensions: [gfmTable(), gfmTaskListItem()],
+    mdastExtensions: [
+      gfmTableFromMarkdown(),
+      gfmTaskListItemFromMarkdown(),
+      {
+        beforeEnter(token) {
+          const range = { start: token.start.offset, end: token.end.offset };
+          if (
+            ["blockQuotePrefix", "listItemPrefix", "listItemIndent", "linePrefix"].includes(
+              token.type,
+            )
+          )
+            prefixes.push(range);
+          if (token.type === "codeFencedFence") fences.push(range);
+        },
+      },
+    ],
+  });
   const literal = (start: number, end: number): TextPart => ({ kind: "text", start, end });
   const syntax = (start: number, end: number): TextPart => ({ kind: "syntax", start, end });
+
+  function sourceText(start: number, end: number, autolink = false): MessagePart[] {
+    const parts: MessagePart[] = [];
+    let offset = start;
+    for (const prefix of prefixes) {
+      if (prefix.end <= offset || prefix.start >= end) continue;
+      if (prefix.start > offset)
+        parts.push(
+          ...(autolink ? textParts(offset, prefix.start) : [literal(offset, prefix.start)]),
+        );
+      const next = Math.min(end, prefix.end);
+      parts.push(syntax(Math.max(offset, prefix.start), next));
+      offset = next;
+    }
+    if (offset < end) parts.push(...(autolink ? textParts(offset, end) : [literal(offset, end)]));
+    return parts;
+  }
 
   function bareLinks(start: number, end: number): MessagePart[] {
     let offset = start;
@@ -79,23 +143,127 @@ export function formatMessageText(text: string): MessagePart[] {
     return parts;
   }
 
-  function children(nodes: Nodes[], start: number, end: number, autolink = true): MessagePart[] {
+  // UL/OL/TR/TABLE cannot contain syntax spans directly. Place their separators
+  // inside the adjacent LI/TD, preserving source order and valid HTML nesting.
+  function insertSyntax(part: MessagePart, gap: TextPart, before: boolean) {
+    if (!("children" in part)) return;
+    if (part.kind === "tableRow") {
+      const cell = before ? part.children[0] : part.children.at(-1);
+      if (cell) insertSyntax(cell, gap, before);
+    } else if (before) part.children.unshift(gap);
+    else part.children.push(gap);
+  }
+
+  function children(
+    nodes: Nodes[],
+    start: number,
+    end: number,
+    autolink = true,
+    gaps: "text" | "syntax" | "inside" = "text",
+  ): MessagePart[] {
     const parts: MessagePart[] = [];
     let offset = start;
     for (const node of nodes) {
       const nodeStart = node.position?.start.offset;
       const nodeEnd = node.position?.end.offset;
       if (nodeStart === undefined || nodeEnd === undefined) continue;
-      if (nodeStart > offset) parts.push(literal(offset, nodeStart));
-      parts.push(...format(node, nodeStart, nodeEnd, autolink));
+      const formatted = format(node, nodeStart, nodeEnd, autolink);
+      if (nodeStart > offset) {
+        const gap = gaps === "text" ? literal(offset, nodeStart) : syntax(offset, nodeStart);
+        if (gaps === "inside" && formatted[0]) insertSyntax(formatted[0], gap, true);
+        else parts.push(gap);
+      }
+      parts.push(...formatted);
       offset = nodeEnd;
     }
-    if (offset < end) parts.push(literal(offset, end));
+    if (offset < end) {
+      const gap = gaps === "text" ? literal(offset, end) : syntax(offset, end);
+      if (gaps === "inside" && parts.at(-1)) insertSyntax(parts.at(-1)!, gap, false);
+      else parts.push(gap);
+    }
     return parts;
   }
 
   function format(node: Nodes, start: number, end: number, autolink: boolean): MessagePart[] {
-    if (node.type === "text") return autolink ? textParts(start, end) : [literal(start, end)];
+    if (node.type === "text") return sourceText(start, end, autolink);
+    if (node.type === "code") {
+      const nodeFences = fences.filter((fence) => fence.start >= start && fence.end <= end);
+      let contentStart = start;
+      let contentEnd = end;
+      if (nodeFences.length) {
+        const openingEol = /\r\n|\r|\n/.exec(text.slice(nodeFences[0].end, end));
+        contentStart = openingEol
+          ? nodeFences[0].end + openingEol.index + openingEol[0].length
+          : end;
+        if (nodeFences.length > 1) {
+          const closingLine =
+            Math.max(
+              text.lastIndexOf("\n", nodeFences[1].start - 1),
+              text.lastIndexOf("\r", nodeFences[1].start - 1),
+            ) + 1;
+          contentEnd = Math.max(contentStart, closingLine);
+        }
+        // CommonMark removes one terminal line ending even for an open fence.
+        const trailingEol = /(?:\r\n|\r|\n)$/.exec(text.slice(contentStart, contentEnd));
+        if (trailingEol) contentEnd -= trailingEol[0].length;
+      }
+      return [
+        {
+          kind: "codeBlock",
+          start,
+          end,
+          value: node.value,
+          language: node.lang ?? undefined,
+          children: [
+            syntax(start, contentStart),
+            ...sourceText(contentStart, contentEnd),
+            syntax(contentEnd, end),
+          ],
+        },
+      ];
+    }
+    if (node.type === "break")
+      return [{ kind: "break", start, end, children: [syntax(start, end)] }];
+    if (
+      node.type === "paragraph" ||
+      node.type === "heading" ||
+      node.type === "blockquote" ||
+      node.type === "list" ||
+      node.type === "listItem" ||
+      node.type === "table" ||
+      node.type === "tableRow" ||
+      node.type === "tableCell"
+    ) {
+      const part: FormattedPart = {
+        kind: node.type,
+        start,
+        end,
+        children: children(
+          node.children,
+          start,
+          end,
+          autolink,
+          ["list", "table", "tableRow"].includes(node.type) ? "inside" : "syntax",
+        ),
+      };
+      if (node.type === "heading") part.depth = node.depth;
+      if (node.type === "list") {
+        part.ordered = node.ordered ?? false;
+        part.listStart = node.start ?? undefined;
+      }
+      if (node.type === "listItem") part.checked = node.checked;
+      if (node.type === "table") {
+        part.children.forEach((row, rowIndex) => {
+          if (!("children" in row)) return;
+          row.children.forEach((cell, column) => {
+            if (!("children" in cell)) return;
+            cell.header = rowIndex === 0;
+            cell.align = node.align?.[column];
+          });
+        });
+      }
+      return [part];
+    }
     if (node.type === "inlineCode") {
       const delimiter = /^`+/.exec(text.slice(start, end))![0].length;
       return [
@@ -136,5 +304,5 @@ export function formatMessageText(text: string): MessagePart[] {
     return [literal(start, end)];
   }
 
-  return children(fromMarkdown(text).children, 0, text.length);
+  return children(tree.children, 0, text.length, true, "syntax");
 }

@@ -45,6 +45,14 @@ export function annotationHighlights(message: ChatMessage, annotations: Annotati
   );
 }
 
+// Controls are not response source. Exclude toolbar/status text from both the
+// selection and its prefix while retaining hidden Markdown source characters.
+function annotationRangeText(range: Range) {
+  const fragment = range.cloneContents();
+  fragment.querySelectorAll("[data-message-control]").forEach((element) => element.remove());
+  return fragment.textContent ?? "";
+}
+
 export function readAnnotationSelection(
   selection: Selection | null,
   transcript: HTMLElement,
@@ -57,26 +65,32 @@ export function readAnnotationSelection(
       ? (range.startContainer as Element)
       : range.startContainer.parentElement;
   const source = element?.closest<HTMLElement>("[data-annotation-source]");
+  const endElement =
+    range.endContainer.nodeType === 1
+      ? (range.endContainer as Element)
+      : range.endContainer.parentElement;
   // Never accept a selection crossing messages or including names, tool output,
   // thinking, user text, or controls, even if it starts in an assistant response.
   if (
     !source ||
     !transcript.contains(source) ||
     !source.contains(range.startContainer) ||
-    !source.contains(range.endContainer)
+    !source.contains(range.endContainer) ||
+    element?.closest("[data-message-control]") ||
+    endElement?.closest("[data-message-control]")
   )
     return null;
   const message = messages.find(
     (entry) => entry.id === source.dataset.annotationSource && entry.role === "assistant",
   );
   if (!message) return null;
-  const raw = range.toString();
+  const raw = annotationRangeText(range);
   const quote = raw.trim();
   if (!quote) return null;
   const prefix = range.cloneRange();
   prefix.selectNodeContents(source);
   prefix.setEnd(range.startContainer, range.startOffset);
-  const start = prefix.toString().length + raw.length - raw.trimStart().length;
+  const start = annotationRangeText(prefix).length + raw.length - raw.trimStart().length;
   const end = start + quote.length;
   if (message.text.slice(start, end) !== quote) return null;
   return { source: { messageId: message.id, quote, start, end }, range: range.cloneRange() };
