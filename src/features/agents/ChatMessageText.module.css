@@ -2,6 +2,12 @@
   min-width: 0;
 }
 
+/* Manrope ships only an upright face. Allow synthetic italics in Markdown
+   emphasis without enabling synthetic weights or changing the app-wide theme. */
+.message em {
+  font-synthesis: style;
+}
+
 .message :where(p) {
   margin: 0;
   white-space: pre-wrap;
@@ -9,18 +15,34 @@
 
 .message :where(h1, h2, h3, h4, h5, h6) {
   margin: 0;
-  font-size: 1.1em;
+  font-size: 1em;
   font-weight: 750;
   line-height: 1.35;
   white-space: normal;
 }
 
 .message h1 {
-  font-size: 1.4em;
+  font-size: 1.6em;
 }
 
 .message h2 {
+  font-size: 1.4em;
+}
+
+.message h3 {
   font-size: 1.25em;
+}
+
+.message h4 {
+  font-size: 1.125em;
+}
+
+.message h5 {
+  font-size: 1.0625em;
+}
+
+.message h6 {
+  font-size: 1em;
 }
 
 .message :where(ul, ol) {

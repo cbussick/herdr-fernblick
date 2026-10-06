@@ -4,9 +4,9 @@ Ordinary user, assistant and thinking messages share `ChatMessageText`. Messages
 
 ## Supported
 
-- Bold and italic emphasis, including nested formatting.
+- Bold and italic emphasis, including nested formatting. Markdown emphasis permits style-only font synthesis because the locally bundled Manrope font has no italic face; the app-wide synthesis setting and real variable font weights are unchanged.
 - Inline code and HTTP/HTTPS links, bare web URLs and URL wikilinks with optional aliases.
-- ATX (`#`) and Setext headings.
+- ATX (`#`) and Setext headings. All six levels have distinct descending sizes (1.6, 1.4, 1.25, 1.125, 1.0625 and 1 times the body size); deep headings never shrink below body text.
 - Ordered lists (preserving the starting number), unordered lists and nested lists.
 - Blockquotes, including multiple paragraphs and nested blocks.
 - Backtick/tilde fenced code blocks, including incomplete streaming fences; indented code also uses the code-block presentation. An optional language label is displayed as text, not executed. Syntax highlighting is not enabled.
@@ -30,7 +30,7 @@ Raw HTML is never injected. Only HTTP/HTTPS destinations become links, opened wi
 
 `readAnnotationSelection` reads cloned range text after removing `data-message-control` descendants. This excludes code language/copy/status text from both prefix offsets and quoted passages, while retaining hidden Markdown syntax. Control endpoints, cross-message selections and non-assistant selections remain invalid. Cross-block annotations contain the original Markdown slice, not a reconstructed rendering.
 
-Tests cover raw-source coverage, every streaming prefix of a mixed block fixture, nested container formatting, safe destinations, exact code copying, failure/fallback behavior and cross-block selection/highlights. The synthetic Chromium/WebKit annotation script exercises phone, portrait/landscape iPad and desktop sizes with all agent APIs intercepted:
+Tests cover raw-source coverage, every streaming prefix of a mixed block fixture, nested container formatting, safe destinations, exact code copying, failure/fallback behavior and cross-block selection/highlights. Browser typography checks compare actual italic/upright glyph screenshots in paragraphs, nested bold emphasis and table cells (computed `font-style` alone cannot catch blocked synthesis), verify the six-level heading size hierarchy and exercise annotations inside italic text. The synthetic Chromium/WebKit annotation script exercises phone, portrait/landscape iPad and desktop sizes with all agent APIs intercepted:
 
 ```sh
 PLAYWRIGHT_MODULE=/tmp/fernblick-design-tools/node_modules/playwright/index.mjs \

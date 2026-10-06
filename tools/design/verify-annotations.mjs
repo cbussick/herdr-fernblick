@@ -49,6 +49,11 @@ const messages = [
     role: "user",
     text: "### User formatting\n\n- **First**\n- Second\n\n> Quoted text\n\n- [x] Done\n\n| Name | Value |\n| --- | --- |\n| a | b |\n\n~~~txt\nuser code\n~~~",
   },
+  {
+    id: "a5",
+    role: "assistant",
+    text: "# Heading one\n\n## Heading two\n\n### Heading three\n\n#### Heading four\n\n##### Heading five\n\n###### Heading six\n\nPlain text and *Italic sample*.\n\n**Bold with *nested italic*.**\n\n| Format | Example |\n| --- | --- |\n| Emphasis | *Table italic* |",
+  },
 ];
 const snapshot = {
   type: "snapshot",
@@ -277,6 +282,60 @@ for (const engine of [chromium, webkit]) {
       const activate = (locator) => (touch ? locator.tap() : locator.click());
       assert.equal(await generalAction.count(), 0, "general feedback cannot start a batch");
       assert.equal(await tray.count(), 0);
+      const typography = page.locator('[data-annotation-source="a5"]');
+      await page.evaluate(() => document.fonts.ready);
+      for (const selector of ["p > em", "strong > em", "td em"]) {
+        const italic = typography.locator(selector).first();
+        assert.equal(
+          await italic.evaluate((element) => getComputedStyle(element).fontStyle),
+          "italic",
+        );
+        const paintedItalic = await italic.screenshot();
+        await italic.evaluate((element) => {
+          element.style.fontStyle = "normal";
+        });
+        const paintedNormal = await italic.screenshot();
+        await italic.evaluate((element) => {
+          element.style.removeProperty("font-style");
+        });
+        assert.equal(
+          paintedItalic.equals(paintedNormal),
+          false,
+          "Markdown italics must visibly differ from upright text, not just have computed font-style: italic",
+        );
+      }
+      const sizes = await typography
+        .locator("h1, h2, h3, h4, h5, h6")
+        .evaluateAll((elements) =>
+          elements.map((element) => parseFloat(getComputedStyle(element).fontSize)),
+        );
+      assert.equal(sizes.length, 6);
+      for (let level = 1; level < sizes.length; level++)
+        assert.ok(
+          sizes[level - 1] > sizes[level],
+          "every heading level must have a distinct descending size",
+        );
+      assert.ok(
+        sizes[5] >=
+          (await typography.evaluate((element) => parseFloat(getComputedStyle(element).fontSize))),
+        "deep headings must not be smaller than body text",
+      );
+      await typography.screenshot({
+        path: `${out}/${engine.name()}-${viewport.width}-typography.png`,
+      });
+      for (const quote of ["Italic sample", "nested italic", "Table italic"]) {
+        const start = messages[8].text.indexOf(quote);
+        await select('[data-annotation-source="a5"]', start, start + quote.length, touch);
+        await openComment();
+        assert.equal(
+          await page
+            .getByRole("dialog", { name: "Comment on passage" })
+            .locator("blockquote")
+            .textContent(),
+          quote,
+        );
+        await comment.press("Escape");
+      }
       const blockSource = '[data-annotation-source="a4"]';
       const blockText = messages[6].text;
       const blocks = page.locator(blockSource);
