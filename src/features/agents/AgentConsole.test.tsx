@@ -126,7 +126,7 @@ async function confirmCompact() {
   await act(async () =>
     renderer.root
       .findAllByType("button")
-      .find((b) => b.children.includes("Compact conversation"))!
+      .find((b) => b.props["aria-label"] === "Compact conversation")!
       .props.onClick(),
   );
 }
@@ -137,6 +137,47 @@ async function enableCompact() {
   mocks.live.snapshot = { ...mocks.live.snapshot!, capabilities: { compact: true } };
   await act(async () => renderer.update(render()));
 }
+it("places Compact inside the textfield toolbar immediately after Skills without an idle extra row", async () => {
+  await enableCompact();
+  const trigger = renderer.root.findByProps({ "data-ui": "compact-conversation-button" });
+  const buttons = trigger.parent!.findAllByType("button");
+  const index = buttons.indexOf(trigger);
+  expect(buttons[index - 1].children).toContain(" Skills");
+  expect(buttons[index + 1].props["aria-label"]).toBe("Send message");
+  expect(trigger.props.type).toBe("button");
+  expect(trigger.props["aria-expanded"]).toBe(false);
+  expect(trigger.parent!.parent!.findAllByType("textarea")).toHaveLength(1);
+  expect(renderer.root.findAllByProps({ "data-ui": "conversation-compaction" })).toHaveLength(0);
+});
+
+it("cancels compact confirmation with Cancel or Escape without invoking Pi or changing the draft", async () => {
+  await enableCompact();
+  await act(async () =>
+    renderer.root.findByType("textarea").props.onChange({ target: { value: "keep this" } }),
+  );
+  await confirmCompact();
+  expect(
+    renderer.root.findByProps({ "data-ui": "compact-conversation-button" }).props["aria-expanded"],
+  ).toBe(true);
+  await act(async () =>
+    renderer.root
+      .findAllByType("button")
+      .find((b) => b.children.includes("Cancel"))!
+      .props.onClick(),
+  );
+  expect(compactNow()).toBeUndefined();
+  await confirmCompact();
+  const event = { key: "Escape", preventDefault: vi.fn(), stopPropagation: vi.fn() };
+  await act(async () =>
+    renderer.root.findByProps({ "data-ui": "conversation-compaction" }).props.onKeyDown(event),
+  );
+  expect(event.preventDefault).toHaveBeenCalledOnce();
+  expect(event.stopPropagation).toHaveBeenCalledOnce();
+  expect(compactNow()).toBeUndefined();
+  expect(renderer.root.findByType("textarea").props.value).toBe("keep this");
+  expect(mocks.compact).not.toHaveBeenCalled();
+});
+
 it("explains and compacts separately from Skills, waits for completion and preserves text/images", async () => {
   await enableCompact();
   let complete!: () => void;
@@ -184,7 +225,7 @@ it.each(["unsupported", "busy", "pending", "disconnected"])(
     await act(async () => renderer.update(render()));
     const button = renderer.root
       .findAllByType("button")
-      .find((b) => b.children.includes("Compact conversation"))!;
+      .find((b) => b.props["aria-label"] === "Compact conversation")!;
     expect(button.props.disabled).toBe(true);
     expect(mocks.compact).not.toHaveBeenCalled();
   },

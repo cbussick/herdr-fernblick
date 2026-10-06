@@ -79,9 +79,13 @@ Opening the original dialog makes one request, without focus/reconnect polling;
 mutations are never automatically retried.
 
 `POST .../compact` accepts `{target}` for peers advertising
-`capabilities.compact: true`. The separate **Compact conversation** action below
-the composer opens an inline explanation/confirmation; it never uses the skills
-menu, ordinary `/compact` text, or terminal keys. It summarizes older model context
+`capabilities.compact: true`. The separate **Compact** action sits inside the
+composer toolbar immediately after **/Skills**, before Send. It uses inward arrows,
+with a visible text label when the composer has room and an accessible
+“Compact conversation” label at every size. The explanation/confirmation and
+feedback appear below the toolbar inside the same surface only when needed;
+there is no persistent idle row. Cancel and Escape restore focus to the trigger.
+It never uses the skills menu, ordinary `/compact` text, or terminal keys. It summarizes older model context
 without clearing the visible history or starting a new session. Draft text and
 images remain editable and unchanged. Keyboard-shortened viewports can scroll
 the composer to keep confirmation and feedback reachable.
@@ -262,7 +266,8 @@ PLAYWRIGHT_MODULE=/tmp/fernblick-design-tools/node_modules/playwright/index.mjs 
 
 All API/SSE traffic is intercepted; no existing agents are controlled. It covers
 320/390px phones, keyboard-height layout, portrait/landscape iPad and desktop,
-confirmation focus, 44px targets, progress vs completion, draft/images and overflow.
+toolbar order and text/icon presentation, confirmation/cancel/Escape focus,
+44px targets, progress vs completion, draft/images and overflow.
 Screenshots go to ignored `design-gallery/compact/`. Physical-device keyboard
 behavior and live provider compaction remain manual verification.
 

@@ -535,53 +535,60 @@ export function AgentConsole({ agent, onBack }: AgentConsoleProps) {
               disabled={composerSending}
               onChange={(event) => selectImages(event.target.files)}
             />
-            <SkillComposer
-              pane={agent.pane_id}
+            <ConversationCompaction
               target={snapshot ? targetOf(snapshot) : undefined}
-              available={Boolean(snapshot?.capabilities?.skills)}
-              connected={Boolean(snapshot && !live.error)}
-              prompt={prompt}
-              onChange={changePrompt}
-              label={getAgentTabLabel(agent)}
-              sending={composerSending}
-              canSend={canSend}
-              canAttach={attachments.length < 4}
-              canOpenTree={Boolean(
-                snapshot && !live.error && !annotations.editor && !compact.pending,
-              )}
-              onAttach={() => fileInputRef.current?.click()}
-              onOpenTree={() => snapshot && setTreeTarget(targetOf(snapshot))}
-              canOpenBoard={Boolean(
-                snapshot?.version === 2 && !live.error && !annotations.editor && !compact.pending,
-              )}
-              onOpenBoard={() => snapshot && setBoardTarget(targetOf(snapshot))}
-            />
-          </div>
-          <ConversationCompaction
-            target={snapshot ? targetOf(snapshot) : undefined}
-            supported={!snapshot || Boolean(snapshot.capabilities?.compact)}
-            enabled={
-              canForward &&
-              Boolean(snapshot?.capabilities?.compact) &&
-              !stop.isPending &&
-              !treeTarget &&
-              !boardTarget &&
-              !annotations.editor
-            }
-            pending={compact.pending}
-            notice={compact.notice}
-            onCompact={(expected) => {
-              if (
+              supported={!snapshot || Boolean(snapshot.capabilities?.compact)}
+              enabled={
                 canForward &&
-                !sendLock.current &&
+                Boolean(snapshot?.capabilities?.compact) &&
                 !stop.isPending &&
                 !treeTarget &&
                 !boardTarget &&
                 !annotations.editor
-              )
-                void compact.start(expected);
-            }}
-          />
+              }
+              pending={compact.pending}
+              notice={compact.notice}
+              onCompact={(expected) => {
+                if (
+                  canForward &&
+                  !sendLock.current &&
+                  !stop.isPending &&
+                  !treeTarget &&
+                  !boardTarget &&
+                  !annotations.editor
+                )
+                  void compact.start(expected);
+              }}
+            >
+              {(action) => (
+                <SkillComposer
+                  pane={agent.pane_id}
+                  target={snapshot ? targetOf(snapshot) : undefined}
+                  available={Boolean(snapshot?.capabilities?.skills)}
+                  connected={Boolean(snapshot && !live.error)}
+                  prompt={prompt}
+                  onChange={changePrompt}
+                  label={getAgentTabLabel(agent)}
+                  sending={composerSending}
+                  canSend={canSend}
+                  canAttach={attachments.length < 4}
+                  canOpenTree={Boolean(
+                    snapshot && !live.error && !annotations.editor && !compact.pending,
+                  )}
+                  onAttach={() => fileInputRef.current?.click()}
+                  onOpenTree={() => snapshot && setTreeTarget(targetOf(snapshot))}
+                  canOpenBoard={Boolean(
+                    snapshot?.version === 2 &&
+                    !live.error &&
+                    !annotations.editor &&
+                    !compact.pending,
+                  )}
+                  onOpenBoard={() => snapshot && setBoardTarget(targetOf(snapshot))}
+                  conversationAction={action}
+                />
+              )}
+            </ConversationCompaction>
+          </div>
           {attachmentError ? (
             <StateNotice kind="info" role="alert">
               {attachmentError}

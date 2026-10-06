@@ -47,6 +47,13 @@ export function ChevronIcon(props: IconProps) {
     </IconBase>
   );
 }
+export function CompactIcon(props: IconProps) {
+  return (
+    <IconBase {...props}>
+      <path d="m4 4 5 5M4 9h5V4m11 16-5-5m5-5h-5v5" />
+    </IconBase>
+  );
+}
 export function SearchIcon(props: IconProps) {
   return (
     <IconBase {...props}>

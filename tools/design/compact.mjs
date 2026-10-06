@@ -118,7 +118,35 @@ for (const [engine, type] of [
           "base64",
         ),
       });
-      await page.getByRole("button", { name: "Compact conversation", exact: true }).click();
+      const trigger = page.getByRole("button", { name: "Compact conversation", exact: true });
+      const toolbar = trigger.locator("..");
+      assert.equal(await toolbar.locator("..").locator("#agent-prompt").count(), 1);
+      assert.equal(
+        await trigger.evaluate((node) => node.previousElementSibling.textContent.trim()),
+        "/ Skills",
+      );
+      assert.equal(
+        await trigger.evaluate((node) => node.nextElementSibling.getAttribute("aria-label")),
+        "Send message",
+      );
+      assert.equal(await page.getByRole("region", { name: "Conversation compaction" }).count(), 0);
+      const triggerBox = await trigger.boundingBox();
+      assert(
+        triggerBox.width >= 44 && triggerBox.height >= 44,
+        "Compact must retain a 44px target",
+      );
+      assert.equal(await trigger.locator("span").isVisible(), width >= 768);
+      for (const button of await toolbar.getByRole("button").all()) {
+        const bounds = await button.boundingBox();
+        assert(bounds.width >= 44 && bounds.height >= 44, "Every toolbar target stays touch-sized");
+        assert.equal(bounds.y, triggerBox.y, "Toolbar must remain one row");
+        assert(
+          bounds.x >= 0 && bounds.x + bounds.width <= width,
+          "Toolbar controls must not be clipped",
+        );
+      }
+      await page.screenshot({ path: `${output}/${engine}-${name}-toolbar.png` });
+      await trigger.click();
       const confirm = page.getByRole("button", { name: "Compact now", exact: true });
       await confirm.waitFor();
       assert.match(
@@ -137,6 +165,15 @@ for (const [engine, type] of [
         true,
       );
       await page.screenshot({ path: `${output}/${engine}-${name}-confirm.png` });
+      await page.getByRole("button", { name: "Cancel", exact: true }).click();
+      assert.equal(await page.getByRole("region", { name: "Conversation compaction" }).count(), 0);
+      assert.equal(await trigger.evaluate((node) => node === document.activeElement), true);
+      await trigger.click();
+      await confirm.press("Escape");
+      assert.equal(await page.getByRole("region", { name: "Conversation compaction" }).count(), 0);
+      assert.equal(await trigger.evaluate((node) => node === document.activeElement), true);
+      assert.equal(compactions, 0);
+      await trigger.click();
       await confirm.click();
       await page
         .getByText("Summarizing older context; waiting for Pi to finish…", { exact: true })

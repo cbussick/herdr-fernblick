@@ -1,4 +1,4 @@
-import { useEffect, useId, useRef, useState, type KeyboardEvent } from "react";
+import { useEffect, useId, useRef, useState, type KeyboardEvent, type ReactNode } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { getAgentSkills } from "../../shared/api/apiClient";
 import type { AgentSkill, Target } from "../../../packages/pi-live-chat/protocol";
@@ -30,6 +30,7 @@ interface Props {
   onOpenTree: () => void;
   canOpenBoard?: boolean;
   onOpenBoard?: () => void;
+  conversationAction?: ReactNode;
 }
 
 export function SkillComposer(props: Props) {
@@ -303,6 +304,7 @@ export function SkillComposer(props: Props) {
         >
           <span aria-hidden="true">/</span> Skills
         </button>
+        {props.conversationAction}
         <button
           type="submit"
           className={styles.send}

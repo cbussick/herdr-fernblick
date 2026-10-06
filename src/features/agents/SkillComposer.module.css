@@ -1,5 +1,7 @@
 .composer {
   min-width: 0;
+  container-type: inline-size;
+  container-name: composer;
 }
 
 .composer textarea {
@@ -40,6 +42,18 @@
 
 .composer .skills[aria-expanded="true"] {
   background: var(--color-accent-soft);
+}
+
+/* Keep all six controls touch-sized on the narrowest phones. */
+@container composer (width <= 21rem) {
+  .toolbar {
+    gap: 0;
+    padding-inline: 0.25rem;
+  }
+
+  .composer .skills {
+    padding-inline: var(--space-1);
+  }
 }
 
 .composer .send {
