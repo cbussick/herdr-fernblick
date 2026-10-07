@@ -122,11 +122,16 @@ afterEach(async () => {
   client.clear();
   vi.unstubAllGlobals();
 });
+async function openActions() {
+  await act(async () =>
+    renderer.root.findByProps({ "data-ui": "conversation-actions-button" }).props.onClick(),
+  );
+}
 async function confirmCompact() {
+  await openActions();
   await act(async () =>
     renderer.root
-      .findAllByType("button")
-      .find((b) => b.props["aria-label"] === "Compact conversation")!
+      .findByProps({ role: "menuitem", "aria-label": "Compact conversation" })
       .props.onClick(),
   );
 }
@@ -137,9 +142,9 @@ async function enableCompact() {
   mocks.live.snapshot = { ...mocks.live.snapshot!, capabilities: { compact: true } };
   await act(async () => renderer.update(render()));
 }
-it("places Compact inside the textfield toolbar immediately after Skills without an idle extra row", async () => {
+it("places More actions inside the toolbar after Skills without an idle extra row", async () => {
   await enableCompact();
-  const trigger = renderer.root.findByProps({ "data-ui": "compact-conversation-button" });
+  const trigger = renderer.root.findByProps({ "data-ui": "conversation-actions-button" });
   const buttons = trigger.parent!.findAllByType("button");
   const index = buttons.indexOf(trigger);
   expect(buttons[index - 1].children).toContain(" Skills");
@@ -150,6 +155,53 @@ it("places Compact inside the textfield toolbar immediately after Skills without
   expect(renderer.root.findAllByProps({ "data-ui": "conversation-compaction" })).toHaveLength(0);
 });
 
+it("opens and dismisses the overflow menu without invoking compact or changing the draft", async () => {
+  await enableCompact();
+  await act(async () =>
+    renderer.root.findByType("textarea").props.onChange({ target: { value: "keep this" } }),
+  );
+  await openActions();
+  expect(renderer.root.findAllByProps({ role: "menuitem" })).toHaveLength(1);
+  expect(
+    renderer.root.findByProps({ "data-ui": "conversation-actions-button" }).props["aria-haspopup"],
+  ).toBe("menu");
+  expect(compactNow()).toBeUndefined();
+  await act(async () =>
+    renderer.root.findByProps({ role: "menu" }).props.onKeyDown({
+      key: "Escape",
+      preventDefault: vi.fn(),
+      stopPropagation: vi.fn(),
+    }),
+  );
+  expect(renderer.root.findAllByProps({ role: "menu" })).toHaveLength(0);
+  expect(mocks.compact).not.toHaveBeenCalled();
+  expect(mocks.command).not.toHaveBeenCalled();
+  expect(renderer.root.findByType("textarea").props.value).toBe("keep this");
+});
+
+it.each(["replacement", "disconnect"])("invalidates an open actions menu on %s", async (mode) => {
+  await enableCompact();
+  await openActions();
+  if (mode === "replacement")
+    mocks.live.snapshot = { ...mocks.live.snapshot!, epoch: randomUUID() };
+  else mocks.live.error = "Connection lost";
+  await act(async () => renderer.update(render()));
+  expect(renderer.root.findAllByProps({ role: "menu" })).toHaveLength(0);
+  expect(mocks.compact).not.toHaveBeenCalled();
+});
+
+it("updates the open menu when Pi becomes busy and keeps unavailable Compact inert", async () => {
+  await enableCompact();
+  await openActions();
+  mocks.live.snapshot = { ...mocks.live.snapshot!, busy: true };
+  await act(async () => renderer.update(render()));
+  const item = renderer.root.findByProps({ role: "menuitem" });
+  expect(item.props["aria-disabled"]).toBe(true);
+  await act(async () => item.props.onClick());
+  expect(compactNow()).toBeUndefined();
+  expect(mocks.compact).not.toHaveBeenCalled();
+});
+
 it("cancels compact confirmation with Cancel or Escape without invoking Pi or changing the draft", async () => {
   await enableCompact();
   await act(async () =>
@@ -157,8 +209,8 @@ it("cancels compact confirmation with Cancel or Escape without invoking Pi or ch
   );
   await confirmCompact();
   expect(
-    renderer.root.findByProps({ "data-ui": "compact-conversation-button" }).props["aria-expanded"],
-  ).toBe(true);
+    renderer.root.findByProps({ "data-ui": "conversation-actions-button" }).props["aria-expanded"],
+  ).toBe(false);
   await act(async () =>
     renderer.root
       .findAllByType("button")
@@ -223,10 +275,15 @@ it.each(["unsupported", "busy", "pending", "disconnected"])(
     if (mode === "pending") mocks.live.snapshot = { ...mocks.live.snapshot!, sendPending: true };
     if (mode === "disconnected") mocks.live.error = "Connection lost";
     await act(async () => renderer.update(render()));
-    const button = renderer.root
-      .findAllByType("button")
-      .find((b) => b.props["aria-label"] === "Compact conversation")!;
-    expect(button.props.disabled).toBe(true);
+    await openActions();
+    const button = renderer.root.findByProps({
+      role: "menuitem",
+      "aria-label": "Compact conversation",
+    });
+    expect(button.props["aria-disabled"]).toBe(true);
+    expect(button.findByType("small").children.join("")).toMatch(/Connect|reload|idle/);
+    await act(async () => button.props.onClick());
+    expect(compactNow()).toBeUndefined();
     expect(mocks.compact).not.toHaveBeenCalled();
   },
 );

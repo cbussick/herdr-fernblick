@@ -118,8 +118,26 @@ for (const [engine, type] of [
           "base64",
         ),
       });
-      const trigger = page.getByRole("button", { name: "Compact conversation", exact: true });
+      const trigger = page.getByRole("button", { name: "More conversation actions", exact: true });
       const toolbar = trigger.locator("..");
+      const menu = page.getByRole("menu", { name: "Conversation actions" });
+      const compact = page.getByRole("menuitem", { name: "Compact conversation", exact: true });
+      let state = structuredClone(snapshot);
+      async function frame(patch) {
+        state = { ...state, ...patch, seq: state.seq + 1 };
+        await page.evaluate(
+          (value) => window.fixtureStream.onmessage({ data: JSON.stringify(value) }),
+          state,
+        );
+      }
+      async function openMenu() {
+        await trigger.click();
+        await menu.waitFor();
+      }
+      async function chooseCompact() {
+        await openMenu();
+        await compact.click();
+      }
       assert.equal(await toolbar.locator("..").locator("#agent-prompt").count(), 1);
       assert.equal(
         await trigger.evaluate((node) => node.previousElementSibling.textContent.trim()),
@@ -133,9 +151,9 @@ for (const [engine, type] of [
       const triggerBox = await trigger.boundingBox();
       assert(
         triggerBox.width >= 44 && triggerBox.height >= 44,
-        "Compact must retain a 44px target",
+        "More actions must retain a 44px target",
       );
-      assert.equal(await trigger.locator("span").isVisible(), width >= 768);
+      assert.equal(await trigger.getAttribute("aria-haspopup"), "menu");
       for (const button of await toolbar.getByRole("button").all()) {
         const bounds = await button.boundingBox();
         assert(bounds.width >= 44 && bounds.height >= 44, "Every toolbar target stays touch-sized");
@@ -146,7 +164,104 @@ for (const [engine, type] of [
         );
       }
       await page.screenshot({ path: `${output}/${engine}-${name}-toolbar.png` });
-      await trigger.click();
+      await openMenu();
+      assert.equal(await menu.getByRole("menuitem").count(), 1);
+      assert.equal(await compact.evaluate((node) => node === document.activeElement), true);
+      assert.equal(await menu.evaluate((node) => node.matches(":popover-open")), true);
+      const bounds = await menu.boundingBox();
+      assert(
+        bounds.x >= 0 &&
+          bounds.y >= 0 &&
+          bounds.x + bounds.width <= width &&
+          bounds.y + bounds.height <= height,
+        "Menu fits viewport",
+      );
+      assert(bounds.y + bounds.height <= triggerBox.y, "Menu opens above toolbar");
+      assert.equal(
+        await compact.evaluate((node) => {
+          const rect = node.getBoundingClientRect();
+          return node.contains(
+            document.elementFromPoint(rect.x + rect.width / 2, rect.y + rect.height / 2),
+          );
+        }),
+        true,
+        "Top-layer menu must not be clipped by the composer",
+      );
+      await page.screenshot({ path: `${output}/${engine}-${name}-menu.png` });
+      if (name === "phone") {
+        await page.setViewportSize({ width, height: 440 });
+        await page.waitForFunction(() => {
+          const box = document.querySelector('[role="menu"]').getBoundingClientRect();
+          return box.y >= 0 && box.bottom <= innerHeight;
+        });
+        assert.equal(await menu.evaluate((node) => node.matches(":popover-open")), true);
+        await page.screenshot({ path: `${output}/${engine}-menu-resize.png` });
+        await page.setViewportSize({ width, height });
+      }
+      await compact.press("End");
+      await compact.press("Home");
+      await compact.press("ArrowUp");
+      await compact.press("ArrowDown");
+      assert.equal(await compact.evaluate((node) => node === document.activeElement), true);
+      await compact.press("Escape");
+      assert.equal(await menu.count(), 0);
+      assert.equal(await trigger.evaluate((node) => node === document.activeElement), true);
+      await trigger.press("ArrowUp");
+      await compact.waitFor();
+      await compact.press("Tab");
+      assert.equal(await menu.count(), 0);
+      await openMenu();
+      await compact.press("Shift+Tab");
+      assert.equal(await menu.count(), 0);
+      assert.equal(
+        await page
+          .getByRole("button", { name: "Skills", exact: true })
+          .evaluate((node) => node === document.activeElement),
+        true,
+      );
+      await openMenu();
+      await compact.press("Tab");
+      assert.equal(
+        await page
+          .getByRole("button", { name: "Send message" })
+          .evaluate((node) => node === document.activeElement),
+        true,
+      );
+      await openMenu();
+      await page.mouse.click(4, 4);
+      await page.waitForFunction(() => !document.querySelector('[role="menu"]'));
+      assert.equal(await trigger.getAttribute("aria-expanded"), "false");
+      assert.equal(compactions, 0);
+      await openMenu();
+      await frame({ busy: true });
+      await page.waitForFunction(
+        () => document.querySelector('[role="menuitem"]')?.getAttribute("aria-disabled") === "true",
+      );
+      assert.match(await compact.innerText(), /idle/);
+      await compact.evaluate((node) => node.click());
+      assert.equal(compactions, 0);
+      assert.equal(await page.getByRole("button", { name: "Compact now" }).count(), 0);
+      await frame({ busy: false, capabilities: { skills: true } });
+      await page.getByText("Run /reload in Pi to enable compaction.", { exact: true }).waitFor();
+      await compact.evaluate((node) => node.click());
+      assert.equal(compactions, 0);
+      await frame({
+        capabilities: { skills: true, compact: true },
+        epoch: "a0000000-0000-4000-8000-000000000003",
+      });
+      await page.waitForFunction(() => !document.querySelector('[role="menu"]'));
+      await openMenu();
+      await page.evaluate(() =>
+        window.fixtureStream.onmessage({
+          data: JSON.stringify({ type: "unavailable", reason: "Fixture disconnected" }),
+        }),
+      );
+      await page.waitForFunction(() => !document.querySelector('[role="menu"]'));
+      await openMenu();
+      assert.match(await compact.innerText(), /Connect to Pi/);
+      await compact.press("Escape");
+      await frame({ epoch: target.epoch });
+      await chooseCompact();
       const confirm = page.getByRole("button", { name: "Compact now", exact: true });
       await confirm.waitFor();
       assert.match(
@@ -168,12 +283,14 @@ for (const [engine, type] of [
       await page.getByRole("button", { name: "Cancel", exact: true }).click();
       assert.equal(await page.getByRole("region", { name: "Conversation compaction" }).count(), 0);
       assert.equal(await trigger.evaluate((node) => node === document.activeElement), true);
-      await trigger.click();
+      await chooseCompact();
       await confirm.press("Escape");
       assert.equal(await page.getByRole("region", { name: "Conversation compaction" }).count(), 0);
       assert.equal(await trigger.evaluate((node) => node === document.activeElement), true);
       assert.equal(compactions, 0);
-      await trigger.click();
+      await trigger.focus();
+      await trigger.press("Enter");
+      await compact.press("Enter");
       await confirm.click();
       await page
         .getByText("Summarizing older context; waiting for Pi to finish…", { exact: true })

@@ -554,7 +554,7 @@
 
 /* Confirmation and notices may outgrow a keyboard-shortened viewport.
    Keep every composer control reachable without overflowing the app shell. */
-.prompt-composer:has([data-ui="compact-conversation-button"]) {
+.prompt-composer:has([data-ui="conversation-actions-button"]) {
   min-height: 0;
   overflow-y: auto;
 }

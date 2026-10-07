@@ -1,12 +1,14 @@
 import { useEffect, useId, useRef, useState, type ReactNode } from "react";
 import { type Target } from "../../../packages/pi-live-chat/protocol";
-import { CompactIcon, LoaderIcon } from "../../shared/ui/Icons";
+import { ConversationActionsMenu } from "./ConversationActionsMenu";
 import { StateNotice } from "../../shared/ui/StateFeedback";
 import styles from "./ConversationCompaction.module.css";
 
 interface Props {
   target?: Target;
   enabled: boolean;
+  connected: boolean;
+  locked: boolean;
   supported: boolean;
   pending: boolean;
   notice?: { text: string; error: boolean };
@@ -17,6 +19,8 @@ interface Props {
 export function ConversationCompaction({
   target,
   enabled,
+  connected,
+  locked,
   supported,
   pending,
   notice,
@@ -38,40 +42,41 @@ export function ConversationCompaction({
     target.runtime === confirmation.runtime &&
     target.sessionId === confirmation.sessionId &&
     target.epoch === confirmation.epoch;
-  if (confirmation && !sameTarget) setConfirmation(null);
+  if (confirmation && (!connected || !sameTarget)) setConfirmation(null);
   function cancel() {
     setConfirmation(null);
     trigger.current?.focus();
   }
-  const action = (
-    <button
-      type="button"
-      ref={trigger}
-      className={styles.trigger}
-      data-ui="compact-conversation-button"
-      disabled={!enabled || pending}
-      aria-label="Compact conversation"
-      aria-busy={pending}
-      aria-expanded={Boolean(confirmation)}
-      aria-controls={confirmation ? panelId : undefined}
-      title={
-        pending ? "Compacting conversation…" : "Compact conversation — summarize older context"
-      }
-      onClick={() => {
-        if (confirmation) cancel();
-        else if (target) setConfirmation(target);
-      }}
-    >
-      {pending ? <LoaderIcon /> : <CompactIcon />}
-      <span className={styles.label} aria-hidden="true">
-        Compact
-      </span>
-    </button>
-  );
+  const disabledReason = !connected
+    ? "Connect to Pi to compact this conversation."
+    : !supported
+      ? "Run /reload in Pi to enable compaction."
+      : pending
+        ? "Compaction is already in progress."
+        : !enabled
+          ? "Available when Pi is idle and no other action is in progress."
+          : undefined;
   return (
     <>
-      {children(action)}
-      {confirmation || !supported || pending || notice ? (
+      <ConversationActionsMenu
+        contextKey={connected ? JSON.stringify(target) : "disconnected"}
+        triggerRef={trigger}
+        disabled={locked}
+        actions={[
+          {
+            id: "compact",
+            label: "Compact conversation",
+            description: "Summarize older context to make room.",
+            disabledReason,
+            onSelect: () => {
+              if (target && enabled && connected && supported && !pending) setConfirmation(target);
+            },
+          },
+        ]}
+      >
+        {children}
+      </ConversationActionsMenu>
+      {confirmation || pending || notice ? (
         <section
           id={panelId}
           className={styles.compaction}
@@ -109,9 +114,6 @@ export function ConversationCompaction({
                 </button>
               </div>
             </div>
-          ) : null}
-          {!supported ? (
-            <p className={styles.explanation}>Run /reload in Pi to enable compaction.</p>
           ) : null}
           {pending && !notice ? (
             <p role="status" className={styles.explanation}>

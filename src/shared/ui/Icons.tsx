@@ -47,10 +47,12 @@ export function ChevronIcon(props: IconProps) {
     </IconBase>
   );
 }
-export function CompactIcon(props: IconProps) {
+export function MoreIcon(props: IconProps) {
   return (
     <IconBase {...props}>
-      <path d="m4 4 5 5M4 9h5V4m11 16-5-5m5-5h-5v5" />
+      <circle cx="5" cy="12" r="1.5" fill="currentColor" stroke="none" />
+      <circle cx="12" cy="12" r="1.5" fill="currentColor" stroke="none" />
+      <circle cx="19" cy="12" r="1.5" fill="currentColor" stroke="none" />
     </IconBase>
   );
 }

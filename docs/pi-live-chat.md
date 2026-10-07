@@ -79,12 +79,20 @@ Opening the original dialog makes one request, without focus/reconnect polling;
 mutations are never automatically retried.
 
 `POST .../compact` accepts `{target}` for peers advertising
-`capabilities.compact: true`. The separate **Compact** action sits inside the
-composer toolbar immediately after **/Skills**, before Send. It uses inward arrows,
-with a visible text label when the composer has room and an accessible
-“Compact conversation” label at every size. The explanation/confirmation and
-feedback appear below the toolbar inside the same surface only when needed;
-there is no persistent idle row. Cancel and Escape restore focus to the trigger.
+`capabilities.compact: true`. The composer toolbar has a three-dot **More conversation
+actions** button immediately after **/Skills**, before Send. Its overflow menu
+initially contains only **Compact conversation**, with an explanation or disabled
+reason. A native HTML popover places the menu above the composer in the top layer,
+without clipping; position follows resize/scroll and the visual viewport. This
+requires a modern Popover API browser (including Safari/iPadOS 17+).
+Arrow keys/Home/End navigate, Enter/Space select, Escape restores trigger focus,
+and Tab/outside clicks dismiss without selecting. Runtime/session/epoch changes
+and disconnect invalidate an open menu. Additional actions can use the local
+`ConversationAction` list, independently of the Skills catalogue.
+Selection opens the existing explanation/confirmation; opening the menu alone
+never invokes Pi. Confirmation and feedback appear below the toolbar inside the
+same surface only when needed; there is no persistent idle row. Cancel and Escape
+restore focus to the three-dot trigger.
 It never uses the skills menu, ordinary `/compact` text, or terminal keys. It summarizes older model context
 without clearing the visible history or starting a new session. Draft text and
 images remain editable and unchanged. Keyboard-shortened viewports can scroll
@@ -266,8 +274,10 @@ PLAYWRIGHT_MODULE=/tmp/fernblick-design-tools/node_modules/playwright/index.mjs 
 
 All API/SSE traffic is intercepted; no existing agents are controlled. It covers
 320/390px phones, keyboard-height layout, portrait/landscape iPad and desktop,
-toolbar order and text/icon presentation, confirmation/cancel/Escape focus,
-44px targets, progress vs completion, draft/images and overflow.
+toolbar order, unclipped top-layer overflow menu, keyboard navigation/select/Tab,
+Escape/outside dismissal, unavailable reasons and stale-target invalidation,
+confirmation/cancel focus, 44px targets, progress vs completion, draft/images
+and viewport overflow.
 Screenshots go to ignored `design-gallery/compact/`. Physical-device keyboard
 behavior and live provider compaction remain manual verification.
 

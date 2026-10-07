@@ -537,6 +537,8 @@ export function AgentConsole({ agent, onBack }: AgentConsoleProps) {
             />
             <ConversationCompaction
               target={snapshot ? targetOf(snapshot) : undefined}
+              connected={Boolean(snapshot && !live.error)}
+              locked={composerSending}
               supported={!snapshot || Boolean(snapshot.capabilities?.compact)}
               enabled={
                 canForward &&
