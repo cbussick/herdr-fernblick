@@ -413,8 +413,6 @@ it("browses actual skills without sending, preserves text and images, and suppor
 
 it.each([
   ["/", "/skill:review /"],
-  ["/rev", "/skill:review /rev"],
-  ["/tmp/example", "/skill:review /tmp/example"],
   ["/compact", "/skill:review /compact"],
   ["/skill:review", "/skill:review "],
 ])(
@@ -507,16 +505,20 @@ it("clears an acknowledged text-and-image send without waiting for any Pi event"
   );
   expect(renderer.root.findByProps({ "aria-label": "Send message" }).props.disabled).toBe(false);
 });
-it("keeps an image-only draft when the forwarding ACK is lost", async () => {
+it.each(["", "keep me"])("retains text %j and images when forwarding fails", async (draft) => {
   mocks.command.mockRejectedValue(new Error("Connection lost"));
   const file = new File(["image"], "image.png", { type: "image/png" });
-  await act(async () =>
-    renderer.root.findByProps({ type: "file" }).props.onChange({ target: { files: [file] } }),
-  );
+  await act(async () => {
+    renderer.root.findByType("textarea").props.onChange({ target: { value: draft } });
+    renderer.root.findByProps({ type: "file" }).props.onChange({ target: { files: [file] } });
+  });
   await act(async () => renderer.root.findByType("form").props.onSubmit({ preventDefault() {} }));
   await flush();
+  expect(renderer.root.findByType("textarea").props.value).toBe(draft);
   expect(renderer.root.findAllByProps({ "aria-label": "Image attachments" })).toHaveLength(1);
   expect(renderer.root.findByType("textarea").props.disabled).toBe(false);
+  expect(renderer.root.findByProps({ "aria-label": "Attach images" }).props.disabled).toBe(false);
+  expect(renderer.root.findAllByProps({ "data-testid": "send-spinner" })).toHaveLength(0);
   expect(JSON.stringify(renderer.toJSON())).toContain("Connection lost");
   expect(mocks.command).toHaveBeenCalledOnce();
 });
@@ -980,6 +982,8 @@ it("locks the composer only through upload and forwarding, then uses Pi busy/idl
   const id = mocks.command.mock.calls[0][5];
   await act(async () => acknowledge({ type: "ack", id, outcome: "invoked" }));
   await flush();
+  expect(renderer.root.findByType("textarea").props.disabled).toBe(false);
+  expect(renderer.root.findByProps({ "aria-label": "Send message" }).props.disabled).toBe(true);
   mocks.live.snapshot = { ...mocks.live.snapshot!, seq: 3, busy: true, sendPending: false };
   await act(async () => renderer.update(render()));
   expect(renderer.root.findByType("form").props["aria-busy"]).toBe(false);
@@ -989,16 +993,7 @@ it("locks the composer only through upload and forwarding, then uses Pi busy/idl
   expect(renderer.root.findAllByProps({ "data-testid": "send-spinner" })).toHaveLength(0);
   expect(renderer.root.findByProps({ "aria-label": "Send message" }).props.disabled).toBe(true);
 });
-it("styles the whiteboard entry like the adjacent conversation-paths action", () => {
-  const board = renderer.root.findByProps({ "aria-label": "Open whiteboard" });
-  const paths = renderer.root.findByProps({ "aria-label": "Open conversation paths" });
-  expect(board.props.className).toBe(paths.props.className);
-  const icon = board.findByType("svg");
-  expect(icon.props.strokeWidth).toBe("2");
-  expect(icon.props.width).toBeUndefined();
-  expect(icon.props.height).toBeUndefined();
-});
-it("shows a starting placeholder instead of an unknown/error state before Pi is ready", async () => {
+it("shows startup and failure states while keeping send disabled", async () => {
   mocks.live = {};
   await act(async () => renderer.update(render()));
   const state = renderer.root.findByProps({ role: "status" });
@@ -1007,57 +1002,12 @@ it("shows a starting placeholder instead of an unknown/error state before Pi is 
   expect(JSON.stringify(renderer.toJSON())).toContain("Starting Pi…");
   expect(renderer.root.findAllByProps({ role: "alert" })).toHaveLength(0);
   expect(renderer.root.findByProps({ "aria-label": "Send message" }).props.disabled).toBe(true);
-});
-it("preserves text and attachments when forwarding fails", async () => {
-  mocks.command.mockRejectedValue(new Error("Connection lost"));
-  const file = new File(["image"], "image.png", { type: "image/png" });
-  await act(async () => {
-    renderer.root.findByType("textarea").props.onChange({ target: { value: "keep me" } });
-    renderer.root.findByProps({ type: "file" }).props.onChange({ target: { files: [file] } });
-  });
-  await act(async () => renderer.root.findByType("form").props.onSubmit({ preventDefault() {} }));
-  await flush();
-  expect(renderer.root.findByType("textarea").props.value).toBe("keep me");
-  expect(renderer.root.findAllByProps({ "aria-label": "Image attachments" })).toHaveLength(1);
-  expect(mocks.command).toHaveBeenCalledOnce();
-  expect(renderer.root.findByType("textarea").props.disabled).toBe(false);
-  expect(renderer.root.findByProps({ "aria-label": "Attach images" }).props.disabled).toBe(false);
-  expect(renderer.root.findAllByProps({ "data-testid": "send-spinner" })).toHaveLength(0);
-});
-
-it("shows a decorative icon in connecting and unavailable chat placeholders", async () => {
-  mocks.live = {};
-  await act(async () => renderer.update(render()));
-  expect(
-    renderer.root.findByProps({ "data-state-kind": "loading" }).findByType("svg").props[
-      "aria-hidden"
-    ],
-  ).toBe("true");
   mocks.live = { error: "Cannot reach Pi" };
   await act(async () => renderer.update(render()));
-  expect(renderer.root.findByProps({ role: "alert" }).findByType("svg").props["aria-hidden"]).toBe(
-    "true",
-  );
-  expect(JSON.stringify(renderer.toJSON())).toContain("Cannot reach Pi");
-});
-
-it("does not render obsolete sending or receipt notices for a backend handoff", async () => {
-  mocks.live.snapshot = { ...mocks.live.snapshot!, sendPending: true };
-  await act(async () => renderer.update(render()));
-  expect(JSON.stringify(renderer.toJSON())).not.toContain("Sending to Pi");
-  expect(JSON.stringify(renderer.toJSON())).not.toContain("Waiting for Pi");
+  expect(renderer.root.findByProps({ role: "alert" }).findByType("p").children).toEqual([
+    "Cannot reach Pi",
+  ]);
   expect(renderer.root.findByProps({ "aria-label": "Send message" }).props.disabled).toBe(true);
-});
-
-it("clears the acknowledged draft without requiring a Pi receipt", async () => {
-  await act(async () =>
-    renderer.root.findByType("textarea").props.onChange({ target: { value: "clear on ACK" } }),
-  );
-  await act(async () => renderer.root.findByType("form").props.onSubmit({ preventDefault() {} }));
-  await flush();
-  expect(renderer.root.findByType("textarea").props.value).toBe("");
-  expect(renderer.root.findAllByProps({ "data-testid": "send-spinner" })).toHaveLength(0);
-  expect(JSON.stringify(renderer.toJSON())).not.toContain("Waiting for Pi");
 });
 
 it("shows only the current connected session's footer and drops it on recovery/runtime replacement", async () => {

@@ -62,20 +62,6 @@ afterEach(async () => {
   await act(async () => renderer.unmount());
   vi.unstubAllGlobals();
 });
-it("uses the main chat transcript with all available turns and tool results even when compact", () => {
-  expect(text()).toContain("First response");
-  expect(text()).toContain("Final response");
-  expect(text()).toContain("Old question");
-  expect(text()).toContain("Old reply");
-  expect(text()).toContain("Tool failure");
-  expect(text()).not.toContain("Private thought");
-  expect(renderer.root.findByType(ChatTranscript).props.messages).toBe(
-    conversation.snapshot!.messages,
-  );
-  expect(renderer.root.findByType(ChatTranscript).props.showThinking).toBe(false);
-  expect(renderer.root.findAllByProps({ role: "status" })).toHaveLength(1);
-  expect(text()).toContain("Reply ready");
-});
 it("uses the shared working indicator and replaces it with warnings or settled reply status", async () => {
   activity.working = true;
   await act(async () => renderer.update(render()));
@@ -126,6 +112,18 @@ it("does not present the previous turn as a reply to a newly received prompt", a
 });
 it("expands only layout, preserves the shared transcript, respects thinking preference, and collapses with Escape", async () => {
   const messages = renderer.root.findByType(ChatTranscript).props.messages;
+  expect(messages).toBe(conversation.snapshot!.messages);
+  expect(renderer.root.findAllByProps({ role: "status" })).toHaveLength(1);
+  expect(text()).toContain("Reply ready");
+  for (const turn of [
+    "First response",
+    "Final response",
+    "Old question",
+    "Old reply",
+    "Tool failure",
+  ])
+    expect(text()).toContain(turn);
+  expect(text()).not.toContain("Private thought");
   await act(async () => toggle().props.onClick());
   expect(renderer.root.findByType(ChatTranscript).props.messages).toBe(messages);
   expect(toggle().props["aria-expanded"]).toBe(true);

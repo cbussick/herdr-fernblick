@@ -142,20 +142,4 @@ describe("ChatMessageText formatting", () => {
       );
     }
   });
-
-  it("keeps every raw character and highlight offset in assistant annotation sources", () => {
-    const text = "Before **[Read docs](https://example.com)** then `main`.";
-    const start = text.indexOf("Read docs");
-    const html = renderToStaticMarkup(
-      <ChatMessageText
-        text={text}
-        annotationSource="a1"
-        highlights={[{ start, end: start + 9 }]}
-      />,
-    );
-    expect(html.replace(/<[^>]+>/g, "")).toBe(text);
-    expect(html).toContain("data-message-syntax");
-    expect(html).toMatch(/<mark[^>]*>Read docs<\/mark>/);
-    expect(html.match(/<a /g)).toHaveLength(1);
-  });
 });

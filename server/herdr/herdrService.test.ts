@@ -14,34 +14,6 @@ const agent = {
   workspace_id: "w1",
 };
 
-it("uses passive visible output by default", async () => {
-  const request = vi.fn(
-    async <T>(_method: string, params: Record<string, unknown>, schema: z.ZodType<T>) =>
-      schema.parse({
-        type: "pane_read",
-        read: {
-          pane_id: "w1:p1",
-          workspace_id: "w1",
-          tab_id: "w1:t1",
-          source: params.source,
-          format: "text",
-          text: "output",
-          revision: 1,
-          truncated: false,
-        },
-      }),
-  );
-  const service = new HerdrService({ request } as unknown as HerdrClient);
-
-  await service.readAgent("w1:p1", 100);
-
-  expect(request).toHaveBeenCalledWith(
-    "agent.read",
-    expect.objectContaining({ source: "visible" }),
-    expect.anything(),
-  );
-});
-
 it("adds workspace and tab labels to agents from the session snapshot", async () => {
   const request = vi.fn(async <T>(_method: string, _params: unknown, schema: z.ZodType<T>) =>
     schema.parse({

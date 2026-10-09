@@ -99,6 +99,8 @@ describe("editing highlighted passages", () => {
     );
     expect(html.replace(/<[^>]+>/g, "")).toBe(text);
     expect(html).toContain('data-annotation-id="formatted"');
+    expect(html).toContain("data-message-syntax");
+    expect(html).toMatch(/<mark[^>]*>Read docs<\/mark>/);
     expect(html.match(/<a /g)).toHaveLength(1);
     expect(html.match(/role="button"/g)!.length).toBeGreaterThan(1);
   });

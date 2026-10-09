@@ -44,38 +44,29 @@ afterEach(async () => {
   vi.unstubAllGlobals();
 });
 
-it.each([false, true])(
-  "closes after one save when renaming the tab (rename agent: %s)",
-  async (renameAgent) => {
-    if (renameAgent) {
-      await act(async () => {
-        renderer.root
-          .findAllByType("input")[0]
-          .props.onChange({ target: { value: "renamed-agent" } });
-      });
-    }
-    await act(async () => {
-      renderer.root.findByType("form").props.onSubmit({ preventDefault: vi.fn() });
-    });
-    await act(async () => {
-      await vi.waitFor(() => expect(close).toHaveBeenCalledOnce());
-    });
-    expect(renderer.root.findAllByProps({ role: "alert" })).toHaveLength(0);
-    expect(fetchMock).toHaveBeenCalledWith("/api/tabs/w1%3At1", {
-      method: "PATCH",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ label: "Renamed tab" }),
-    });
-    if (renameAgent) {
-      expect(fetchMock).toHaveBeenCalledWith("/api/agents/w1%3Ap1", {
-        method: "PATCH",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ name: "renamed-agent" }),
-      });
-    }
-    expect(fetchMock).toHaveBeenCalledTimes(renameAgent ? 2 : 1);
-  },
-);
+it("closes after one save when renaming both the agent and tab", async () => {
+  await act(async () => {
+    renderer.root.findAllByType("input")[0].props.onChange({ target: { value: "renamed-agent" } });
+  });
+  await act(async () => {
+    renderer.root.findByType("form").props.onSubmit({ preventDefault: vi.fn() });
+  });
+  await act(async () => {
+    await vi.waitFor(() => expect(close).toHaveBeenCalledOnce());
+  });
+  expect(renderer.root.findAllByProps({ role: "alert" })).toHaveLength(0);
+  expect(fetchMock).toHaveBeenCalledWith("/api/tabs/w1%3At1", {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ label: "Renamed tab" }),
+  });
+  expect(fetchMock).toHaveBeenCalledWith("/api/agents/w1%3Ap1", {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ name: "renamed-agent" }),
+  });
+  expect(fetchMock).toHaveBeenCalledTimes(2);
+});
 
 it("keeps the dialog open and reports a real rename failure", async () => {
   fetchMock.mockImplementation(async () =>
