@@ -1,6 +1,13 @@
 import dialogStyles from "./Dialogs.module.css";
 import overviewStyles from "./agentOverview.module.css";
-import { useEffect, useRef, useState, type FormEvent, type ReactNode } from "react";
+import {
+  useEffect,
+  useLayoutEffect,
+  useRef,
+  useState,
+  type FormEvent,
+  type ReactNode,
+} from "react";
 import type * as React from "react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { closeTab, renameAgent, renameTab } from "../../shared/api/apiClient";
@@ -35,6 +42,9 @@ export function PaneContextActions({
   const [nextAgentName, setNextAgentName] = useState(agentName ?? "");
   const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const suppressClick = useRef(false);
+  const rowRef = useRef<HTMLDivElement>(null);
+  const menuRef = useRef<HTMLDivElement>(null);
+  const overlayRef = useRef<HTMLDivElement>(null);
   const renameDialogRef = useRef<HTMLDialogElement>(null);
   const removeDialogRef = useRef<HTMLDialogElement>(null);
   const queryClient = useQueryClient();
@@ -45,6 +55,62 @@ export function PaneContextActions({
     }
   };
   useEffect(() => clear, []);
+  useLayoutEffect(() => {
+    const popup = menuRef.current;
+    const row = rowRef.current;
+    const overlay = overlayRef.current;
+    if (!menuOpen || !popup || !row || !overlay) return;
+    // Top-layer placement escapes workspace and overview overflow clipping.
+    // Manual dismissal keeps the release of the opening long press/right click
+    // from immediately light-dismissing a newly opened popover.
+    overlay.showPopover();
+    function position() {
+      const viewport = window.visualViewport;
+      const minX = (viewport?.offsetLeft ?? 0) + 8;
+      const minY = (viewport?.offsetTop ?? 0) + 8;
+      const maxX = minX + (viewport?.width ?? window.innerWidth) - 16;
+      const maxY = minY + (viewport?.height ?? window.innerHeight) - 16;
+      const rect = row!.getBoundingClientRect();
+      popup!.style.setProperty("--pane-menu-max-width", `${maxX - minX}px`);
+      popup!.style.setProperty("--pane-menu-max-height", `${maxY - minY}px`);
+      const { width, height } = popup!.getBoundingClientRect();
+      const above = rect.top - minY - 8;
+      const below = maxY - rect.bottom - 8;
+      const placeAbove = below < height && above > below;
+      popup!.style.setProperty(
+        "--pane-menu-max-height",
+        `${Math.max(0, Math.min(maxY - minY, placeAbove ? above : below))}px`,
+      );
+      const visibleHeight = popup!.getBoundingClientRect().height;
+      const top = placeAbove ? rect.top - visibleHeight - 8 : rect.bottom + 8;
+      popup!.style.setProperty(
+        "--pane-menu-top",
+        `${Math.max(minY, Math.min(top, maxY - visibleHeight))}px`,
+      );
+      popup!.style.setProperty(
+        "--pane-menu-left",
+        `${Math.max(minX, Math.min(rect.right - width - 8, maxX - width))}px`,
+      );
+    }
+    position();
+    popup.querySelector<HTMLButtonElement>("button")?.focus({ preventScroll: true });
+    window.addEventListener("resize", position);
+    window.addEventListener("scroll", position, true);
+    const viewport = window.visualViewport;
+    viewport?.addEventListener("resize", position);
+    viewport?.addEventListener("scroll", position);
+    const observer = new ResizeObserver(position);
+    observer.observe(row);
+    observer.observe(popup);
+    return () => {
+      window.removeEventListener("resize", position);
+      window.removeEventListener("scroll", position, true);
+      viewport?.removeEventListener("resize", position);
+      viewport?.removeEventListener("scroll", position);
+      observer.disconnect();
+      if (overlay.matches(":popover-open")) overlay.hidePopover();
+    };
+  }, [menuOpen]);
   useEffect(() => {
     const activeDialog = dialog === "rename" ? renameDialogRef.current : removeDialogRef.current;
     if (activeDialog && !activeDialog.open) activeDialog.showModal();
@@ -77,6 +143,7 @@ export function PaneContextActions({
   const handlers = {
     onContextMenu: (event: React.MouseEvent) => {
       event.preventDefault();
+      clear();
       setMenuOpen(true);
     },
     onPointerDown: (event: React.PointerEvent) => {
@@ -97,19 +164,36 @@ export function PaneContextActions({
     },
   };
   return (
-    <div className={overviewStyles["pane-row-context"]}>
+    <div ref={rowRef} className={overviewStyles["pane-row-context"]}>
       {/* Handlers access refs only after pointer/click events, not during render. */}
       {/* oxlint-disable-next-line react/refs */}
       {children(handlers)}
       {menuOpen ? (
-        <>
+        <div
+          ref={overlayRef}
+          className={overviewStyles["pane-context-overlay"]}
+          popover="manual"
+          onKeyDown={(event) => {
+            if (event.key === "Escape" || event.key === "Tab") {
+              if (event.key === "Escape") event.preventDefault();
+              setMenuOpen(false);
+              rowRef.current?.querySelector<HTMLButtonElement>("button")?.focus();
+            }
+          }}
+        >
           <button
             className={overviewStyles["pane-context-scrim"]}
             type="button"
+            tabIndex={-1}
             aria-label="Close menu"
             onClick={() => setMenuOpen(false)}
           />
-          <div className={overviewStyles["pane-context-menu"]} role="menu">
+          <div
+            ref={menuRef}
+            className={overviewStyles["pane-context-menu"]}
+            role="menu"
+            aria-label={`${label} actions`}
+          >
             <button
               type="button"
               role="menuitem"
@@ -134,7 +218,7 @@ export function PaneContextActions({
               Close tab
             </button>
           </div>
-        </>
+        </div>
       ) : null}
       {dialog === "rename" ? (
         <dialog
