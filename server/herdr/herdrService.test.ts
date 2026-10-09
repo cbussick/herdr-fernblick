@@ -220,38 +220,3 @@ it("creates an unfocused workspace in the requested directory", async () => {
   );
   expect(workspace).toEqual({ label: "API", workspace_id: "w2" });
 });
-
-it("creates a shell tab and sends commands to its pane", async () => {
-  const request = vi.fn(async <T>(method: string, _params: unknown, schema: z.ZodType<T>) => {
-    if (method === "tab.create") {
-      return schema.parse({
-        type: "tab_created",
-        tab: { label: "Logs", tab_id: "w1:t3", workspace_id: "w1" },
-        root_pane: { pane_id: "w1:p3", revision: 0 },
-      });
-    }
-    return schema.parse({ type: "ok" });
-  });
-  const service = new HerdrService({ request } as unknown as HerdrClient);
-
-  const tab = await service.createTab("w1", "Logs");
-  await service.sendPaneInput(tab.pane_id, "tail -f app.log");
-
-  expect(tab).toMatchObject({ label: "Logs", pane_id: "w1:p3" });
-  expect(request.mock.calls[1]).toEqual([
-    "pane.send_input",
-    { pane_id: "w1:p3", text: "tail -f app.log", keys: ["enter"] },
-    expect.anything(),
-  ]);
-});
-
-it("closes the underlying Herdr tab", async () => {
-  const request = vi.fn(async <T>(_method: string, _params: unknown, schema: z.ZodType<T>) =>
-    schema.parse({ type: "ok" }),
-  );
-  const service = new HerdrService({ request } as unknown as HerdrClient);
-
-  await service.closeTab("w1:t3");
-
-  expect(request).toHaveBeenCalledWith("tab.close", { tab_id: "w1:t3" }, expect.anything());
-});

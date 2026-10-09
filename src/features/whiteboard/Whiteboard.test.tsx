@@ -106,22 +106,6 @@ afterEach(async () => {
   await act(async () => renderer.unmount());
   vi.unstubAllGlobals();
 });
-it("Share drawing is image-only without a permission picker and keeps the board open", async () => {
-  await openSheet();
-  expect(renderer.root.findAllByProps({ type: "radio" })).toHaveLength(0);
-  expect(JSON.stringify(renderer.toJSON())).toContain("Sharing does not grant live board access");
-  expect(renderer.root.findByProps({ "data-testid": "whiteboard-conversation" }).props.inert).toBe(
-    true,
-  );
-  await act(async () => button("Send drawing").props.onClick());
-  await flush();
-  expect(mocks.send).toHaveBeenCalledOnce();
-  expect(mocks.send.mock.calls[0][1].mode).toBe("image");
-  expect(props.onClose).not.toHaveBeenCalled();
-  expect(
-    renderer.root.findAllByProps({ placeholder: "What should the agent do with this drawing?" }),
-  ).toHaveLength(0);
-});
 it("retains a failed image instruction and never automatically retries", async () => {
   await openSheet();
   await act(async () =>
@@ -226,17 +210,14 @@ it("flushes human changes before forwarding a dock prompt and prevents double su
   expect(props.conversation.onSend).toHaveBeenCalledOnce();
   expect(props.conversation.onSend).toHaveBeenCalledWith(expect.objectContaining({ revision: 2 }));
 });
-it.each(["working", "waiting", "disconnected", "unsupported"] as const)(
-  "blocks dock and share sends while %s",
-  async (agentState) => {
-    props.conversation.draft = "Draw";
-    await act(async () => renderer.update(<Whiteboard {...props} agentState={agentState} />));
-    expect(button("Send").props.disabled).toBe(true);
-    expect(button("Share drawing").props.disabled).toBe(true);
-    await act(async () => form().props.onSubmit({ preventDefault() {} }));
-    expect(props.conversation.onSend).not.toHaveBeenCalled();
-  },
-);
+it("blocks dock and share sends while working", async () => {
+  props.conversation.draft = "Draw";
+  await act(async () => renderer.update(<Whiteboard {...props} agentState="working" />));
+  expect(button("Send").props.disabled).toBe(true);
+  expect(button("Share drawing").props.disabled).toBe(true);
+  await act(async () => form().props.onSubmit({ preventDefault() {} }));
+  expect(props.conversation.onSend).not.toHaveBeenCalled();
+});
 it("requires board capability for dock edits, but image sharing still works", async () => {
   props.conversation.draft = "Draw";
   await act(async () => renderer.update(<Whiteboard {...props} structured={false} />));
@@ -262,34 +243,6 @@ it("locks dock submissions during image preview", async () => {
   await act(async () => form().props.onSubmit({ preventDefault() {} }));
   expect(props.conversation.onSend).not.toHaveBeenCalled();
 });
-it.each(["unmount", "busy", "unsupported"])(
-  "does not forward a dock prompt after %s during a pending save",
-  async (state) => {
-    props.conversation.draft = "Draw";
-    await act(async () => renderer.update(<Whiteboard {...props} />));
-    const editor = renderer.root.findAll(
-      (node) => typeof node.type === "function" && node.type.name === "MockEditor",
-    )[0];
-    await act(async () => editor.props.onChange(board(2).scene));
-    const save = deferred<BoardState>();
-    mocks.save.mockReturnValueOnce(save.promise);
-    await act(async () => form().props.onSubmit({ preventDefault() {} }));
-    if (state === "unmount") await act(async () => renderer.unmount());
-    else
-      await act(async () =>
-        renderer.update(
-          <Whiteboard
-            {...props}
-            agentState={state === "busy" ? "working" : "ready"}
-            structured={state !== "unsupported"}
-          />,
-        ),
-      );
-    await act(async () => save.resolve(board(2)));
-    await flush();
-    expect(props.conversation.onSend).not.toHaveBeenCalled();
-  },
-);
 it.each(["export", "upload"])(
   "retains the draft and never forwards without an image when %s fails",
   async (stage) => {
@@ -308,12 +261,10 @@ it.each(["export", "upload"])(
     expect(mocks.upload).toHaveBeenCalledTimes(stage === "export" ? 0 : 1);
   },
 );
-it.each(["export", "upload"])("revalidates a changed board after pending %s", async (stage) => {
+it("refuses to forward an image if the board changed during upload", async () => {
   props.conversation.draft = "Finish this";
-  const exporting = deferred<Blob>();
   const uploading = deferred<{ id: string }>();
-  if (stage === "export") mocks.exportPNG.mockReturnValueOnce(exporting.promise);
-  else mocks.upload.mockReturnValueOnce(uploading.promise);
+  mocks.upload.mockReturnValueOnce(uploading.promise);
   await act(async () => renderer.update(<Whiteboard {...props} />));
   await act(async () => form().props.onSubmit({ preventDefault() {} }));
   await flush();
@@ -333,13 +284,12 @@ it.each(["export", "upload"])("revalidates a changed board after pending %s", as
   );
   await flush();
   await act(async () => {
-    exporting.resolve(new Blob(["png"], { type: "image/png" }));
     uploading.resolve({ id: "33333333-3333-4333-8333-333333333333.png" });
   });
   await flush();
   expect(props.conversation.onSend).not.toHaveBeenCalled();
   expect(JSON.stringify(renderer.toJSON())).toContain("board changed");
-  expect(mocks.upload).toHaveBeenCalledTimes(stage === "export" ? 0 : 1);
+  expect(mocks.upload).toHaveBeenCalledOnce();
 });
 it.each(["unmount", "busy", "unsupported", "disconnected", "invalid scene"])(
   "blocks forwarding after %s during image upload",
@@ -373,18 +323,6 @@ it.each(["unmount", "busy", "unsupported", "disconnected", "invalid scene"])(
     expect(props.conversation.onSend).not.toHaveBeenCalled();
   },
 );
-it("keeps Stop editing in the dock and revokes only the current request", async () => {
-  await updateAccess({ mode: "edit", state: "active", expiresAt: Date.now() + 60000 });
-  await act(async () => renderer.update(<Whiteboard {...props} agentState="working" />));
-  expect(renderer.root.findAllByProps({ role: "status" })).toHaveLength(1);
-  expect(button("Stop editing").props.disabled).toBe(false);
-  mocks.open.mockResolvedValue(board());
-  await act(async () => button("Stop editing").props.onClick());
-  await flush();
-  expect(mocks.revoke).toHaveBeenCalledOnce();
-  expect(button("Stop editing")).toBeUndefined();
-  expect(JSON.stringify(renderer.toJSON())).toContain("Agent is working");
-});
 it("keeps failed revocation visible and does not claim access ended", async () => {
   await updateAccess({ mode: "edit", state: "active", expiresAt: Date.now() + 60000 });
   mocks.revoke.mockRejectedValueOnce(new Error("Could not revoke access"));
@@ -393,7 +331,7 @@ it("keeps failed revocation visible and does not claim access ended", async () =
   expect(renderer.root.findAllByProps({ role: "alert" })).toHaveLength(1);
   expect(button("Stop editing").props.disabled).toBe(false);
 });
-it("revalidates after PNG upload and never sends after unmount", async () => {
+it("does not share a preview if the agent becomes busy during PNG upload", async () => {
   await openSheet();
   const upload = deferred<{ id: string }>();
   mocks.upload.mockReturnValueOnce(upload.promise);

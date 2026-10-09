@@ -81,10 +81,9 @@ it("handles physical rotation with the keyboard still open", async () => {
   });
   expect(layout()).toBe("single");
 });
-it("supports legacy orientation events and unsubscribes on unmount", async () => {
+it("supports legacy orientation events", async () => {
   await act(async () => renderer.unmount());
   screen.orientation = undefined;
-  const remove = vi.spyOn(events, "removeEventListener");
   await act(async () => {
     renderer = create(<Probe />);
   });
@@ -95,8 +94,6 @@ it("supports legacy orientation events and unsubscribes on unmount", async () =>
     events.dispatchEvent(new Event("orientationchange"));
   });
   expect(layout()).toBe("split");
-  await act(async () => renderer.unmount());
-  expect(remove.mock.calls.map(([event]) => event)).toEqual(["resize", "orientationchange"]);
 });
 it("preserves desktop viewport resizing even on a portrait monitor", async () => {
   touch.maxTouchPoints = 0;

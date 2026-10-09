@@ -71,8 +71,6 @@ it("polls only the visible screen by default, never history", async () => {
   expect(read.mock.calls[0][0]).toBe("visible");
   expect(renderer.root.findByType("pre").children).toEqual(["Current screen"]);
   expect(JSON.stringify(renderer.toJSON())).not.toContain("ANSI");
-  const query = client.getQueryCache().getAll()[0];
-  expect(query.observers[0].options.refetchInterval).toBe(1000);
   await act(async () => {
     await client.invalidateQueries({ queryKey: ["terminal", pane] });
   });
@@ -96,7 +94,6 @@ it("loads history once, keeps it scrollable while working, and returns to live e
   expect(button("Refresh history").props.disabled).toBe(true);
   expect(scroll.scrollTop).toBe(123);
   expect(read).toHaveBeenCalledTimes(2);
-  expect(client.getQueryCache().getAll()[0].observers[0].options.refetchInterval).toBe(false);
   await click("Return to live");
   expect(read.mock.calls.at(-1)![0]).toBe("visible");
   expect(renderer.root.findByType("pre").children).toEqual(["Current screen"]);

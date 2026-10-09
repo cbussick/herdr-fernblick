@@ -3,6 +3,16 @@ import { describe, expect, it } from "vitest";
 import { ChatMessageText } from "./ChatMessageText";
 
 describe("ChatMessageText formatting", () => {
+  it("renders bare URLs without swallowing punctuation or valid path characters", () => {
+    const html = renderToStaticMarkup(
+      <ChatMessageText text="See https://example.com/docs?q=chat, **https://example.com/file_name_** and www.example.com/a_(b)." />,
+    );
+    expect(html).toContain('href="https://example.com/docs?q=chat"');
+    expect(html).toContain('href="https://example.com/file_name_"');
+    expect(html).toContain('href="https://www.example.com/a_(b)"');
+    expect(html.match(/<a /g)).toHaveLength(3);
+  });
+
   it("renders the screenshot's bold labeled link as one link, not two raw URLs", () => {
     const html = renderToStaticMarkup(
       <ChatMessageText text="**[Open the app → http://100.71.229.1:41227](http://100.71.229.1:41227)**" />,

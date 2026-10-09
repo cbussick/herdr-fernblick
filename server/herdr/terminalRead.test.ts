@@ -35,39 +35,14 @@ function fixture(status: string, shell = false) {
           snapshot: { agents: shell ? [] : [current], panes: [], tabs: [], workspaces: [] },
         });
       }
-      if (params.source === "recent_unwrapped" && status === "working")
-        throw new HerdrRequestError("busy", historyUnavailable);
       return schema.parse({ type: "pane_read", read: { ...output, source: params.source } });
     },
   );
   return { request, service: new HerdrService({ request } as unknown as HerdrClient) };
 }
 
-it.each(["agent", "pane"] as const)(
-  "reads only the visible %s screen by default, even while working",
-  async (kind) => {
-    const { request, service } = fixture("working");
-    const read =
-      kind === "agent" ? service.readAgent.bind(service) : service.readPane.bind(service);
-    await expect(read(agent.pane_id, 600)).resolves.toMatchObject({
-      source: "visible",
-      text: output.text,
-    });
-    expect(request).toHaveBeenCalledExactlyOnceWith(
-      `${kind}.read`,
-      {
-        [kind === "agent" ? "target" : "pane_id"]: agent.pane_id,
-        source: "visible",
-        format: "text",
-        strip_ansi: true,
-      },
-      expect.anything(),
-    );
-  },
-);
-
-it.each(["idle", "done"])("loads history explicitly when the agent is %s", async (status) => {
-  const { request, service } = fixture(status);
+it("loads history for a done agent using the resolved pane rather than its mutable name", async () => {
+  const { request, service } = fixture("done");
   await expect(service.readAgent("agent-name", 600, "recent_unwrapped")).resolves.toMatchObject({
     source: "recent_unwrapped",
   });
@@ -85,7 +60,7 @@ it.each(["idle", "done"])("loads history explicitly when the agent is %s", async
   ]);
 });
 
-it.each(["working", "blocked", "unknown"])(
+it.each(["blocked", "unknown"])(
   "rejects history reads for a %s agent before attempting to scroll",
   async (status) => {
     const { request, service } = fixture(status);

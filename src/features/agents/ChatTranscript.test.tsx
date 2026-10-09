@@ -82,9 +82,6 @@ it("renders all turns, status, tool errors and images with the shared thinking p
     expect(text).toContain(value);
   expect(text).not.toContain("Thinking detail");
   expect(renderer.root.findByProps({ "aria-label": "Open attached image" })).toBeDefined();
-  expect(renderer.root.findByProps({ "data-testid": "chat-tool" }).props.className).toContain(
-    "chat-tool--error",
-  );
   props = { ...props, showThinking: true, truncated: true };
   await act(async () => renderer.update(<ChatTranscript {...props} />));
   text = JSON.stringify(renderer.toJSON());

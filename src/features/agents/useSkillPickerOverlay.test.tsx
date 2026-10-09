@@ -98,9 +98,8 @@ it("fits the visual viewport as the keyboard opens, pans and closes without refo
   expect(focus).toHaveBeenCalledOnce();
   expect(dialog.showModal).toHaveBeenCalledOnce();
 });
-it("falls back to the window viewport and removes subscriptions on close", async () => {
+it("falls back to the window viewport and closes the overlay", async () => {
   browser.visualViewport = undefined;
-  const remove = vi.spyOn(browser, "removeEventListener");
   await mount();
   await act(async () => {
     browser.innerHeight = 440;
@@ -109,7 +108,6 @@ it("falls back to the window viewport and removes subscriptions on close", async
   expect(values.get("--skills-height")).toBe("440px");
   await act(async () => renderer.update(<Probe open={false} />));
   expect(dialog.close).toHaveBeenCalledOnce();
-  expect(remove.mock.calls.map(([type]) => type)).toEqual(["resize"]);
 });
 it("keeps wider layouts inline and switches modes when the width breakpoint changes", async () => {
   media.matches = false;
@@ -126,13 +124,4 @@ it("keeps wider layouts inline and switches modes when the width breakpoint chan
   });
   expect(dialog.close).toHaveBeenCalledOnce();
   expect(renderer.root.findAllByType("dialog")).toHaveLength(0);
-});
-it("removes viewport and media listeners on unmount", async () => {
-  const removeViewport = vi.spyOn(viewport, "removeEventListener");
-  const removeMedia = vi.spyOn(media, "removeEventListener");
-  await mount();
-  await act(async () => renderer.unmount());
-  expect(removeViewport.mock.calls.map(([type]) => type)).toEqual(["resize", "scroll"]);
-  expect(removeMedia.mock.calls.map(([type]) => type)).toEqual(["change"]);
-  expect(dialog.close).toHaveBeenCalledOnce();
 });

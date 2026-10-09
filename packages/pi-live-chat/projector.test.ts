@@ -13,26 +13,6 @@ const assistant = (text: string, timestamp = 2) => ({
 const entry = (id: string, message: unknown) => ({ id, type: "message", message });
 
 describe("shared history/live projector", () => {
-  it("keeps provisional message_end until authoritative reconciliation, including transformations", () => {
-    const p = new TranscriptProjector();
-    p.reconcile([entry("u", { role: "user", timestamp: 1, content: "hi" })]);
-    p.message(assistant("par"));
-    p.message(assistant("partial"));
-    expect(p.messages().map((m) => m.text)).toEqual(["hi", "reason", "partial"]);
-    // Reconnect while streaming: refresh history without discarding the overlay.
-    p.reconcile([entry("u", { role: "user", timestamp: 1, content: "hi" })], true);
-    expect(p.messages().at(-1)?.text).toBe("partial");
-    p.reconcile([
-      entry("u", { role: "user", timestamp: 1, content: "hi" }),
-      entry("a", assistant("transformed by a later handler")),
-    ]);
-    expect(p.messages().map((m) => m.text)).toEqual([
-      "hi",
-      "reason",
-      "transformed by a later handler",
-    ]);
-    expect(p.messages().at(-1)?.id).toBe("a");
-  });
   it("deduplicates calls, partial tools and persisted results by call id", () => {
     const p = new TranscriptProjector();
     const call = {

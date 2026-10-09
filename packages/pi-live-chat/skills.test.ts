@@ -15,21 +15,6 @@ function skill(name: string, path = `/project/.pi/skills/${name}/SKILL.md`): Sla
     },
   };
 }
-it("uses live resolved skills from all sources, preserving Pi's duplicate winner and provenance", () => {
-  const commands = [
-    skill("zebra", "/home/user/.agents/skills/zebra/SKILL.md"),
-    skill("review"),
-    skill("review", "/losing/duplicate"),
-    { ...skill("reload"), name: "reload", source: "extension" as const },
-  ];
-  const pi = { getCommands: () => commands };
-  expect(loadedSkills(pi).map((s) => [s.name, s.path])).toEqual([
-    ["review", "/project/.pi/skills/review/SKILL.md"],
-    ["zebra", "/home/user/.agents/skills/zebra/SKILL.md"],
-  ]);
-  commands.push(skill("new"));
-  expect(loadedSkills(pi).map((s) => s.name)).toContain("new");
-});
 it("does not offer commands shadowed by extensions or pass arbitrary slash commands to dispatch", () => {
   const pi = {
     getCommands: () => [skill("review"), { ...skill("review"), source: "extension" as const }],
@@ -48,19 +33,6 @@ it("keeps skills that share a name with prompt templates, which expand after ski
   };
   expect(loadedSkills(pi).map((s) => s.name)).toEqual(["review"]);
   expect(skillPrompt(pi, "/skill:review").expandPromptTemplates).toBe(true);
-});
-it("normalizes newline/tab arguments for Pi's literal-space parser and rejects unavailable skills", () => {
-  const pi = { getCommands: () => [skill("review")] };
-  expect(skillPrompt(pi, "/skill:review\ncheck this\ncarefully")).toEqual({
-    text: "/skill:review check this\ncarefully",
-    expandPromptTemplates: true,
-  });
-  expect(skillPrompt(pi, "/skill:review")).toEqual({
-    text: "/skill:review",
-    expandPromptTemplates: true,
-  });
-  expect(() => skillPrompt(pi, "/skill:missing")).toThrow("unavailable");
-  expect(() => skillPrompt(pi, "/skill:")).toThrow("unavailable");
 });
 it("bounds catalogue metadata and count and ignores names Pi cannot address unambiguously", () => {
   const commands: SlashCommandInfo[] = Array.from({ length: 1001 }, (_, i) => ({

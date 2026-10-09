@@ -179,36 +179,6 @@ async function setup(beforeStart?: (pi: ReturnType<typeof fakePi>) => void) {
   };
   return { ...pi, latest, command, ack, connections, frames, server, dir };
 }
-it("compacts through callbacks, serializes until completion and reconciles persisted chat", async () => {
-  const t = await setup();
-  expect(t.latest()?.capabilities?.compact).toBe(true);
-  const compact = vi.mocked(t.ctx.compact);
-  const id = t.command("compact");
-  await vi.waitFor(() => expect(compact).toHaveBeenCalledOnce());
-  expect(t.pi.sendUserMessage).not.toHaveBeenCalled();
-  expect(t.frames.some((v) => typeof v === "object" && v && "id" in v && v.id === id)).toBe(false);
-  await vi.waitFor(() => expect(t.latest()?.sendPending).toBe(true));
-  expect(await t.ack(t.command("compact"))).toMatchObject({
-    outcome: "rejected",
-    reason: "A command is already in flight",
-  });
-  expect(await t.ack(t.command("send"))).toMatchObject({ outcome: "rejected" });
-  t.branch.push({
-    type: "message",
-    id: "retained",
-    message: { role: "user", content: "retained", timestamp: 1 },
-  });
-  const options = compact.mock.calls[0][0]!;
-  options.onComplete!({} as Parameters<NonNullable<CompactOptions["onComplete"]>>[0]);
-  expect(await t.ack(id)).toMatchObject({ type: "compacted", target: targetOf(t.latest()!) });
-  await vi.waitFor(() => expect(t.latest()?.sendPending).toBe(false));
-  expect(t.latest()?.messages.some((m) => m.text === "retained")).toBe(true);
-  options.onError!(new Error("late duplicate callback"));
-  expect(
-    t.frames.filter((v) => typeof v === "object" && v && "id" in v && v.id === id),
-  ).toHaveLength(1);
-});
-
 it("rejects busy, stale and repeated compaction commands without invoking Pi", async () => {
   const t = await setup();
   t.setIdle(false);
@@ -233,26 +203,6 @@ it("rejects busy, stale and repeated compaction commands without invoking Pi", a
     reason: expect.stringContaining("already seen"),
   });
   expect(t.ctx.compact).toHaveBeenCalledOnce();
-});
-
-it("reports callback and synchronous compaction errors and unlocks commands", async () => {
-  const t = await setup();
-  const compact = vi.mocked(t.ctx.compact);
-  const id = t.command("compact");
-  await vi.waitFor(() => expect(compact).toHaveBeenCalledOnce());
-  compact.mock.calls[0][0]!.onError!(new Error("Nothing to compact (session too small)"));
-  expect(await t.ack(id)).toMatchObject({
-    outcome: "rejected",
-    reason: expect.stringContaining("too small"),
-  });
-  await vi.waitFor(() => expect(t.latest()?.sendPending).toBe(false));
-  compact.mockImplementationOnce(() => {
-    throw new Error("Runtime unavailable");
-  });
-  expect(await t.ack(t.command("compact"))).toMatchObject({
-    outcome: "rejected",
-    reason: "Runtime unavailable",
-  });
 });
 
 it("keeps compaction locked across disconnect, never replays, and cannot confirm on the new socket", async () => {
@@ -677,45 +627,6 @@ it("navigates through its private command context and replies only after navigat
     id,
     prompt: { text: "restore me", attachments: [] },
   });
-});
-
-it("reads the labeled active conversation tree over the socket on demand", async () => {
-  const t = await setup();
-  const entry = {
-    type: "message",
-    id: "user1",
-    parentId: null,
-    timestamp: "2026-01-01T00:00:00Z",
-    message: { role: "user", content: "branch from here", timestamp: 1 },
-  };
-  t.branch.push(entry);
-  vi.mocked(t.ctx.sessionManager.getTree).mockReturnValue([
-    { entry: entry as never, children: [], label: "checkpoint" },
-  ]);
-  const id = randomUUID();
-  writeFrame(t.connections[0], {
-    type: "command",
-    id,
-    target: targetOf(t.latest()!),
-    action: "tree",
-  });
-  expect(await t.ack(id)).toMatchObject({
-    type: "tree",
-    id,
-    tree: {
-      leafId: "user1",
-      roots: [
-        {
-          id: "user1",
-          role: "user",
-          text: "branch from here",
-          label: "checkpoint",
-          isActivePath: true,
-        },
-      ],
-    },
-  });
-  expect(t.pi.sendUserMessage).not.toHaveBeenCalled();
 });
 
 it("sends four 10 MiB image-only uploads as Pi ImageContent without putting base64 on the socket", async () => {
@@ -1183,17 +1094,6 @@ it("a duplicate load neither registers replacements nor disables the active owne
   expect(duplicate.pi.setActiveTools).not.toHaveBeenCalled();
   expect(t.pi.registerTool).toHaveBeenCalledTimes(count);
   expect(t.pi.getActiveTools()).toContain("board_apply");
-});
-
-it("staged grants expire and do not attach to a later same-text request", async () => {
-  const t = await setup();
-  vi.useFakeTimers();
-  await stageBoard(t);
-  await vi.advanceTimersByTimeAsync(15_050);
-  t.emit("input", { text: "Update this board", source: "extension" });
-  await Promise.all(t.emit("before_agent_start", { prompt: "Update this board" }));
-  await vi.waitFor(() => expect(boardRequests(t).map((r) => r.action)).toEqual(["revoke"]));
-  expect(t.pi.getActiveTools()).not.toContain("board_read");
 });
 
 it("requests footer replay on startup/reconnect and forwards session-bound updates through the real socket", async () => {

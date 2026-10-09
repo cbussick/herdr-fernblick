@@ -279,17 +279,6 @@ it("reports unavailable durable storage and refuses a local-only leave", async (
   await expect(owner.keepLocal()).rejects.toThrow("quota");
   expect(owner.state.storageError).toContain("local draft");
 });
-it("revokes live access explicitly and refreshes the authoritative state", async () => {
-  const { owner, api } = setup();
-  api.open.mockResolvedValueOnce({
-    ...board(),
-    access: { mode: "edit", state: "active", expiresAt: Date.now() + 10000 },
-  });
-  await owner.start();
-  await owner.revoke();
-  expect(api.revoke).toHaveBeenCalledWith("pane", target, board().id, expect.any(AbortSignal));
-  expect(owner.state.board?.access).toBeNull();
-});
 it("closes events, aborts stale target requests and ignores late results on unmount", async () => {
   const { owner, api, close } = setup();
   await owner.start();

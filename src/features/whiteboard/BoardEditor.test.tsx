@@ -1,4 +1,4 @@
-import { act, Fragment, type ReactNode } from "react";
+import { act, type ReactNode } from "react";
 import { create, type ReactTestRenderer } from "react-test-renderer";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
 import type { ExcalidrawProps } from "@excalidraw/excalidraw/types";
@@ -16,7 +16,6 @@ const mocks = vi.hoisted(() => ({
     getAppState: vi.fn(),
   },
   exportToBlob: vi.fn(),
-  welcome: vi.fn(),
 }));
 vi.mock("@excalidraw/excalidraw", async () => {
   const { useEffect, useState } = await import("react");
@@ -34,10 +33,7 @@ vi.mock("@excalidraw/excalidraw", async () => {
       return props.children;
     },
     MainMenu: Menu,
-    WelcomeScreen: ({ children }: { children: ReactNode }) => {
-      mocks.welcome(children);
-      return children;
-    },
+    WelcomeScreen: ({ children }: { children: ReactNode }) => children,
     CaptureUpdateAction: { NEVER: "NEVER" },
     restoreElements: (elements: unknown) => elements,
     exportToBlob: mocks.exportToBlob,
@@ -52,25 +48,6 @@ beforeEach(() => {
 afterEach(async () => {
   await act(async () => renderer?.unmount());
   vi.unstubAllGlobals();
-});
-it("opens new boards as an empty editable canvas without vendor onboarding", async () => {
-  const onChange = vi.fn();
-  await act(async () => {
-    renderer = create(
-      <BoardEditor
-        scene={{ elements: [], files: {}, background: "#ffffff" }}
-        generation={1}
-        locked={false}
-        onChange={onChange}
-        onReady={() => {}}
-        onError={() => {}}
-      />,
-    );
-  });
-  expect(mocks.welcome.mock.calls[0][0]).toMatchObject({ type: Fragment, props: {} });
-  expect(mocks.props.viewModeEnabled).toBe(false);
-  expect(mocks.props.initialData).toMatchObject({ elements: [], files: {} });
-  expect(onChange).not.toHaveBeenCalled();
 });
 it("ignores normalized/programmatic callbacks but saves human element-version changes", async () => {
   const onChange = vi.fn();

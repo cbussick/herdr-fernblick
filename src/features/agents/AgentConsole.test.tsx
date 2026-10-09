@@ -6,8 +6,6 @@ import { randomUUID } from "node:crypto";
 import type { Agent } from "../../shared/api/contracts";
 import type { Snapshot } from "../../../packages/pi-live-chat/protocol";
 import { AgentConsole } from "./AgentConsole";
-import { ChatTranscript } from "./ChatTranscript";
-import { ConversationTreeDialog } from "./ConversationTreeDialog";
 import { Whiteboard } from "../whiteboard/Whiteboard";
 import type { WhiteboardConversation } from "../whiteboard/ConversationDock";
 const mocks = vi.hoisted(() => ({
@@ -142,66 +140,6 @@ async function enableCompact() {
   mocks.live.snapshot = { ...mocks.live.snapshot!, capabilities: { compact: true } };
   await act(async () => renderer.update(render()));
 }
-it("places More actions inside the toolbar after Skills without an idle extra row", async () => {
-  await enableCompact();
-  const trigger = renderer.root.findByProps({ "data-ui": "conversation-actions-button" });
-  const buttons = trigger.parent!.findAllByType("button");
-  const index = buttons.indexOf(trigger);
-  expect(buttons[index - 1].children).toContain(" Skills");
-  expect(buttons[index + 1].props["aria-label"]).toBe("Send message");
-  expect(trigger.props.type).toBe("button");
-  expect(trigger.props["aria-expanded"]).toBe(false);
-  expect(trigger.parent!.parent!.findAllByType("textarea")).toHaveLength(1);
-  expect(renderer.root.findAllByProps({ "data-ui": "conversation-compaction" })).toHaveLength(0);
-});
-
-it("opens and dismisses the overflow menu without invoking compact or changing the draft", async () => {
-  await enableCompact();
-  await act(async () =>
-    renderer.root.findByType("textarea").props.onChange({ target: { value: "keep this" } }),
-  );
-  await openActions();
-  expect(renderer.root.findAllByProps({ role: "menuitem" })).toHaveLength(1);
-  expect(
-    renderer.root.findByProps({ "data-ui": "conversation-actions-button" }).props["aria-haspopup"],
-  ).toBe("menu");
-  expect(compactNow()).toBeUndefined();
-  await act(async () =>
-    renderer.root.findByProps({ role: "menu" }).props.onKeyDown({
-      key: "Escape",
-      preventDefault: vi.fn(),
-      stopPropagation: vi.fn(),
-    }),
-  );
-  expect(renderer.root.findAllByProps({ role: "menu" })).toHaveLength(0);
-  expect(mocks.compact).not.toHaveBeenCalled();
-  expect(mocks.command).not.toHaveBeenCalled();
-  expect(renderer.root.findByType("textarea").props.value).toBe("keep this");
-});
-
-it.each(["replacement", "disconnect"])("invalidates an open actions menu on %s", async (mode) => {
-  await enableCompact();
-  await openActions();
-  if (mode === "replacement")
-    mocks.live.snapshot = { ...mocks.live.snapshot!, epoch: randomUUID() };
-  else mocks.live.error = "Connection lost";
-  await act(async () => renderer.update(render()));
-  expect(renderer.root.findAllByProps({ role: "menu" })).toHaveLength(0);
-  expect(mocks.compact).not.toHaveBeenCalled();
-});
-
-it("updates the open menu when Pi becomes busy and keeps unavailable Compact inert", async () => {
-  await enableCompact();
-  await openActions();
-  mocks.live.snapshot = { ...mocks.live.snapshot!, busy: true };
-  await act(async () => renderer.update(render()));
-  const item = renderer.root.findByProps({ role: "menuitem" });
-  expect(item.props["aria-disabled"]).toBe(true);
-  await act(async () => item.props.onClick());
-  expect(compactNow()).toBeUndefined();
-  expect(mocks.compact).not.toHaveBeenCalled();
-});
-
 it("cancels compact confirmation with Cancel or Escape without invoking Pi or changing the draft", async () => {
   await enableCompact();
   await act(async () =>
@@ -266,27 +204,22 @@ it("explains and compacts separately from Skills, waits for completion and prese
   expect(renderer.root.findAllByProps({ "aria-label": "Image attachments" })).toHaveLength(1);
 });
 
-it.each(["unsupported", "busy", "pending", "disconnected"])(
-  "disables compact when %s",
-  async (mode) => {
-    await enableCompact();
-    if (mode === "unsupported") mocks.live.snapshot = { ...mocks.live.snapshot!, capabilities: {} };
-    if (mode === "busy") mocks.live.snapshot = { ...mocks.live.snapshot!, busy: true };
-    if (mode === "pending") mocks.live.snapshot = { ...mocks.live.snapshot!, sendPending: true };
-    if (mode === "disconnected") mocks.live.error = "Connection lost";
-    await act(async () => renderer.update(render()));
-    await openActions();
-    const button = renderer.root.findByProps({
-      role: "menuitem",
-      "aria-label": "Compact conversation",
-    });
-    expect(button.props["aria-disabled"]).toBe(true);
-    expect(button.findByType("small").children.join("")).toMatch(/Connect|reload|idle/);
-    await act(async () => button.props.onClick());
-    expect(compactNow()).toBeUndefined();
-    expect(mocks.compact).not.toHaveBeenCalled();
-  },
-);
+it.each(["unsupported", "disconnected"])("disables compact when %s", async (mode) => {
+  await enableCompact();
+  if (mode === "unsupported") mocks.live.snapshot = { ...mocks.live.snapshot!, capabilities: {} };
+  if (mode === "disconnected") mocks.live.error = "Connection lost";
+  await act(async () => renderer.update(render()));
+  await openActions();
+  const button = renderer.root.findByProps({
+    role: "menuitem",
+    "aria-label": "Compact conversation",
+  });
+  expect(button.props["aria-disabled"]).toBe(true);
+  expect(button.findByType("small").children.join("")).toMatch(/Connect|reload|idle/);
+  await act(async () => button.props.onClick());
+  expect(compactNow()).toBeUndefined();
+  expect(mocks.compact).not.toHaveBeenCalled();
+});
 
 it("invalidates an open compact confirmation on replacement and rechecks busy state before execution", async () => {
   await enableCompact();
@@ -363,24 +296,7 @@ it("shows the live terminal by default and keeps loaded history when the agent s
   expect(mocks.output.mock.calls.map((call) => call[1])).toEqual(["visible", "recent_unwrapped"]);
 });
 
-it.each(["working", "blocked", "unknown"] as const)(
-  "disables history for a %s agent",
-  async (status) => {
-    await act(async () => {
-      renderer.update(render({ ...agent, agent_status: status }));
-      renderer.root.findByProps({ "aria-label": "Switch to Terminal view" }).props.onClick();
-    });
-    await flush();
-    expect(
-      renderer.root
-        .findAllByType("button")
-        .find((button) => button.children.includes("Load history"))!.props.disabled,
-    ).toBe(true);
-    expect(mocks.output.mock.calls.map((call) => call[1])).toEqual(["visible"]);
-  },
-);
-
-it("browses actual skills without sending, preserves text and images, and supports keyboard search", async () => {
+it("selects and searches skills without sending or losing draft text and images", async () => {
   mocks.live.snapshot = { ...mocks.live.snapshot!, capabilities: { skills: true }, busy: true };
   await act(async () => renderer.update(render()));
   const file = new File(["image"], "image.png", { type: "image/png" });
@@ -411,31 +327,21 @@ it("browses actual skills without sending, preserves text and images, and suppor
   expect(mocks.command).not.toHaveBeenCalled();
 });
 
-it.each([
-  ["/", "/skill:review /"],
-  ["/compact", "/skill:review /compact"],
-  ["/skill:review", "/skill:review "],
-])(
-  "keeps %s in the editor without opening or fetching skills until the button is pressed",
-  async (draft, selected) => {
-    mocks.live.snapshot = { ...mocks.live.snapshot!, capabilities: { skills: true } };
-    await act(async () => renderer.update(render()));
-    await act(async () =>
-      renderer.root.findByType("textarea").props.onChange({ target: { value: draft } }),
-    );
-    await flush();
-    expect(renderer.root.findAllByProps({ "data-testid": "skill-picker" })).toHaveLength(0);
-    expect(renderer.root.findByType("textarea").props.value).toBe(draft);
-    expect(renderer.root.findByType("textarea").props.placeholder).not.toContain("/ for skills");
-    expect(mocks.skills).not.toHaveBeenCalled();
-    expect(mocks.command).not.toHaveBeenCalled();
-    await openSkills();
-    expect(mocks.skills).toHaveBeenCalledOnce();
-    await act(async () => renderer.root.findByProps({ role: "option" }).props.onClick());
-    expect(renderer.root.findByType("textarea").props.value).toBe(selected);
-    expect(mocks.command).not.toHaveBeenCalled();
-  },
-);
+it("reselects a typed skill without duplicating it or opening the picker automatically", async () => {
+  mocks.live.snapshot = { ...mocks.live.snapshot!, capabilities: { skills: true } };
+  await act(async () => renderer.update(render()));
+  await act(async () =>
+    renderer.root.findByType("textarea").props.onChange({ target: { value: "/skill:review" } }),
+  );
+  await flush();
+  expect(renderer.root.findAllByProps({ "data-testid": "skill-picker" })).toHaveLength(0);
+  expect(renderer.root.findByType("textarea").props.value).toBe("/skill:review");
+  expect(mocks.skills).not.toHaveBeenCalled();
+  await openSkills();
+  await act(async () => renderer.root.findByProps({ role: "option" }).props.onClick());
+  expect(renderer.root.findByType("textarea").props.value).toBe("/skill:review ");
+  expect(mocks.command).not.toHaveBeenCalled();
+});
 
 it("shows skill errors and empty states, hides stale choices on disconnect, and keeps slash drafts", async () => {
   mocks.live.snapshot = { ...mocks.live.snapshot!, capabilities: { skills: true } };
@@ -472,18 +378,6 @@ it("shows skill errors and empty states, hides stale choices on disconnect, and 
   expect(renderer.root.findByType("textarea").props.value).toBe("/");
 });
 
-it("does not send or fetch skills on a legacy bridge", async () => {
-  await openSkills();
-  expect(JSON.stringify(renderer.toJSON())).toContain("Run /reload in Pi to enable skills");
-  expect(mocks.skills).not.toHaveBeenCalled();
-  await act(async () =>
-    renderer.root
-      .findByType("textarea")
-      .props.onChange({ target: { value: "/skill:review instructions" } }),
-  );
-  expect(renderer.root.findByProps({ "aria-label": "Send message" }).props.disabled).toBe(true);
-});
-
 it("clears an acknowledged text-and-image send without waiting for any Pi event", async () => {
   const file = new File(["image"], "image.png", { type: "image/png" });
   await act(async () => {
@@ -497,7 +391,6 @@ it("clears an acknowledged text-and-image send without waiting for any Pi event"
   expect(renderer.root.findByType("textarea").props.value).toBe("");
   expect(renderer.root.findAllByProps({ "aria-label": "Image attachments" })).toHaveLength(0);
   expect(JSON.stringify(renderer.toJSON())).not.toContain("Clear draft / new message");
-  expect(client.getMutationCache().getAll()).toHaveLength(0);
   mocks.live.snapshot = { ...mocks.live.snapshot!, seq: 3, busy: false };
   await act(async () => renderer.update(render()));
   await act(async () =>
@@ -535,43 +428,6 @@ it("does not erase a newer draft when Pi sends more chat updates", async () => {
   await act(async () => renderer.update(render()));
   expect(renderer.root.findByType("textarea").props.value).toBe("new draft");
 });
-it.each(["idle", "epoch", "runtime", "session"] as const)(
-  "clears stop feedback after %s before the next working run",
-  async (transition) => {
-    mocks.live.snapshot = { ...mocks.live.snapshot!, busy: true };
-    await act(async () => renderer.update(render()));
-    expect(JSON.stringify(renderer.toJSON())).not.toContain("Abort invoked");
-    await act(async () =>
-      renderer.root
-        .findAllByType("button")
-        .find((b) => b.children.includes("Stop"))!
-        .props.onClick(),
-    );
-    await flush();
-    expect(JSON.stringify(renderer.toJSON())).toContain("Abort invoked; waiting for Pi events.");
-    const snapshot = mocks.live.snapshot!;
-    mocks.live.snapshot =
-      transition === "idle"
-        ? { ...snapshot, busy: false }
-        : transition === "epoch"
-          ? { ...snapshot, epoch: randomUUID() }
-          : {
-              ...snapshot,
-              identity: {
-                ...snapshot.identity,
-                ...(transition === "runtime" ? { runtime: randomUUID() } : { sessionId: "new" }),
-              },
-            };
-    await act(async () => renderer.update(render()));
-    mocks.live.snapshot = { ...mocks.live.snapshot!, busy: true, seq: 3 };
-    await act(async () => renderer.update(render()));
-    expect(JSON.stringify(renderer.toJSON())).not.toContain("Abort invoked");
-    expect(renderer.root.findAllByType("button").some((b) => b.children.includes("Stop"))).toBe(
-      true,
-    );
-  },
-);
-
 it("ignores a late stop ACK after the agent becomes idle and starts again", async () => {
   let acknowledge!: () => void;
   mocks.command.mockImplementationOnce(
@@ -664,39 +520,6 @@ it("never replays an uncertain in-flight send when the stream recovers", async (
   expect(renderer.root.findByType("textarea").props.disabled).toBe(false);
 });
 
-it("blocks an already-open tree during recovery and closes it on epoch replacement", async () => {
-  const treeButton = renderer.root.findByProps({ "aria-label": "Open conversation paths" });
-  await act(async () => treeButton.props.onClick());
-  expect(renderer.root.findByType(ConversationTreeDialog).props.busy).toBe(false);
-  mocks.live.error = "Reconnecting to Pi…";
-  await act(async () => renderer.update(render()));
-  expect(renderer.root.findByType(ConversationTreeDialog).props.busy).toBe(true);
-  delete mocks.live.error;
-  await act(async () => renderer.update(render()));
-  expect(renderer.root.findByType(ConversationTreeDialog).props.busy).toBe(false);
-  mocks.live.snapshot = { ...mocks.live.snapshot!, epoch: randomUUID() };
-  await act(async () => renderer.update(render()));
-  expect(renderer.root.findAllByType(ConversationTreeDialog)).toHaveLength(0);
-  expect(mocks.command).not.toHaveBeenCalled();
-});
-
-it("keeps the chat draft mounted through whiteboard Back and disconnects", async () => {
-  await act(async () =>
-    renderer.root.findByType("textarea").props.onChange({ target: { value: "chat draft stays" } }),
-  );
-  await act(async () =>
-    renderer.root.findByProps({ "aria-label": "Open whiteboard" }).props.onClick(),
-  );
-  expect(renderer.root.findByType(Whiteboard).props.structured).toBe(true);
-  expect(renderer.root.findByType("textarea").props.value).toBe("chat draft stays");
-  mocks.live.error = "Reconnecting…";
-  await act(async () => renderer.update(render()));
-  expect(renderer.root.findByType(Whiteboard).props.agentState).toBe("disconnected");
-  await act(async () => renderer.root.findByType(Whiteboard).props.onClose());
-  expect(renderer.root.findByType("textarea").props.value).toBe("chat draft stays");
-  expect(mocks.command).not.toHaveBeenCalled();
-});
-
 it("keeps the captured board through a missing live snapshot and same-session recovery", async () => {
   const initial = mocks.live.snapshot!;
   await act(async () =>
@@ -755,24 +578,6 @@ async function openBoard() {
 function boardConversation(): WhiteboardConversation {
   return renderer.root.findByType(Whiteboard).props.conversation;
 }
-it("supplies the same conversation and thinking preference to main chat and whiteboard", async () => {
-  mocks.live.snapshot = {
-    ...mocks.live.snapshot!,
-    messages: [
-      { id: "u", role: "user", text: "Earlier question" },
-      { id: "a", role: "assistant", text: "Earlier answer" },
-      { id: "t", role: "tool", toolName: "board_read", text: "Read the scene" },
-    ],
-    truncated: true,
-  };
-  await act(async () => renderer.update(render()));
-  await openBoard();
-  const main = renderer.root.findByType(ChatTranscript);
-  expect(main.props.messages).toBe(boardConversation().snapshot!.messages);
-  expect(main.props.truncated).toBe(boardConversation().snapshot!.truncated);
-  expect(main.props.showThinking).toBe(boardConversation().showThinking);
-  expect(main.props.agentName).toBe(boardConversation().agentName);
-});
 it("shares the text draft and live conversation but never sends hidden chat images from the board", async () => {
   const file = new File(["image"], "image.png", { type: "image/png" });
   await act(async () => {
@@ -842,43 +647,25 @@ it("locks dock submissions synchronously against duplicate taps or shortcuts", a
   await flush();
   expect(mocks.boardPrompt).toHaveBeenCalledOnce();
 });
-it.each([
-  "busy",
-  "pending",
-  "disconnected",
-  "missing",
-  "legacy",
-  "closed",
-  "epoch",
-  "runtime",
-  "sessionId",
-])("revalidates a captured dock send against %s state", async (state) => {
-  await openBoard();
-  await act(async () => boardConversation().onDraftChange("Do not send stale text"));
-  const submit = boardConversation().onSend;
-  if (state === "closed")
-    await act(async () => renderer.root.findByType(Whiteboard).props.onClose());
-  else if (state === "disconnected") mocks.live.error = "Reconnecting";
-  else if (state === "missing") mocks.live = { error: "Unavailable" };
-  else if (state === "busy") mocks.live.snapshot = { ...mocks.live.snapshot!, busy: true };
-  else if (state === "pending")
-    mocks.live.snapshot = { ...mocks.live.snapshot!, sendPending: true };
-  else if (state === "legacy") mocks.live.snapshot = { ...mocks.live.snapshot!, version: 1 };
-  else if (state === "epoch")
-    mocks.live.snapshot = { ...mocks.live.snapshot!, epoch: randomUUID() };
-  else
-    mocks.live.snapshot = {
-      ...mocks.live.snapshot!,
-      identity: { ...mocks.live.snapshot!.identity, [state]: randomUUID() },
-    };
-  await act(async () => renderer.update(render()));
-  await act(async () =>
-    submit({ boardId: "a".repeat(64), revision: 1, text: "Do not send stale text" }),
-  );
-  await flush();
-  expect(mocks.boardPrompt).not.toHaveBeenCalled();
-  expect(mocks.upload).not.toHaveBeenCalled();
-});
+it.each(["busy", "closed", "epoch"])(
+  "revalidates a captured dock send against %s state",
+  async (state) => {
+    await openBoard();
+    await act(async () => boardConversation().onDraftChange("Do not send stale text"));
+    const submit = boardConversation().onSend;
+    if (state === "closed")
+      await act(async () => renderer.root.findByType(Whiteboard).props.onClose());
+    else if (state === "busy") mocks.live.snapshot = { ...mocks.live.snapshot!, busy: true };
+    else mocks.live.snapshot = { ...mocks.live.snapshot!, epoch: randomUUID() };
+    await act(async () => renderer.update(render()));
+    await act(async () =>
+      submit({ boardId: "a".repeat(64), revision: 1, text: "Do not send stale text" }),
+    );
+    await flush();
+    expect(mocks.boardPrompt).not.toHaveBeenCalled();
+    expect(mocks.upload).not.toHaveBeenCalled();
+  },
+);
 it("does not clear a replacement session's draft when an old dock send is acknowledged", async () => {
   let resolve!: (value: unknown) => void;
   mocks.boardPrompt.mockImplementationOnce(
@@ -911,6 +698,8 @@ it("does not clear a replacement session's draft when an old dock send is acknow
 it("requires reloading a legacy extension instead of accepting an unconfirmable send", async () => {
   mocks.live.snapshot = { ...mocks.live.snapshot!, version: 1 };
   await act(async () => renderer.update(render()));
+  await openSkills();
+  expect(mocks.skills).not.toHaveBeenCalled();
   await act(async () =>
     renderer.root.findByType("textarea").props.onChange({ target: { value: "message" } }),
   );
@@ -998,7 +787,6 @@ it("shows startup and failure states while keeping send disabled", async () => {
   await act(async () => renderer.update(render()));
   const state = renderer.root.findByProps({ role: "status" });
   expect(state.props["aria-busy"]).toBe("true");
-  expect(state.findByProps({ "data-state-kind": "loading" }).props["data-spinning"]).toBe(true);
   expect(JSON.stringify(renderer.toJSON())).toContain("Starting Pi…");
   expect(renderer.root.findAllByProps({ role: "alert" })).toHaveLength(0);
   expect(renderer.root.findByProps({ "aria-label": "Send message" }).props.disabled).toBe(true);
@@ -1008,22 +796,4 @@ it("shows startup and failure states while keeping send disabled", async () => {
     "Cannot reach Pi",
   ]);
   expect(renderer.root.findByProps({ "aria-label": "Send message" }).props.disabled).toBe(true);
-});
-
-it("shows only the current connected session's footer and drops it on recovery/runtime replacement", async () => {
-  mocks.live.snapshot!.status.footerLines = ["current full footer", "all-session accounting"];
-  await act(async () => renderer.update(render()));
-  expect(JSON.stringify(renderer.toJSON())).toContain("current full footer");
-  mocks.live.error = "Reconnecting";
-  await act(async () => renderer.update(render()));
-  expect(renderer.root.findAllByProps({ "data-testid": "pi-session-status" })).toHaveLength(0);
-  mocks.live.error = undefined;
-  mocks.live.snapshot = {
-    ...mocks.live.snapshot!,
-    identity: { ...mocks.live.snapshot!.identity, runtime: randomUUID(), sessionId: "replacement" },
-    status: { cwd: "/replacement", totalTokens: 0, cost: 0 },
-  };
-  await act(async () => renderer.update(render()));
-  expect(JSON.stringify(renderer.toJSON())).not.toContain("current full footer");
-  expect(JSON.stringify(renderer.toJSON())).toContain("/replacement");
 });

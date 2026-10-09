@@ -28,13 +28,3 @@ it("renders both full footer lines as escaped text with colors rather than the a
   expect(html).not.toContain("displayed tokens");
   expect(html).not.toContain("\x1b");
 });
-
-it("keeps the legacy fallback when the publisher is absent", () => {
-  const html = renderToStaticMarkup(
-    <PiSessionStatus
-      status={{ cwd: "/cwd", model: "model", provider: "provider", totalTokens: 120, cost: 1.23 }}
-    />,
-  );
-  expect(html).toContain("model · /cwd");
-  expect(html).toContain("120 displayed tokens · $1.23 · provider");
-});

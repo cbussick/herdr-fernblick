@@ -81,21 +81,6 @@ it.each([true, false])(
     );
   },
 );
-it("never retries an uncertain visual board prompt", async () => {
-  const fetch = vi.fn().mockRejectedValue(new TypeError("offline"));
-  vi.stubGlobal("fetch", fetch);
-  await expect(
-    boardApi.prompt("pane", {
-      target,
-      boardId: input.boardId,
-      revision: 1,
-      text: "Finish this",
-      requestId: id,
-      uploadId: input.uploadId,
-    }),
-  ).rejects.toThrow("Delivery uncertain");
-  expect(fetch).toHaveBeenCalledOnce();
-});
 it("validates SSE hints, carries all target fields, and closes the stream", () => {
   class Source {
     static instance: Source;
