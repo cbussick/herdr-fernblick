@@ -204,6 +204,30 @@ it("explains and compacts separately from Skills, waits for completion and prese
   expect(renderer.root.findAllByProps({ "aria-label": "Image attachments" })).toHaveLength(1);
 });
 
+it("labels terminal compaction without invoking the UI action and preserves the draft", async () => {
+  await act(async () =>
+    renderer.root.findByType("textarea").props.onChange({ target: { value: "keep this draft" } }),
+  );
+  mocks.live.snapshot = { ...mocks.live.snapshot!, busy: true, compacting: true };
+  await act(async () => renderer.update(render()));
+  expect(JSON.stringify(renderer.toJSON())).toContain("Compacting…");
+  expect(renderer.root.findByProps({ "aria-label": "Send message" }).props.disabled).toBe(true);
+  expect(renderer.root.findByType("textarea").props.disabled).toBe(false);
+  expect(renderer.root.findByType("textarea").props.value).toBe("keep this draft");
+  expect(mocks.compact).not.toHaveBeenCalled();
+  expect(JSON.stringify(renderer.toJSON())).not.toContain("Conversation compacted.");
+
+  // Automatic compaction may continue into another agent turn.
+  mocks.live.snapshot = { ...mocks.live.snapshot!, compacting: false };
+  await act(async () => renderer.update(render()));
+  expect(JSON.stringify(renderer.toJSON())).not.toContain("Compacting…");
+  expect(JSON.stringify(renderer.toJSON())).toContain("Working");
+  mocks.live.snapshot = { ...mocks.live.snapshot!, busy: false };
+  await act(async () => renderer.update(render()));
+  expect(renderer.root.findByProps({ "aria-label": "Send message" }).props.disabled).toBe(false);
+  expect(renderer.root.findByType("textarea").props.value).toBe("keep this draft");
+});
+
 it.each(["unsupported", "disconnected"])("disables compact when %s", async (mode) => {
   await enableCompact();
   if (mode === "unsupported") mocks.live.snapshot = { ...mocks.live.snapshot!, capabilities: {} };

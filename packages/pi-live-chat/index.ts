@@ -66,6 +66,7 @@ export default function liveChat(pi: ExtensionAPI) {
   let epoch = randomUUID();
   let seq = 0;
   let active = false;
+  let compacting = false;
   let sendPending = false;
   let handoffTimer: ReturnType<typeof setTimeout> | undefined;
   let preparing = false;
@@ -193,6 +194,7 @@ export default function liveChat(pi: ExtensionAPI) {
     footerLines = undefined;
     identity = undefined;
     preparing = false;
+    compacting = false;
     clearTimeout(retry);
     clearTimeout(publishTimer);
     retry = publishTimer = undefined;
@@ -220,7 +222,9 @@ export default function liveChat(pi: ExtensionAPI) {
         identity,
         epoch,
         seq: ++seq,
-        busy: active || uiBlocked || !context.isIdle() || context.hasPendingMessages(),
+        busy:
+          active || compacting || uiBlocked || !context.isIdle() || context.hasPendingMessages(),
+        compacting,
         sendPending: sendPending || preparing,
         truncated: projector.truncated,
         messages,
@@ -627,6 +631,7 @@ export default function liveChat(pi: ExtensionAPI) {
     inputGeneration++;
     boards?.revoke("Whiteboard context changed");
     context = ctx;
+    if (event.type === "session_compact") compacting = false;
     if (event.type === "session_tree") epoch = randomUUID();
     projector.reconcile(ctx.sessionManager.getBranch(), event.type !== "session_tree");
     requestFooter();
@@ -639,9 +644,21 @@ export default function liveChat(pi: ExtensionAPI) {
   pi.on("session_before_switch", revokeBoardContext);
   pi.on("session_before_fork", revokeBoardContext);
   pi.on("session_before_tree", revokeBoardContext);
-  pi.on("session_before_compact", revokeBoardContext);
+  pi.on("session_before_compact", (_event, ctx) => {
+    revokeBoardContext();
+    if (!context) return;
+    context = ctx;
+    compacting = true;
+    publish();
+  });
   pi.on("session_tree", reconcile);
   pi.on("session_compact", reconcile);
+  pi.on("session_compact_failed", (_event, ctx) => {
+    if (!context) return;
+    context = ctx;
+    compacting = false;
+    publish();
+  });
   pi.on("model_select", reconcile);
   pi.on("thinking_level_select", reconcile);
   pi.on("session_info_changed", reconcile);

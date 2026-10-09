@@ -111,6 +111,15 @@ a missing callback therefore requires inspecting/reloading Pi, not an automatic
 unlock or second compaction. Progress/results are transient, not persisted or
 replayed after reconnection.
 
+Live snapshots also carry an optional `compacting` flag, independent of the
+browser's manual request. `session_before_compact` sets it; `session_compact`
+or `session_compact_failed` clears it, including cancellation. Chat labels its
+busy indicator **Compacting…** instead of **Working** during terminal `/compact`
+and automatic compaction too. The flag survives socket reconnection, resets on
+session replacement/shutdown, and is absent on older bridges (generic Working).
+This is transient activity, not a success confirmation for a browser request.
+No terminal scraping or polling is used.
+
 Verified pinned Pi 0.99.1 and installed Pi 1.0.4 source contracts: `ctx.compact`
 returns void; manual compaction aborts active work internally, hence the idle
 precondition matters; `isIdle()` excludes compaction; `session_compact` is emitted

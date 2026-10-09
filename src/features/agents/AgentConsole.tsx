@@ -434,7 +434,10 @@ export function AgentConsole({ agent, onBack }: AgentConsoleProps) {
               <>
                 {snapshot.busy ? (
                   <div className={consoleStyles["chat-working"]} role="status">
-                    <StatusIndicator status="working" label="Working" />
+                    <StatusIndicator
+                      status="working"
+                      label={snapshot.compacting ? "Compacting…" : "Working"}
+                    />
                     <button
                       type="button"
                       disabled={stop.isPending || Boolean(live.error) || compact.pending}

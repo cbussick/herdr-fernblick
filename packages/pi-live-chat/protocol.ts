@@ -71,6 +71,7 @@ export const snapshotSchema = z.object({
   epoch: z.string().uuid(),
   seq: z.number().int().nonnegative(),
   busy: z.boolean(),
+  compacting: z.boolean().optional(),
   sendPending: z.boolean(),
   truncated: z.boolean(),
   messages: z.array(messageSchema).max(MAX_MESSAGES),

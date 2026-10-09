@@ -369,96 +369,132 @@ it("uses real Pi 0.99.1 command dispatch and navigateTree(user.id) to reach the 
   }
 }, 20_000);
 
-it("confirms real Pi compaction only after persistence and forwards real callback errors without provider calls", async () => {
-  const t = await setup();
-  t.emit("session_shutdown");
-  vi.stubEnv("PI_OFFLINE", "1");
-  const { createAgentSession, DefaultResourceLoader, SessionManager, SettingsManager } =
-    await import("@earendil-works/pi-coding-agent");
-  const manager = SessionManager.create(t.dir, join(t.dir, "sessions"));
-  manager.appendMessage({ role: "user", content: "older context ".repeat(100), timestamp: 1 });
-  manager.appendMessage({ role: "user", content: "retained context ".repeat(100), timestamp: 2 });
-  const settingsManager = SettingsManager.inMemory({ compaction: { keepRecentTokens: 1 } });
-  const agentDir = join(t.dir, "isolated-agent");
-  let release!: () => void;
-  const resourceLoader = new DefaultResourceLoader({
-    cwd: t.dir,
-    agentDir,
-    settingsManager,
-    noExtensions: true,
-    noSkills: true,
-    noPromptTemplates: true,
-    noThemes: true,
-    noContextFiles: true,
-    extensionFactories: [
-      liveChat,
-      (pi) => {
-        pi.on("session_before_compact", async (event) => {
-          await new Promise<void>((resolve) => {
-            release = resolve;
+it.each(["UI", "terminal", "cancel", "abort", "failure"] as const)(
+  "tracks real %s compaction through completion or failure",
+  async (mode) => {
+    const t = await setup();
+    t.emit("session_shutdown");
+    vi.stubEnv("PI_OFFLINE", "1");
+    const { createAgentSession, DefaultResourceLoader, SessionManager, SettingsManager } =
+      await import("@earendil-works/pi-coding-agent");
+    const manager = SessionManager.create(t.dir, join(t.dir, "sessions"));
+    manager.appendMessage({ role: "user", content: "older context ".repeat(100), timestamp: 1 });
+    manager.appendMessage({ role: "user", content: "retained context ".repeat(100), timestamp: 2 });
+    const settingsManager = SettingsManager.inMemory({ compaction: { keepRecentTokens: 1 } });
+    const agentDir = join(t.dir, "isolated-agent");
+    let release!: () => void;
+    const resourceLoader = new DefaultResourceLoader({
+      cwd: t.dir,
+      agentDir,
+      settingsManager,
+      noExtensions: true,
+      noSkills: true,
+      noPromptTemplates: true,
+      noThemes: true,
+      noContextFiles: true,
+      extensionFactories: [
+        liveChat,
+        (pi) => {
+          pi.on("session_before_compact", async (event) => {
+            await new Promise<void>((resolve) => {
+              release = resolve;
+            });
+            if (mode === "cancel") return { cancel: true };
+            if (mode === "failure") return;
+            return {
+              compaction: {
+                summary: "Older conversation summarized",
+                firstKeptEntryId: event.preparation.firstKeptEntryId,
+                tokensBefore: event.preparation.tokensBefore,
+              },
+            };
           });
-          return {
-            compaction: {
-              summary: "Older conversation summarized",
-              firstKeptEntryId: event.preparation.firstKeptEntryId,
-              tokensBefore: event.preparation.tokensBefore,
-            },
-          };
-        });
-      },
-    ],
-  });
-  await resourceLoader.reload();
-  const { session } = await createAgentSession({
-    cwd: t.dir,
-    agentDir,
-    resourceLoader,
-    settingsManager,
-    sessionManager: manager,
-    model: {
-      id: "fixture",
-      name: "Fixture",
-      api: "anthropic-messages",
-      provider: "anthropic",
-      baseUrl: "https://example.invalid",
-      contextWindow: 200000,
-      maxTokens: 1000,
-      reasoning: false,
-      input: ["text"],
-      cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
-    },
-    tools: [],
-  });
-  const stream = vi.fn(() => {
-    throw new Error("Provider must not be called");
-  });
-  session.agent.streamFunction = stream;
-  try {
-    await session.bindExtensions({ mode: "tui" });
-    await vi.waitFor(() => expect(t.latest()?.identity.sessionId).toBe(manager.getSessionId()));
-    const id = t.command("compact");
-    await vi.waitFor(() => expect(release).toBeDefined());
-    expect(session.isIdle).toBe(false);
-    expect(manager.getBranch().some((e) => e.type === "compaction")).toBe(false);
-    expect(t.frames.some((v) => typeof v === "object" && v && "id" in v && v.id === id)).toBe(
-      false,
-    );
-    release();
-    expect(await t.ack(id)).toMatchObject({ type: "compacted" });
-    expect(manager.getBranch().at(-1)?.type).toBe("compaction");
-    expect(session.isIdle).toBe(true);
-    await vi.waitFor(() => expect(t.latest()?.sendPending).toBe(false));
-    expect(await t.ack(t.command("compact"))).toMatchObject({
-      type: "ack",
-      outcome: "rejected",
-      reason: "Already compacted",
+        },
+      ],
     });
-    expect(stream).not.toHaveBeenCalled();
-  } finally {
-    await session.extensionRunner?.emit({ type: "session_shutdown", reason: "quit" });
-    session.dispose();
-  }
-}, 20_000);
+    await resourceLoader.reload();
+    const { session } = await createAgentSession({
+      cwd: t.dir,
+      agentDir,
+      resourceLoader,
+      settingsManager,
+      sessionManager: manager,
+      model: {
+        id: "fixture",
+        name: "Fixture",
+        api: "anthropic-messages",
+        provider: "anthropic",
+        baseUrl: "https://example.invalid",
+        contextWindow: 200000,
+        maxTokens: 1000,
+        reasoning: false,
+        input: ["text"],
+        cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
+      },
+      tools: [],
+    });
+    const stream = vi.fn(() => {
+      throw new Error("Provider must not be called");
+    });
+    session.agent.streamFunction = stream;
+    try {
+      await session.bindExtensions({ mode: "tui" });
+      await vi.waitFor(() => expect(t.latest()?.identity.sessionId).toBe(manager.getSessionId()));
+      // session.compact is the same entry point used by terminal /compact.
+      const id = mode === "UI" ? t.command("compact") : undefined;
+      const result =
+        mode === "UI"
+          ? undefined
+          : session.compact().then(
+              () => "success",
+              () => "failure",
+            );
+      await vi.waitFor(() => expect(release).toBeDefined());
+      await vi.waitFor(() => expect(t.latest()).toMatchObject({ busy: true, compacting: true }));
+      expect(session.isIdle).toBe(false);
+      expect(manager.getBranch().some((e) => e.type === "compaction")).toBe(false);
+      expect(t.frames.some((v) => typeof v === "object" && v && "id" in v && v.id === id)).toBe(
+        false,
+      );
+      if (mode === "abort") session.abortCompaction();
+      release();
+      if (id) expect(await t.ack(id)).toMatchObject({ type: "compacted" });
+      else expect(await result).toBe(mode === "terminal" ? "success" : "failure");
+      expect(manager.getBranch().some((e) => e.type === "compaction")).toBe(
+        mode === "UI" || mode === "terminal",
+      );
+      expect(session.isIdle).toBe(true);
+      await vi.waitFor(() =>
+        expect(t.latest()).toMatchObject({ busy: false, compacting: false, sendPending: false }),
+      );
+      if (mode === "UI" || mode === "terminal")
+        expect(await t.ack(t.command("compact"))).toMatchObject({
+          type: "ack",
+          outcome: "rejected",
+          reason: "Already compacted",
+        });
+      if (mode !== "failure") expect(stream).not.toHaveBeenCalled();
+    } finally {
+      await session.extensionRunner?.emit({ type: "session_shutdown", reason: "quit" });
+      session.dispose();
+    }
+  },
+  20_000,
+);
+
+it("retains terminal/automatic compaction activity across reconnect and resets it on session replacement", async () => {
+  const t = await setup();
+  t.emit("session_before_compact", { reason: "threshold" });
+  await vi.waitFor(() => expect(t.latest()).toMatchObject({ compacting: true, busy: true }));
+  const runtime = t.latest()!.identity.runtime;
+  const epoch = t.latest()!.epoch;
+  t.connections.at(-1)!.destroy();
+  await vi.waitFor(() => expect(t.latest()!.epoch).not.toBe(epoch));
+  expect(t.latest()).toMatchObject({ compacting: true, busy: true, identity: { runtime } });
+  t.emit("session_start");
+  await vi.waitFor(() => expect(t.latest()!.identity.runtime).not.toBe(runtime));
+  expect(t.latest()).toMatchObject({ compacting: false, busy: false });
+});
 
 it("lists skills on demand while busy and revalidates selected skills before forwarding images", async () => {
   const t = await setup();
