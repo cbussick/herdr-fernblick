@@ -75,11 +75,9 @@ const tabCreatedResultSchema = z.object({
   type: z.literal("tab_created"),
 });
 
-const tabRenamedResultSchema = z.object({
-  label: z.string(),
-  tab_id: z.string(),
-  type: z.literal("tab_renamed"),
-  workspace_id: z.string(),
+const tabInfoResultSchema = z.object({
+  tab: tabSchema,
+  type: z.literal("tab_info"),
 });
 
 const agentStartedResultSchema = z.object({
@@ -228,7 +226,7 @@ export class HerdrService {
   }
 
   async renameTab(tabId: string, label: string) {
-    await this.client.request("tab.rename", { tab_id: tabId, label }, tabRenamedResultSchema);
+    await this.client.request("tab.rename", { tab_id: tabId, label }, tabInfoResultSchema);
   }
 
   async closeTab(tabId: string) {
