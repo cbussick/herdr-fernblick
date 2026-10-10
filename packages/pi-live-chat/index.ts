@@ -139,7 +139,7 @@ export default function liveChat(pi: ExtensionAPI) {
         if (prompt && prompt.text.length > MAX_TEXT)
           throw new Error("Prompt is too large to restore");
         const expectedLeaf = entry.message.role === "user" ? entry.parentId : entry.id;
-        // Pi 0.99.1 itself selects a user's parent (including null/root).
+        // Pi itself selects a user's parent (including null/root).
         const result = await ctx.navigateTree(entry.id, { summarize: false });
         if (result.cancelled) throw new Error("Navigation cancelled");
         if (

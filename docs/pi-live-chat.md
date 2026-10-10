@@ -125,7 +125,7 @@ returns void; manual compaction aborts active work internally, hence the idle
 precondition matters; `isIdle()` excludes compaction; `session_compact` is emitted
 after persistence but before final idle-state cleanup; `onComplete` runs after
 that cleanup. Cancellation, already-compacted/small sessions and provider errors
-reach `onError`. A real isolated Pi 0.99.1 fixture uses a custom compaction hook
+reach `onError`. A real isolated Pi 1.1.0 fixture uses a custom compaction hook
 to verify persistence, busy/idle state, callback completion and already-compacted
 failure, without provider calls.
 
@@ -159,7 +159,11 @@ latest state; a reader stalled for over 60 seconds is disconnected. There are at
 a 3-second initial handshake deadline and a 5-second command deadline.
 No extra TCP listener, chat polling, queue store or dispatcher exists.
 
-## Verified Pi 0.99.1 contracts
+## Verified Pi contracts
+
+The source inspection below originally targeted Pi 0.99.1. The development
+dependency now pins Pi 1.1.0; the real-Pi loader, skill discovery/expansion,
+command navigation, and compaction fixtures pass against that version.
 
 Inspected installed documentation (`extensions.md`, `packages.md`, configuration,
 settings, CLI, sessions, session-format, message-types and SDK) and actual
@@ -190,7 +194,7 @@ settings, CLI, sessions, session-format, message-types and SDK) and actual
   internal prefix that falls through command dispatch. The command handler catches
   failures and reports rejection itself, revalidates before navigation, awaits
   `ctx.navigateTree(entry.id,{summarize:false})`, then replies on the captured
-  socket. Pi 0.99.1 moves user targets to their parent, including the null root.
+  socket. Pi moves user targets to their parent, including the null root.
   Reload/session replacement are not exposed. This ephemeral nonce is not a
   delivery queue; timeout/shutdown cancels it and no model work is requested.
 
@@ -292,7 +296,7 @@ behavior and live provider compaction remain manual verification.
 
 HER-5 adds unit/socket/HTTP tests for per-session discovery, current-skill validation,
 shadowed commands, legacy capability guards, stale replies, bounds and image
-preservation. A subprocess with a private HOME runs the actual Pi 0.99.1 loader
+preservation. A subprocess with a private HOME runs the actual Pi 1.1.0 loader
 across personal/project Pi and Agent Skills folders, repository ancestors,
 configured paths and package resources. It verifies filtering, duplicate winners,
 untrusted-project omission, explicit CLI paths under no-skills, and native skill
@@ -313,7 +317,7 @@ preservation on session changes, and layout. Screenshots go to the ignored
 `design-gallery/skills/`. This does not substitute for physical-device IME or
 software-keyboard testing.
 
-`npm run check` includes strict compilation against pinned Pi 0.99.1 types,
+`npm run check` includes strict compilation against pinned Pi 1.1.0 types,
 compilation of server/package tests, unit/integration tests and production build.
 Tests use fake Pi contexts/events and isolated Unix socket/HTTP fixtures, never
 existing user agents. Coverage includes lifecycle/duplicate loading/reconnect,
@@ -339,7 +343,7 @@ tests pause image preparation and change epoch/session/busy state before resumin
 HTTP tests cover all four formats, the original 10 MiB limit, four-ID/image-only
 requests and unsafe files. Restored image-only prompts retain their attachment IDs.
 
-A real Pi 0.99.1 `createAgentSession`/SessionManager harness exercises
+A real Pi 1.1.0 `createAgentSession`/SessionManager harness exercises
 `sendUserMessage` → registered command dispatch → `navigateTree(user.id)`.
 It verifies labels and active branch via real `getLeafId()`, user-to-root
 navigation, and that both the agent prompt and model stream remain uncalled,
@@ -347,7 +351,12 @@ including an internal token that reaches the normal input guard.
 Tests do not call a provider; existing user agents and browser layout have not
 been manually exercised.
 
-Dependency audit currently reports two development-tool findings: the pre-existing moderate `fast-uri` advisory and a high `brace-expansion` advisory pinned by Pi 0.99.1's published shrinkwrap. The Pi dependency is for type/loader verification, not imported by the backend at runtime. The standalone extension's runtime dependency is Zod. `npm run check` does not include `npm audit`; these findings remain unresolved.
+At the Pi 1.1.0 upgrade, `npm audit --package-lock-only` reports 19 findings
+(3 low, 1 moderate, 11 high, 4 critical), compared with 20 on the previous lockfile.
+The upgrade removes the `brace-expansion` finding and introduces no newly affected
+packages; the other findings remain unresolved. The Pi dependency is for
+type/loader verification, not imported by the backend at runtime. The standalone
+extension's runtime dependency is Zod. `npm run check` does not include `npm audit`.
 
 The original conversation-tree and attachment-preview styles were restored
 narrowly from commit `435eec2`, along with the tree button/composer column. No

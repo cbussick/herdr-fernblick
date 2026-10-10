@@ -1,6 +1,6 @@
 # Fernblick Pi live chat
 
-Standalone Pi package for **ordinary interactive CLI Pi 0.99.1** on Linux.
+Standalone Pi package for **ordinary interactive CLI Pi 1.1.0** on Linux.
 No backend imports, SQLite, session-file reads, RPC subprocess, terminal scraping,
 or additional TCP listener. All runtime files are in this directory.
 
@@ -21,6 +21,9 @@ pi install /absolute/path/to/pi-live-chat
 ```
 
 Pi supplies the peer `@earendil-works/pi-coding-agent`; do not bundle another copy.
+The checkout pins Pi 1.1.0 as a development dependency for API type-checking and
+isolated real-Pi loader, skill, navigation, and compaction tests. The backend does
+not import that development copy or use it to run user agents.
 Local-path Pi installs reference the directory rather than copying it, and Pi does
 not install local package dependencies. Keep the directory in place. An npm
 publication of this package would install its declared runtime dependency normally.

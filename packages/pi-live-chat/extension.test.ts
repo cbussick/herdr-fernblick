@@ -240,7 +240,7 @@ it("does not report compaction success after a target change or shutdown", async
   );
 });
 
-it("uses real Pi 0.99.1 command dispatch and navigateTree(user.id) to reach the root without model work", async () => {
+it("uses real pinned Pi command dispatch and navigateTree(user.id) to reach the root without model work", async () => {
   const t = await setup();
   t.emit("session_shutdown");
   vi.stubEnv("PI_OFFLINE", "1");
@@ -892,7 +892,7 @@ it("streams provisional thinking/text/tools, then replaces from getBranch after 
     partialResult: { content: [{ type: "text", text: "running output" }] },
   });
   await vi.waitFor(() => expect(t.latest()?.messages.at(-1)?.text).toBe("running output"));
-  // This persistence happens AFTER message_end, as in Pi 0.99.1.
+  // This persistence happens AFTER message_end, as in Pi.
   t.branch.push({
     type: "message",
     id: "persisted",

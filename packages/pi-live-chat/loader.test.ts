@@ -6,7 +6,7 @@ import { promisify } from "node:util";
 import { expect, it } from "vitest";
 
 const exec = promisify(execFile);
-it("installs a local package into an isolated Pi directory and loads .js-to-.ts imports with Pi 0.99.1 jiti", async () => {
+it("installs a local package into an isolated Pi directory and loads .js-to-.ts imports with pinned Pi jiti", async () => {
   // No user settings, user agents, models, or real session_start are touched.
   const root = resolve("node_modules/.tmp");
   await mkdir(root, { recursive: true });

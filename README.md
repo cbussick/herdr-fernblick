@@ -12,7 +12,7 @@ Manrope is licensed under the SIL Open Font License 1.1. Its complete copyright 
 
 - Linux with Herdr 0.9 or later
 - Node.js 24 or later
-- Interactive Pi 0.99.1 with the [standalone live-chat extension](packages/pi-live-chat/README.md) for Chat
+- Interactive Pi 1.1.0 with the [standalone live-chat extension](packages/pi-live-chat/README.md) for Chat
 - The backend must run as the same Unix user as the Herdr session
 - Tailscale on the VPS and phone for private access
 
