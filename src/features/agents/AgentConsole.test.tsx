@@ -402,6 +402,48 @@ it("shows skill errors and empty states, hides stale choices on disconnect, and 
   expect(renderer.root.findByType("textarea").props.value).toBe("/");
 });
 
+it("accepts ten images across selections, caps overflow and restores capacity after removal", async () => {
+  const files = Array.from(
+    { length: 11 },
+    (_, i) => new File(["image"], `image-${i}.png`, { type: "image/png" }),
+  );
+  const select = async (selected: File[]) =>
+    act(async () =>
+      renderer.root.findByProps({ type: "file" }).props.onChange({ target: { files: selected } }),
+    );
+  const previews = () =>
+    renderer.root.findByProps({ "aria-label": "Image attachments" }).findAllByType("img");
+  await select(files.slice(0, 4));
+  expect(renderer.root.findByProps({ "aria-label": "Attach images" }).props.disabled).toBe(false);
+  await select(files.slice(4));
+  expect(previews().map((image) => image.props.alt)).toEqual(
+    files.slice(0, 10).map((file) => file.name),
+  );
+  expect(renderer.root.findByProps({ "aria-label": "Attach images" }).props.disabled).toBe(true);
+  expect(JSON.stringify(renderer.toJSON())).toContain("Choose up to 10 PNG");
+  await act(async () =>
+    renderer.root.findByProps({ "aria-label": "Remove image 10" }).props.onClick(),
+  );
+  expect(renderer.root.findByProps({ "aria-label": "Attach images" }).props.disabled).toBe(false);
+  await select([files[10]]);
+  expect(previews()).toHaveLength(10);
+  await act(async () => renderer.root.findByType("form").props.onSubmit({ preventDefault() {} }));
+  await flush();
+  expect(mocks.upload).toHaveBeenCalledTimes(10);
+  expect(mocks.upload.mock.calls.map(([file]) => file.name)).toEqual(
+    [...files.slice(0, 9), files[10]].map((file) => file.name),
+  );
+  expect(mocks.command).toHaveBeenCalledWith(
+    agent.pane_id,
+    expect.anything(),
+    "prompt",
+    "",
+    expect.arrayContaining(Array(10).fill(expect.any(String))),
+    expect.any(String),
+  );
+  expect(mocks.command.mock.calls[0][4]).toHaveLength(10);
+});
+
 it("clears an acknowledged text-and-image send without waiting for any Pi event", async () => {
   const file = new File(["image"], "image.png", { type: "image/png" });
   await act(async () => {

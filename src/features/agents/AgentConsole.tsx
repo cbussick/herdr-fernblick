@@ -3,7 +3,13 @@ import consoleStyles from "./Console.module.css";
 import { useEffect, useLayoutEffect, useRef, useState, type FormEvent } from "react";
 import { useMutation } from "@tanstack/react-query";
 import type { Agent, KeyName } from "../../shared/api/contracts";
-import { matchesTarget, targetOf, type Target } from "../../../packages/pi-live-chat/protocol";
+import {
+  MAX_IMAGE_BYTES,
+  MAX_IMAGES,
+  matchesTarget,
+  targetOf,
+  type Target,
+} from "../../../packages/pi-live-chat/protocol";
 import { getAgentTabLabel, getAgentTarget, getStatusLabel } from "./agentPresentation";
 import { getAgentOutput, sendAgentKey, chatCommand, uploadImage } from "../../shared/api/apiClient";
 import { useLiveChat } from "./useLiveChat";
@@ -258,14 +264,14 @@ export function AgentConsole({ agent, onBack }: AgentConsoleProps) {
       (file) =>
         ["image/png", "image/jpeg", "image/gif", "image/webp"].includes(file.type) &&
         file.size > 0 &&
-        file.size <= 10 * 1024 * 1024,
+        file.size <= MAX_IMAGE_BYTES,
     );
     setAttachmentError(
-      valid.length !== selected.length || selected.length + attachments.length > 4
-        ? "Choose up to four PNG, JPEG, GIF or WebP images, at most 10 MiB each."
+      valid.length !== selected.length || selected.length + attachments.length > MAX_IMAGES
+        ? `Choose up to ${MAX_IMAGES} PNG, JPEG, GIF or WebP images, at most 10 MiB each.`
         : "",
     );
-    const additions = valid.slice(0, 4 - attachments.length).map((file) => {
+    const additions = valid.slice(0, MAX_IMAGES - attachments.length).map((file) => {
       const previewUrl = URL.createObjectURL(file);
       previews.current.add(previewUrl);
       return { file, previewUrl };
@@ -576,7 +582,7 @@ export function AgentConsole({ agent, onBack }: AgentConsoleProps) {
                   label={getAgentTabLabel(agent)}
                   sending={composerSending}
                   canSend={canSend}
-                  canAttach={attachments.length < 4}
+                  canAttach={attachments.length < MAX_IMAGES}
                   canOpenTree={Boolean(
                     snapshot && !live.error && !annotations.editor && !compact.pending,
                   )}

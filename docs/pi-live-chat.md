@@ -56,7 +56,7 @@ Keepalive comments carry no chat data and do not trigger Herdr reads.
 `{target:{runtime,epoch,sessionId},text,attachments:[uploadId,...],requestId?}` (text may be
 empty with images); `POST .../stop` accepts the same target. Existing upload
 endpoints accept up to 10 MiB per PNG/JPEG/GIF/WebP image. The socket carries at
-most four validated IDs; bounded local file reads and ImageContent conversion
+most ten validated IDs; bounded local file reads and ImageContent conversion
 happen only inside the standalone extension.
 Mutations require matching Origin and JSON. Bodies are limited to 40,000 bytes,
 text to 32,000 characters. The extension validates the command again against its
@@ -340,7 +340,7 @@ No personal configuration is touched. Restoration tests first failed for four
 10 MiB image-only sends, original image history URLs, socket tree reads and
 command-context navigation, then passed after implementation. Filesystem-boundary
 tests pause image preparation and change epoch/session/busy state before resuming.
-HTTP tests cover all four formats, the original 10 MiB limit, four-ID/image-only
+HTTP tests cover all four formats, the original 10 MiB limit, ten-ID/image-only
 requests and unsafe files. Restored image-only prompts retain their attachment IDs.
 
 A real Pi 1.1.0 `createAgentSession`/SessionManager harness exercises

@@ -1,7 +1,7 @@
 import { createHash } from "node:crypto";
 import { z } from "zod";
 import { imageUrl } from "./projector.js";
-import { MAX_IMAGE_BYTES, uploadIdSchema } from "./protocol.js";
+import { MAX_IMAGE_BYTES, MAX_IMAGES, uploadIdSchema } from "./protocol.js";
 import { saveImageUpload, validateImage } from "./images.js";
 
 export const IMAGE_METADATA = "fernblick-image-uploads";
@@ -35,7 +35,7 @@ export class ImageHistory {
     for (const raw of entries) {
       const e = raw as { type?: string; customType?: string; data?: unknown };
       if (e.type !== "custom" || e.customType !== IMAGE_METADATA) continue;
-      const parsed = z.array(referenceSchema).max(4).safeParse(e.data);
+      const parsed = z.array(referenceSchema).max(MAX_IMAGES).safeParse(e.data);
       if (parsed.success) for (const ref of parsed.data) this.set(ref);
     }
   }
@@ -57,13 +57,13 @@ export class ImageHistory {
         const url = this.url(value);
         return url?.startsWith("/api/uploads/") ? [url.slice("/api/uploads/".length)] : [];
       })
-      .slice(0, 4);
+      .slice(0, MAX_IMAGES);
   }
   async hydrate(message: unknown, valid: () => boolean, persist: (refs: Reference[]) => void) {
     const content = (message as { content?: unknown })?.content;
     if (!Array.isArray(content)) return false;
     let changed = false;
-    for (const value of content.filter((b) => b?.type === "image").slice(0, 4)) {
+    for (const value of content.filter((b) => b?.type === "image").slice(0, MAX_IMAGES)) {
       const b = image(value);
       if (!b || !valid()) continue;
       const hash = fingerprint(b);

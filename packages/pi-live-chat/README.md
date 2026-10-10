@@ -110,7 +110,7 @@ review handoff.
   per-row text 32,000 characters; live overlay at most 64 messages/2 MiB;
   protocol frame and pending writes at most 4 MiB. Truncation is shown.
   Usage is for retained ordinary branch entries, not exact Pi session totals.
-- Select/preview/upload up to four PNG, JPEG, GIF or WebP images, at most 10 MiB
+- Select/preview/upload up to ten PNG, JPEG, GIF or WebP images, at most 10 MiB
   each. Image-only sends are supported. Commands carry upload IDs, not base64.
   The extension performs bounded, no-follow reads, checks owner/mode/link count,
   size and file signatures, then converts to Pi ImageContent. After async reads it

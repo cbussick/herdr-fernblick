@@ -5,13 +5,14 @@ export const MAX_FRAME = 4 * 1024 * 1024;
 export const MAX_TEXT = 32_000;
 export const COMPACT_TIMEOUT_MS = 120_000;
 export const MAX_IMAGE_BYTES = 10 * 1024 * 1024;
+export const MAX_IMAGES = 10;
 export const uploadIdPattern =
   /^[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12}\.(?:png|jpg|gif|webp)$/;
 export const uploadIdSchema = z.string().regex(uploadIdPattern);
 export const sendInputSchema = z
   .object({
     text: z.string().trim().max(MAX_TEXT),
-    attachments: z.array(uploadIdSchema).max(4).default([]),
+    attachments: z.array(uploadIdSchema).max(MAX_IMAGES).default([]),
   })
   .refine(
     (value) => value.text.length > 0 || value.attachments.length > 0,
@@ -54,7 +55,7 @@ export const messageSchema = z.object({
           /^(?:data:image\/(?:png|jpeg|gif|webp);base64,[A-Za-z0-9+/]*={0,2}|\/api\/uploads\/[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12}\.(?:png|jpg|gif|webp))$/,
         ),
     )
-    .max(4)
+    .max(MAX_IMAGES)
     .optional(),
 });
 export const snapshotSchema = z.object({
@@ -156,7 +157,7 @@ export const commandSchema = z
       target: targetSchema,
       action: z.literal("send"),
       text: z.string().trim().max(MAX_TEXT),
-      attachments: z.array(uploadIdSchema).max(4).default([]),
+      attachments: z.array(uploadIdSchema).max(MAX_IMAGES).default([]),
       board: boardGrantSchema.optional(),
     }),
     z.object({
@@ -188,7 +189,10 @@ export const navigationResponseSchema = z.object({
   id: z.string().uuid(),
   target: targetSchema,
   prompt: z
-    .object({ text: z.string().max(MAX_TEXT), attachments: z.array(uploadIdSchema).max(4) })
+    .object({
+      text: z.string().max(MAX_TEXT),
+      attachments: z.array(uploadIdSchema).max(MAX_IMAGES),
+    })
     .optional(),
 });
 export const compactionResponseSchema = z.object({

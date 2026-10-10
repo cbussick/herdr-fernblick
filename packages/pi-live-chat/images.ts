@@ -88,7 +88,7 @@ export async function readImageUpload(id: string) {
 }
 export async function prepareImages(ids: string[]) {
   const images: { type: "image"; data: string; mimeType: string }[] = [];
-  // Sequential reads limit temporary binary buffers; at most four base64 images survive.
+  // Sequential reads limit temporary binary buffers; the protocol bounds retained images.
   for (const id of ids)
     images.push({
       type: "image",

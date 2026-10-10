@@ -108,7 +108,7 @@ Pi live-chat extension
 Pi chat events -> extension -> server -> existing browser SSE
 ```
 
-No new realtime transport or external whiteboard service is required for this version. The upload/prompt wire path already accepts image-only messages, up to four PNG/JPEG/GIF/WebP images, 10 MiB each. Export must enforce those limits and sensible pixel dimensions; don't embed editable scene JSON into the PNG expecting the model to read it. Durable board JSON/assets require their own persistence design; the existing upload directory is temporary, and existing chat drafts are memory-only. [F1, F3, F4, F5]
+No new realtime transport or external whiteboard service is required for this version. The upload/prompt wire path already accepts image-only messages, up to ten PNG/JPEG/GIF/WebP images, 10 MiB each. Export must enforce those limits and sensible pixel dimensions; don't embed editable scene JSON into the PNG expecting the model to read it. Durable board JSON/assets require their own persistence design; the existing upload directory is temporary, and existing chat drafts are memory-only. [F1, F3, F4, F5]
 
 The current prompt ACK means **forwarding invoked**, not guaranteed model acceptance. Preserve the existing uncertain-send behavior: no automatic prompt resend after reconnect, retain failed submission state, revalidate runtime/session/epoch after asynchronous work, and do not claim success beyond the ACK contract. Preserve the board regardless of send outcome. [F1, F3, F4]
 

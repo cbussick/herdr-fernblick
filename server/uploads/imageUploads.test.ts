@@ -56,7 +56,7 @@ it("rejects traversal, mismatched magic, oversized files, symlinks, hard links a
   await chmod(dir, 0o755);
   await expect(readImageUpload(saved.id)).rejects.toThrow("0700");
 });
-it("keeps the HTTP 10 MiB upload limit and accepts image-only commands with four IDs, not base64", async () => {
+it("keeps the HTTP 10 MiB upload limit and accepts image-only commands with ten IDs, not base64", async () => {
   const request = vi.fn(async () => ({ type: "ack", id: randomUUID(), outcome: "invoked" }));
   const service = { getAgent: vi.fn(async () => ({ pane_id: "p1" })) } as unknown as HerdrService;
   const server = createHttpServer(service, dir, { request } as unknown as LiveBridge);
@@ -80,14 +80,14 @@ it("keeps the HTTP 10 MiB upload limit and accepts image-only commands with four
         headers: { Origin: base, "Content-Type": "application/json" },
         body: JSON.stringify({ target, text: "", attachments }),
       });
-    expect((await send(Array(4).fill(saved.id))).status).toBe(200);
+    expect((await send(Array(10).fill(saved.id))).status).toBe(200);
     expect(request).toHaveBeenCalledWith(expect.anything(), target, {
       action: "send",
       text: "",
-      attachments: Array(4).fill(saved.id),
+      attachments: Array(10).fill(saved.id),
     });
     expect((await send([])).status).toBe(400);
-    expect((await send(Array(5).fill(saved.id))).status).toBe(400);
+    expect((await send(Array(11).fill(saved.id))).status).toBe(400);
     const oversized = await fetch(base + "/api/uploads/images", {
       method: "POST",
       headers: { Origin: base, "Content-Type": "image/png" },

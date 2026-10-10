@@ -665,10 +665,10 @@ it("navigates through its private command context and replies only after navigat
   });
 });
 
-it("sends four 10 MiB image-only uploads as Pi ImageContent without putting base64 on the socket", async () => {
+it("sends ten 10 MiB image-only uploads as Pi ImageContent without putting base64 on the socket", async () => {
   const t = await setup();
   vi.stubEnv("FERNBLICK_UPLOAD_DIR", t.dir);
-  const attachments = Array.from({ length: 4 }, () => `${randomUUID()}.png`);
+  const attachments = Array.from({ length: 10 }, () => `${randomUUID()}.png`);
   const bytes = Buffer.alloc(10 * 1024 * 1024);
   Buffer.from([137, 80, 78, 71, 13, 10, 26, 10]).copy(bytes);
   for (const [i, id] of attachments.entries()) {
@@ -692,7 +692,7 @@ it("sends four 10 MiB image-only uploads as Pi ImageContent without putting base
     data: string;
     mimeType: string;
   }[];
-  expect(content.filter((b) => b.type === "image")).toHaveLength(4);
+  expect(content.filter((b) => b.type === "image")).toHaveLength(10);
   for (const image of content.filter((b) => b.type === "image")) {
     expect(image.mimeType).toBe("image/png");
     expect(Buffer.from(image.data, "base64").length).toBe(10 * 1024 * 1024);

@@ -1,4 +1,4 @@
-import { MAX_MESSAGES, MAX_SNAPSHOT, MAX_TEXT, type ChatMessage } from "./protocol.js";
+import { MAX_IMAGES, MAX_MESSAGES, MAX_SNAPSHOT, MAX_TEXT, type ChatMessage } from "./protocol.js";
 
 type RecordValue = Record<string, unknown>;
 function record(value: unknown): RecordValue {
@@ -77,7 +77,7 @@ export function projectMessage(value: unknown, id: string, resolveImage = imageU
       }
   }
   const images = blocks.filter((b) => b.type === "image").map(resolveImage);
-  const attachments = images.filter((s): s is string => Boolean(s)).slice(0, 4);
+  const attachments = images.filter((s): s is string => Boolean(s)).slice(0, MAX_IMAGES);
   const omitted = images.some((url) => !url);
   if (body || attachments.length || omitted || m.role === "toolResult")
     rows.push({
