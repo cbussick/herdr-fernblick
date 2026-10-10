@@ -70,7 +70,7 @@ acceptance. The browser clears text and images when forwarding is acknowledged,
 without waiting for a Pi receipt or comparing message text. Failed or uncertain
 forwarding keeps the visible draft; there is no hidden recovery copy or automatic
 retry. Pi's working/idle state gates the next send independently.
-Stop invokes Pi's abort method and then observes events. Attach up to four PNG,
+Stop invokes Pi's abort method and then observes events. Attach up to ten PNG,
 JPEG, GIF or WebP images (10 MiB each), including image-only messages. Conversation
 paths restore search, filters, labels, active-branch display and edit-and-branch,
 including available images from a restored prompt. Tree data and navigation use
