@@ -332,52 +332,6 @@
   border-radius: 999px;
 }
 
-.image-lightbox {
-  position: fixed;
-  width: calc(100vw - 2rem);
-  max-width: none;
-  max-height: calc(100dvh - 2rem);
-  padding: 0;
-  overflow: auto;
-  background: #17131b;
-  border: 0;
-  border-radius: var(--radius-md);
-}
-
-.image-lightbox::backdrop {
-  background: rgb(18 14 22 / 82%);
-  backdrop-filter: blur(0.25rem);
-}
-
-.image-lightbox > img {
-  display: block;
-  width: 100%;
-  height: auto;
-  object-fit: contain;
-  border-radius: var(--radius-md);
-  box-shadow: var(--shadow-menu);
-}
-
-.image-lightbox__close {
-  position: fixed;
-  z-index: 1;
-  top: calc(1rem + var(--space-2));
-  right: calc(1rem + var(--space-2));
-  display: grid;
-  width: 2.75rem;
-  height: 2.75rem;
-  padding: 0;
-  place-items: center;
-  color: #fff;
-  background: rgb(18 14 22 / 72%);
-  border: 1px solid rgb(255 255 255 / 24%);
-  border-radius: 50%;
-}
-
-.image-lightbox__close svg {
-  width: 1rem;
-}
-
 .chat-thinking {
   display: inline-flex;
   width: fit-content;
@@ -650,7 +604,15 @@
   border-radius: var(--radius-sm);
 }
 
-.prompt-composer .prompt-attachment button {
+.prompt-composer .prompt-attachment__preview {
+  width: 4rem;
+  height: 4rem;
+  background: transparent;
+  border-radius: var(--radius-sm);
+  cursor: zoom-in;
+}
+
+.prompt-composer .prompt-attachment__remove {
   position: absolute;
   top: 0.125rem;
   right: 0.125rem;
@@ -662,7 +624,7 @@
   border-radius: 50%;
 }
 
-.prompt-composer .prompt-attachment button svg {
+.prompt-composer .prompt-attachment__remove svg {
   width: 0.75rem;
 }
 

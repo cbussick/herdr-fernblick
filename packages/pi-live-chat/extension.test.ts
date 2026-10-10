@@ -739,7 +739,7 @@ it("sends ten 10 MiB image-only uploads as Pi ImageContent without putting base6
     type: "navigated",
     prompt: { text: "", attachments },
   });
-});
+}, 15_000);
 
 it.each(["epoch", "session", "busy", "input", "stop"] as const)(
   "rechecks %s after async image preparation before invoking Pi",

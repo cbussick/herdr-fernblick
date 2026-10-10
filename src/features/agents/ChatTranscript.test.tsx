@@ -143,9 +143,42 @@ it("opens images in a shared modal and lets Escape close only that preview", asy
   expect(stopPropagation).toHaveBeenCalledOnce();
   modal.props.onCancel({ stopPropagation });
   expect(stopPropagation).toHaveBeenCalledTimes(2);
-  await act(async () => modal.props.onClose());
+  await act(async () => modal.props.onClose({ currentTarget: { open: false } }));
   expect(renderer.root.findAllByProps({ "data-ui": "chat-image-preview" })).toHaveLength(0);
 });
+it("cycles only the selected message's gallery and keeps image-open state stable while navigating", async () => {
+  const onImageOpenChange = vi.fn();
+  props = {
+    ...props,
+    onImageOpenChange,
+    messages: [
+      {
+        id: "u1",
+        role: "user",
+        text: "",
+        attachments: ["/api/uploads/one.png", "/api/uploads/two.png"],
+      },
+      { id: "u2", role: "user", text: "", attachments: ["/api/uploads/other.png"] },
+    ],
+  };
+  await act(async () => renderer.update(<ChatTranscript {...props} />));
+  onImageOpenChange.mockClear();
+  await act(async () =>
+    renderer.root.findAllByProps({ "aria-label": "Open attached image" })[1].props.onClick(),
+  );
+  const modal = () => renderer.root.findByProps({ "data-ui": "chat-image-preview" });
+  expect(modal().findByType("img").props.src).toBe("/api/uploads/two.png");
+  expect(onImageOpenChange).toHaveBeenLastCalledWith(true);
+  onImageOpenChange.mockClear();
+  await act(async () => modal().findByProps({ "aria-label": "Next image" }).props.onClick());
+  expect(modal().findByType("img").props.src).toBe("/api/uploads/one.png");
+  await act(async () => modal().findByProps({ "aria-label": "Previous image" }).props.onClick());
+  expect(modal().findByType("img").props.src).toBe("/api/uploads/two.png");
+  expect(onImageOpenChange).not.toHaveBeenCalled();
+  await act(async () => modal().props.onClose({ currentTarget: { open: false } }));
+  expect(onImageOpenChange).toHaveBeenLastCalledWith(false);
+});
+
 it("shows the same unavailable attachment fallback and empty state in every container", async () => {
   await act(async () => renderer.root.findByProps({ alt: "User attachment" }).props.onError());
   expect(renderer.root.findByProps({ "aria-label": "Attachment unavailable" })).toBeDefined();

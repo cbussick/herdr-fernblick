@@ -111,7 +111,10 @@ review handoff.
   protocol frame and pending writes at most 4 MiB. Truncation is shown.
   Usage is for retained ordinary branch entries, not exact Pi session totals.
 - Select/preview/upload up to ten PNG, JPEG, GIF or WebP images, at most 10 MiB
-  each. Image-only sends are supported. Commands carry upload IDs, not base64.
+  each. Draft thumbnails and sent images open the same per-message gallery
+  lightbox, with Previous/Next, Left/Right arrow keys, and Escape/Close. Previewing
+  does not upload, send, or clear a draft. Image-only sends are supported.
+  Commands carry upload IDs, not base64.
   The extension performs bounded, no-follow reads, checks owner/mode/link count,
   size and file signatures, then converts to Pi ImageContent. After async reads it
   rechecks generation, session, epoch, connection and idle state before invocation.

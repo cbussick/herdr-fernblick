@@ -1,4 +1,4 @@
-import { act } from "react";
+import { act, type ReactNode } from "react";
 import { create, type ReactTestRenderer } from "react-test-renderer";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
@@ -6,6 +6,7 @@ import { randomUUID } from "node:crypto";
 import type { Agent } from "../../shared/api/contracts";
 import type { Snapshot } from "../../../packages/pi-live-chat/protocol";
 import { AgentConsole } from "./AgentConsole";
+import { ConversationTreeDialog } from "./ConversationTreeDialog";
 import { Whiteboard } from "../whiteboard/Whiteboard";
 import type { WhiteboardConversation } from "../whiteboard/ConversationDock";
 const mocks = vi.hoisted(() => ({
@@ -17,6 +18,7 @@ const mocks = vi.hoisted(() => ({
   skills: vi.fn(),
   output: vi.fn(),
 }));
+vi.mock("react-dom", () => ({ createPortal: (children: ReactNode) => children }));
 vi.mock("../whiteboard/boardApi", () => ({ boardApi: { prompt: mocks.boardPrompt } }));
 vi.mock("./useLiveChat", () => ({ useLiveChat: () => mocks.live }));
 vi.mock("./CloseTabButton", () => ({ CloseTabButton: () => null }));
@@ -400,6 +402,64 @@ it("shows skill errors and empty states, hides stale choices on disconnect, and 
   );
   expect(renderer.root.findAllByProps({ "data-testid": "skill-picker" })).toHaveLength(0);
   expect(renderer.root.findByType("textarea").props.value).toBe("/");
+});
+
+it("previews all ten local draft images without uploading, sending or discarding the draft", async () => {
+  vi.stubGlobal("document", { body: {}, addEventListener: vi.fn(), removeEventListener: vi.fn() });
+  const files = Array.from(
+    { length: 10 },
+    (_, i) => new File(["image"], `draft-${i}.png`, { type: "image/png" }),
+  );
+  await act(async () => {
+    renderer.root.findByType("textarea").props.onChange({ target: { value: "Keep my draft" } });
+    renderer.root.findByProps({ type: "file" }).props.onChange({ target: { files } });
+  });
+  const previews = renderer.root
+    .findByProps({ "aria-label": "Image attachments" })
+    .findAllByType("img");
+  await act(async () =>
+    renderer.root.findByProps({ "aria-label": "Preview image 10" }).props.onClick(),
+  );
+  const modal = () => renderer.root.findByProps({ "data-ui": "chat-image-preview" });
+  expect(modal().findByType("img").props.src).toBe(previews[9].props.src);
+  expect(modal().findByType("img").props.alt).toBe("draft-9.png");
+  await act(async () => modal().findByProps({ "aria-label": "Next image" }).props.onClick());
+  expect(modal().findByType("img").props.src).toBe(previews[0].props.src);
+  expect(modal().findByProps({ role: "status" }).children.join("")).toBe("Image 1 of 10");
+  await act(async () => modal().props.onClose({ currentTarget: { open: false } }));
+  expect(renderer.root.findAllByProps({ "data-ui": "chat-image-preview" })).toHaveLength(0);
+  expect(renderer.root.findByType("textarea").props.value).toBe("Keep my draft");
+  expect(
+    renderer.root.findByProps({ "aria-label": "Image attachments" }).findAllByType("img"),
+  ).toHaveLength(10);
+  expect(mocks.upload).not.toHaveBeenCalled();
+  expect(mocks.command).not.toHaveBeenCalled();
+});
+
+it("previews restored upload IDs and closes if the displayed attachment is removed", async () => {
+  vi.stubGlobal("document", { body: {}, addEventListener: vi.fn(), removeEventListener: vi.fn() });
+  const ids = [`${randomUUID()}.png`, `${randomUUID()}.png`];
+  await act(async () =>
+    renderer.root.findByProps({ "aria-label": "Open conversation paths" }).props.onClick(),
+  );
+  const tree = renderer.root.findByType(ConversationTreeDialog);
+  await act(async () => {
+    tree.props.onRestorePrompt("Restored draft", ids);
+    tree.props.onClose();
+  });
+  await act(async () =>
+    renderer.root.findByProps({ "aria-label": "Preview image 2" }).props.onClick(),
+  );
+  expect(
+    renderer.root.findByProps({ "data-ui": "chat-image-preview" }).findByType("img").props.src,
+  ).toBe(`/api/uploads/${ids[1]}`);
+  await act(async () =>
+    renderer.root.findByProps({ "aria-label": "Remove image 2" }).props.onClick(),
+  );
+  expect(renderer.root.findAllByProps({ "data-ui": "chat-image-preview" })).toHaveLength(0);
+  expect(renderer.root.findByType("textarea").props.value).toBe("Restored draft");
+  expect(mocks.upload).not.toHaveBeenCalled();
+  expect(mocks.command).not.toHaveBeenCalled();
 });
 
 it("accepts ten images across selections, caps overflow and restores capacity after removal", async () => {

@@ -7,11 +7,11 @@ import {
   type ReactNode,
   type RefObject,
 } from "react";
-import { createPortal } from "react-dom";
 import type { ChatMessage } from "../../../packages/pi-live-chat/protocol";
-import { CloseIcon, ImageIcon, LightbulbIcon } from "../../shared/ui/Icons";
+import { ImageIcon, LightbulbIcon } from "../../shared/ui/Icons";
 import { StateIcon, StateNotice } from "../../shared/ui/StateFeedback";
 import { ChatMessageText } from "./ChatMessageText";
+import { ImageLightbox } from "./ImageLightbox";
 import { annotationHighlights, type Annotation, type AnnotationEditHandler } from "./annotations";
 import styles from "./Console.module.css";
 import a11yStyles from "../../styles/accessibility.module.css";
@@ -71,8 +71,8 @@ export function ChatTranscript({
   const following = useRef(true);
   const readerTop = useRef(0);
   const appliedTop = useRef<number | null>(null);
-  const [image, setImage] = useState<string | null>(null);
-  const lightbox = useRef<HTMLDialogElement>(null);
+  const [image, setImage] = useState<{ urls: string[]; index: number } | null>(null);
+  const imageOpen = Boolean(image);
   const alignScroll = useCallback(() => {
     const element = output.current;
     if (!element || interacting) return;
@@ -97,12 +97,9 @@ export function ChatTranscript({
     };
   }, [alignScroll]);
   useEffect(() => {
-    onImageOpenChange?.(Boolean(image));
+    onImageOpenChange?.(imageOpen);
     return () => onImageOpenChange?.(false);
-  }, [image, onImageOpenChange]);
-  useEffect(() => {
-    if (image && lightbox.current && !lightbox.current.open) lightbox.current.showModal();
-  }, [image]);
+  }, [imageOpen, onImageOpenChange]);
   return (
     <>
       <div
@@ -186,7 +183,11 @@ export function ChatTranscript({
                 {message.attachments?.length ? (
                   <div className={styles["chat-message__attachments"]}>
                     {message.attachments.map((url, index) => (
-                      <ChatAttachment key={url + index} url={url} onOpen={() => setImage(url)} />
+                      <ChatAttachment
+                        key={url + index}
+                        url={url}
+                        onOpen={() => setImage({ urls: message.attachments!, index })}
+                      />
                     ))}
                   </div>
                 ) : null}
@@ -201,35 +202,14 @@ export function ChatTranscript({
         ) : null}
         {after}
       </div>
-      {image
-        ? createPortal(
-            <dialog
-              ref={lightbox}
-              data-ui="chat-image-preview"
-              className={styles["image-lightbox"]}
-              aria-label="Image preview"
-              onClose={() => setImage(null)}
-              onCancel={(event) => event.stopPropagation()}
-              onKeyDown={(event) => {
-                if (event.key === "Escape") event.stopPropagation();
-              }}
-              onClick={(event) => {
-                if (event.target === event.currentTarget) event.currentTarget.close();
-              }}
-            >
-              <button
-                type="button"
-                className={styles["image-lightbox__close"]}
-                aria-label="Close image preview"
-                onClick={() => lightbox.current?.close()}
-              >
-                <CloseIcon />
-              </button>
-              <img src={image} alt="Expanded user attachment" />
-            </dialog>,
-            document.body,
-          )
-        : null}
+      {image ? (
+        <ImageLightbox
+          images={image.urls.map((url) => ({ url, alt: "Expanded user attachment" }))}
+          index={image.index}
+          onIndexChange={(index) => setImage((current) => current && { ...current, index })}
+          onClose={() => setImage(null)}
+        />
+      ) : null}
     </>
   );
 }

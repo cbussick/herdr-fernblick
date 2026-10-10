@@ -14,6 +14,7 @@ import { getAgentTabLabel, getAgentTarget, getStatusLabel } from "./agentPresent
 import { getAgentOutput, sendAgentKey, chatCommand, uploadImage } from "../../shared/api/apiClient";
 import { useLiveChat } from "./useLiveChat";
 import { ChatTranscript } from "./ChatTranscript";
+import { ImageLightbox } from "./ImageLightbox";
 import { PiSessionStatus } from "./PiSessionStatus";
 import { TerminalOutput } from "./TerminalOutput";
 import { useChatAnnotations } from "./useChatAnnotations";
@@ -72,6 +73,10 @@ export function AgentConsole({ agent, onBack }: AgentConsoleProps) {
   const target = getAgentTarget(agent);
   const [prompt, setPrompt] = useState("");
   const [attachments, setAttachments] = useState<Attachment[]>([]);
+  const [attachmentPreview, setAttachmentPreview] = useState<string | null>(null);
+  const attachmentPreviewIndex = attachments.findIndex(
+    (image) => image.previewUrl === attachmentPreview,
+  );
   const [attachmentError, setAttachmentError] = useState("");
   const [treeTarget, setTreeTarget] = useState<Target | null>(null);
   const [boardTarget, setBoardTarget] = useState<Target | null>(null);
@@ -175,6 +180,9 @@ export function AgentConsole({ agent, onBack }: AgentConsoleProps) {
           URL.revokeObjectURL(attachment.previewUrl);
         if (attachment.file) uploadedIds.current.delete(attachment.file);
       }
+      setAttachmentPreview((current) =>
+        draft.attachments.some((image) => image.previewUrl === current) ? null : current,
+      );
       setAttachmentError("");
       resetSend();
     },
@@ -188,7 +196,7 @@ export function AgentConsole({ agent, onBack }: AgentConsoleProps) {
   const resetSend = send.reset;
   const annotations = useChatAnnotations(
     snapshot,
-    view === "chat" && !treeTarget && !boardTarget && !chatImageOpen,
+    view === "chat" && !treeTarget && !boardTarget && !chatImageOpen && attachmentPreviewIndex < 0,
     outputRef,
     send.isPending,
   );
@@ -252,6 +260,7 @@ export function AgentConsole({ agent, onBack }: AgentConsoleProps) {
     previews.current.clear();
     uploadedIds.current.clear();
     setAttachments([]);
+    setAttachmentPreview(null);
     setAttachmentError("");
   }
   function selectImages(files: FileList | null) {
@@ -510,18 +519,28 @@ export function AgentConsole({ agent, onBack }: AgentConsoleProps) {
               <div className={consoleStyles["prompt-attachments"]} aria-label="Image attachments">
                 {attachments.map((attachment, i) => (
                   <div className={consoleStyles["prompt-attachment"]} key={attachment.previewUrl}>
-                    <img
-                      src={attachment.previewUrl}
-                      alt={attachment.file?.name ?? "Restored image attachment"}
-                    />
                     <button
                       type="button"
+                      className={consoleStyles["prompt-attachment__preview"]}
+                      aria-label={`Preview image ${i + 1}`}
+                      disabled={composerSending}
+                      onClick={() => setAttachmentPreview(attachment.previewUrl)}
+                    >
+                      <img
+                        src={attachment.previewUrl}
+                        alt={attachment.file?.name ?? "Restored image attachment"}
+                      />
+                    </button>
+                    <button
+                      type="button"
+                      className={consoleStyles["prompt-attachment__remove"]}
                       disabled={composerSending}
                       aria-label={`Remove image ${i + 1}`}
                       onClick={() => {
                         if (send.isError) {
                           send.reset();
                         }
+                        if (attachmentPreview === attachment.previewUrl) setAttachmentPreview(null);
                         if (previews.current.delete(attachment.previewUrl))
                           URL.revokeObjectURL(attachment.previewUrl);
                         setAttachments((current) =>
@@ -623,6 +642,17 @@ export function AgentConsole({ agent, onBack }: AgentConsoleProps) {
       {annotations.selection ? <AnnotationSelectionAction annotations={annotations} /> : null}
       {view === "chat" && annotations.editor ? (
         <AnnotationPopover annotations={annotations} />
+      ) : null}
+      {view === "chat" && !treeTarget && !boardTarget && attachmentPreviewIndex >= 0 ? (
+        <ImageLightbox
+          images={attachments.map((image) => ({
+            url: image.previewUrl,
+            alt: image.file?.name ?? "Restored image attachment",
+          }))}
+          index={attachmentPreviewIndex}
+          onIndexChange={(index) => setAttachmentPreview(attachments[index].previewUrl)}
+          onClose={() => setAttachmentPreview(null)}
+        />
       ) : null}
       {treeTarget ? (
         <ConversationTreeDialog
