@@ -118,9 +118,14 @@ export function ChatTranscript({
         onScroll={() => {
           const element = output.current;
           if (!element || element.scrollTop === appliedTop.current) return;
+          const previousTop = appliedTop.current ?? readerTop.current;
           appliedTop.current = null;
           readerTop.current = element.scrollTop;
-          following.current = element.scrollHeight - element.scrollTop - element.clientHeight < 48;
+          // Any upward movement pauses following, even within bottom rounding tolerance.
+          // Resume only when the reader scrolls back down to the bottom.
+          following.current =
+            element.scrollTop >= previousTop &&
+            element.scrollHeight - element.scrollTop - element.clientHeight <= 1;
         }}
       >
         {before}

@@ -101,6 +101,46 @@ it("starts at the bottom and follows new output and viewport resizing when the r
   await act(async () => resize());
   expect(top).toBe(900);
 });
+it.each([12, 1, 0.5])(
+  "stops following after scrolling up %s pixels during streaming",
+  async (distance) => {
+    expect(top).toBe(800);
+    // Delivery of our initial programmatic scroll must not change follow mode.
+    await act(async () => output().props.onScroll());
+    viewport.scrollTop = 800 - distance;
+    await act(async () => output().props.onScroll());
+    viewport.scrollHeight = 1040;
+    props = {
+      ...props,
+      messages: props.messages.map((message) =>
+        message.id === "a" ? { ...message, text: "Earlier reply streaming" } : message,
+      ),
+    };
+    await act(async () => renderer.update(<ChatTranscript {...props} />));
+    expect(top).toBe(800 - distance);
+    await act(async () => {
+      resize();
+      output().props.onLoadCapture();
+      renderer.root.findByProps({ "data-testid": "chat-tool" }).props.onToggle();
+    });
+    expect(top).toBe(800 - distance);
+  },
+);
+it("resumes following only when the reader scrolls down to the bottom", async () => {
+  viewport.scrollTop = 740;
+  await act(async () => output().props.onScroll());
+  viewport.scrollTop = 788;
+  await act(async () => output().props.onScroll());
+  viewport.scrollHeight = 1040;
+  await act(async () => renderer.update(<ChatTranscript {...props} />));
+  expect(top).toBe(788);
+  // scrollTop can be fractional even though scrollHeight/clientHeight are rounded.
+  viewport.scrollTop = 839.5;
+  await act(async () => output().props.onScroll());
+  viewport.scrollHeight = 1080;
+  await act(async () => renderer.update(<ChatTranscript {...props} />));
+  expect(top).toBe(880);
+});
 it("preserves the reader position through streaming, clamped expansion and collapse", async () => {
   viewport.scrollTop = 300;
   await act(async () => output().props.onScroll());
