@@ -12,9 +12,9 @@ export function useConversationCompaction(
   const [pending, setPending] = useState(false);
   const [notice, setNotice] = useState<{ text: string; error: boolean }>();
   const operation = useRef<{ target: Target; invalidated: boolean } | null>(null);
+  const lastOperation = useRef<typeof operation.current>(null);
   const current = useRef({ snapshot, connected });
   const mounted = useRef(false);
-  const previousIdentity = useRef<string | undefined>(undefined);
   useLayoutEffect(() => {
     mounted.current = true;
     return () => {
@@ -24,14 +24,25 @@ export function useConversationCompaction(
   useLayoutEffect(() => {
     current.current = { snapshot, connected };
     const op = operation.current;
-    const identity = snapshot
-      ? JSON.stringify([snapshot.identity.runtime, snapshot.identity.sessionId, snapshot.epoch])
-      : undefined;
-    if (!op && (!connected || identity !== previousIdentity.current)) setNotice(undefined);
-    previousIdentity.current = identity;
-    if (op && (!connected || !snapshot || !matchesTarget(snapshot, op.target))) {
-      op.invalidated = true;
-      setNotice({ text: uncertain, error: true });
+    const attempt = lastOperation.current;
+    if (!op && attempt && connected && snapshot && !matchesTarget(snapshot, attempt.target)) {
+      lastOperation.current = null;
+      setNotice(undefined);
+    }
+    if (op) {
+      // Losing the live stream does not establish that Pi replaced the target
+      // or stopped the request. Only a fresh, mismatching snapshot invalidates it.
+      if (connected && snapshot && !matchesTarget(snapshot, op.target)) op.invalidated = true;
+      setNotice(
+        op.invalidated
+          ? { text: uncertain, error: true }
+          : !connected || !snapshot
+            ? {
+                text: "Connection interrupted. Pi may still be compacting; reconnecting to check progress. No automatic retry.",
+                error: false,
+              }
+            : undefined,
+      );
     }
   }, [snapshot, connected]);
 
@@ -49,6 +60,7 @@ export function useConversationCompaction(
       return;
     const op = { target, invalidated: false };
     operation.current = op; // Synchronous guard for repeated taps before React renders.
+    lastOperation.current = op;
     setPending(true);
     setNotice(undefined);
     try {
@@ -79,5 +91,21 @@ export function useConversationCompaction(
       if (mounted.current) setPending(false);
     }
   }
-  return { pending, notice, start, locked: () => Boolean(operation.current) };
+  // A live activity report is stronger than a transport warning about progress,
+  // but cannot establish success. Keep the error underneath so it returns when
+  // activity ends without a correlated completion response.
+  const attempt = lastOperation.current;
+  const feedback =
+    notice?.error &&
+    attempt &&
+    !attempt.invalidated &&
+    connected &&
+    snapshot?.compacting &&
+    matchesTarget(snapshot, attempt.target)
+      ? {
+          text: "Pi is still compacting. Completion not yet confirmed; no automatic retry.",
+          error: false,
+        }
+      : notice;
+  return { pending, notice: feedback, start, locked: () => Boolean(operation.current) };
 }

@@ -206,6 +206,89 @@ it("explains and compacts separately from Skills, waits for completion and prese
   expect(renderer.root.findAllByProps({ "aria-label": "Image attachments" })).toHaveLength(1);
 });
 
+it("resumes waiting after reconnecting to the same running compaction", async () => {
+  await enableCompact();
+  let complete!: () => void;
+  mocks.compact.mockImplementation(
+    () =>
+      new Promise<void>((resolve) => {
+        complete = resolve;
+      }),
+  );
+  await confirmCompact();
+  await act(async () => compactNow().props.onClick());
+  const initial = mocks.live.snapshot!;
+  mocks.live = { error: "Reconnecting to Pi…" };
+  await act(async () => renderer.update(render()));
+  mocks.live = { snapshot: { ...initial, seq: 2, busy: true, compacting: true } };
+  await act(async () => renderer.update(render()));
+  expect(JSON.stringify(renderer.toJSON())).toContain("Compacting…");
+  expect(JSON.stringify(renderer.toJSON())).not.toContain("outcome uncertain");
+  expect(JSON.stringify(renderer.toJSON())).toContain("waiting for Pi to finish");
+  await act(async () => complete());
+  expect(mocks.compact).toHaveBeenCalledOnce();
+  expect(JSON.stringify(renderer.toJSON())).toContain("Conversation compacted.");
+});
+
+it.each(["before", "after"])(
+  "shows recovered compaction progress when the request fails %s reconnecting, without inferring success",
+  async (timing) => {
+    await enableCompact();
+    let fail!: (error: Error) => void;
+    mocks.compact.mockImplementation(
+      () =>
+        new Promise<void>((_resolve, reject) => {
+          fail = reject;
+        }),
+    );
+    await act(async () =>
+      renderer.root.findByType("textarea").props.onChange({ target: { value: "keep this" } }),
+    );
+    await confirmCompact();
+    await act(async () => compactNow().props.onClick());
+    const initial = mocks.live.snapshot!;
+    mocks.live = { error: "Reconnecting to Pi…" };
+    await act(async () => renderer.update(render()));
+    if (timing === "before") await act(async () => fail(new Error("Compaction outcome uncertain")));
+    mocks.live = { snapshot: { ...initial, seq: 2, busy: true, compacting: true } };
+    await act(async () => renderer.update(render()));
+    if (timing === "after") await act(async () => fail(new Error("Compaction outcome uncertain")));
+    expect(JSON.stringify(renderer.toJSON())).toContain("Pi is still compacting");
+    expect(renderer.root.findAllByProps({ role: "alert" })).toHaveLength(0);
+    expect(JSON.stringify(renderer.toJSON())).not.toContain("Conversation compacted.");
+    expect(renderer.root.findByProps({ "aria-label": "Send message" }).props.disabled).toBe(true);
+    mocks.live = { snapshot: { ...initial, seq: 3, busy: false, compacting: false } };
+    await act(async () => renderer.update(render()));
+    expect(JSON.stringify(renderer.toJSON())).toContain("outcome uncertain");
+    expect(JSON.stringify(renderer.toJSON())).not.toContain("Conversation compacted.");
+    expect(renderer.root.findByType("textarea").props.value).toBe("keep this");
+    expect(mocks.compact).toHaveBeenCalledOnce();
+  },
+);
+
+it("does not recover an invalidated request from a replacement or older compaction snapshot", async () => {
+  await enableCompact();
+  let complete!: () => void;
+  mocks.compact.mockImplementation(
+    () =>
+      new Promise<void>((resolve) => {
+        complete = resolve;
+      }),
+  );
+  await confirmCompact();
+  await act(async () => compactNow().props.onClick());
+  const initial = mocks.live.snapshot!;
+  mocks.live.snapshot = { ...initial, epoch: randomUUID(), busy: true, compacting: true };
+  await act(async () => renderer.update(render()));
+  expect(JSON.stringify(renderer.toJSON())).toContain("outcome uncertain");
+  mocks.live.snapshot = { ...initial, seq: 3, busy: true, compacting: true };
+  await act(async () => renderer.update(render()));
+  await act(async () => complete());
+  expect(JSON.stringify(renderer.toJSON())).toContain("outcome uncertain");
+  expect(JSON.stringify(renderer.toJSON())).not.toContain("Conversation compacted.");
+  expect(mocks.compact).toHaveBeenCalledOnce();
+});
+
 it("labels terminal compaction without invoking the UI action and preserves the draft", async () => {
   await act(async () =>
     renderer.root.findByType("textarea").props.onChange({ target: { value: "keep this draft" } }),
@@ -287,7 +370,12 @@ it.each(["disconnect", "replacement", "error"])(
     if (mode === "replacement")
       mocks.live.snapshot = { ...mocks.live.snapshot!, epoch: randomUUID() };
     await act(async () => renderer.update(render()));
-    if (mode !== "error") expect(JSON.stringify(renderer.toJSON())).toContain("outcome uncertain");
+    if (mode === "replacement")
+      expect(JSON.stringify(renderer.toJSON())).toContain("outcome uncertain");
+    if (mode === "disconnect") {
+      expect(JSON.stringify(renderer.toJSON())).toContain("Pi may still be compacting");
+      expect(JSON.stringify(renderer.toJSON())).not.toContain("outcome uncertain");
+    }
     await act(async () => (mode === "error" ? fail(new Error("Nothing to compact")) : complete()));
     await flush();
     expect(JSON.stringify(renderer.toJSON())).not.toContain("Conversation compacted.");
