@@ -1,0 +1,136 @@
+// Synthetic scroll regression: all API/SSE traffic is intercepted; no live agents are controlled.
+// PLAYWRIGHT_MODULE=/path/to/playwright/index.mjs node tools/design/transcript-follow.mjs URL
+import assert from "node:assert/strict";
+const { chromium, webkit } = await import(process.env.PLAYWRIGHT_MODULE || "playwright");
+const base = process.argv[2] || "http://127.0.0.1:5207";
+const agent = {
+  agent: "pi",
+  name: "scroll-fixture",
+  pane_id: "w1:p1",
+  tab_id: "w1:t1",
+  tab_label: "Scroll fixture",
+  workspace_id: "w1",
+  workspace_label: "Fernblick",
+  agent_status: "working",
+  revision: 1,
+  focused: false,
+  agent_session: { agent: "pi", kind: "path", source: "fixture", value: "/fixture.jsonl" },
+};
+const snapshot = {
+  type: "snapshot",
+  version: 2,
+  identity: {
+    runtime: "a0000000-0000-4000-8000-000000000001",
+    pid: 1,
+    processStart: "1",
+    pane: agent.pane_id,
+    herdrSocket: "/fixture.sock",
+    sessionId: "scroll-fixture",
+    sessionFile: "/fixture.jsonl",
+  },
+  epoch: "a0000000-0000-4000-8000-000000000002",
+  seq: 1,
+  busy: true,
+  sendPending: false,
+  truncated: false,
+  messages: [{ id: "m1", role: "assistant", text: "Streaming paragraph.\n\n".repeat(100) }],
+  status: { cwd: "/fixture", totalTokens: 0, cost: 0 },
+};
+for (const [engine, type] of [
+  ["chromium", chromium],
+  ["webkit", webkit],
+]) {
+  const browser = await type.launch({ headless: true });
+  try {
+    const page = await browser.newPage({ viewport: { width: 834, height: 900 }, hasTouch: true });
+    const errors = [];
+    page.on("pageerror", (error) => errors.push(error.message));
+    await page.addInitScript((initial) => {
+      window.EventSource = class {
+        constructor() {
+          window.fixtureStream = this;
+          this.timer = setTimeout(() => this.onmessage?.({ data: JSON.stringify(initial) }), 30);
+        }
+        close() {
+          clearTimeout(this.timer);
+        }
+      };
+    }, snapshot);
+    await page.route(
+      (url) => url.pathname.startsWith("/api/"),
+      (route) =>
+        route.fulfill({
+          json: {
+            agents: [agent],
+            workspaces: [{ workspace_id: "w1", label: "Fernblick" }],
+            tabs: [],
+          },
+        }),
+    );
+    await page.goto(base);
+    await page.getByRole("tab", { name: "Agents", exact: true }).click();
+    await page.getByTestId("pane-row").click();
+    const transcript = page.getByTestId("chat-transcript");
+    await transcript.locator('[data-message-id="m1"]').waitFor();
+    const settle = () => page.waitForTimeout(100);
+    const geometry = () =>
+      transcript.evaluate((el) => ({
+        top: el.scrollTop,
+        height: el.clientHeight,
+        gap: el.scrollHeight - el.clientHeight - el.scrollTop,
+      }));
+    const bottom = async (label) => {
+      await page
+        .waitForFunction(
+          () => {
+            const el = document.querySelector('[data-testid="chat-transcript"]');
+            return el && Math.abs(el.scrollHeight - el.clientHeight - el.scrollTop) <= 1;
+          },
+          null,
+          { timeout: 3000 },
+        )
+        .catch(() => {});
+      const state = await geometry();
+      assert.ok(Math.abs(state.gap) <= 1, `${engine} ${label}: ${JSON.stringify(state)}`);
+    };
+    let seq = 1;
+    const stream = async () => {
+      seq++;
+      await page.evaluate(
+        (next) => {
+          window.fixtureStream.onmessage({ data: JSON.stringify(next) });
+        },
+        {
+          ...snapshot,
+          seq,
+          messages: [{ ...snapshot.messages[0], text: snapshot.messages[0].text.repeat(seq) }],
+        },
+      );
+      await settle();
+    };
+    await bottom("initial follow");
+    // A larger viewport clamps scrollTop before the deferred ResizeObserver alignment.
+    await page.setViewportSize({ width: 834, height: 1194 });
+    await settle();
+    await stream();
+    await bottom("follow after browser resize without reader input");
+    // Real reader input must still pause following immediately.
+    await transcript.hover();
+    await page.mouse.wheel(0, -12);
+    await settle();
+    const paused = await geometry();
+    assert.ok(paused.gap > 1, "reader scrolled above the bottom");
+    await stream();
+    assert.equal((await geometry()).top, paused.top, "streaming must not pull the reader down");
+    await page.mouse.wheel(0, 100000);
+    await bottom("reader returns to bottom");
+    await stream();
+    await bottom("following resumes");
+    assert.deepEqual(errors, []);
+    console.log(
+      `${engine}: resize without input, upward reader scroll, and resumed streaming passed`,
+    );
+  } finally {
+    await browser.close();
+  }
+}

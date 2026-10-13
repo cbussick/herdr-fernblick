@@ -8,6 +8,7 @@ let renderer: ReactTestRenderer;
 let props: ChatTranscriptProps;
 let resize: () => void;
 let top: number;
+let bottomFraction: number;
 const viewport = {
   scrollHeight: 1000,
   clientHeight: 200,
@@ -15,7 +16,7 @@ const viewport = {
     return top;
   },
   set scrollTop(value: number) {
-    top = Math.max(0, Math.min(value, this.scrollHeight - this.clientHeight));
+    top = Math.max(0, Math.min(value, this.scrollHeight - this.clientHeight + bottomFraction));
   },
 };
 const disconnect = vi.fn();
@@ -39,6 +40,7 @@ beforeEach(async () => {
   );
   disconnect.mockClear();
   top = 0;
+  bottomFraction = 0;
   viewport.scrollHeight = 1000;
   viewport.clientHeight = 200;
   props = {
@@ -101,6 +103,44 @@ it("starts at the bottom and follows new output and viewport resizing when the r
   await act(async () => resize());
   expect(top).toBe(900);
 });
+it.each(["viewport expansion", "content shrink"])(
+  "keeps following after automatic clamping from %s before alignment",
+  async (change) => {
+    // Browser geometry changes can deliver a scroll event before our deferred alignment.
+    if (change === "viewport expansion") viewport.clientHeight = 500;
+    else viewport.scrollHeight = 700;
+    viewport.scrollTop = viewport.scrollTop;
+    await act(async () => output().props.onScroll());
+    await act(async () => resize());
+    expect(top).toBe(500);
+    viewport.scrollHeight = 1400;
+    await act(async () => renderer.update(<ChatTranscript {...props} />));
+    expect(top).toBe(1400 - viewport.clientHeight);
+  },
+);
+it("still pauses for a small reader scroll after automatic clamping", async () => {
+  viewport.clientHeight = 500;
+  viewport.scrollTop = viewport.scrollTop;
+  await act(async () => output().props.onScroll());
+  viewport.scrollTop -= 0.5;
+  await act(async () => output().props.onScroll());
+  await act(async () => resize());
+  viewport.scrollHeight = 1400;
+  await act(async () => renderer.update(<ChatTranscript {...props} />));
+  expect(top).toBe(499.5);
+});
+it("does not resume a paused reader when geometry clamps before alignment", async () => {
+  viewport.scrollTop = 300;
+  await act(async () => output().props.onScroll());
+  await act(async () => renderer.update(<ChatTranscript {...props} />));
+  viewport.clientHeight = 900;
+  viewport.scrollTop = viewport.scrollTop;
+  await act(async () => output().props.onScroll());
+  await act(async () => resize());
+  viewport.clientHeight = 200;
+  await act(async () => resize());
+  expect(top).toBe(300);
+});
 it.each([12, 1, 0.5])(
   "stops following after scrolling up %s pixels during streaming",
   async (distance) => {
@@ -160,6 +200,19 @@ it("preserves the reader position through streaming, clamped expansion and colla
   expect(top).toBe(300);
   await act(async () => renderer.unmount());
   expect(disconnect).toHaveBeenCalledOnce();
+});
+it("ignores its own fractional clamped scroll when rounded geometry differs", async () => {
+  viewport.scrollTop = 300;
+  await act(async () => output().props.onScroll());
+  viewport.clientHeight = 900;
+  // Browser scrollTop retains fractions; scrollHeight and clientHeight are rounded.
+  bottomFraction = 0.5;
+  await act(async () => resize());
+  expect(top).toBe(100.5);
+  await act(async () => output().props.onScroll());
+  viewport.clientHeight = 200;
+  await act(async () => resize());
+  expect(top).toBe(300);
 });
 it("realigns parent-driven expansion even when message props do not change", async () => {
   viewport.scrollTop = 300;

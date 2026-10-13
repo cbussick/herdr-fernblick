@@ -117,7 +117,16 @@ export function ChatTranscript({
         onLoadCapture={alignScroll}
         onScroll={() => {
           const element = output.current;
-          if (!element || element.scrollTop === appliedTop.current) return;
+          if (!element) return;
+          const maxTop = Math.max(0, element.scrollHeight - element.clientHeight);
+          // Geometry can clamp our last write before the resize callback runs.
+          // That automatic movement is not the reader scrolling upward.
+          if (
+            appliedTop.current !== null &&
+            (element.scrollTop === appliedTop.current ||
+              element.scrollTop === Math.min(appliedTop.current, maxTop))
+          )
+            return;
           const previousTop = appliedTop.current ?? readerTop.current;
           appliedTop.current = null;
           readerTop.current = element.scrollTop;

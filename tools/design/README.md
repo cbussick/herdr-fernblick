@@ -97,6 +97,18 @@ and SSE are fixtures; no real agents are controlled. It simulates viewport chang
 not a physical iPadOS keyboard. Hook tests in `npm run check` also cover desktop
 resizing, coarse-pointer detection, legacy orientation events and cleanup.
 
+## Transcript following regression
+
+```sh
+PLAYWRIGHT_MODULE=/tmp/fernblick-design-tools/node_modules/playwright/index.mjs \
+  node tools/design/transcript-follow.mjs http://127.0.0.1:<vite-port>
+```
+
+Chromium/WebKit use intercepted agent APIs and synthetic streaming snapshots to
+check that browser scroll clamping during viewport expansion does not pause
+following. A small upward wheel scroll must still pause immediately, and returning
+to the bottom must resume following. No live agents or Herdr sockets are used.
+
 ## Proposal regression comparison
 
 Before the module migration, preserve the accepted proposal's `design-gallery/after/` directory separately. After capturing the finished implementation:
