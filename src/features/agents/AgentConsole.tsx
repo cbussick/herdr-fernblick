@@ -97,6 +97,7 @@ export function AgentConsole({ agent, onBack }: AgentConsoleProps) {
   );
   const sendLock = useRef(false);
   const [sendProgress, setSendProgress] = useState<SendProgress | null>(null);
+  const [followRequest, setFollowRequest] = useState(0);
   const liveContext = useRef({
     snapshot,
     lastSnapshot: snapshot,
@@ -313,6 +314,7 @@ export function AgentConsole({ agent, onBack }: AgentConsoleProps) {
     // React's pending state may not have rendered before a second tap/shortcut.
     if (sendLock.current || compact.locked()) return;
     sendLock.current = true;
+    setFollowRequest((request) => request + 1);
     setSendProgress({ kind: "sending" });
     send.mutate(draft);
   }
@@ -444,6 +446,7 @@ export function AgentConsole({ agent, onBack }: AgentConsoleProps) {
             transcriptRef={outputRef}
             annotations={annotations.stale ? [] : annotations.entries}
             interacting={annotations.interacting}
+            followRequest={followRequest}
             onAnnotationEdit={
               annotations.canBegin
                 ? (id, anchor) => {
@@ -732,6 +735,7 @@ export function AgentConsole({ agent, onBack }: AgentConsoleProps) {
             showThinking,
             draft: prompt,
             sending: composerSending,
+            followRequest,
             error: send.isError
               ? `${send.error.message} Draft retained; check the conversation before retrying.`
               : undefined,

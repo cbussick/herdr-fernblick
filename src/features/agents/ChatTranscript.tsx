@@ -29,6 +29,8 @@ export interface ChatTranscriptProps {
   annotations?: Annotation[];
   onAnnotationEdit?: AnnotationEditHandler;
   interacting?: boolean;
+  /** Increment for an explicit local send, never for streaming or snapshot updates. */
+  followRequest?: number;
   onImageOpenChange?: (open: boolean) => void;
 }
 function ChatAttachment({ url, onOpen }: { url: string; onOpen: () => void }) {
@@ -65,12 +67,14 @@ export function ChatTranscript({
   annotations = [],
   onAnnotationEdit,
   interacting = false,
+  followRequest = 0,
   onImageOpenChange,
 }: ChatTranscriptProps) {
   const output = useRef<HTMLDivElement>(null);
   const following = useRef(true);
   const readerTop = useRef(0);
   const appliedTop = useRef<number | null>(null);
+  const lastFollowRequest = useRef(followRequest);
   const [image, setImage] = useState<{ urls: string[]; index: number } | null>(null);
   const imageOpen = Boolean(image);
   const alignScroll = useCallback(() => {
@@ -81,7 +85,13 @@ export function ChatTranscript({
     appliedTop.current = element.scrollTop;
   }, [interacting]);
   // Parent-driven expansion changes geometry even when messages are unchanged.
-  useLayoutEffect(alignScroll);
+  useLayoutEffect(() => {
+    if (followRequest !== lastFollowRequest.current) {
+      lastFollowRequest.current = followRequest;
+      following.current = true;
+    }
+    alignScroll();
+  });
   useEffect(() => {
     if (!output.current || typeof ResizeObserver === "undefined") return;
     let frame = 0;

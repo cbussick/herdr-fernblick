@@ -1012,6 +1012,82 @@ it("locks the composer only through upload and forwarding, then uses Pi busy/idl
   expect(renderer.root.findByProps({ "data-testid": "chat-activity" })).toBe(activity);
   expect(activity.findByProps({ "data-ui": "status-indicator" }).children).toContain("Working");
 });
+it.each(["text", "image"])(
+  "resumes transcript following immediately for a new %s send without waiting for ACK or echo",
+  async (kind) => {
+    const viewport = {
+      scrollHeight: 1000,
+      clientHeight: 200,
+      top: 0,
+      get scrollTop() {
+        return this.top;
+      },
+      set scrollTop(value: number) {
+        this.top = Math.max(0, Math.min(value, this.scrollHeight - this.clientHeight));
+      },
+    };
+    await act(async () => {
+      renderer.unmount();
+      renderer = create(render(), {
+        createNodeMock: (node) =>
+          (node.props as Record<string, unknown>)["data-ui"] === "chat-transcript"
+            ? viewport
+            : null,
+      });
+    });
+    const transcript = () => renderer.root.findByProps({ "data-ui": "chat-transcript" });
+    expect(viewport.scrollTop).toBe(800);
+    viewport.scrollTop = 300;
+    await act(async () => transcript().props.onScroll());
+    // An empty, rejected submission must not leave reading mode.
+    await act(async () => renderer.root.findByType("form").props.onSubmit({ preventDefault() {} }));
+    expect(viewport.scrollTop).toBe(300);
+    let resolve!: (value: unknown) => void;
+    const pending = new Promise((done) => {
+      resolve = done;
+    });
+    if (kind === "image") {
+      mocks.upload.mockReturnValueOnce(pending);
+      await act(async () =>
+        renderer.root.findByProps({ type: "file" }).props.onChange({
+          target: { files: [new File(["image"], "image.png", { type: "image/png" })] },
+        }),
+      );
+    } else {
+      mocks.command.mockReturnValueOnce(pending);
+      await act(async () =>
+        renderer.root.findByType("textarea").props.onChange({ target: { value: "New turn" } }),
+      );
+    }
+    expect(viewport.scrollTop).toBe(300);
+    const submit = renderer.root.findByType("form").props.onSubmit;
+    await act(async () => submit({ preventDefault() {} }));
+    expect(viewport.scrollTop).toBe(800);
+    // The live echo grows the transcript without another explicit follow request.
+    viewport.scrollHeight = 1200;
+    mocks.live.snapshot = {
+      ...mocks.live.snapshot!,
+      messages: [{ id: "new", role: "user", text: "New turn" }],
+    };
+    await act(async () => renderer.update(render()));
+    expect(viewport.scrollTop).toBe(1000);
+    // Reading upward again during this send must still pause following.
+    viewport.scrollTop = 988;
+    await act(async () => transcript().props.onScroll());
+    // A stale repeated submission is guarded and must not resume following again.
+    await act(async () => submit({ preventDefault() {} }));
+    expect(viewport.scrollTop).toBe(988);
+    await act(async () =>
+      resolve(
+        kind === "image" ? { id: `${randomUUID()}.png` } : { type: "ack", outcome: "invoked" },
+      ),
+    );
+    await flush();
+    viewport.scrollHeight = 1400;
+    await act(async () => renderer.update(render()));
+    expect(viewport.scrollTop).toBe(988);
+  },
+);
 it("shows visible feedback while a text message is being forwarded", async () => {
   let acknowledge!: (value: unknown) => void;
   mocks.command.mockImplementationOnce(

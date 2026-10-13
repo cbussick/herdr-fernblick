@@ -107,7 +107,10 @@ PLAYWRIGHT_MODULE=/tmp/fernblick-design-tools/node_modules/playwright/index.mjs 
 Chromium/WebKit use intercepted agent APIs and synthetic streaming snapshots to
 check that browser scroll clamping during viewport expansion does not pause
 following. A small upward wheel scroll must still pause immediately, and returning
-to the bottom must resume following. No live agents or Herdr sockets are used.
+to the bottom must resume following. Click and keyboard sends from a paused
+transcript must resume immediately, before an ACK or live echo. Reading upward
+again must remain paused through later ACKs and streamed output. No live agents
+or Herdr sockets are used.
 
 ## Proposal regression comparison
 

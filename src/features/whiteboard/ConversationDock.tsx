@@ -17,6 +17,7 @@ export interface WhiteboardConversation {
   showThinking: boolean;
   draft: string;
   sending: boolean;
+  followRequest?: number;
   error?: string;
   onDraftChange: (text: string) => void;
   onSend: (board: BoardPromptContext) => void;
@@ -122,6 +123,7 @@ export function ConversationDock({
         truncated={snapshot?.truncated ?? false}
         agentName={conversation.agentName}
         showThinking={conversation.showThinking}
+        followRequest={conversation.followRequest}
       />
       <form
         className={styles.composer}

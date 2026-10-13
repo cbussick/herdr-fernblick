@@ -44,6 +44,7 @@ for (const [engine, type] of [
   try {
     const page = await browser.newPage({ viewport: { width: 834, height: 900 }, hasTouch: true });
     const errors = [];
+    const commands = [];
     page.on("pageerror", (error) => errors.push(error.message));
     await page.addInitScript((initial) => {
       window.EventSource = class {
@@ -58,14 +59,22 @@ for (const [engine, type] of [
     }, snapshot);
     await page.route(
       (url) => url.pathname.startsWith("/api/"),
-      (route) =>
-        route.fulfill({
-          json: {
-            agents: [agent],
-            workspaces: [{ workspace_id: "w1", label: "Fernblick" }],
-            tabs: [],
-          },
-        }),
+      (route) => {
+        const path = new URL(route.request().url()).pathname;
+        if (path === "/api/agents")
+          return route.fulfill({
+            json: {
+              agents: [agent],
+              workspaces: [{ workspace_id: "w1", label: "Fernblick" }],
+              tabs: [],
+            },
+          });
+        if (path.endsWith("/prompt")) {
+          commands.push(route);
+          return;
+        }
+        return route.fulfill({ status: 503, json: { error: "Unexpected fixture request" } });
+      },
     );
     await page.goto(base);
     await page.getByRole("tab", { name: "Agents", exact: true }).click();
@@ -126,9 +135,68 @@ for (const [engine, type] of [
     await bottom("reader returns to bottom");
     await stream();
     await bottom("following resumes");
+    // A deliberate send should leave reading mode immediately, not wait for a Pi echo.
+    await page.evaluate(
+      (next) => {
+        window.fixtureStream.onmessage({ data: JSON.stringify(next) });
+      },
+      { ...snapshot, seq: ++seq, busy: false },
+    );
+    await transcript.hover();
+    await page.mouse.wheel(0, -120);
+    await settle();
+    assert.ok((await geometry()).gap > 1, "reader is above the bottom before sending");
+    await page.locator("#agent-prompt").fill("A new turn from the composer");
+    await page.getByRole("button", { name: "Send message", exact: true }).click();
+    for (let i = 0; i < 100 && commands.length < 1; i++) await page.waitForTimeout(20);
+    assert.equal(commands.length, 1);
+    await bottom("send from a paused transcript must resume following immediately");
+    const messages = [
+      ...snapshot.messages,
+      { id: "u1", role: "user", text: "A new turn from the composer" },
+      { id: "a1", role: "assistant", text: "A streaming reply.\n\n".repeat(30) },
+    ];
+    const publish = (busy) =>
+      page.evaluate(
+        (next) => {
+          window.fixtureStream.onmessage({ data: JSON.stringify(next) });
+        },
+        { ...snapshot, seq: ++seq, busy, messages },
+      );
+    await publish(true);
+    await transcript.locator('[data-message-id="a1"]').waitFor();
+    await bottom("echo and reply after sending keep following");
+    await transcript.hover();
+    await page.mouse.wheel(0, -12);
+    await settle();
+    const reading = await geometry();
+    assert.ok(reading.gap > 1);
+    await commands[0].fulfill({
+      json: { type: "ack", id: commands[0].request().postDataJSON().requestId, outcome: "invoked" },
+    });
+    await settle();
+    assert.equal((await geometry()).top, reading.top, "late ACK must not reset reading mode");
+    messages[2].text += "More streamed output.\n\n".repeat(30);
+    await publish(false);
+    await settle();
+    assert.equal(
+      (await geometry()).top,
+      reading.top,
+      "streaming after a send still respects reading mode",
+    );
+    // A subsequent keyboard submission is a distinct follow request.
+    await page.locator("#agent-prompt").fill("Another turn using the keyboard");
+    await page.getByRole("button", { name: "Send message", exact: true }).focus();
+    await page.keyboard.press("Enter");
+    for (let i = 0; i < 100 && commands.length < 2; i++) await page.waitForTimeout(20);
+    assert.equal(commands.length, 2);
+    await bottom("keyboard send also resumes following immediately");
+    await commands[1].fulfill({
+      json: { type: "ack", id: commands[1].request().postDataJSON().requestId, outcome: "invoked" },
+    });
     assert.deepEqual(errors, []);
     console.log(
-      `${engine}: resize without input, upward reader scroll, and resumed streaming passed`,
+      `${engine}: resize, reader pause/resume, click/keyboard sends, echo and late ACK passed`,
     );
   } finally {
     await browser.close();
