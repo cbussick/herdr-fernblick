@@ -879,7 +879,9 @@ it("locks the composer only through upload and forwarding, then uses Pi busy/idl
   await flush();
   const assertWaiting = () => {
     const form = renderer.root.findByType("form");
-    expect(form.props["aria-busy"]).toBe(true);
+    expect(form.findByProps({ "data-ui": "prompt-composer-surface" }).props["aria-busy"]).toBe(
+      true,
+    );
     for (const button of form.findAllByType("button")) expect(button.props.disabled).toBe(true);
     expect(form.findByType("textarea").props.disabled).toBe(true);
     expect(form.findByProps({ type: "file" }).props.disabled).toBe(true);
@@ -888,26 +890,141 @@ it("locks the composer only through upload and forwarding, then uses Pi busy/idl
     expect(JSON.stringify(renderer.toJSON())).not.toContain("Sending to Pi");
   };
   assertWaiting();
+  expect(JSON.stringify(renderer.toJSON())).toContain("Uploading image 1 of 1…");
   expect(mocks.command).not.toHaveBeenCalled();
   await act(async () => finishUpload({ id: `${randomUUID()}.png` }));
   await flush();
   mocks.live.snapshot = { ...mocks.live.snapshot!, seq: 2, sendPending: true };
   await act(async () => renderer.update(render()));
   assertWaiting();
+  expect(JSON.stringify(renderer.toJSON())).toContain("Sending message…");
+  expect(JSON.stringify(renderer.toJSON())).not.toContain("Uploading image");
   const id = mocks.command.mock.calls[0][5];
   await act(async () => acknowledge({ type: "ack", id, outcome: "invoked" }));
   await flush();
   expect(renderer.root.findByType("textarea").props.disabled).toBe(false);
   expect(renderer.root.findByProps({ "aria-label": "Send message" }).props.disabled).toBe(true);
+  expect(JSON.stringify(renderer.toJSON())).toContain("Waiting for agent activity…");
   mocks.live.snapshot = { ...mocks.live.snapshot!, seq: 3, busy: true, sendPending: false };
   await act(async () => renderer.update(render()));
-  expect(renderer.root.findByType("form").props["aria-busy"]).toBe(false);
+  expect(
+    renderer.root.findByProps({ "data-ui": "prompt-composer-surface" }).props["aria-busy"],
+  ).toBe(false);
   expect(renderer.root.findByType("textarea").props.disabled).toBe(false);
   expect(renderer.root.findByProps({ type: "file" }).props.disabled).toBe(false);
   expect(renderer.root.findByProps({ "aria-label": "Attach images" }).props.disabled).toBe(false);
   expect(renderer.root.findAllByProps({ "data-testid": "send-spinner" })).toHaveLength(0);
   expect(renderer.root.findByProps({ "aria-label": "Send message" }).props.disabled).toBe(true);
+  expect(JSON.stringify(renderer.toJSON())).not.toContain("Waiting for agent activity…");
 });
+it("shows visible feedback while a text message is being forwarded", async () => {
+  let acknowledge!: (value: unknown) => void;
+  mocks.command.mockImplementationOnce(
+    () =>
+      new Promise((resolve) => {
+        acknowledge = resolve;
+      }),
+  );
+  await act(async () =>
+    renderer.root.findByType("textarea").props.onChange({ target: { value: "hello" } }),
+  );
+  await act(async () => renderer.root.findByType("form").props.onSubmit({ preventDefault() {} }));
+  await flush();
+  const notices = renderer.root.findByType("form").findAllByProps({ role: "status" });
+  expect(
+    notices.some((notice) =>
+      notice.findAllByType("span").some((span) => span.children.includes("Sending message…")),
+    ),
+  ).toBe(true);
+  await act(async () => acknowledge({ type: "ack", outcome: "invoked" }));
+  await flush();
+  expect(JSON.stringify(renderer.toJSON())).not.toContain("Sending message…");
+});
+
+it("updates multi-image progress and retains attachments after upload failure for manual retry", async () => {
+  let finishFirst!: (value: { id: string }) => void;
+  let failSecond!: (error: Error) => void;
+  mocks.upload
+    .mockImplementationOnce(
+      () =>
+        new Promise((resolve) => {
+          finishFirst = resolve;
+        }),
+    )
+    .mockImplementationOnce(
+      () =>
+        new Promise((_resolve, reject) => {
+          failSecond = reject;
+        }),
+    );
+  const files = ["one.png", "two.png"].map(
+    (name) => new File(["image"], name, { type: "image/png" }),
+  );
+  await act(async () => {
+    renderer.root.findByType("textarea").props.onChange({ target: { value: "compare these" } });
+    renderer.root.findByProps({ type: "file" }).props.onChange({ target: { files } });
+  });
+  await act(async () => renderer.root.findByType("form").props.onSubmit({ preventDefault() {} }));
+  await flush();
+  expect(JSON.stringify(renderer.toJSON())).toContain("Uploading image 1 of 2…");
+  const firstId = `${randomUUID()}.png`;
+  await act(async () => finishFirst({ id: firstId }));
+  await flush();
+  expect(JSON.stringify(renderer.toJSON())).toContain("Uploading image 2 of 2…");
+  await act(async () => failSecond(new Error("Upload failed")));
+  await flush();
+  expect(JSON.stringify(renderer.toJSON())).not.toContain("Uploading image");
+  expect(JSON.stringify(renderer.toJSON())).not.toContain("Sending message…");
+  expect(JSON.stringify(renderer.toJSON())).toContain("Upload failed");
+  expect(renderer.root.findByType("textarea").props.value).toBe("compare these");
+  expect(renderer.root.findByType("textarea").props.disabled).toBe(false);
+  expect(renderer.root.findAllByProps({ "aria-label": "Image attachments" })).toHaveLength(1);
+  expect(mocks.command).not.toHaveBeenCalled();
+  // Retrying is explicit and reuses the first upload, rather than starting over.
+  await act(async () => renderer.root.findByType("form").props.onSubmit({ preventDefault() {} }));
+  await flush();
+  expect(mocks.upload).toHaveBeenCalledTimes(3);
+  expect(mocks.command).toHaveBeenCalledOnce();
+  expect(mocks.command.mock.calls[0][4][0]).toBe(firstId);
+  expect(renderer.root.findByType("textarea").props.value).toBe("");
+  expect(JSON.stringify(renderer.toJSON())).not.toContain("Uploading image");
+});
+
+it("does not show handoff progress after an uncertain send or during reconnect", async () => {
+  mocks.live.snapshot = { ...mocks.live.snapshot!, sendPending: true };
+  await act(async () => renderer.update(render()));
+  expect(JSON.stringify(renderer.toJSON())).toContain("Waiting for agent activity…");
+  mocks.live.error = "Reconnecting";
+  await act(async () => renderer.update(render()));
+  expect(JSON.stringify(renderer.toJSON())).not.toContain("Waiting for agent activity…");
+  delete mocks.live.error;
+  mocks.live.snapshot = { ...mocks.live.snapshot!, sendPending: false };
+  await act(async () => renderer.update(render()));
+  let rejectSend!: (error: Error) => void;
+  mocks.command.mockImplementationOnce(
+    () =>
+      new Promise((_resolve, reject) => {
+        rejectSend = reject;
+      }),
+  );
+  await act(async () =>
+    renderer.root.findByType("textarea").props.onChange({ target: { value: "keep this" } }),
+  );
+  await act(async () => renderer.root.findByType("form").props.onSubmit({ preventDefault() {} }));
+  await flush();
+  mocks.live.snapshot = { ...mocks.live.snapshot!, sendPending: true };
+  await act(async () => {
+    renderer.update(render());
+    rejectSend(new Error("Delivery uncertain"));
+  });
+  await flush();
+  expect(JSON.stringify(renderer.toJSON())).not.toContain("Sending message…");
+  expect(JSON.stringify(renderer.toJSON())).not.toContain("Waiting for agent activity…");
+  expect(JSON.stringify(renderer.toJSON())).toContain("Delivery uncertain");
+  expect(renderer.root.findByType("textarea").props.value).toBe("keep this");
+  expect(mocks.command).toHaveBeenCalledOnce();
+});
+
 it("shows startup and failure states while keeping send disabled", async () => {
   mocks.live = {};
   await act(async () => renderer.update(render()));

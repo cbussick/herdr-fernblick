@@ -38,6 +38,7 @@ interface AgentConsoleProps {
 }
 type AgentView = "chat" | "terminal";
 type Attachment = { file?: File; id?: string; previewUrl: string };
+type SendProgress = { kind: "uploading"; image: number; total: number } | { kind: "sending" };
 type OutgoingDraft = {
   text: string;
   attachments: Attachment[];
@@ -95,6 +96,7 @@ export function AgentConsole({ agent, onBack }: AgentConsoleProps) {
     Boolean(snapshot && !live.error),
   );
   const sendLock = useRef(false);
+  const [sendProgress, setSendProgress] = useState<SendProgress | null>(null);
   const liveContext = useRef({
     snapshot,
     lastSnapshot: snapshot,
@@ -147,17 +149,23 @@ export function AgentConsole({ agent, onBack }: AgentConsoleProps) {
         });
       }
       const ids: string[] = [];
-      for (const attachment of draft.attachments) {
+      for (const [index, attachment] of draft.attachments.entries()) {
         if (attachment.id) ids.push(attachment.id);
         else if (attachment.file) {
           let id = uploadedIds.current.get(attachment.file);
           if (!id) {
+            setSendProgress({
+              kind: "uploading",
+              image: index + 1,
+              total: draft.attachments.length,
+            });
             id = (await uploadImage(attachment.file)).id;
             uploadedIds.current.set(attachment.file, id);
           }
           ids.push(id);
         }
       }
+      setSendProgress({ kind: "sending" });
       return chatCommand(agent.pane_id, draft.target, "prompt", draft.text, ids, submissionId());
     },
     onSuccess: (_ack, draft) => {
@@ -188,6 +196,7 @@ export function AgentConsole({ agent, onBack }: AgentConsoleProps) {
     },
     onSettled: () => {
       sendLock.current = false;
+      setSendProgress(null);
     },
     gcTime: 0,
     retry: false,
@@ -230,6 +239,14 @@ export function AgentConsole({ agent, onBack }: AgentConsoleProps) {
     };
   }, []);
   const composerSending = send.isPending;
+  // Local progress describes work we are awaiting; Pi's handoff guard is not a receipt.
+  const sendNotice = composerSending
+    ? sendProgress?.kind === "uploading"
+      ? `Uploading image ${sendProgress.image} of ${sendProgress.total}…`
+      : "Sending message…"
+    : snapshot?.sendPending && !snapshot.busy && !live.error && !send.isError
+      ? "Waiting for agent activity…"
+      : "";
   const canForward = Boolean(
     snapshot &&
     snapshot.version === 2 &&
@@ -296,6 +313,7 @@ export function AgentConsole({ agent, onBack }: AgentConsoleProps) {
     // React's pending state may not have rendered before a second tap/shortcut.
     if (sendLock.current || compact.locked()) return;
     sendLock.current = true;
+    setSendProgress({ kind: "sending" });
     send.mutate(draft);
   }
   function submit(event: FormEvent<HTMLFormElement>) {
@@ -509,12 +527,12 @@ export function AgentConsole({ agent, onBack }: AgentConsoleProps) {
           ) : null}
         </div>
       ) : (
-        <form
-          className={consoleStyles["prompt-composer"]}
-          aria-busy={composerSending}
-          onSubmit={submit}
-        >
-          <div className={consoleStyles["prompt-composer__surface"]}>
+        <form className={consoleStyles["prompt-composer"]} onSubmit={submit}>
+          <div
+            className={consoleStyles["prompt-composer__surface"]}
+            data-ui="prompt-composer-surface"
+            aria-busy={composerSending}
+          >
             {attachments.length ? (
               <div className={consoleStyles["prompt-attachments"]} aria-label="Image attachments">
                 {attachments.map((attachment, i) => (
@@ -619,6 +637,7 @@ export function AgentConsole({ agent, onBack }: AgentConsoleProps) {
               )}
             </ConversationCompaction>
           </div>
+          {sendNotice ? <StateNotice kind="sending">{sendNotice}</StateNotice> : null}
           {attachmentError ? (
             <StateNotice kind="info" role="alert">
               {attachmentError}
