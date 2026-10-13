@@ -905,6 +905,81 @@ it("streams provisional thinking/text/tools, then replaces from getBranch after 
     ]),
   );
 });
+it("coalesces large transcript updates through a brief socket stall without reconnecting", async () => {
+  const t = await setup(({ branch }) => {
+    for (let i = 0; i < 80; i++) {
+      branch.push({
+        type: "message",
+        id: `history-${i}`,
+        message: { role: "user", timestamp: i, content: "x".repeat(24_000) },
+      });
+    }
+  });
+  const initial = t.latest()!;
+  expect(Buffer.byteLength(JSON.stringify(initial))).toBeGreaterThan(1_900_000);
+  const reader = t.connections[0];
+  reader.pause();
+  try {
+    for (let i = 0; i < 6; i++) {
+      t.emit("message_update", {
+        message: { role: "assistant", timestamp: 999, content: `streaming-${i}` },
+      });
+      await new Promise((done) => setTimeout(done, 100));
+    }
+    expect(t.connections).toHaveLength(1);
+    reader.resume();
+    await vi.waitFor(() => expect(t.latest()?.messages.at(-1)?.text).toBe("streaming-5"));
+    expect(t.latest()?.epoch).toBe(initial.epoch);
+    expect(
+      t.frames.some(
+        (frame) =>
+          snapshotSchema.safeParse(frame).success &&
+          /streaming-[1-4]/.test((frame as Snapshot).messages.at(-1)?.text ?? ""),
+      ),
+    ).toBe(false);
+    const received = t.frames.length;
+    await new Promise((done) => setTimeout(done, 150));
+    expect(t.frames).toHaveLength(received);
+  } finally {
+    reader.resume();
+  }
+});
+
+it("disconnects a permanently stalled snapshot reader after a fixed deadline", async () => {
+  const t = await setup(({ branch }) => {
+    for (let i = 0; i < 80; i++) {
+      branch.push({
+        type: "message",
+        id: `history-${i}`,
+        message: { role: "user", timestamp: i, content: "x".repeat(24_000) },
+      });
+    }
+  });
+  const reader = t.connections[0];
+  reader.pause();
+  vi.useFakeTimers();
+  try {
+    t.emit("agent_start");
+    await vi.advanceTimersByTimeAsync(50);
+    await vi.advanceTimersByTimeAsync(30_000);
+    // A newer update does not extend the original stall deadline.
+    t.emit("message_update", {
+      message: { role: "assistant", timestamp: 999, content: "still streaming" },
+    });
+    await vi.advanceTimersByTimeAsync(29_999);
+    expect(t.connections).toHaveLength(1);
+    expect(t.latest()?.busy).toBe(false);
+    await vi.advanceTimersByTimeAsync(1);
+    reader.resume();
+    await vi.waitFor(() => expect(reader.destroyed).toBe(true));
+    await vi.waitFor(() => expect(t.connections).toHaveLength(2));
+    await vi.waitFor(() => expect(t.latest()?.messages.at(-1)?.text).toBe("still streaming"));
+    expect(t.latest()?.busy).toBe(true);
+  } finally {
+    reader.resume();
+  }
+});
+
 it("reconnects with a fresh epoch and live overlay, rejecting commands from the old epoch", async () => {
   const t = await setup();
   const initial = t.latest()!;

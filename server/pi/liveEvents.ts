@@ -13,7 +13,6 @@ export function liveEvents(response: ServerResponse, agent: Agent, bridge: LiveB
   let dirty = false;
   let bound: Awaited<ReturnType<LiveBridge["resolve"]>> | undefined;
   let last = "";
-  let initialized = false;
   let previous: Snapshot | undefined;
   let paused = false;
   let pausedAt = 0;
@@ -41,7 +40,6 @@ export function liveEvents(response: ServerResponse, agent: Agent, bridge: LiveB
           if (peer !== bound) bound = await bridge.resolve(agent);
           if (closed) return;
           const snapshot = bound.snapshot;
-          initialized = true;
           const id = `${snapshot.epoch}:${snapshot.seq}`;
           if (id !== last) {
             write(browserFrame(previous, snapshot), id);
@@ -52,10 +50,10 @@ export function liveEvents(response: ServerResponse, agent: Agent, bridge: LiveB
           bound = undefined;
           previous = undefined;
           const reason = error instanceof Error ? error.message : "Live chat unavailable";
+          // A missing peer is recoverable even after the initial snapshot. Only
+          // confirmed identity/unsupported-agent failures invalidate history.
           const type =
-            !initialized && error instanceof LiveChatError && error.starting
-              ? "connecting"
-              : "unavailable";
+            error instanceof LiveChatError && error.starting ? "connecting" : "unavailable";
           const key = `${type}:${reason}`;
           if (last !== key) {
             write({ type, reason });

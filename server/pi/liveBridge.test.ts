@@ -413,9 +413,9 @@ it("SSE streams directly after one Herdr lookup, reconnects fresh and removes qu
     }
     expect(getAgent).toHaveBeenCalledTimes(1);
     expect(inspect).toHaveBeenCalledTimes(1);
-    // Changed extension session is unavailable, never silently remapped.
+    // A temporary bridge loss retains history while commands remain disabled.
     p.socket.destroy();
-    await nextContaining('"type":"unavailable"');
+    await nextContaining('"type":"connecting"');
     const fresh = await peer({ ...p.snapshot, epoch: randomUUID(), seq: 1 });
     expect(await nextContaining(fresh.snapshot.epoch)).toContain('"seq":1');
     expect(getAgent).toHaveBeenCalledTimes(1);

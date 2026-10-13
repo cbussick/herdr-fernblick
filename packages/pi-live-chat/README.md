@@ -105,7 +105,10 @@ review handoff.
   the overlay with persisted branch content.
 - Each connection/branch epoch has ordered sequence numbers. Reconnect sends
   fresh history plus any still-live overlay. Full replacement snapshots are
-  coalesced to at most one per 50 ms; no replay/event backlog is retained.
+  coalesced to at most one per 50 ms. A backpressured socket retains only a
+  dirty bit; drain publishes the latest state, not intermediate snapshots.
+  A socket stalled for 60 seconds is disconnected. No replay/event backlog is
+  retained; command replies are never coalesced or replayed.
 - Recent history: last 512 branch entries, at most 512 rendered rows/2 MiB;
   per-row text 32,000 characters; live overlay at most 64 messages/2 MiB;
   protocol frame and pending writes at most 4 MiB. Truncation is shown.

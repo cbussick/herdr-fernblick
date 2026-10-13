@@ -39,12 +39,13 @@ An unchanged snapshot sequence is valid on a new connection. Both initial startu
 and recovery have a fixed 30-second error-notice deadline; lifecycle events do not
 extend it, and late snapshots still recover. No commands are replayed. Changing
 runtime/session/epoch invalidates an open tree dialog.
-`{type:"connecting",reason}` represents initial session/extension registration.
-The UI shows a starting/connecting spinner rather than a red error, with a fixed
-30-second startup deadline (progress notices do not restart it). A late valid
-snapshot still recovers normally. Identity, ambiguity and unsupported-agent
-failures remain immediate `unavailable` errors; a previously connected stream
-losing its peer is not classified as a new-agent startup.
+`{type:"connecting",reason}` represents session/extension registration or a
+recoverable bridge disconnect. Initial startup shows a connecting spinner with a
+fixed 30-second deadline (progress notices do not restart it). After connection,
+a missing peer retains the transcript, shows reconnecting feedback and disables
+commands until a fresh snapshot arrives. Recovery has its own fixed 30-second
+notice deadline; a late valid snapshot still recovers normally. Identity,
+ambiguity and unsupported-agent failures remain immediate `unavailable` errors.
 `{type:"unavailable",reason}` explicitly invalidates the displayed session.
 There is no file/terminal fallback. Snapshot version 2 identifies the current
 image-capable send bridge. Version 1 remains readable, but the browser disables
@@ -174,9 +175,12 @@ terminal injection, or extra provider integration is involved. See
 
 The private transport is bounded newline-delimited JSON, **not a Pi session JSONL
 reader**. Extension event handlers update an in-memory projector and schedule a
-coalesced publish; they never await networking. Slow socket peers are dropped
-rather than accumulating writes. SSE pauses on backpressure and resumes with the
-latest state; a reader stalled for over 60 seconds is disconnected. There are at most 64 socket peers and 64 SSE subscribers,
+coalesced publish; they never await networking. While the Unix socket is
+backpressured, the publisher retains only a dirty bit and sends the latest full
+snapshot after drain, skipping intermediate updates. A socket stalled for
+60 seconds is dropped; command replies are never coalesced or replayed. SSE
+pauses on backpressure and resumes with the latest state; a reader stalled for
+over 60 seconds is disconnected. There are at most 64 socket peers and 64 SSE subscribers,
 a 3-second initial handshake deadline and a 5-second command deadline.
 No extra TCP listener, chat polling, queue store or dispatcher exists.
 

@@ -85,6 +85,39 @@ it("waits quietly for initial registration but reports a bounded startup timeout
   await act(async () => vi.advanceTimersByTimeAsync(60_000));
   expect(latest.error).toBeUndefined();
 });
+it("retains history through bridge loss, but invalidates it on a confirmed identity error", async () => {
+  vi.useFakeTimers();
+  vi.stubGlobal("IS_REACT_ACT_ENVIRONMENT", true);
+  vi.stubGlobal("EventSource", Events);
+  await act(async () => {
+    renderer = create(<Probe />);
+  });
+  const events = Events.instances[0];
+  const snapshot = {
+    ...readySnapshot(),
+    messages: [{ id: "user", role: "user" as const, text: "hello" }],
+  };
+  const send = (value: unknown) =>
+    act(async () => events.onmessage!({ data: JSON.stringify(value) }));
+  await send(snapshot);
+  const loss = { type: "connecting", reason: "Pi live chat extension unavailable" };
+  await send(loss);
+  expect(latest.snapshot).toEqual(snapshot);
+  expect(latest.error).toBe("Reconnecting to Pi…");
+  await act(async () => vi.advanceTimersByTimeAsync(20_000));
+  await send(loss);
+  await act(async () => vi.advanceTimersByTimeAsync(10_000));
+  expect(latest.snapshot).toEqual(snapshot);
+  expect(latest.error).toContain("taking too long to reconnect");
+  const fresh = { ...snapshot, epoch: randomUUID(), seq: 1 };
+  await send(fresh);
+  expect(latest.snapshot).toEqual(fresh);
+  expect(latest.error).toBeUndefined();
+  await send({ type: "unavailable", reason: "Herdr and Pi session identities do not match" });
+  expect(latest.snapshot).toBeUndefined();
+  expect(latest.error).toContain("identities do not match");
+});
+
 it("shows genuine identity errors immediately rather than hiding them as startup", async () => {
   vi.useFakeTimers();
   vi.stubGlobal("IS_REACT_ACT_ENVIRONMENT", true);

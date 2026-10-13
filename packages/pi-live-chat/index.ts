@@ -60,6 +60,8 @@ export default function liveChat(pi: ExtensionAPI) {
   let socket: Socket | undefined;
   let retry: ReturnType<typeof setTimeout> | undefined;
   let publishTimer: ReturnType<typeof setTimeout> | undefined;
+  let publishStallTimer: ReturnType<typeof setTimeout> | undefined;
+  let publishPending = false;
   let generation = 0;
   let inputGeneration = 0;
   let delay = 250;
@@ -197,7 +199,9 @@ export default function liveChat(pi: ExtensionAPI) {
     compacting = false;
     clearTimeout(retry);
     clearTimeout(publishTimer);
-    retry = publishTimer = undefined;
+    clearTimeout(publishStallTimer);
+    retry = publishTimer = publishStallTimer = undefined;
+    publishPending = false;
     const old = socket;
     socket = undefined;
     old?.destroy();
@@ -263,12 +267,26 @@ export default function liveChat(pi: ExtensionAPI) {
       return;
     }
   }
+  function writeSnapshot(client: Socket, value: Snapshot) {
+    if (!writeFrame(client, value) || !client.writableNeedDrain || publishStallTimer) return;
+    // Brief stalls coalesce; a permanently stalled backend still loses its peer.
+    publishStallTimer = setTimeout(() => {
+      publishStallTimer = undefined;
+      if (socket === client) client.destroy();
+    }, 60_000);
+    publishStallTimer.unref();
+  }
   function publish() {
-    if (publishTimer || !context) return;
+    if (!context) return;
+    publishPending = true;
+    if (publishTimer || !socket || socket.connecting || socket.writableNeedDrain) return;
     publishTimer = setTimeout(() => {
       publishTimer = undefined;
+      if (!publishPending || !socket || socket.connecting || socket.writableNeedDrain) return;
+      // Keep only a dirty bit while backpressured, never another full transcript.
+      publishPending = false;
       const value = snapshot();
-      if (value && socket && !socket.connecting) writeFrame(socket, value);
+      if (value && socket) writeSnapshot(socket, value);
     }, 50);
     publishTimer.unref();
   }
@@ -311,8 +329,16 @@ export default function liveChat(pi: ExtensionAPI) {
       socket = client;
       client.unref();
       client.on("error", () => {});
+      client.on("drain", () => {
+        if (socket !== client || current !== generation) return;
+        clearTimeout(publishStallTimer);
+        publishStallTimer = undefined;
+        if (publishPending) publish();
+      });
       client.on("close", () => {
         if (socket !== client || current !== generation) return;
+        clearTimeout(publishStallTimer);
+        publishStallTimer = undefined;
         boards?.revoke("Whiteboard socket disconnected");
         socket = undefined;
         scheduleReconnect();
@@ -329,8 +355,9 @@ export default function liveChat(pi: ExtensionAPI) {
         // Fresh authoritative history plus the still-streaming provisional overlay.
         projector.reconcile(context.sessionManager.getBranch(), true);
         requestFooter();
+        publishPending = false;
         const value = snapshot();
-        if (value) writeFrame(client, value);
+        if (value) writeSnapshot(client, value);
       });
       receiveFrames(client, (raw) => {
         if (boards?.consume(raw, client)) return;
