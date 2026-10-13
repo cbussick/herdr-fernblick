@@ -978,6 +978,8 @@ it("locks the composer only through upload and forwarding, then uses Pi busy/idl
     expect(JSON.stringify(renderer.toJSON())).not.toContain("Sending to Pi");
   };
   assertWaiting();
+  const activity = renderer.root.findByProps({ "data-testid": "chat-activity" });
+  expect(activity.findAllByType("button")).toHaveLength(0);
   expect(JSON.stringify(renderer.toJSON())).toContain("Uploading image 1 of 1…");
   expect(mocks.command).not.toHaveBeenCalled();
   await act(async () => finishUpload({ id: `${randomUUID()}.png` }));
@@ -993,6 +995,9 @@ it("locks the composer only through upload and forwarding, then uses Pi busy/idl
   expect(renderer.root.findByType("textarea").props.disabled).toBe(false);
   expect(renderer.root.findByProps({ "aria-label": "Send message" }).props.disabled).toBe(true);
   expect(JSON.stringify(renderer.toJSON())).toContain("Waiting for agent activity…");
+  expect(renderer.root.findByProps({ "data-testid": "chat-activity" })).toBe(activity);
+  expect(activity.findAllByType("button")).toHaveLength(0);
+  expect(renderer.root.findByType("form").findAllByProps({ role: "status" })).toHaveLength(0);
   mocks.live.snapshot = { ...mocks.live.snapshot!, seq: 3, busy: true, sendPending: false };
   await act(async () => renderer.update(render()));
   expect(
@@ -1004,6 +1009,8 @@ it("locks the composer only through upload and forwarding, then uses Pi busy/idl
   expect(renderer.root.findAllByProps({ "data-testid": "send-spinner" })).toHaveLength(0);
   expect(renderer.root.findByProps({ "aria-label": "Send message" }).props.disabled).toBe(true);
   expect(JSON.stringify(renderer.toJSON())).not.toContain("Waiting for agent activity…");
+  expect(renderer.root.findByProps({ "data-testid": "chat-activity" })).toBe(activity);
+  expect(activity.findByProps({ "data-ui": "status-indicator" }).children).toContain("Working");
 });
 it("shows visible feedback while a text message is being forwarded", async () => {
   let acknowledge!: (value: unknown) => void;
@@ -1018,15 +1025,27 @@ it("shows visible feedback while a text message is being forwarded", async () =>
   );
   await act(async () => renderer.root.findByType("form").props.onSubmit({ preventDefault() {} }));
   await flush();
-  const notices = renderer.root.findByType("form").findAllByProps({ role: "status" });
-  expect(
-    notices.some((notice) =>
-      notice.findAllByType("span").some((span) => span.children.includes("Sending message…")),
-    ),
-  ).toBe(true);
+  const transcript = renderer.root.findByProps({ "data-testid": "chat-transcript" });
+  const activity = transcript.findByProps({ "data-testid": "chat-activity" });
+  expect(activity.props.role).toBe("status");
+  expect(activity.findByProps({ "data-ui": "status-indicator" }).children).toContain(
+    "Sending message…",
+  );
+  expect(activity.findAllByType("button")).toHaveLength(0);
+  expect(renderer.root.findByType("form").findAllByProps({ role: "status" })).toHaveLength(0);
+  // A live start event takes precedence even if the forwarding ACK is delayed.
+  mocks.live.snapshot = { ...mocks.live.snapshot!, busy: true, sendPending: true };
+  await act(async () => renderer.update(render()));
+  expect(renderer.root.findByProps({ "data-testid": "chat-activity" })).toBe(activity);
+  expect(activity.findByProps({ "data-ui": "status-indicator" }).children).toContain("Working");
+  expect(activity.findAllByType("button")).toHaveLength(1);
+  expect(JSON.stringify(renderer.toJSON())).not.toContain("Sending message…");
   await act(async () => acknowledge({ type: "ack", outcome: "invoked" }));
   await flush();
-  expect(JSON.stringify(renderer.toJSON())).not.toContain("Sending message…");
+  expect(renderer.root.findByProps({ "data-testid": "chat-activity" })).toBe(activity);
+  mocks.live.snapshot = { ...mocks.live.snapshot!, busy: false, sendPending: false };
+  await act(async () => renderer.update(render()));
+  expect(renderer.root.findAllByProps({ "data-testid": "chat-activity" })).toHaveLength(0);
 });
 
 it("updates multi-image progress and retains attachments after upload failure for manual retry", async () => {

@@ -71,14 +71,18 @@ draft and unlocks the composer with an error; uncertain sends are never retried
 automatically. There is no hidden recovery copy. Pi busy/idle state independently
 gates the next send.
 
-The composer shows visible, screen-reader-announced progress during a send:
+The transcript's activity row shows visible, screen-reader-announced progress
+during a send, in the same place as `Working` (never beneath the composer):
 `Uploading image N of M…` for sequential browser uploads, then `Sending message…`
 while awaiting the forwarding ACK (including extension-side image preparation).
 After forwarding, a live `sendPending` guard shows `Waiting for agent activity…`
 until Pi starts or the guard clears. This is not proof of receipt or a delivery
 queue. Errors replace local progress, preserve the draft/images, and require an
 explicit retry. Reconnect hides the handoff notice; no activity is inferred from
-elapsed time and no artificial percentage is shown.
+elapsed time and no artificial percentage is shown. Uploading, sending and
+handoff update this one row without shifting the composer; a live busy event takes
+precedence and changes it to `Working` or `Compacting…`. Stop appears only while
+Pi is busy, never during upload/forwarding/handoff. The row disappears when idle.
 
 `POST .../tree` accepts `{target}` and returns a correlated typed tree from
 public Pi `getTree()/getLeafId()`. `POST .../tree-navigation` accepts
@@ -277,8 +281,9 @@ Send-feedback regression tests pause uploads and forwarding to verify text-only,
 single-image and multi-image progress, handoff-to-working transitions, error
 cleanup, draft preservation and explicit retry with cached uploads. Synthetic
 Chromium/WebKit checks cover phones (including keyboard-height), iPad and desktop,
-visible live-region placement outside the busy surface, viewport bounds and no
-command replay. Every API/SSE call is intercepted; no live agents are controlled:
+a single transcript activity row outside the busy surface, unchanged composer
+geometry across progress transitions, viewport bounds and no command replay.
+Every API/SSE call is intercepted; no live agents are controlled:
 
 ```sh
 PLAYWRIGHT_MODULE=/tmp/fernblick-design-tools/node_modules/playwright/index.mjs \

@@ -465,20 +465,35 @@ export function AgentConsole({ agent, onBack }: AgentConsoleProps) {
             }
             after={
               <>
-                {snapshot.busy ? (
-                  <div className={consoleStyles["chat-working"]} role="status">
+                {snapshot.busy || sendNotice ? (
+                  <div
+                    className={consoleStyles["chat-working"]}
+                    data-testid="chat-activity"
+                    role="status"
+                    aria-atomic="true"
+                  >
                     <StatusIndicator
-                      status="working"
-                      label={snapshot.compacting ? "Compacting…" : "Working"}
+                      status={snapshot.busy ? "working" : "unknown"}
+                      label={
+                        snapshot.busy
+                          ? snapshot.compacting
+                            ? "Compacting…"
+                            : "Working"
+                          : sendNotice
+                      }
                     />
-                    <button
-                      type="button"
-                      disabled={stop.isPending || Boolean(live.error) || compact.pending}
-                      onClick={() => stop.mutate()}
-                    >
-                      {stop.isPending ? "Requesting stop…" : "Stop"}
-                    </button>
-                    {stop.isSuccess ? <span>Abort invoked; waiting for Pi events.</span> : null}
+                    {snapshot.busy ? (
+                      <>
+                        <button
+                          type="button"
+                          disabled={stop.isPending || Boolean(live.error) || compact.pending}
+                          onClick={() => stop.mutate()}
+                        >
+                          {stop.isPending ? "Requesting stop…" : "Stop"}
+                        </button>
+                        {stop.isSuccess ? <span>Abort invoked; waiting for Pi events.</span> : null}
+                      </>
+                    ) : null}
                   </div>
                 ) : null}
               </>
@@ -637,7 +652,6 @@ export function AgentConsole({ agent, onBack }: AgentConsoleProps) {
               )}
             </ConversationCompaction>
           </div>
-          {sendNotice ? <StateNotice kind="sending">{sendNotice}</StateNotice> : null}
           {attachmentError ? (
             <StateNotice kind="info" role="alert">
               {attachmentError}

@@ -107,10 +107,27 @@ for (const [engine, browserType] of [
       await page.getByTestId("pane-row").click();
       const prompt = page.locator("#agent-prompt");
       const send = page.getByRole("button", { name: "Send message", exact: true });
-      const status = page.locator('form [data-ui="state-notice"][data-state-kind="sending"]');
+      const status = page.getByTestId("chat-activity");
+      const composer = page.locator("form").filter({ has: prompt });
+      let composerBox;
+      const checkComposer = async () => {
+        if (!composerBox) return;
+        const box = await composer.boundingBox();
+        for (const key of ["x", "y", "width", "height"])
+          assert.ok(
+            Math.abs(box[key] - composerBox[key]) < 1,
+            `progress must not shift composer ${key}`,
+          );
+      };
       const checkStatus = async (text) => {
         await page.getByRole("status").filter({ hasText: text }).waitFor();
-        assert.equal(await status.innerText(), text);
+        assert.equal(await status.locator('[data-ui="status-indicator"]').innerText(), text);
+        assert.equal(
+          await status.evaluate((el) => !!el.closest('[data-testid="chat-transcript"]')),
+          true,
+        );
+        assert.equal(await composer.locator('[role="status"]').count(), 0);
+        await checkComposer();
         assert.equal(
           await status.evaluate((el) => !!el.closest('[aria-busy="true"]')),
           false,
@@ -131,9 +148,14 @@ for (const [engine, browserType] of [
         { name: "one.png", mimeType: "image/png", buffer: png },
         { name: "two.png", mimeType: "image/png", buffer: png },
       ]);
+      composerBox = await composer.boundingBox();
       await send.click();
       await waitForCount(uploads, 1);
       await checkStatus("Uploading image 1 of 2…");
+      await status.evaluate((el) => {
+        window.savedActivity = el;
+      });
+      assert.equal(await status.getByRole("button").count(), 0);
       assert.equal(commands.length, 0);
       assert.equal(await prompt.isDisabled(), true);
       await uploads[0].fulfill({
@@ -155,8 +177,11 @@ for (const [engine, browserType] of [
       });
       await waitForCount(commands, 1);
       await checkStatus("Sending message…");
+      assert.equal(await status.evaluate((el) => el === window.savedActivity), true);
       assert.equal(commands[0].request().postDataJSON().attachments.length, 2);
       await publish({ ...snapshot, seq: 2, sendPending: true });
+      // Clearing acknowledged attachments naturally changes draft height; progress must not.
+      composerBox = undefined;
       await commands[0].fulfill({
         json: {
           type: "ack",
@@ -165,12 +190,20 @@ for (const [engine, browserType] of [
         },
       });
       await checkStatus("Waiting for agent activity…");
+      assert.equal(await status.evaluate((el) => el === window.savedActivity), true);
+      assert.equal(await status.getByRole("button").count(), 0);
+      composerBox = await composer.boundingBox();
       assert.equal(await prompt.inputValue(), "");
       assert.equal(await prompt.isDisabled(), false);
       await publish({ ...snapshot, seq: 3, busy: true });
-      await page.waitForFunction(() => !document.querySelector('form [data-state-kind="sending"]'));
+      await checkStatus("Working");
+      assert.equal(await status.evaluate((el) => el === window.savedActivity), true);
+      assert.equal(await status.getByRole("button", { name: "Stop", exact: true }).count(), 1);
       await publish({ ...snapshot, seq: 4 });
+      await status.waitFor({ state: "detached" });
+      await checkComposer();
       await prompt.fill("A text-only message");
+      composerBox = await composer.boundingBox();
       await send.click();
       await waitForCount(commands, 2);
       await checkStatus("Sending message…");
