@@ -71,6 +71,15 @@ draft and unlocks the composer with an error; uncertain sends are never retried
 automatically. There is no hidden recovery copy. Pi busy/idle state independently
 gates the next send.
 
+The composer shows visible, screen-reader-announced progress during a send:
+`Uploading image N of M…` for sequential browser uploads, then `Sending message…`
+while awaiting the forwarding ACK (including extension-side image preparation).
+After forwarding, a live `sendPending` guard shows `Waiting for agent activity…`
+until Pi starts or the guard clears. This is not proof of receipt or a delivery
+queue. Errors replace local progress, preserve the draft/images, and require an
+explicit retry. Reconnect hides the handoff notice; no activity is inferred from
+elapsed time and no artificial percentage is shown.
+
 `POST .../tree` accepts `{target}` and returns a correlated typed tree from
 public Pi `getTree()/getLeafId()`. `POST .../tree-navigation` accepts
 `{target,entryId}` and returns `navigated` only after command-context navigation
@@ -263,6 +272,21 @@ reloading affected Pi sessions, and rebuilding/restarting Fernblick. The task
 worktrees do not change the installed footer symlink or active Pi settings.
 
 ## Verification
+
+Send-feedback regression tests pause uploads and forwarding to verify text-only,
+single-image and multi-image progress, handoff-to-working transitions, error
+cleanup, draft preservation and explicit retry with cached uploads. Synthetic
+Chromium/WebKit checks cover phones (including keyboard-height), iPad and desktop,
+visible live-region placement outside the busy surface, viewport bounds and no
+command replay. Every API/SSE call is intercepted; no live agents are controlled:
+
+```sh
+PLAYWRIGHT_MODULE=/tmp/fernblick-design-tools/node_modules/playwright/index.mjs \
+  node tools/design/send-feedback.mjs http://127.0.0.1:<static-port>
+```
+
+Screenshots go to ignored `design-gallery/send-feedback/`. Physical-device keyboard
+and screen-reader announcements remain manual verification.
 
 Footer regression tests cover optional/bounded snapshot and patch payloads,
 real socket replay/update/withdrawal, reconnect, stale-session rejection,
