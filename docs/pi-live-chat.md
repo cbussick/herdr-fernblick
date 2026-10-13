@@ -112,9 +112,17 @@ serialize the operation. The extension calls void `ctx.compact({onComplete,onErr
 only the completion callback produces a correlated `{type:"compacted",id,target}`
 response, after branch/footer reconciliation. Errors are rejected explicitly.
 This operation has a 120-second backend result deadline and a 125-second browser
-deadline (other commands retain their existing deadlines). Disconnect, target
-replacement, malformed result or timeout is uncertain, never a success inferred
-from an ACK or an idle event. No operation is automatically retried. The extension
+deadline (other commands retain their existing deadlines). A temporary browser
+live-stream interruption shows reconnecting feedback, not a permanent request
+invalidation. A fresh same-target snapshot restores waiting, and a correlated
+completion response can still confirm success. Confirmed target replacement,
+malformed result, request disconnect or timeout remains uncertain, never a
+success inferred from an ACK or an idle event. While a fresh same-target snapshot
+reports `compacting`, an uncertain request shows informational progress instead
+of a red warning; the uncertainty returns when activity ends without a completion
+response. Feedback survives missing snapshots and same-target recovery, but is
+cleared after a settled request's target is replaced. No operation is automatically
+retried. The extension
 keeps its in-flight guard across socket reconnection until a terminal callback;
 a missing callback therefore requires inspecting/reloading Pi, not an automatic
 unlock or second compaction. Progress/results are transient, not persisted or
