@@ -34,6 +34,14 @@ const chats = [
     updatedAt: "2026-01-01T08:00:00.000Z",
     activePaneId: null,
   },
+  {
+    id: "c".repeat(64),
+    title: "An already open conversation",
+    preview: "This belongs in Agents",
+    cwd: "/projects/current",
+    updatedAt: "2026-01-03T08:00:00.000Z",
+    activePaneId: "w1:p9",
+  },
   ...Array.from({ length: 20 }, (_, i) => ({
     id: (i + 32).toString(16).padStart(64, "0"),
     title: `Earlier conversation ${i + 1}`,
@@ -75,7 +83,12 @@ for (const [engine, browserType] of [
             tabs: [],
             workspaces: [{ workspace_id: "w1", label: "Fernblick" }],
           };
-        else if (url.pathname === "/api/chats" && method === "GET") body = { chats };
+        else if (url.pathname === "/api/chats" && method === "GET")
+          body = {
+            chats: chats.map((chat) =>
+              resumed && chat.id === chats[0].id ? { ...chat, activePaneId: agent.pane_id } : chat,
+            ),
+          };
         else if (url.pathname === `/api/chats/${chats[0].id}/resume` && method === "POST") {
           mutations.push(route.request().postDataJSON());
           resumed = true;
@@ -92,6 +105,12 @@ for (const [engine, browserType] of [
       await page.getByTestId("saved-chat").first().waitFor();
       assert.equal(await page.getByTestId("saved-chat").count(), 22);
       const search = page.getByRole("searchbox", { name: "Search past chats" });
+      assert.equal(
+        await page.getByRole("heading", { name: "An already open conversation" }).count(),
+        0,
+      );
+      await search.fill("An already open conversation");
+      await page.getByText("No chats match your search.").waitFor();
       await search.fill("/projects/api");
       await page.getByRole("heading", { name: "Prepare the API release" }).waitFor();
       assert.equal(await page.getByTestId("saved-chat").count(), 1);
@@ -107,6 +126,9 @@ for (const [engine, browserType] of [
       await page.screenshot({ path: `${output}/${engine}-${device}.png`, fullPage: true });
       await page.getByRole("button", { name: `Resume ${chats[0].title}`, exact: true }).click();
       await page.waitForFunction(() => document.querySelector('[data-testid="console"]') !== null);
+      await page.waitForFunction(
+        () => document.querySelectorAll('[data-testid="saved-chat"]').length === 21,
+      );
       assert.deepEqual(mutations, [{ workspaceId: "w1" }]);
       assert.deepEqual(errors, []);
       console.log(`${engine} ${device}: history, search, resume, overflow passed`);

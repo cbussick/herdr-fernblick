@@ -77,17 +77,20 @@ afterEach(async () => {
 });
 const rows = () => renderer.root.findAllByProps({ "data-testid": "saved-chat" });
 
-it("lists chats and filters by project, title and preview", async () => {
+it("lists only closed chats and filters by project, title and preview", async () => {
   await act(async () => {
     renderer = create(view());
   });
   await settle();
-  expect(rows()).toHaveLength(2);
+  expect(rows()).toHaveLength(1);
+  expect(rows()[0].findByType("h2").children).toEqual(["Fix authentication"]);
   for (const query of ["authentication", " /projects/web ", "find the bug"]) {
     await act(async () => renderer.update(view(query)));
     expect(rows()).toHaveLength(1);
     expect(rows()[0].findByType("h2").children).toEqual(["Fix authentication"]);
   }
+  await act(async () => renderer.update(view("Release API")));
+  expect(rows()).toHaveLength(0);
   await act(async () => renderer.update(view("not found")));
   expect(rows()).toHaveLength(0);
   expect(JSON.stringify(renderer.toJSON())).toContain("No chats match your search.");
@@ -120,18 +123,65 @@ it("resumes in the chosen workspace, disables duplicate actions and selects the 
   expect(onResumed).toHaveBeenCalledWith(agent);
 });
 
-it("labels running sessions as Open chat and explains how to add a missing workspace", async () => {
+it("keeps active chats hidden and explains how to add a missing workspace", async () => {
   await act(async () => {
     renderer = create(view("", false));
   });
   await settle();
+  expect(rows()).toHaveLength(1);
   expect(rows()[0].findByType("button").props.disabled).toBe(true);
-  expect(rows()[1].findByType("button").children).toEqual(["Open chat"]);
+  expect(rows()[0].findByType("button").children).toEqual(["Resume"]);
   const createWorkspace = renderer.root
     .findAllByType("button")
     .find((button) => button.children.includes("Create a workspace to resume chats"))!;
   await act(async () => createWorkspace.props.onClick());
   expect(onCreateWorkspace).toHaveBeenCalledOnce();
+});
+
+it("updates visibility when a chat opens or closes between list refreshes", async () => {
+  await act(async () => {
+    renderer = create(view());
+  });
+  await settle();
+  expect(rows()).toHaveLength(1);
+  await act(async () => {
+    client.setQueryData(["saved-chats"], {
+      chats: chats.map((chat) => ({ ...chat, activePaneId: "w1:p2" })),
+    });
+  });
+  await settle();
+  expect(rows()).toHaveLength(0);
+  expect(JSON.stringify(renderer.toJSON())).toContain("Open conversations are in Agents.");
+  await act(async () => {
+    client.setQueryData(["saved-chats"], {
+      chats: chats.map((chat) => ({ ...chat, activePaneId: null })),
+    });
+  });
+  await settle();
+  expect(rows()).toHaveLength(2);
+});
+
+it("hides a resumed chat immediately while the next list refresh is pending", async () => {
+  await act(async () => {
+    renderer = create(view());
+  });
+  await settle();
+  let refreshed!: (value: { chats: SavedChat[] }) => void;
+  vi.mocked(getSavedChats).mockImplementation(
+    () =>
+      new Promise((resolve) => {
+        refreshed = resolve;
+      }),
+  );
+  await act(async () => rows()[0].findByType("button").props.onClick());
+  await settle();
+  expect(onResumed).toHaveBeenCalledWith(agent);
+  expect(rows()).toHaveLength(0);
+  await act(async () =>
+    refreshed({ chats: chats.map((chat) => ({ ...chat, activePaneId: agent.pane_id })) }),
+  );
+  await settle();
+  expect(rows()).toHaveLength(0);
 });
 
 it("surfaces resume errors without selecting an agent or automatically retrying", async () => {
@@ -162,5 +212,5 @@ it("offers a retry after a list failure and shows the empty state", async () => 
     .find((button) => button.children.includes("Refresh chats"))!;
   await act(async () => refresh.props.onClick());
   await settle();
-  expect(JSON.stringify(renderer.toJSON())).toContain("No saved chats yet.");
+  expect(JSON.stringify(renderer.toJSON())).toContain("No past chats yet.");
 });

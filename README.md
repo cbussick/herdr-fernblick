@@ -81,11 +81,13 @@ the direct Pi bridge, never session-file reads or terminal command injection.
 ### Past chats
 
 Open **Past chats** in the sidebar to search saved Pi conversations by title, first
-message, or project path. Chats are ordered by most recently modified. Choose a
+message, or project path. Only closed conversations are shown, ordered by most
+recently modified; find open conversations in **Agents** or **Workspaces**. Choose a
 workspace and **Resume** to start Pi in a new tab in the original project directory,
-with the original session and conversation context. **Open chat** selects an agent
-already running that session in the connected Herdr instance. Resuming does not
-send a prompt. The original project directory must still exist.
+with the original session and conversation context. A resumed chat leaves the list
+immediately. If a chat was opened after the list loaded, Resume selects that
+existing agent instead of starting a duplicate. Resuming does not send a prompt.
+The original project directory must still exist.
 
 The backend reads session-file metadata for this list only; the live transcript
 still comes from Pi's live bridge. It discovers local sessions under

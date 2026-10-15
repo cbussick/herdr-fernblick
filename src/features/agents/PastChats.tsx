@@ -27,23 +27,38 @@ export function PastChats({
   });
   const resume = useMutation({
     mutationFn: resumeChat,
-    onSuccess: (agent) => {
+    onSuccess: async (agent, { id }) => {
+      await client.cancelQueries({ queryKey: ["saved-chats"] });
+      client.setQueryData(
+        ["saved-chats"],
+        (current: Awaited<ReturnType<typeof getSavedChats>> | undefined) =>
+          current
+            ? {
+                ...current,
+                chats: current.chats.map((chat) =>
+                  chat.id === id ? { ...chat, activePaneId: agent.pane_id } : chat,
+                ),
+              }
+            : current,
+      );
       void client.invalidateQueries({ queryKey: ["saved-chats"] });
       onResumed(agent);
     },
   });
   const search = query.trim().toLocaleLowerCase();
   const filtered =
-    chats.data?.chats.filter((chat) =>
-      [chat.title, chat.preview, chat.cwd].some((value) =>
-        value.toLocaleLowerCase().includes(search),
-      ),
+    chats.data?.chats.filter(
+      (chat) =>
+        !chat.activePaneId &&
+        [chat.title, chat.preview, chat.cwd].some((value) =>
+          value.toLocaleLowerCase().includes(search),
+        ),
     ) ?? [];
 
   return (
     <section className={styles.history} aria-label="Past chats" data-testid="past-chats">
       <div className={styles.toolbar}>
-        <p>Continue a saved Pi conversation in its original project directory.</p>
+        <p>Resume a closed Pi conversation. Open conversations are in Agents.</p>
         {workspaces.length ? (
           <>
             <label htmlFor="resume-workspace">Open in workspace</label>
@@ -78,7 +93,7 @@ export function PastChats({
         <p>
           {search
             ? "No chats match your search."
-            : "No saved chats yet. Pi saves conversations automatically after you start chatting."}
+            : "No past chats yet. Saved conversations appear here after they close."}
         </p>
       )}
       <ul className={styles.list}>
@@ -98,17 +113,11 @@ export function PastChats({
               </time>
               <button
                 type="button"
-                disabled={resume.isPending || (!selectedWorkspace && !chat.activePaneId)}
-                aria-label={`${chat.activePaneId ? "Open" : "Resume"} ${chat.title}`}
-                onClick={() =>
-                  resume.mutate({ id: chat.id, workspaceId: selectedWorkspace || "active" })
-                }
+                disabled={resume.isPending || !selectedWorkspace}
+                aria-label={`Resume ${chat.title}`}
+                onClick={() => resume.mutate({ id: chat.id, workspaceId: selectedWorkspace })}
               >
-                {resume.isPending && resume.variables.id === chat.id
-                  ? "Opening…"
-                  : chat.activePaneId
-                    ? "Open chat"
-                    : "Resume"}
+                {resume.isPending && resume.variables.id === chat.id ? "Opening…" : "Resume"}
               </button>
             </div>
           </li>
