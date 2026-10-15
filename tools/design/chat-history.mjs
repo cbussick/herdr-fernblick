@@ -13,7 +13,7 @@ const agent = {
   name: "resumed-chat",
   pane_id: "w1:p2",
   tab_id: "w1:t2",
-  workspace_id: "w1",
+  workspace_id: "w2",
   revision: 1,
   tab_label: "Restore keyboard focus after closing the whiteboard",
 };
@@ -81,7 +81,10 @@ for (const [engine, browserType] of [
           body = {
             agents: resumed ? [agent] : [],
             tabs: [],
-            workspaces: [{ workspace_id: "w1", label: "Fernblick" }],
+            workspaces: [
+              { workspace_id: "w1", label: "Fernblick" },
+              { workspace_id: "w2", label: "API" },
+            ],
           };
         else if (url.pathname === "/api/chats" && method === "GET")
           body = {
@@ -104,6 +107,13 @@ for (const [engine, browserType] of [
       await page.getByRole("tab", { name: "Past chats", exact: true }).click();
       await page.getByTestId("saved-chat").first().waitFor();
       assert.equal(await page.getByTestId("saved-chat").count(), 22);
+      assert.equal(await page.getByTestId("past-chats").locator("select").count(), 0);
+      assert.equal(
+        await page
+          .getByText("Resume a closed Pi conversation. Open conversations are in Agents.")
+          .count(),
+        0,
+      );
       const search = page.getByRole("searchbox", { name: "Search past chats" });
       assert.equal(
         await page.getByRole("heading", { name: "An already open conversation" }).count(),
@@ -124,12 +134,45 @@ for (const [engine, browserType] of [
       const tab = await page.getByRole("tab", { name: "Past chats", exact: true }).boundingBox();
       assert(tab && tab.x >= 0 && tab.x + tab.width <= width, "History tab fits");
       await page.screenshot({ path: `${output}/${engine}-${device}.png`, fullPage: true });
-      await page.getByRole("button", { name: `Resume ${chats[0].title}`, exact: true }).click();
+      const opener = page.getByRole("button", { name: `Resume ${chats[0].title}`, exact: true });
+      const dialog = page.getByRole("dialog", { name: "Open in which workspace?" });
+      await opener.click();
+      await dialog.waitFor();
+      assert.deepEqual(mutations, []);
+      assert(
+        await dialog
+          .getByLabel("Workspace", { exact: true })
+          .evaluate((node) => document.activeElement === node),
+      );
+      await page.keyboard.press("Escape");
+      await dialog.waitFor({ state: "hidden" });
+      assert(await opener.evaluate((node) => document.activeElement === node));
+      assert.deepEqual(mutations, []);
+      await opener.click();
+      await dialog.getByRole("button", { name: "Cancel", exact: true }).click();
+      await dialog.waitFor({ state: "hidden" });
+      assert.deepEqual(mutations, []);
+      await opener.click();
+      await dialog.getByLabel("Workspace", { exact: true }).selectOption("w2");
+      const bounds = await dialog.boundingBox();
+      assert(
+        bounds &&
+          bounds.x >= 0 &&
+          bounds.y >= 0 &&
+          bounds.x + bounds.width <= width &&
+          bounds.y + bounds.height <= height,
+      );
+      await page.screenshot({
+        path: `${output}/${engine}-${device}-resume-dialog.png`,
+        fullPage: true,
+      });
+      await dialog.getByRole("button", { name: "Resume", exact: true }).click();
+      await dialog.waitFor({ state: "hidden" });
       await page.waitForFunction(() => document.querySelector('[data-testid="console"]') !== null);
       await page.waitForFunction(
         () => document.querySelectorAll('[data-testid="saved-chat"]').length === 21,
       );
-      assert.deepEqual(mutations, [{ workspaceId: "w1" }]);
+      assert.deepEqual(mutations, [{ workspaceId: "w2" }]);
       assert.deepEqual(errors, []);
       console.log(`${engine} ${device}: history, search, resume, overflow passed`);
       await page.close();

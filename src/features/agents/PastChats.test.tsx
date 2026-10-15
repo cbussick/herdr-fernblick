@@ -1,5 +1,5 @@
-import { act } from "react";
-import { create, type ReactTestRenderer } from "react-test-renderer";
+import { act, type ReactElement } from "react";
+import { create as render, type ReactTestRenderer } from "react-test-renderer";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
 import { PastChats } from "./PastChats";
@@ -37,6 +37,26 @@ let renderer: ReactTestRenderer;
 let client: QueryClient;
 const onResumed = vi.fn();
 const onCreateWorkspace = vi.fn();
+const nativeDialog = {
+  open: false,
+  showModal: vi.fn(() => {
+    nativeDialog.open = true;
+  }),
+  close: vi.fn(() => {
+    nativeDialog.open = false;
+  }),
+};
+function create(element: ReactElement) {
+  return render(element, {
+    createNodeMock: (node) => (node.type === "dialog" ? nativeDialog : null),
+  });
+}
+const dialog = () => renderer.root.findByType("dialog");
+const submit = () => dialog().findByType("form").props.onSubmit({ preventDefault: vi.fn() });
+async function openAndConfirm() {
+  await act(async () => rows()[0].findByType("button").props.onClick());
+  await act(async () => submit());
+}
 function view(query = "", withWorkspaces = true) {
   return (
     <QueryClientProvider client={client}>
@@ -64,6 +84,7 @@ async function settle() {
 beforeEach(() => {
   vi.stubGlobal("IS_REACT_ACT_ENVIRONMENT", true);
   vi.clearAllMocks();
+  nativeDialog.open = false;
   client = new QueryClient({
     defaultOptions: { queries: { retry: false }, mutations: { retry: false } },
   });
@@ -83,6 +104,9 @@ it("lists only closed chats and filters by project, title and preview", async ()
   });
   await settle();
   expect(rows()).toHaveLength(1);
+  expect(renderer.root.findAllByType("select")).toHaveLength(0);
+  expect(renderer.root.findAllByType("dialog")).toHaveLength(0);
+  expect(JSON.stringify(renderer.toJSON())).not.toContain("Resume a closed Pi conversation.");
   expect(rows()[0].findByType("h2").children).toEqual(["Fix authentication"]);
   for (const query of ["authentication", " /projects/web ", "find the bug"]) {
     await act(async () => renderer.update(view(query)));
@@ -108,19 +132,37 @@ it("resumes in the chosen workspace, disables duplicate actions and selects the 
     renderer = create(view());
   });
   await settle();
-  await act(async () =>
-    renderer.root.findByType("select").props.onChange({ target: { value: "w2" } }),
-  );
   await act(async () => rows()[0].findByType("button").props.onClick());
+  expect(nativeDialog.showModal).toHaveBeenCalledOnce();
+  expect(dialog().findByType("h2").children).toEqual(["Open in which workspace?"]);
+  expect(dialog().findByProps({ id: "resume-chat-title" }).children).toEqual([
+    "Fix authentication",
+  ]);
+  expect(resumeChat).not.toHaveBeenCalled();
+  await act(async () =>
+    dialog()
+      .findByType("select")
+      .props.onChange({ target: { value: "w2" } }),
+  );
+  await act(async () => submit());
   await settle();
   expect(resumeChat).toHaveBeenCalledWith(
     { id: chats[0].id, workspaceId: "w2" },
     expect.anything(),
   );
   expect(rows().every((row) => row.findByType("button").props.disabled)).toBe(true);
+  expect(dialog().findByType("select").props.disabled).toBe(true);
+  const preventDefault = vi.fn();
+  await act(async () => dialog().props.onCancel({ preventDefault }));
+  expect(preventDefault).toHaveBeenCalledOnce();
+  expect(renderer.root.findAllByType("dialog")).toHaveLength(1);
+  await act(async () => submit());
+  expect(resumeChat).toHaveBeenCalledOnce();
   await act(async () => complete(agent));
   await settle();
   expect(onResumed).toHaveBeenCalledWith(agent);
+  expect(renderer.root.findAllByType("dialog")).toHaveLength(0);
+  expect(nativeDialog.close).toHaveBeenCalledOnce();
 });
 
 it("keeps active chats hidden and explains how to add a missing workspace", async () => {
@@ -129,13 +171,17 @@ it("keeps active chats hidden and explains how to add a missing workspace", asyn
   });
   await settle();
   expect(rows()).toHaveLength(1);
-  expect(rows()[0].findByType("button").props.disabled).toBe(true);
-  expect(rows()[0].findByType("button").children).toEqual(["Resume"]);
-  const createWorkspace = renderer.root
+  expect(rows()[0].findByType("button").props.disabled).toBe(false);
+  await act(async () => rows()[0].findByType("button").props.onClick());
+  expect(dialog().findByProps({ type: "submit" }).props.disabled).toBe(true);
+  await act(async () => submit());
+  expect(resumeChat).not.toHaveBeenCalled();
+  const createWorkspace = dialog()
     .findAllByType("button")
-    .find((button) => button.children.includes("Create a workspace to resume chats"))!;
+    .find((button) => button.children.includes("Create a workspace to resume this chat"))!;
   await act(async () => createWorkspace.props.onClick());
   expect(onCreateWorkspace).toHaveBeenCalledOnce();
+  expect(renderer.root.findAllByType("dialog")).toHaveLength(0);
 });
 
 it("updates visibility when a chat opens or closes between list refreshes", async () => {
@@ -151,7 +197,7 @@ it("updates visibility when a chat opens or closes between list refreshes", asyn
   });
   await settle();
   expect(rows()).toHaveLength(0);
-  expect(JSON.stringify(renderer.toJSON())).toContain("Open conversations are in Agents.");
+  expect(JSON.stringify(renderer.toJSON())).toContain("No past chats yet.");
   await act(async () => {
     client.setQueryData(["saved-chats"], {
       chats: chats.map((chat) => ({ ...chat, activePaneId: null })),
@@ -173,7 +219,7 @@ it("hides a resumed chat immediately while the next list refresh is pending", as
         refreshed = resolve;
       }),
   );
-  await act(async () => rows()[0].findByType("button").props.onClick());
+  await openAndConfirm();
   await settle();
   expect(onResumed).toHaveBeenCalledWith(agent);
   expect(rows()).toHaveLength(0);
@@ -184,18 +230,58 @@ it("hides a resumed chat immediately while the next list refresh is pending", as
   expect(rows()).toHaveLength(0);
 });
 
-it("surfaces resume errors without selecting an agent or automatically retrying", async () => {
+it("surfaces resume errors in the dialog without selecting an agent or automatically retrying", async () => {
   vi.mocked(resumeChat).mockRejectedValue(new Error("Project directory unavailable"));
   await act(async () => {
     renderer = create(view());
   });
   await settle();
-  await act(async () => rows()[0].findByType("button").props.onClick());
+  await openAndConfirm();
   await settle();
-  expect(JSON.stringify(renderer.root.findByProps({ role: "alert" }).children)).toContain(
+  expect(JSON.stringify(dialog().findByProps({ role: "alert" }).children)).toContain(
     "Project directory unavailable",
   );
   expect(onResumed).not.toHaveBeenCalled();
+  expect(resumeChat).toHaveBeenCalledOnce();
+});
+
+it.each(["Cancel", "Close", "Escape"])("dismisses with %s without resuming", async (action) => {
+  await act(async () => {
+    renderer = create(view());
+  });
+  await settle();
+  await act(async () => rows()[0].findByType("button").props.onClick());
+  if (action === "Escape") {
+    await act(async () => dialog().props.onCancel({ preventDefault: vi.fn() }));
+  } else if (action === "Close") {
+    await act(async () => dialog().findByProps({ "aria-label": "Close" }).props.onClick());
+  } else {
+    await act(async () =>
+      dialog()
+        .findAllByType("button")
+        .find((button) => button.children.includes("Cancel"))!
+        .props.onClick(),
+    );
+  }
+  expect(renderer.root.findAllByType("dialog")).toHaveLength(0);
+  expect(resumeChat).not.toHaveBeenCalled();
+  expect(nativeDialog.close).toHaveBeenCalledOnce();
+});
+
+it("clears old resume errors on reopening and blocks submission if workspaces disappear", async () => {
+  vi.mocked(resumeChat).mockRejectedValue(new Error("Old error"));
+  await act(async () => {
+    renderer = create(view());
+  });
+  await settle();
+  await openAndConfirm();
+  await settle();
+  expect(dialog().findAllByProps({ role: "alert" })).toHaveLength(1);
+  await act(async () => dialog().findByProps({ "aria-label": "Close" }).props.onClick());
+  await act(async () => rows()[0].findByType("button").props.onClick());
+  expect(dialog().findAllByProps({ role: "alert" })).toHaveLength(0);
+  await act(async () => renderer.update(view("", false)));
+  await act(async () => submit());
   expect(resumeChat).toHaveBeenCalledOnce();
 });
 
