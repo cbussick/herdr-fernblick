@@ -1,6 +1,6 @@
 import appStyles from "./App.module.css";
 import { useState } from "react";
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import type { Agent, ShellTab } from "../shared/api/contracts";
 import { getAgents } from "../shared/api/apiClient";
 import { AgentList } from "../features/agents/AgentList";
@@ -15,6 +15,7 @@ import { useSinglePaneLayout } from "./useSinglePaneLayout";
 
 export function App() {
   const singlePane = useSinglePaneLayout();
+  const queryClient = useQueryClient();
   const [selectedPaneId, setSelectedPaneId] = useState<string | null>(null);
   const [createDialogOpen, setCreateDialogOpen] = useState(false);
   const [workspaceDialogOpen, setWorkspaceDialogOpen] = useState(false);
@@ -67,6 +68,24 @@ export function App() {
             selectedPaneId={selectedPaneId}
             workspaces={workspaces}
             onSelect={(agent: Agent) => setSelectedPaneId(agent.pane_id)}
+            onResumed={(agent) => {
+              queryClient.setQueryData(
+                ["agents"],
+                (current: Awaited<ReturnType<typeof getAgents>> | undefined) =>
+                  current
+                    ? {
+                        ...current,
+                        agents: [
+                          ...current.agents.filter((item) => item.pane_id !== agent.pane_id),
+                          agent,
+                        ],
+                        tabs: current.tabs.filter((tab) => tab.tab_id !== agent.tab_id),
+                      }
+                    : current,
+              );
+              setSelectedPaneId(agent.pane_id);
+              void agentsQuery.refetch();
+            }}
             onSelectTab={(tab: ShellTab) => setSelectedPaneId(tab.pane_id)}
           />
           {selectedAgent ? (

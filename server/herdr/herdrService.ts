@@ -1,11 +1,15 @@
 import { existsSync } from "node:fs";
+import { stat } from "node:fs/promises";
+import { resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { z } from "zod";
+import { SessionCatalog, SavedChatError } from "../pi/sessionCatalog.js";
 import {
   agentSchema,
   shellTabSchema,
   terminalOutputSchema,
   workspaceSchema,
+  type Agent,
   type KeyName,
   type TerminalReadSource,
 } from "../../src/shared/api/contracts.js";
@@ -91,7 +95,66 @@ const workspaceCreatedResultSchema = z.object({
 });
 
 export class HerdrService {
-  constructor(private readonly client: HerdrClient) {}
+  private readonly resuming = new Map<string, Promise<Agent>>();
+  // Herdr can detect a new Pi process before its session-reporting extension catches up.
+  private readonly recentlyResumed = new Map<string, { paneId: string; expires: number }>();
+
+  constructor(
+    private readonly client: HerdrClient,
+    private readonly sessions = new SessionCatalog(),
+  ) {}
+
+  async getSavedChats() {
+    const [chats, dashboard] = await Promise.all([this.sessions.list(), this.getDashboard()]);
+    return {
+      chats: chats.map(({ path, ...chat }) => ({
+        ...chat,
+        activePaneId: this.findActiveChat(path, dashboard.agents)?.pane_id ?? null,
+      })),
+    };
+  }
+
+  private findActiveChat(path: string, agents: Agent[]) {
+    for (const [key, value] of this.recentlyResumed)
+      if (value.expires <= Date.now()) this.recentlyResumed.delete(key);
+    return agents.find(
+      (agent) =>
+        agent.agent === "pi" &&
+        (agent.agent_session?.kind === "path"
+          ? resolve(agent.agent_session.value) === path
+          : !agent.agent_session && this.recentlyResumed.get(path)?.paneId === agent.pane_id),
+    );
+  }
+
+  resumeChat(id: string, workspaceId: string) {
+    const pending = this.resuming.get(id);
+    if (pending) return pending;
+    const operation = this.resumeSavedChat(id, workspaceId);
+    this.resuming.set(id, operation);
+    void operation.finally(() => this.resuming.delete(id)).catch(() => {});
+    return operation;
+  }
+
+  private async resumeSavedChat(id: string, workspaceId: string) {
+    const chat = await this.sessions.get(id);
+    const dashboard = await this.getDashboard();
+    const active = this.findActiveChat(chat.path, dashboard.agents);
+    if (active) return active;
+    if (!dashboard.workspaces.some((workspace) => workspace.workspace_id === workspaceId))
+      throw new SavedChatError(404, "Workspace no longer exists. Choose another workspace.");
+    const directory = await stat(chat.cwd).catch(() => null);
+    if (!directory?.isDirectory())
+      throw new SavedChatError(
+        409,
+        "The original project directory is unavailable. Restore it before resuming.",
+      );
+    const agent = await this.createPiAgent(workspaceId, undefined, chat.title.slice(0, 80), {
+      path: chat.path,
+      cwd: chat.cwd,
+    });
+    this.recentlyResumed.set(chat.path, { paneId: agent.pane_id, expires: Date.now() + 30_000 });
+    return agent;
+  }
 
   async getDashboard() {
     const result = await this.client.request("session.snapshot", {}, sessionSnapshotResultSchema);
@@ -126,10 +189,20 @@ export class HerdrService {
     };
   }
 
-  async createPiAgent(workspaceId: string, name?: string, tabLabel?: string) {
+  async createPiAgent(
+    workspaceId: string,
+    name?: string,
+    tabLabel?: string,
+    session?: { path: string; cwd: string },
+  ) {
     const createdTab = await this.client.request(
       "tab.create",
-      { workspace_id: workspaceId, ...(tabLabel ? { label: tabLabel } : {}), focus: false },
+      {
+        workspace_id: workspaceId,
+        ...(tabLabel ? { label: tabLabel } : {}),
+        ...(session ? { cwd: session.cwd } : {}),
+        focus: false,
+      },
       tabCreatedResultSchema,
     );
     const agentName =
@@ -142,7 +215,7 @@ export class HerdrService {
         kind: "pi",
         pane_id: createdTab.root_pane.pane_id,
         timeout_ms: 30_000,
-        args: extensionArgs(),
+        args: [...(session ? ["--session", session.path] : []), ...extensionArgs()],
       },
       agentStartedResultSchema,
     );

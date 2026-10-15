@@ -1,5 +1,7 @@
 import {
   agentsResponseSchema,
+  savedChatsResponseSchema,
+  resumeChatRequestSchema,
   imageUploadSchema,
   createAgentRequestSchema,
   createAgentResponseSchema,
@@ -54,6 +56,19 @@ async function request(path: string, init?: RequestInit) {
 
 export async function getAgents() {
   return agentsResponseSchema.parse(await request("/api/agents"));
+}
+
+export async function getSavedChats() {
+  return savedChatsResponseSchema.parse(await request("/api/chats"));
+}
+
+export async function resumeChat(input: { id: string; workspaceId: string }) {
+  const body = await request(`/api/chats/${encodeURIComponent(input.id)}/resume`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(resumeChatRequestSchema.parse(input)),
+  });
+  return createAgentResponseSchema.parse(body).agent;
 }
 
 export async function createAgent(input: CreateAgentRequest) {

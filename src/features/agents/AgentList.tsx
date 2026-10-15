@@ -4,6 +4,7 @@ import type { Agent, ShellTab, Workspace } from "../../shared/api/contracts";
 import { SearchField, SegmentedTabs, SpeedDial } from "../../shared/ui";
 import { FlatAgentList, WorkspaceList } from "./AgentOverview";
 import { FernblickMark } from "../../shared/ui/FernblickMark";
+import { PastChats } from "./PastChats";
 
 interface AgentListProps {
   agents: Agent[];
@@ -11,15 +12,17 @@ interface AgentListProps {
   onCreateTab: () => void;
   onCreateWorkspace: () => void;
   onSelect: (agent: Agent) => void;
+  onResumed: (agent: Agent) => void;
   onSelectTab: (tab: ShellTab) => void;
   selectedPaneId: string | null;
   tabs: ShellTab[];
   workspaces: Workspace[];
 }
-type OverviewView = "workspaces" | "agents";
+type OverviewView = "workspaces" | "agents" | "history";
 const options = [
   { value: "workspaces", label: "Workspaces" },
   { value: "agents", label: "Agents" },
+  { value: "history", label: "Past chats" },
 ] as const;
 
 export function AgentList({
@@ -28,6 +31,7 @@ export function AgentList({
   onCreateTab,
   onCreateWorkspace,
   onSelect,
+  onResumed,
   onSelectTab,
   selectedPaneId,
   tabs,
@@ -86,14 +90,33 @@ export function AgentList({
           }}
         />
         <SearchField
-          label={view === "workspaces" ? "Search workspaces" : "Search agents"}
-          placeholder={view === "workspaces" ? "Search workspaces" : "Search agents"}
+          label={
+            view === "history"
+              ? "Search past chats"
+              : view === "workspaces"
+                ? "Search workspaces"
+                : "Search agents"
+          }
+          placeholder={
+            view === "history"
+              ? "Search past chats"
+              : view === "workspaces"
+                ? "Search workspaces"
+                : "Search agents"
+          }
           value={query}
           onChange={(event) => setQuery(event.target.value)}
         />
       </header>
       <div className={overviewStyles["overview-content"]}>
-        {view === "workspaces" ? (
+        {view === "history" ? (
+          <PastChats
+            query={query}
+            workspaces={workspaces}
+            onResumed={onResumed}
+            onCreateWorkspace={onCreateWorkspace}
+          />
+        ) : view === "workspaces" ? (
           <WorkspaceList
             agents={agents}
             tabs={tabs}

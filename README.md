@@ -78,6 +78,32 @@ paths restore search, filters, labels, active-branch display and edit-and-branch
 including available images from a restored prompt. Tree data and navigation use
 the direct Pi bridge, never session-file reads or terminal command injection.
 
+### Past chats
+
+Open **Past chats** in the sidebar to search saved Pi conversations by title, first
+message, or project path. Chats are ordered by most recently modified. Choose a
+workspace and **Resume** to start Pi in a new tab in the original project directory,
+with the original session and conversation context. **Open chat** selects an agent
+already running that session in the connected Herdr instance. Resuming does not
+send a prompt. The original project directory must still exist.
+
+The backend reads session-file metadata for this list only; the live transcript
+still comes from Pi's live bridge. It discovers local sessions under
+`~/.pi/agent/sessions` (or `PI_CODING_AGENT_DIR/sessions`). Set
+`FERNBLICK_PI_SESSION_DIR` to an absolute directory to browse a different session
+store; `PI_CODING_AGENT_SESSION_DIR` is also recognized. Both flat stores and Pi's
+one-level project grouping are supported. Custom Pi CLI/settings directories are
+not discovered automatically. Symlinked entries and invalid session headers are
+ignored; missing stores show an empty list. The list refreshes every 30 seconds
+while visible and can be refreshed manually.
+
+This exposes saved-chat titles, prompt previews and project paths for the backend's
+Unix user, not just chats created through Fernblick. Use a dedicated session
+directory for isolated development. Active-session detection is limited to the
+connected Herdr instance: do not resume a file that is open in another Herdr
+instance or standalone Pi process. No session files are deleted or rewritten by
+the catalog.
+
 ### Whiteboard
 
 Open **Whiteboard** from live Chat for a fullscreen, persistent Excalidraw canvas. Its chat panel uses the same transcript as main chat: side-by-side on landscape tablet/desktop, compact and expandable below the canvas on smaller screens. Type there to send a current board image with read/edit access for that request (empty boards skip the image). Share drawing sends an immutable image-only PNG snapshot. Agent tools are hidden by default and backend-authorized; editing access ends on completion, revocation, disconnect, or expiry. Native scenes remain editable after sending. [Permission, persistence, conflicts, and limits](docs/whiteboard.md).
@@ -109,6 +135,7 @@ No Pi-native queue was added.
 ## Available controls
 
 - List detected agents and their Herdr status
+- Search saved Pi chats and resume them in a workspace
 - Show the current terminal screen as plain text, refreshed every second
 - Load up to 600 lines of terminal history on demand when the agent is idle. History is a scrollable snapshot; **Return to live** resumes the current screen. Shell history can also be loaded, subject to Herdr's safe-read restrictions.
 - Stream ordinary Pi model chat, thinking and tool output; send idle text prompts and request Stop
@@ -126,6 +153,7 @@ The HTTP API does not expose a shell or arbitrary Herdr method proxy. Access to 
 | `HERDR_SOCKET_PATH`         | `~/.config/herdr/herdr.sock`            | Herdr session socket                                                       |
 | `FERNBLICK_PI_SOCKET`       | `~/.local/share/fernblick/live/pi.sock` | Private Pi bridge socket (also configure Pi)                               |
 | `FERNBLICK_UPLOAD_DIR`      | `/tmp/fernblick`                        | Shared private upload directory; configure backend and Pi identically      |
+| `FERNBLICK_PI_SESSION_DIR`  | Pi session directory (see Past chats)   | Backend-only saved-chat discovery root; use an absolute path               |
 | `FERNBLICK_PI_GLOBAL`       | unset                                   | Set to `1` to use a globally installed extension for created agents        |
 | `FERNBLICK_BOARD_DIR`       | `~/.local/share/fernblick/boards`       | Private persistent whiteboard scenes and sent snapshots                    |
 | `FERNBLICK_API_TARGET`      | `http://127.0.0.1:8787`                 | Vite development API proxy target                                          |
@@ -136,4 +164,12 @@ The HTTP API does not expose a shell or arbitrary Herdr method proxy. Access to 
 
 ```bash
 npm run check
+```
+
+Saved-chat browser regression (Chromium/WebKit at phone, tablet and desktop sizes;
+all agent APIs are synthetic fixtures):
+
+```sh
+PLAYWRIGHT_MODULE=/path/to/playwright/index.mjs \
+  node tools/design/chat-history.mjs http://127.0.0.1:<frontend-port>
 ```

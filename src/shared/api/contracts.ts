@@ -83,6 +83,20 @@ export const createAgentRequestSchema = z.object({
     .regex(/^[A-Za-z0-9:_-]+$/),
 });
 
+export const savedChatSchema = z.object({
+  id: z.string().regex(/^[a-f0-9]{64}$/),
+  title: z.string(),
+  preview: z.string(),
+  cwd: z.string(),
+  updatedAt: z.string().datetime(),
+  activePaneId: z.string().nullable(),
+});
+export const savedChatsResponseSchema = z.object({ chats: z.array(savedChatSchema) });
+export const resumeChatRequestSchema = z.object({
+  workspaceId: createAgentRequestSchema.shape.workspaceId,
+});
+export type SavedChat = z.infer<typeof savedChatSchema>;
+
 export const createAgentResponseSchema = z.object({ agent: agentSchema });
 
 export const createWorkspaceRequestSchema = z.object({

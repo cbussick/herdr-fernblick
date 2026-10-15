@@ -10,6 +10,7 @@ import {
   paneInputRequestSchema,
   renameAgentRequestSchema,
   renameTabRequestSchema,
+  resumeChatRequestSchema,
   terminalReadSourceSchema,
 } from "../../src/shared/api/contracts.js";
 import { HerdrRequestError } from "../herdr/HerdrClient.js";
@@ -21,6 +22,7 @@ import {
 } from "../uploads/imageUploads.js";
 import type { HerdrService } from "../herdr/herdrService.js";
 import { LiveBridge, LiveChatError } from "../pi/liveBridge.js";
+import { SavedChatError } from "../pi/sessionCatalog.js";
 import { liveEvents } from "../pi/liveEvents.js";
 import { BoardStore, BoardError } from "../boards/storage.js";
 import { createBoardRoutes } from "./boardRoutes.js";
@@ -191,6 +193,23 @@ async function handleApi(
       if (error instanceof HttpError) throw error;
       throw new HttpError(400, error instanceof Error ? error.message : "Invalid image");
     }
+    return true;
+  }
+
+  if (request.method === "GET" && url.pathname === "/api/chats") {
+    if (request.headers.origin) requireSameOrigin(request);
+    if (request.headers["sec-fetch-site"] === "cross-site")
+      throw new HttpError(403, "Cross-origin request rejected");
+    response.setHeader("Cache-Control", "no-store");
+    sendJson(response, 200, await service.getSavedChats());
+    return true;
+  }
+
+  const resumeMatch = url.pathname.match(/^\/api\/chats\/([a-f0-9]{64})\/resume$/);
+  if (request.method === "POST" && resumeMatch) {
+    requireSameOrigin(request);
+    const body = resumeChatRequestSchema.parse(await readJson(request));
+    sendJson(response, 200, { agent: await service.resumeChat(resumeMatch[1], body.workspaceId) });
     return true;
   }
 
@@ -381,7 +400,8 @@ export function createHttpServer(
       if (
         error instanceof HttpError ||
         error instanceof LiveChatError ||
-        error instanceof BoardError
+        error instanceof BoardError ||
+        error instanceof SavedChatError
       ) {
         sendJson(response, error.status, {
           error: error.message,
