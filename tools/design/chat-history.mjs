@@ -11,9 +11,9 @@ const agent = {
   agent_status: "idle",
   focused: false,
   name: "resumed-chat",
-  pane_id: "w1:p2",
-  tab_id: "w1:t2",
-  workspace_id: "w2",
+  pane_id: "w3:p1",
+  tab_id: "w3:t1",
+  workspace_id: "w3",
   revision: 1,
   tab_label: "Restore keyboard focus after closing the whiteboard",
 };
@@ -66,6 +66,15 @@ for (const [engine, browserType] of [
       const page = await browser.newPage({ viewport: { width, height }, reducedMotion: "reduce" });
       const errors = [];
       const mutations = [];
+      const creations = [];
+      let createdWorkspace;
+      const existingWorkspaces =
+        device === "small-phone"
+          ? []
+          : [
+              { workspace_id: "w1", label: "Fernblick" },
+              { workspace_id: "w2", label: "API" },
+            ];
       let resumed = false;
       page.on("pageerror", (error) => errors.push(error.message));
       await page.addInitScript(() => {
@@ -81,10 +90,7 @@ for (const [engine, browserType] of [
           body = {
             agents: resumed ? [agent] : [],
             tabs: [],
-            workspaces: [
-              { workspace_id: "w1", label: "Fernblick" },
-              { workspace_id: "w2", label: "API" },
-            ],
+            workspaces: [...existingWorkspaces, ...(createdWorkspace ? [createdWorkspace] : [])],
           };
         else if (url.pathname === "/api/chats" && method === "GET")
           body = {
@@ -92,7 +98,12 @@ for (const [engine, browserType] of [
               resumed && chat.id === chats[0].id ? { ...chat, activePaneId: agent.pane_id } : chat,
             ),
           };
-        else if (url.pathname === `/api/chats/${chats[0].id}/resume` && method === "POST") {
+        else if (url.pathname === "/api/workspaces" && method === "POST") {
+          const input = route.request().postDataJSON();
+          creations.push(input);
+          createdWorkspace = { workspace_id: "w3", label: input.label };
+          body = { workspace: createdWorkspace };
+        } else if (url.pathname === `/api/chats/${chats[0].id}/resume` && method === "POST") {
           mutations.push(route.request().postDataJSON());
           resumed = true;
           body = { agent };
@@ -108,6 +119,19 @@ for (const [engine, browserType] of [
       await page.getByTestId("saved-chat").first().waitFor();
       assert.equal(await page.getByTestId("saved-chat").count(), 22);
       assert.equal(await page.getByTestId("past-chats").locator("select").count(), 0);
+      assert.equal(
+        await page.getByRole("button", { name: "Refresh chats", exact: true }).count(),
+        0,
+      );
+      const cardStyle = await page
+        .getByTestId("saved-chat")
+        .first()
+        .evaluate((card) => ({
+          background: getComputedStyle(card).backgroundColor,
+          radius: parseFloat(getComputedStyle(card).borderRadius),
+        }));
+      assert.equal(cardStyle.background, "rgb(255, 255, 255)");
+      assert(cardStyle.radius > 0, "Chat rows are rounded cards");
       assert.equal(
         await page
           .getByText("Resume a closed Pi conversation. Open conversations are in Agents.")
@@ -139,11 +163,10 @@ for (const [engine, browserType] of [
       await opener.click();
       await dialog.waitFor();
       assert.deepEqual(mutations, []);
-      assert(
-        await dialog
-          .getByLabel("Workspace", { exact: true })
-          .evaluate((node) => document.activeElement === node),
-      );
+      const firstControl = existingWorkspaces.length
+        ? dialog.getByLabel("Workspace", { exact: true })
+        : dialog.getByRole("button", { name: "Create new workspace", exact: true });
+      assert(await firstControl.evaluate((node) => document.activeElement === node));
       await page.keyboard.press("Escape");
       await dialog.waitFor({ state: "hidden" });
       assert(await opener.evaluate((node) => document.activeElement === node));
@@ -153,7 +176,44 @@ for (const [engine, browserType] of [
       await dialog.waitFor({ state: "hidden" });
       assert.deepEqual(mutations, []);
       await opener.click();
-      await dialog.getByLabel("Workspace", { exact: true }).selectOption("w2");
+      if (existingWorkspaces.length)
+        await dialog.getByLabel("Workspace", { exact: true }).selectOption("w2");
+      await dialog.getByRole("button", { name: "Create new workspace", exact: true }).click();
+      const creation = page.getByRole("dialog", { name: "New workspace", exact: true });
+      await creation.waitFor();
+      assert.equal(await page.locator("dialog:modal").count(), 1);
+      assert.equal(
+        await creation.getByLabel("Working directory", { exact: true }).inputValue(),
+        chats[0].cwd,
+      );
+      assert.equal(
+        await creation.getByLabel("Workspace name", { exact: true }).inputValue(),
+        "fernblick",
+      );
+      assert(
+        await creation
+          .getByLabel("Workspace name", { exact: true })
+          .evaluate((node) => document.activeElement === node),
+      );
+      await page.keyboard.press("Escape");
+      await dialog.waitFor();
+      assert.equal(await page.locator("dialog:modal").count(), 1);
+      assert.deepEqual(creations, []);
+      assert.deepEqual(mutations, []);
+      if (existingWorkspaces.length)
+        assert.equal(await dialog.getByLabel("Workspace", { exact: true }).inputValue(), "w2");
+      await dialog.getByRole("button", { name: "Create new workspace", exact: true }).click();
+      await creation.waitFor();
+      await creation.getByLabel("Workspace name", { exact: true }).fill("Resumed project");
+      await page.screenshot({
+        path: `${output}/${engine}-${device}-create-workspace.png`,
+        fullPage: true,
+      });
+      await creation.getByRole("button", { name: "Create workspace", exact: true }).click();
+      await dialog.waitFor();
+      assert.equal(await dialog.getByLabel("Workspace", { exact: true }).inputValue(), "w3");
+      assert.deepEqual(creations, [{ label: "Resumed project", cwd: chats[0].cwd }]);
+      assert.deepEqual(mutations, []);
       const bounds = await dialog.boundingBox();
       assert(
         bounds &&
@@ -172,7 +232,7 @@ for (const [engine, browserType] of [
       await page.waitForFunction(
         () => document.querySelectorAll('[data-testid="saved-chat"]').length === 21,
       );
-      assert.deepEqual(mutations, [{ workspaceId: "w2" }]);
+      assert.deepEqual(mutations, [{ workspaceId: "w3" }]);
       assert.deepEqual(errors, []);
       console.log(`${engine} ${device}: history, search, resume, overflow passed`);
       await page.close();

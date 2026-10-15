@@ -85,7 +85,11 @@ message, or project path. Only closed conversations are shown, ordered by most
 recently modified; find open conversations in **Agents** or **Workspaces**. Click a
 chat's **Resume** button, choose a workspace in the dialog, then confirm **Resume**
 to start Pi in a new tab in the original project directory,
-with the original session and conversation context. A resumed chat leaves the list
+with the original session and conversation context. **Create new workspace** is
+always available in this dialog, with the chat's original directory and a suggested
+name prefilled. Creating one returns to the same chat with the new workspace
+selected; confirm **Resume** to launch Pi. Canceling creation returns to the
+workspace choice without launching anything. A resumed chat leaves the list
 immediately. If a chat was opened after the list loaded, Resume selects that
 existing agent instead of starting a duplicate. Resuming does not send a prompt.
 The original project directory must still exist.
@@ -97,8 +101,8 @@ still comes from Pi's live bridge. It discovers local sessions under
 store; `PI_CODING_AGENT_SESSION_DIR` is also recognized. Both flat stores and Pi's
 one-level project grouping are supported. Custom Pi CLI/settings directories are
 not discovered automatically. Symlinked entries and invalid session headers are
-ignored; missing stores show an empty list. The list refreshes every 30 seconds
-while visible and can be refreshed manually.
+ignored; missing stores show an empty list. Past chats appear as cards and refresh
+automatically every 30 seconds while visible. A retry action appears if loading fails.
 
 This exposes saved-chat titles, prompt previews and project paths for the backend's
 Unix user, not just chats created through Fernblick. Use a dedicated session

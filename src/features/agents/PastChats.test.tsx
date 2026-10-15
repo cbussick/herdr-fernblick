@@ -3,9 +3,14 @@ import { create as render, type ReactTestRenderer } from "react-test-renderer";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
 import { PastChats } from "./PastChats";
-import { getSavedChats, resumeChat } from "../../shared/api/apiClient";
-import type { Agent, SavedChat } from "../../shared/api/contracts";
-vi.mock("../../shared/api/apiClient", () => ({ getSavedChats: vi.fn(), resumeChat: vi.fn() }));
+import { createWorkspace, getSavedChats, resumeChat } from "../../shared/api/apiClient";
+import type { Agent, SavedChat, Workspace } from "../../shared/api/contracts";
+import { NewWorkspaceDialog } from "./NewWorkspaceDialog";
+vi.mock("../../shared/api/apiClient", () => ({
+  createWorkspace: vi.fn(),
+  getSavedChats: vi.fn(),
+  resumeChat: vi.fn(),
+}));
 const chats: SavedChat[] = [
   {
     id: "a".repeat(64),
@@ -36,7 +41,7 @@ const agent: Agent = {
 let renderer: ReactTestRenderer;
 let client: QueryClient;
 const onResumed = vi.fn();
-const onCreateWorkspace = vi.fn();
+const newWorkspace: Workspace = { workspace_id: "w3", label: "web" };
 const nativeDialog = {
   open: false,
   showModal: vi.fn(() => {
@@ -71,7 +76,6 @@ function view(query = "", withWorkspaces = true) {
             : []
         }
         onResumed={onResumed}
-        onCreateWorkspace={onCreateWorkspace}
       />
     </QueryClientProvider>
   );
@@ -90,6 +94,7 @@ beforeEach(() => {
   });
   vi.mocked(getSavedChats).mockResolvedValue({ chats });
   vi.mocked(resumeChat).mockResolvedValue(agent);
+  vi.mocked(createWorkspace).mockResolvedValue(newWorkspace);
 });
 afterEach(async () => {
   if (renderer) await act(async () => renderer.unmount());
@@ -97,6 +102,14 @@ afterEach(async () => {
   vi.unstubAllGlobals();
 });
 const rows = () => renderer.root.findAllByProps({ "data-testid": "saved-chat" });
+const createWorkspaceButton = () =>
+  dialog()
+    .findAllByType("button")
+    .find((button) => button.children.includes("Create new workspace"))!;
+async function openCreation() {
+  await act(async () => rows()[0].findByType("button").props.onClick());
+  await act(async () => createWorkspaceButton().props.onClick());
+}
 
 it("lists only closed chats and filters by project, title and preview", async () => {
   await act(async () => {
@@ -107,6 +120,14 @@ it("lists only closed chats and filters by project, title and preview", async ()
   expect(renderer.root.findAllByType("select")).toHaveLength(0);
   expect(renderer.root.findAllByType("dialog")).toHaveLength(0);
   expect(JSON.stringify(renderer.toJSON())).not.toContain("Resume a closed Pi conversation.");
+  expect(
+    renderer.root
+      .findAllByType("button")
+      .some(
+        (button) =>
+          button.children.includes("Refresh chats") || button.children.includes("Try again"),
+      ),
+  ).toBe(false);
   expect(rows()[0].findByType("h2").children).toEqual(["Fix authentication"]);
   for (const query of ["authentication", " /projects/web ", "find the bug"]) {
     await act(async () => renderer.update(view(query)));
@@ -152,6 +173,7 @@ it("resumes in the chosen workspace, disables duplicate actions and selects the 
   );
   expect(rows().every((row) => row.findByType("button").props.disabled)).toBe(true);
   expect(dialog().findByType("select").props.disabled).toBe(true);
+  expect(createWorkspaceButton().props.disabled).toBe(true);
   const preventDefault = vi.fn();
   await act(async () => dialog().props.onCancel({ preventDefault }));
   expect(preventDefault).toHaveBeenCalledOnce();
@@ -176,12 +198,11 @@ it("keeps active chats hidden and explains how to add a missing workspace", asyn
   expect(dialog().findByProps({ type: "submit" }).props.disabled).toBe(true);
   await act(async () => submit());
   expect(resumeChat).not.toHaveBeenCalled();
-  const createWorkspace = dialog()
-    .findAllByType("button")
-    .find((button) => button.children.includes("Create a workspace to resume this chat"))!;
-  await act(async () => createWorkspace.props.onClick());
-  expect(onCreateWorkspace).toHaveBeenCalledOnce();
-  expect(renderer.root.findAllByType("dialog")).toHaveLength(0);
+  await act(async () => createWorkspaceButton().props.onClick());
+  expect(dialog().findByType("h2").children).toEqual(["New workspace"]);
+  expect(dialog().findByProps({ id: "new-workspace-cwd" }).props.value).toBe(chats[0].cwd);
+  expect(createWorkspace).not.toHaveBeenCalled();
+  expect(resumeChat).not.toHaveBeenCalled();
 });
 
 it("updates visibility when a chat opens or closes between list refreshes", async () => {
@@ -285,6 +306,154 @@ it("clears old resume errors on reopening and blocks submission if workspaces di
   expect(resumeChat).toHaveBeenCalledOnce();
 });
 
+it.each([true, false])(
+  "creates a workspace and returns to the selected chat (existing workspaces: %s)",
+  async (existing) => {
+    await act(async () => {
+      renderer = create(view("", existing));
+    });
+    await settle();
+    await openCreation();
+    expect(dialog().findByProps({ id: "new-workspace-label" }).props.value).toBe("web");
+    expect(dialog().findByProps({ id: "new-workspace-cwd" }).props.value).toBe("/projects/web");
+    await act(async () => submit());
+    await settle();
+    expect(createWorkspace).toHaveBeenCalledWith(
+      { label: "web", cwd: "/projects/web" },
+      expect.anything(),
+    );
+    expect(dialog().findByType("h2").children).toEqual(["Open in which workspace?"]);
+    expect(dialog().findByProps({ id: "resume-chat-title" }).children).toEqual([chats[0].title]);
+    expect(dialog().findByType("select").props.value).toBe("w3");
+    expect(
+      dialog()
+        .findAllByType("option")
+        .filter((option) => option.props.value === "w3"),
+    ).toHaveLength(1);
+    expect(resumeChat).not.toHaveBeenCalled();
+    await act(async () => submit());
+    await settle();
+    expect(resumeChat).toHaveBeenCalledWith(
+      { id: chats[0].id, workspaceId: "w3" },
+      expect.anything(),
+    );
+    expect(createWorkspace).toHaveBeenCalledOnce();
+  },
+);
+
+it.each(["Cancel", "Close", "Escape"])(
+  "returns from creation with %s without losing the chosen workspace or chat",
+  async (action) => {
+    await act(async () => {
+      renderer = create(view());
+    });
+    await settle();
+    await act(async () => rows()[0].findByType("button").props.onClick());
+    await act(async () =>
+      dialog()
+        .findByType("select")
+        .props.onChange({ target: { value: "w2" } }),
+    );
+    await act(async () => createWorkspaceButton().props.onClick());
+    if (action === "Escape")
+      await act(async () => dialog().props.onCancel({ preventDefault: vi.fn() }));
+    else if (action === "Close")
+      await act(async () => dialog().findByProps({ "aria-label": "Close" }).props.onClick());
+    else
+      await act(async () =>
+        dialog()
+          .findAllByType("button")
+          .find((button) => button.children.includes("Cancel"))!
+          .props.onClick(),
+      );
+    expect(dialog().findByType("select").props.value).toBe("w2");
+    expect(dialog().findByProps({ id: "resume-chat-title" }).children).toEqual([chats[0].title]);
+    expect(createWorkspace).not.toHaveBeenCalled();
+    expect(resumeChat).not.toHaveBeenCalled();
+  },
+);
+
+it("retains editable defaults and creation errors without automatically retrying or resuming", async () => {
+  vi.mocked(createWorkspace).mockRejectedValue(new Error("Directory unavailable"));
+  await act(async () => {
+    renderer = create(view());
+  });
+  await settle();
+  await openCreation();
+  await act(async () =>
+    dialog()
+      .findByProps({ id: "new-workspace-label" })
+      .props.onChange({ target: { value: "Web project" } }),
+  );
+  await act(async () =>
+    dialog()
+      .findByProps({ id: "new-workspace-cwd" })
+      .props.onChange({ target: { value: "/another/project" } }),
+  );
+  await act(async () => submit());
+  await settle();
+  expect(createWorkspace).toHaveBeenCalledWith(
+    { label: "Web project", cwd: "/another/project" },
+    expect.anything(),
+  );
+  expect(dialog().findByProps({ role: "alert" }).children).toEqual(["Directory unavailable"]);
+  expect(dialog().findByProps({ id: "new-workspace-label" }).props.value).toBe("Web project");
+  expect(createWorkspace).toHaveBeenCalledOnce();
+  expect(resumeChat).not.toHaveBeenCalled();
+});
+
+it("locks creation controls while pending and keeps the created workspace if resume fails", async () => {
+  let complete!: (workspace: Workspace) => void;
+  vi.mocked(createWorkspace).mockImplementation(
+    () =>
+      new Promise((resolve) => {
+        complete = resolve;
+      }),
+  );
+  vi.mocked(resumeChat).mockRejectedValue(new Error("Could not resume"));
+  await act(async () => {
+    renderer = create(view());
+  });
+  await settle();
+  await openCreation();
+  await act(async () => submit());
+  await settle();
+  expect(
+    dialog()
+      .findAllByType("input")
+      .every((input) => input.props.disabled),
+  ).toBe(true);
+  expect(
+    dialog()
+      .findAllByType("button")
+      .every((button) => button.props.disabled),
+  ).toBe(true);
+  await act(async () => submit());
+  await act(async () => dialog().props.onCancel({ preventDefault: vi.fn() }));
+  expect(createWorkspace).toHaveBeenCalledOnce();
+  expect(dialog().findByType("h2").children).toEqual(["New workspace"]);
+  await act(async () => complete(newWorkspace));
+  await settle();
+  await act(async () => submit());
+  await settle();
+  expect(dialog().findByType("select").props.value).toBe("w3");
+  expect(dialog().findByProps({ role: "alert" }).children).toContain("Could not resume");
+  expect(createWorkspace).toHaveBeenCalledOnce();
+});
+
+it("keeps ordinary workspace creation blank unless initial values are supplied", async () => {
+  await act(async () => {
+    renderer = create(
+      <QueryClientProvider client={client}>
+        <NewWorkspaceDialog onClose={vi.fn()} onCreated={vi.fn()} />
+      </QueryClientProvider>,
+    );
+  });
+  expect(dialog().findByProps({ id: "new-workspace-label" }).props.value).toBe("");
+  expect(dialog().findByProps({ id: "new-workspace-cwd" }).props.value).toBe("");
+  expect(createWorkspace).not.toHaveBeenCalled();
+});
+
 it("offers a retry after a list failure and shows the empty state", async () => {
   vi.mocked(getSavedChats).mockRejectedValueOnce(new Error("Cannot read saved chats"));
   await act(async () => {
@@ -295,7 +464,7 @@ it("offers a retry after a list failure and shows the empty state", async () => 
   vi.mocked(getSavedChats).mockResolvedValue({ chats: [] });
   const refresh = renderer.root
     .findAllByType("button")
-    .find((button) => button.children.includes("Refresh chats"))!;
+    .find((button) => button.children.includes("Try again"))!;
   await act(async () => refresh.props.onClick());
   await settle();
   expect(JSON.stringify(renderer.toJSON())).toContain("No past chats yet.");

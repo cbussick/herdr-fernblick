@@ -9,12 +9,10 @@ export function PastChats({
   query,
   workspaces,
   onResumed,
-  onCreateWorkspace,
 }: {
   query: string;
   workspaces: Workspace[];
   onResumed: (agent: Agent) => void;
-  onCreateWorkspace: () => void;
 }) {
   const client = useQueryClient();
   const [selectedChat, setSelectedChat] = useState<SavedChat | null>(null);
@@ -57,13 +55,15 @@ export function PastChats({
   return (
     <>
       <section className={styles.history} aria-label="Past chats" data-testid="past-chats">
-        <div className={styles.toolbar}>
-          <button type="button" onClick={() => void chats.refetch()} disabled={chats.isFetching}>
-            {chats.isFetching ? "Refreshing…" : "Refresh chats"}
-          </button>
-        </div>
         {chats.isPending && <p role="status">Loading past chats…</p>}
-        {chats.isError && <p role="alert">{chats.error.message} Use Refresh chats to try again.</p>}
+        {chats.isError && (
+          <div className={styles.error}>
+            <p role="alert">{chats.error.message}</p>
+            <button type="button" onClick={() => void chats.refetch()} disabled={chats.isFetching}>
+              Try again
+            </button>
+          </div>
+        )}
         {chats.isSuccess && !filtered.length && (
           <p>
             {search
@@ -111,7 +111,6 @@ export function PastChats({
           error={resume.isError ? resume.error.message : undefined}
           onConfirm={(workspaceId) => resume.mutate({ id: selectedChat.id, workspaceId })}
           onClose={() => setSelectedChat(null)}
-          onCreateWorkspace={onCreateWorkspace}
         />
       )}
     </>

@@ -8,7 +8,7 @@
   line-height: 1.6;
 }
 
-.toolbar {
+.error {
   display: grid;
   gap: var(--space-2);
   padding-bottom: var(--space-4);
@@ -20,8 +20,8 @@
   color: var(--color-accent);
   font-size: 0.75rem;
   font-weight: 700;
-  background: var(--color-surface);
-  border: 1px solid var(--color-border-strong);
+  background: var(--color-accent-soft);
+  border: 1px solid transparent;
   border-radius: var(--radius-sm);
 }
 
@@ -34,14 +34,19 @@
 }
 
 .list {
+  display: grid;
+  gap: var(--space-3);
   padding: 0;
   margin: 0;
   list-style: none;
 }
 
 .chat {
-  padding: var(--space-4) 0;
-  border-top: 1px solid var(--color-border-strong);
+  min-width: 0;
+  padding: var(--space-4);
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
 }
 
 .chat h2 {
@@ -67,7 +72,7 @@
   align-items: center;
   justify-content: space-between;
   gap: var(--space-2);
-  margin-top: var(--space-3);
+  margin-top: var(--space-4);
 }
 
 .footer time {

@@ -1,5 +1,7 @@
 import { useEffect, useRef, useState, type FormEvent } from "react";
+import { useQueryClient } from "@tanstack/react-query";
 import type { SavedChat, Workspace } from "../../shared/api/contracts";
+import { NewWorkspaceDialog } from "./NewWorkspaceDialog";
 import styles from "./Dialogs.module.css";
 
 export function ResumeChatDialog({
@@ -9,7 +11,6 @@ export function ResumeChatDialog({
   error,
   onConfirm,
   onClose,
-  onCreateWorkspace,
 }: {
   chat: SavedChat;
   workspaces: Workspace[];
@@ -17,34 +18,58 @@ export function ResumeChatDialog({
   error?: string;
   onConfirm: (workspaceId: string) => void;
   onClose: () => void;
-  onCreateWorkspace: () => void;
 }) {
+  const client = useQueryClient();
+  const [creatingWorkspace, setCreatingWorkspace] = useState(false);
+  const [createdWorkspace, setCreatedWorkspace] = useState<Workspace | null>(null);
+  const choices =
+    createdWorkspace &&
+    !workspaces.some((workspace) => workspace.workspace_id === createdWorkspace.workspace_id)
+      ? [...workspaces, createdWorkspace]
+      : workspaces;
+  const openerRef = useRef<Element | null>(null);
   const dialogRef = useRef<HTMLDialogElement>(null);
   const selectRef = useRef<HTMLSelectElement>(null);
   const createWorkspaceRef = useRef<HTMLButtonElement>(null);
   const [workspaceId, setWorkspaceId] = useState(workspaces[0]?.workspace_id ?? "");
-  const selectedWorkspace = workspaces.some((workspace) => workspace.workspace_id === workspaceId)
+  const selectedWorkspace = choices.some((workspace) => workspace.workspace_id === workspaceId)
     ? workspaceId
-    : (workspaces[0]?.workspace_id ?? "");
+    : (choices[0]?.workspace_id ?? "");
 
   useEffect(() => {
     const dialog = dialogRef.current;
     if (!dialog) return;
-    const opener = dialog.ownerDocument?.activeElement;
+    openerRef.current ??= dialog.ownerDocument?.activeElement ?? null;
     if (!dialog.open) dialog.showModal();
     (selectRef.current ?? createWorkspaceRef.current)?.focus();
     return () => {
       if (dialog.open) dialog.close();
+      const opener = openerRef.current;
       if (opener && opener instanceof HTMLElement && opener.isConnected)
         opener.focus({ preventScroll: true });
     };
-  }, []);
+  }, [creatingWorkspace]);
 
   function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     if (pending || !selectedWorkspace) return;
     onConfirm(selectedWorkspace);
   }
+
+  if (creatingWorkspace)
+    return (
+      <NewWorkspaceDialog
+        initialCwd={chat.cwd}
+        initialLabel={(chat.cwd.split("/").filter(Boolean).at(-1) ?? "Workspace").slice(0, 80)}
+        onClose={() => setCreatingWorkspace(false)}
+        onCreated={(workspace) => {
+          setCreatedWorkspace(workspace);
+          setWorkspaceId(workspace.workspace_id);
+          setCreatingWorkspace(false);
+          void client.invalidateQueries({ queryKey: ["agents"] });
+        }}
+      />
+    );
 
   return (
     <dialog
@@ -77,7 +102,7 @@ export function ResumeChatDialog({
             ×
           </button>
         </div>
-        {workspaces.length ? (
+        {choices.length > 0 && (
           <>
             <label htmlFor="resume-chat-workspace">Workspace</label>
             <select
@@ -88,27 +113,23 @@ export function ResumeChatDialog({
               disabled={pending}
               onChange={(event) => setWorkspaceId(event.target.value)}
             >
-              {workspaces.map((workspace) => (
+              {choices.map((workspace) => (
                 <option key={workspace.workspace_id} value={workspace.workspace_id}>
                   {workspace.label}
                 </option>
               ))}
             </select>
           </>
-        ) : (
-          <button
-            type="button"
-            ref={createWorkspaceRef}
-            disabled={pending}
-            className={styles["new-agent-form__inline-action"]}
-            onClick={() => {
-              onClose();
-              onCreateWorkspace();
-            }}
-          >
-            Create a workspace to resume this chat
-          </button>
         )}
+        <button
+          type="button"
+          ref={createWorkspaceRef}
+          disabled={pending}
+          className={styles["new-agent-form__inline-action"]}
+          onClick={() => setCreatingWorkspace(true)}
+        >
+          Create new workspace
+        </button>
         {error && <p role="alert">{error} Check the agent list before retrying.</p>}
         <div className={styles["new-agent-form__actions"]}>
           <button type="button" disabled={pending} onClick={onClose}>

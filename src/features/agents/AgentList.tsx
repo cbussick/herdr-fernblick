@@ -110,12 +110,7 @@ export function AgentList({
       </header>
       <div className={overviewStyles["overview-content"]}>
         {view === "history" ? (
-          <PastChats
-            query={query}
-            workspaces={workspaces}
-            onResumed={onResumed}
-            onCreateWorkspace={onCreateWorkspace}
-          />
+          <PastChats query={query} workspaces={workspaces} onResumed={onResumed} />
         ) : view === "workspaces" ? (
           <WorkspaceList
             agents={agents}
