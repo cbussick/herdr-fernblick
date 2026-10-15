@@ -111,6 +111,61 @@ async function openCreation() {
   await act(async () => createWorkspaceButton().props.onClick());
 }
 
+it.each([
+  ["saved chats", chats],
+  ["an empty list", []],
+] as const)(
+  "shows the shared loading state until the initial request resolves with %s",
+  async (_description, result) => {
+    let complete!: (value: { chats: SavedChat[] }) => void;
+    vi.mocked(getSavedChats).mockImplementationOnce(
+      () =>
+        new Promise((resolve) => {
+          complete = resolve;
+        }),
+    );
+    await act(async () => {
+      renderer = create(view(""));
+    });
+    const status = renderer.root.findByProps({ role: "status" });
+    expect(status.props["aria-busy"]).toBe("true");
+    expect(status.findByType("p").children).toEqual(["Loading past chats…"]);
+    expect(status.findByProps({ "data-testid": "empty-state-icon" }).props).toMatchObject({
+      "data-state-kind": "loading",
+      "data-spinning": true,
+    });
+    expect(rows()).toHaveLength(0);
+    expect(JSON.stringify(renderer.toJSON())).not.toContain("No past chats yet.");
+    await act(async () => complete({ chats: [...result] }));
+    await settle();
+    expect(renderer.root.findAllByProps({ role: "status" })).toHaveLength(0);
+    expect(rows()).toHaveLength(result.length ? 1 : 0);
+    if (!result.length) expect(JSON.stringify(renderer.toJSON())).toContain("No past chats yet.");
+  },
+);
+
+it("keeps cached cards visible without a loading placeholder during background refresh", async () => {
+  client.setQueryData(["saved-chats"], { chats });
+  let complete!: (value: { chats: SavedChat[] }) => void;
+  vi.mocked(getSavedChats).mockImplementationOnce(
+    () =>
+      new Promise((resolve) => {
+        complete = resolve;
+      }),
+  );
+  await act(async () => {
+    renderer = create(view());
+  });
+  expect(getSavedChats).toHaveBeenCalledOnce();
+  expect(client.isFetching({ queryKey: ["saved-chats"] })).toBe(1);
+  expect(rows()).toHaveLength(1);
+  expect(renderer.root.findAllByProps({ role: "status" })).toHaveLength(0);
+  await act(async () => complete({ chats }));
+  await settle();
+  expect(rows()).toHaveLength(1);
+  expect(renderer.root.findAllByProps({ role: "status" })).toHaveLength(0);
+});
+
 it("lists only closed chats and filters by project, title and preview", async () => {
   await act(async () => {
     renderer = create(view());
@@ -461,6 +516,8 @@ it("offers a retry after a list failure and shows the empty state", async () => 
   });
   await settle();
   expect(renderer.root.findByProps({ role: "alert" })).toBeDefined();
+  expect(renderer.root.findAllByProps({ role: "status" })).toHaveLength(0);
+  expect(renderer.root.findAllByProps({ "data-state-kind": "loading" })).toHaveLength(0);
   vi.mocked(getSavedChats).mockResolvedValue({ chats: [] });
   const refresh = renderer.root
     .findAllByType("button")

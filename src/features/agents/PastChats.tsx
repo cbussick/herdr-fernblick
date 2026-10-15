@@ -3,6 +3,8 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { getSavedChats, resumeChat } from "../../shared/api/apiClient";
 import type { Agent, SavedChat, Workspace } from "../../shared/api/contracts";
 import { ResumeChatDialog } from "./ResumeChatDialog";
+import { StateIcon } from "../../shared/ui/StateFeedback";
+import overviewStyles from "./agentOverview.module.css";
 import styles from "./PastChats.module.css";
 
 export function PastChats({
@@ -55,7 +57,12 @@ export function PastChats({
   return (
     <>
       <section className={styles.history} aria-label="Past chats" data-testid="past-chats">
-        {chats.isPending && <p role="status">Loading past chats…</p>}
+        {chats.isPending && (
+          <div className={overviewStyles["overview-empty"]} role="status" aria-busy="true">
+            <StateIcon kind="loading" spinning />
+            <p>Loading past chats…</p>
+          </div>
+        )}
         {chats.isError && (
           <div className={styles.error}>
             <p role="alert">{chats.error.message}</p>

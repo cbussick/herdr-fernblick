@@ -76,6 +76,10 @@ for (const [engine, browserType] of [
               { workspace_id: "w2", label: "API" },
             ];
       let resumed = false;
+      let releaseHistory;
+      const historyReady = new Promise((resolve) => {
+        releaseHistory = resolve;
+      });
       page.on("pageerror", (error) => errors.push(error.message));
       await page.addInitScript(() => {
         window.EventSource = class {
@@ -92,13 +96,14 @@ for (const [engine, browserType] of [
             tabs: [],
             workspaces: [...existingWorkspaces, ...(createdWorkspace ? [createdWorkspace] : [])],
           };
-        else if (url.pathname === "/api/chats" && method === "GET")
+        else if (url.pathname === "/api/chats" && method === "GET") {
+          await historyReady;
           body = {
             chats: chats.map((chat) =>
               resumed && chat.id === chats[0].id ? { ...chat, activePaneId: agent.pane_id } : chat,
             ),
           };
-        else if (url.pathname === "/api/workspaces" && method === "POST") {
+        } else if (url.pathname === "/api/workspaces" && method === "POST") {
           const input = route.request().postDataJSON();
           creations.push(input);
           createdWorkspace = { workspace_id: "w3", label: input.label };
@@ -116,7 +121,24 @@ for (const [engine, browserType] of [
       });
       await page.goto(base);
       await page.getByRole("tab", { name: "Past chats", exact: true }).click();
+      const loading = page.getByTestId("past-chats").getByRole("status");
+      await loading.waitFor();
+      assert.equal(await loading.textContent(), "Loading past chats…");
+      assert.equal(await loading.getAttribute("aria-busy"), "true");
+      const spinner = loading.locator("svg");
+      assert.equal(await spinner.evaluate((node) => getComputedStyle(node).animationName), "none");
+      await page.emulateMedia({ reducedMotion: "no-preference" });
+      assert.notEqual(
+        await spinner.evaluate((node) => getComputedStyle(node).animationName),
+        "none",
+      );
+      await page.emulateMedia({ reducedMotion: "reduce" });
+      assert.equal(await page.getByTestId("saved-chat").count(), 0);
+      assert(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth));
+      await page.screenshot({ path: `${output}/${engine}-${device}-loading.png`, fullPage: true });
+      releaseHistory();
       await page.getByTestId("saved-chat").first().waitFor();
+      await loading.waitFor({ state: "hidden" });
       assert.equal(await page.getByTestId("saved-chat").count(), 22);
       assert.equal(await page.getByTestId("past-chats").locator("select").count(), 0);
       assert.equal(
@@ -234,7 +256,9 @@ for (const [engine, browserType] of [
       );
       assert.deepEqual(mutations, [{ workspaceId: "w3" }]);
       assert.deepEqual(errors, []);
-      console.log(`${engine} ${device}: history, search, resume, overflow passed`);
+      console.log(
+        `${engine} ${device}: loading, reduced motion, history, search, resume, overflow passed`,
+      );
       await page.close();
     }
   } finally {
