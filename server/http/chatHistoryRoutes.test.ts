@@ -1,4 +1,4 @@
-import { access, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import { access, appendFile, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import type { Server } from "node:http";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -8,6 +8,9 @@ import { HerdrClient } from "../herdr/HerdrClient.js";
 import { HerdrService } from "../herdr/herdrService.js";
 import { LiveBridge } from "../pi/liveBridge.js";
 import { SessionCatalog } from "../pi/sessionCatalog.js";
+import { ChatArtifacts } from "../pi/chatArtifacts.js";
+import { BoardStore } from "../boards/storage.js";
+import { saveImageUpload } from "../../packages/pi-live-chat/images.js";
 import { createHttpServer } from "./server.js";
 import type { Agent } from "../../src/shared/api/contracts.js";
 
@@ -18,6 +21,7 @@ let id: string;
 let sessionPath: string;
 let active: Agent[];
 let service: HerdrService;
+let boards: BoardStore;
 const agent: Agent = {
   agent: "pi",
   agent_status: "idle",
@@ -71,16 +75,25 @@ beforeEach(async () => {
     }
     throw new Error(`Unexpected method ${method}`);
   });
-  service = new HerdrService({ request } as unknown as HerdrClient, catalog);
+  boards = new BoardStore(join(directory, "boards"));
+  vi.stubEnv("FERNBLICK_UPLOAD_DIR", join(directory, "uploads"));
+  service = new HerdrService(
+    { request } as unknown as HerdrClient,
+    catalog,
+    new ChatArtifacts(boards, join(directory, "herdr.sock")),
+  );
   server = createHttpServer(
     service,
     "/unused",
     new LiveBridge(join(directory, "pi.sock"), join(directory, "herdr.sock")),
+    boards,
   );
   await new Promise<void>((done) => server.listen(0, "127.0.0.1", done));
   base = `http://127.0.0.1:${(server.address() as { port: number }).port}`;
 });
 afterEach(async () => {
+  boards.close();
+  vi.unstubAllEnvs();
   server.closeAllConnections();
   await new Promise<void>((done) => server.close(() => done()));
   await rm(directory, { recursive: true, force: true });
@@ -201,7 +214,7 @@ it("deletes only the selected session and removes it from the catalog", async ()
   const list = await (await fetch(`${base}/api/chats`)).json();
   expect(list.chats).toHaveLength(1);
   expect(list.chats[0].id).not.toBe(id);
-  expect((await deleteChat()).status).toBe(404);
+  expect((await deleteChat()).status).toBe(200);
   expect((await resume()).status).toBe(404);
   expect(request.mock.calls.every(([method]) => method === "session.snapshot")).toBe(true);
 });
@@ -250,4 +263,31 @@ it("does not delete if active-session detection is unavailable, and allows retry
   expect((await deleteChat()).status).toBe(500);
   await expect(access(sessionPath)).resolves.toBeUndefined();
   expect((await deleteChat()).status).toBe(200);
+});
+
+it("cascades HTTP deletion and makes old snapshot/upload URLs unavailable", async () => {
+  const png = Buffer.from([137, 80, 78, 71, 13, 10, 26, 10]);
+  const upload = await saveImageUpload(png, "image/png");
+  await appendFile(
+    sessionPath,
+    JSON.stringify({
+      type: "custom",
+      customType: "fernblick-image-uploads",
+      data: [{ hash: "a".repeat(64), id: upload.id }],
+    }) + "\n",
+  );
+  const board = await boards.open(JSON.stringify([join(directory, "herdr.sock"), "pi-session"]));
+  const capture = await boards.capture(board.id, 0, png);
+  const url = `${base}/api/boards/${board.id}/snapshots/${capture.id}.png`;
+  expect((await fetch(url)).headers.get("cache-control")).toContain("no-store");
+  expect((await fetch(base + upload.url)).headers.get("cache-control")).toContain("no-store");
+  const response = await deleteChat();
+  expect(response.status).toBe(200);
+  expect(await response.json()).toEqual({
+    ok: true,
+    sessionId: "pi-session",
+    boardIds: [board.id],
+  });
+  expect((await fetch(url)).status).toBe(404);
+  expect((await fetch(base + upload.url)).status).toBe(404);
 });

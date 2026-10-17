@@ -7,7 +7,7 @@ import {
   realpathSync,
   renameSync,
 } from "node:fs";
-import { lstat, mkdir, open, realpath, unlink } from "node:fs/promises";
+import { lstat, mkdir, open, readdir, realpath, unlink } from "node:fs/promises";
 import { randomUUID } from "node:crypto";
 import { join, resolve } from "node:path";
 import { BoardError, requireBoard } from "./errors.js";
@@ -161,6 +161,13 @@ export class BoardDisk {
     } finally {
       await unlink(temporary).catch(() => undefined);
     }
+  }
+
+  async names(): Promise<string[]> {
+    await this.prepare();
+    return (await readdir(this.directory)).filter((name) =>
+      /^[a-f0-9]{64}(?:\.[a-f0-9-]{36}\.snapshot)?\.json$/.test(name),
+    );
   }
 
   async removeSnapshot(name: string): Promise<void> {

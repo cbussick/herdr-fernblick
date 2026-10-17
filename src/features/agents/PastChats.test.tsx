@@ -6,6 +6,9 @@ import { PastChats } from "./PastChats";
 import { createWorkspace, deleteChat, getSavedChats, resumeChat } from "../../shared/api/apiClient";
 import type { Agent, SavedChat, Workspace } from "../../shared/api/contracts";
 import { NewWorkspaceDialog } from "./NewWorkspaceDialog";
+import { removeWhiteboardDrafts } from "../whiteboard/draftStore";
+vi.mock("../whiteboard/draftStore", () => ({ removeWhiteboardDrafts: vi.fn() }));
+const deletedChat = { ok: true as const, sessionId: "session", boardIds: ["d".repeat(64)] };
 vi.mock("../../shared/api/apiClient", () => ({
   createWorkspace: vi.fn(),
   deleteChat: vi.fn(),
@@ -99,7 +102,8 @@ beforeEach(() => {
   });
   vi.mocked(getSavedChats).mockResolvedValue({ chats });
   vi.mocked(resumeChat).mockResolvedValue(agent);
-  vi.mocked(deleteChat).mockResolvedValue(undefined);
+  vi.mocked(deleteChat).mockResolvedValue(deletedChat);
+  vi.mocked(removeWhiteboardDrafts).mockResolvedValue(undefined);
   vi.mocked(createWorkspace).mockResolvedValue(newWorkspace);
 });
 afterEach(async () => {
@@ -597,7 +601,7 @@ it("waits for confirmed deletion, blocks duplicates and immediately removes the 
   vi.mocked(deleteChat).mockImplementation(
     () =>
       new Promise((resolve) => {
-        complete = resolve;
+        complete = () => resolve(deletedChat);
       }),
   );
   await act(async () => {
@@ -628,6 +632,7 @@ it("waits for confirmed deletion, blocks duplicates and immediately removes the 
   expect(rows()).toHaveLength(0);
   expect(renderer.root.findAllByType("dialog")).toHaveLength(0);
   expect(client.getQueryData(["saved-chats"])).toEqual({ chats: [chats[1]] });
+  expect(removeWhiteboardDrafts).toHaveBeenCalledWith(deletedChat.sessionId, deletedChat.boardIds);
   expect(onResumed).not.toHaveBeenCalled();
 });
 
@@ -652,4 +657,21 @@ it("keeps deletion errors visible, allows retry and clears old errors on reopeni
   expect(deleteChat).toHaveBeenCalledTimes(2);
   expect(rows()).toHaveLength(0);
   expect(renderer.root.findAllByType("dialog")).toHaveLength(0);
+});
+
+it("warns about local draft cleanup failure without resurrecting a deleted chat", async () => {
+  vi.mocked(removeWhiteboardDrafts).mockRejectedValueOnce(new Error("IndexedDB blocked"));
+  await act(async () => {
+    renderer = create(view());
+  });
+  await settle();
+  await openDelete();
+  vi.mocked(getSavedChats).mockResolvedValue({ chats: [chats[1]] });
+  await act(async () => submit());
+  await settle();
+  expect(rows()).toHaveLength(0);
+  expect(renderer.root.findAllByType("dialog")).toHaveLength(0);
+  expect(JSON.stringify(renderer.root.findByProps({ role: "status" }).children)).toContain(
+    "local whiteboard drafts could not be cleared",
+  );
 });

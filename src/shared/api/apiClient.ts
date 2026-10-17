@@ -1,6 +1,7 @@
 import {
   agentsResponseSchema,
   savedChatsResponseSchema,
+  deleteChatResponseSchema,
   resumeChatRequestSchema,
   imageUploadSchema,
   createAgentRequestSchema,
@@ -68,7 +69,9 @@ export async function getSavedChats() {
 }
 
 export async function deleteChat(id: string) {
-  await request(`/api/chats/${encodeURIComponent(id)}`, { method: "DELETE" });
+  return deleteChatResponseSchema.parse(
+    await request(`/api/chats/${encodeURIComponent(id)}`, { method: "DELETE" }),
+  );
 }
 
 export async function resumeChat(input: { id: string; workspaceId: string }) {

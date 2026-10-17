@@ -58,8 +58,9 @@ export function DeleteChatDialog({
       >
         <h2 id="delete-chat-heading">Delete chat?</h2>
         <p id="delete-chat-description">
-          Permanently delete “{chat.title}” and its saved conversation from disk? This cannot be
-          undone.
+          Permanently delete “{chat.title}” and its whiteboards, saved snapshots and uploads that
+          aren’t shared with another chat? Local whiteboard drafts in this browser are also removed.
+          Other chats and project files are kept. This cannot be undone.
         </p>
         {error && <p role="alert">{error}</p>}
         <div className={styles["confirm-dialog__actions"]}>

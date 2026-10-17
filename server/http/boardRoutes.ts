@@ -103,7 +103,7 @@ export function createBoardRoutes(service: HerdrService, bridge: LiveBridge, boa
         boardIdSchema.parse(sent[1]),
         z.string().uuid().parse(sent[2]),
       );
-      response.setHeader("Cache-Control", "private, max-age=31536000, immutable");
+      response.setHeader("Cache-Control", "private, no-store");
       if (sent[3] === "png") {
         response.setHeader("Content-Type", "image/png");
         response.end(snapshot.png);

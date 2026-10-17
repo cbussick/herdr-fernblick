@@ -26,6 +26,39 @@ async function database() {
     request.onsuccess = () => resolve(request.result);
   });
 }
+/** Clear this origin's saved drawings/recovery copies for a deleted conversation. */
+export async function removeWhiteboardDrafts(sessionId: string | null, boardIds: string[]) {
+  if (typeof indexedDB === "undefined") return;
+  const ids = new Set(boardIds);
+  const db = await database();
+  try {
+    await new Promise<void>((resolve, reject) => {
+      const tx = db.transaction("drafts", "readwrite");
+      const request = tx.objectStore("drafts").openCursor();
+      request.onsuccess = () => {
+        const cursor = request.result;
+        if (!cursor) return;
+        let sameSession = false;
+        try {
+          const key: unknown = typeof cursor.key === "string" ? JSON.parse(cursor.key) : null;
+          sameSession = sessionId !== null && Array.isArray(key) && key[1] === sessionId;
+        } catch {
+          /* Older/unrecognized keys can still be matched by board ID. */
+        }
+        const value = cursor.value as { boardId?: unknown } | undefined;
+        if (sameSession || (typeof value?.boardId === "string" && ids.has(value.boardId)))
+          cursor.delete();
+        cursor.continue();
+      };
+      tx.oncomplete = () => resolve();
+      tx.onerror = () => reject(tx.error);
+      tx.onabort = () => reject(tx.error);
+    });
+  } finally {
+    db.close();
+  }
+}
+
 export const draftStore: DraftStore = {
   async read(key) {
     const db = await database();

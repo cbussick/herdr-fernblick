@@ -176,8 +176,14 @@ async function handleApi(
     if (!uploadIdPattern.test(id)) throw new HttpError(400, "Invalid image attachment");
     response.statusCode = 200;
     response.setHeader("Content-Type", mimeTypeForUpload(id));
-    response.setHeader("Cache-Control", "private, max-age=86400");
-    response.end(await readImageUpload(id));
+    response.setHeader("Cache-Control", "private, no-store");
+    try {
+      response.end(await readImageUpload(id));
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code === "ENOENT")
+        throw new HttpError(404, "Image no longer available");
+      throw error;
+    }
     return true;
   }
 
@@ -210,8 +216,8 @@ async function handleApi(
   const deleteChatMatch = url.pathname.match(/^\/api\/chats\/([a-f0-9]{64})$/);
   if (request.method === "DELETE" && deleteChatMatch) {
     requireSameOrigin(request);
-    await service.deleteChat(deleteChatMatch[1]);
-    sendJson(response, 200, { ok: true });
+    const deleted = await service.deleteChat(deleteChatMatch[1]);
+    sendJson(response, 200, { ok: true, ...deleted });
     return true;
   }
 

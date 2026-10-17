@@ -5,17 +5,23 @@ import { HerdrService } from "./herdr/herdrService.js";
 import { createHttpServer } from "./http/server.js";
 import { LiveBridge } from "./pi/liveBridge.js";
 import { BoardStore } from "./boards/storage.js";
+import { SessionCatalog } from "./pi/sessionCatalog.js";
+import { ChatArtifacts } from "./pi/chatArtifacts.js";
 import { socketPath } from "../packages/pi-live-chat/security.js";
 
 const projectRoot = resolve(process.cwd());
 const herdrSocket = process.env.HERDR_SOCKET_PATH ?? join(homedir(), ".config/herdr/herdr.sock");
 const host = process.env.HOST ?? "127.0.0.1";
 const port = Number.parseInt(process.env.PORT ?? "8787", 10);
-const service = new HerdrService(new HerdrClient(herdrSocket));
 const bridge = new LiveBridge(socketPath(), herdrSocket);
 await bridge.start();
 const boards = new BoardStore(
   process.env.FERNBLICK_BOARD_DIR ?? join(homedir(), ".local/share/fernblick/boards"),
+);
+const service = new HerdrService(
+  new HerdrClient(herdrSocket),
+  new SessionCatalog(),
+  new ChatArtifacts(boards, herdrSocket),
 );
 const server = createHttpServer(service, join(projectRoot, "dist"), bridge, boards);
 server.on("close", () => {

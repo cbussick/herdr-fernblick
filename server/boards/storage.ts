@@ -1,4 +1,5 @@
 import { createHash, randomUUID } from "node:crypto";
+import { z } from "zod";
 import {
   MAX_BOARD_BYTES,
   boardIdSchema,
@@ -16,6 +17,10 @@ import { BoardError, requireBoard } from "./errors.js";
 import { applyOperations, emptyScene, summarize, validatePng, validateScene } from "./scene.js";
 
 export { BoardError } from "./errors.js";
+// Private ownership metadata is not part of the browser's board state.
+const storedStateSchema = boardStateSchema.extend({ sessionKey: z.string().optional() });
+type StoredState = z.infer<typeof storedStateSchema>;
+const sessionKeySchema = z.tuple([z.string(), z.string()]);
 const PENDING_MS = 30_000;
 const ACTIVE_MS = 15 * 60_000;
 const MAX_SNAPSHOTS = 128;
@@ -117,12 +122,12 @@ export class BoardStore {
     }
   }
 
-  private async load(id: string): Promise<BoardState | null> {
+  private async load(id: string): Promise<StoredState | null> {
     const bytes = await this.disk.read(`${id}.json`, MAX_STATE_BYTES);
     this.alive();
     if (!bytes) return null;
     try {
-      const parsed = boardStateSchema.safeParse(JSON.parse(bytes.toString("utf8")));
+      const parsed = storedStateSchema.safeParse(JSON.parse(bytes.toString("utf8")));
       requireBoard(parsed.success, 500, "Invalid stored board");
       const state = parsed.data;
       requireBoard(
@@ -148,13 +153,15 @@ export class BoardStore {
     requireBoard(state, 404, "Board not found");
     return state;
   }
-  private async persist(state: BoardState, authorize: () => void): Promise<void> {
+  private async persist(state: StoredState, authorize: () => void): Promise<void> {
     const bytes = Buffer.from(JSON.stringify({ ...state, access: null }));
     requireBoard(bytes.length <= MAX_STATE_BYTES, 413, "Stored board exceeds size limit");
     await this.disk.write(`${state.id}.json`, bytes, authorize);
   }
 
-  private publicState(state: BoardState): BoardState {
+  private publicState(state: StoredState): BoardState {
+    const publicState: StoredState = { ...state };
+    delete publicState.sessionKey;
     this.expire();
     const records = [...this.grants.values()].filter((g) => g.grant.boardId === state.id);
     // A single public status summarizes possibly several runtimes; no capability
@@ -167,7 +174,7 @@ export class BoardStore {
     );
     const record = records[0];
     return {
-      ...state,
+      ...publicState,
       access: record
         ? { mode: record.grant.mode, state: record.state, expiresAt: record.expiresAt }
         : null,
@@ -188,9 +195,16 @@ export class BoardStore {
     const id = BoardStore.idFor(sessionKey);
     return this.serial(id, async () => {
       const existing = await this.load(id);
-      if (existing) return this.publicState(existing);
-      const state: BoardState = {
+      if (existing) {
+        if (!existing.sessionKey) {
+          existing.sessionKey = sessionKey;
+          await this.persist(existing, this.guard());
+        }
+        return this.publicState(existing);
+      }
+      const state: StoredState = {
         id,
+        sessionKey,
         revision: 0,
         scene: emptyScene(),
         updatedAt: Date.now(),
@@ -201,6 +215,62 @@ export class BoardStore {
       await this.persist(state, this.guard());
       return this.publicState(state);
     });
+  }
+
+  async deleteConversation(
+    sessionId: string,
+    legacyKey: string,
+    sharedBoards: ReadonlySet<string> = new Set(),
+    referencedBoards: ReadonlySet<string> = new Set(),
+    liveSessions: ReadonlySet<string> = new Set(),
+  ): Promise<string[]> {
+    const names = await this.disk.names();
+    const ids = new Set([BoardStore.idFor(legacyKey)]);
+    for (const name of names.filter((name) => /^[a-f0-9]{64}\.json$/.test(name))) {
+      const id = name.slice(0, 64);
+      await this.serial(id, async () => {
+        const state = await this.load(id);
+        if (!state) return;
+        if (!state.sessionKey && id === BoardStore.idFor(legacyKey)) {
+          // Even a retained/shared legacy board needs ownership recorded before
+          // its original session disappears, so its final reference can clean it up.
+          state.sessionKey = legacyKey;
+          await this.persist(state, this.guard());
+        }
+        if (!state.sessionKey) return;
+        let raw: unknown;
+        try {
+          raw = JSON.parse(state.sessionKey);
+        } catch {
+          return;
+        }
+        const key = sessionKeySchema.safeParse(raw);
+        requireBoard(BoardStore.idFor(state.sessionKey) === id, 500, "Invalid board ownership");
+        if (
+          key.success &&
+          (key.data[1] === sessionId ||
+            (referencedBoards.has(id) && !liveSessions.has(key.data[1])))
+        )
+          ids.add(id);
+      });
+    }
+    const deleted: string[] = [];
+    for (const id of ids) {
+      if (sharedBoards.has(id)) continue;
+      await this.serial(id, async () => {
+        // Serialize with saves/captures; remove the manifest last so failed cleanup is retryable.
+        for (const [grantId, record] of this.grants)
+          if (record.grant.boardId === id) this.revoke(grantId);
+        for (const name of await this.disk.names())
+          if (name.startsWith(`${id}.`) && name !== `${id}.json`)
+            await this.disk.removeSnapshot(name);
+        await this.disk.removeSnapshot(`${id}.json`);
+        this.notify(id);
+        this.listeners.delete(id);
+      });
+      deleted.push(id);
+    }
+    return deleted;
   }
 
   async read(boardId: string): Promise<BoardState> {

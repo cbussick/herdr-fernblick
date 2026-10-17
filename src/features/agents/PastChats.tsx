@@ -4,6 +4,7 @@ import { deleteChat, getSavedChats, resumeChat } from "../../shared/api/apiClien
 import type { Agent, SavedChat, Workspace } from "../../shared/api/contracts";
 import { ResumeChatDialog } from "./ResumeChatDialog";
 import { DeleteChatDialog } from "./DeleteChatDialog";
+import { removeWhiteboardDrafts } from "../whiteboard/draftStore";
 import { StateIcon } from "../../shared/ui/StateFeedback";
 import overviewStyles from "./agentOverview.module.css";
 import styles from "./PastChats.module.css";
@@ -21,6 +22,7 @@ export function PastChats({
   const [selectedChat, setSelectedChat] = useState<SavedChat | null>(null);
   const [chatToDelete, setChatToDelete] = useState<SavedChat | null>(null);
   const historyRef = useRef<HTMLElement>(null);
+  const [cleanupWarning, setCleanupWarning] = useState("");
   const chats = useQuery({
     queryKey: ["saved-chats"],
     queryFn: getSavedChats,
@@ -49,7 +51,7 @@ export function PastChats({
   });
   const deletion = useMutation({
     mutationFn: deleteChat,
-    onSuccess: async (_result, id) => {
+    onSuccess: async (result, id) => {
       await client.cancelQueries({ queryKey: ["saved-chats"] });
       client.setQueryData(
         ["saved-chats"],
@@ -58,6 +60,13 @@ export function PastChats({
       );
       setChatToDelete(null);
       void client.invalidateQueries({ queryKey: ["saved-chats"] });
+      try {
+        await removeWhiteboardDrafts(result.sessionId, result.boardIds);
+      } catch {
+        setCleanupWarning(
+          "Chat deleted, but local whiteboard drafts could not be cleared in this browser.",
+        );
+      }
     },
   });
   const search = query.trim().toLocaleLowerCase();
@@ -79,6 +88,7 @@ export function PastChats({
         aria-label="Past chats"
         data-testid="past-chats"
       >
+        {cleanupWarning && <p role="status">{cleanupWarning}</p>}
         {chats.isPending && (
           <div className={overviewStyles["overview-empty"]} role="status" aria-busy="true">
             <StateIcon kind="loading" spinning />
@@ -123,6 +133,7 @@ export function PastChats({
                     aria-label={`Delete ${chat.title}`}
                     onClick={() => {
                       deletion.reset();
+                      setCleanupWarning("");
                       setChatToDelete(chat);
                     }}
                   >

@@ -1,5 +1,5 @@
 import { constants } from "node:fs";
-import { open, writeFile } from "node:fs/promises";
+import { open, unlink, writeFile } from "node:fs/promises";
 import { randomUUID } from "node:crypto";
 import { join } from "node:path";
 import { privateDirectory } from "./security.js";
@@ -86,6 +86,16 @@ export async function readImageUpload(id: string) {
     await file.close();
   }
 }
+export async function removeImageUpload(id: string) {
+  const path = imageUploadPath(id);
+  try {
+    await privateDirectory(join(uploadDirectory(), "guard"));
+    await unlink(path);
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error;
+  }
+}
+
 export async function prepareImages(ids: string[]) {
   const images: { type: "image"; data: string; mimeType: string }[] = [];
   // Sequential reads limit temporary binary buffers; the protocol bounds retained images.

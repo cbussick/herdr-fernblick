@@ -4,8 +4,10 @@ import { resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { z } from "zod";
 import { SessionCatalog, SavedChatError } from "../pi/sessionCatalog.js";
+import type { ChatArtifacts } from "../pi/chatArtifacts.js";
 import {
   agentSchema,
+  savedChatSchema,
   shellTabSchema,
   terminalOutputSchema,
   workspaceSchema,
@@ -96,22 +98,29 @@ const workspaceCreatedResultSchema = z.object({
 
 export class HerdrService {
   private readonly resuming = new Map<string, Promise<Agent>>();
-  private readonly deleting = new Map<string, Promise<void>>();
+  private readonly deleting = new Map<
+    string,
+    Promise<{ sessionId: string | null; boardIds: string[] }>
+  >();
+  private cleanupQueue: Promise<void> = Promise.resolve();
   // Herdr can detect a new Pi process before its session-reporting extension catches up.
   private readonly recentlyResumed = new Map<string, { paneId: string; expires: number }>();
 
   constructor(
     private readonly client: HerdrClient,
     private readonly sessions = new SessionCatalog(),
+    private readonly artifacts?: ChatArtifacts,
   ) {}
 
   async getSavedChats() {
     const [chats, dashboard] = await Promise.all([this.sessions.list(), this.getDashboard()]);
     return {
-      chats: chats.map(({ path, ...chat }) => ({
-        ...chat,
-        activePaneId: this.findActiveChat(path, dashboard.agents)?.pane_id ?? null,
-      })),
+      chats: chats.map((chat) =>
+        savedChatSchema.parse({
+          ...chat,
+          activePaneId: this.findActiveChat(chat.path, dashboard.agents)?.pane_id ?? null,
+        }),
+      ),
     };
   }
 
@@ -134,18 +143,43 @@ export class HerdrService {
       );
     const pending = this.deleting.get(id);
     if (pending) return pending;
-    const operation = this.deleteSavedChat(id);
+    const operation = this.cleanupQueue.then(() => this.deleteSavedChat(id));
+    this.cleanupQueue = operation.then(
+      () => undefined,
+      () => undefined,
+    );
     this.deleting.set(id, operation);
     void operation.finally(() => this.deleting.delete(id)).catch(() => {});
     return operation;
   }
 
   private async deleteSavedChat(id: string) {
-    const chat = await this.sessions.get(id);
+    let chat;
+    try {
+      chat = await this.sessions.get(id);
+    } catch (error) {
+      if (error instanceof SavedChatError && error.status === 404) {
+        const receipt = await this.sessions.deletionReceipt(id);
+        if (receipt) return receipt;
+      }
+      throw error;
+    }
     const dashboard = await this.getDashboard();
     if (this.findActiveChat(chat.path, dashboard.agents))
       throw new SavedChatError(409, "This chat is active. Close it before deleting it.");
-    await this.sessions.delete(id);
+    if (
+      dashboard.agents.some((agent) => agent.agent === "pi" && agent.agent_session?.kind !== "path")
+    )
+      throw new SavedChatError(
+        409,
+        "Cannot safely delete while a Pi agent has an unreported session. Wait for it to register or close it.",
+      );
+    const result = await this.sessions.delete(id, async (current) =>
+      this.artifacts
+        ? this.artifacts.delete(current, await this.sessions.list(true))
+        : { sessionId: current.sessionId, boardIds: [] },
+    );
+    return result!;
   }
 
   resumeChat(id: string, workspaceId: string) {

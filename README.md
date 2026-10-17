@@ -108,9 +108,32 @@ existing agent instead of starting a duplicate. Resuming does not send a prompt.
 The original project directory must still exist.
 
 Use a chat's **Delete** button and confirm **Delete chat** to permanently remove
-its saved session file from disk. This cannot be undone. Cancel leaves the chat
-untouched; deletion errors stay in the dialog so you can retry. Active chats and
-chats currently being resumed cannot be deleted.
+its saved session file, associated whiteboards (including embedded assets and saved
+snapshots), and referenced image uploads not shared with another saved chat.
+Whiteboard drafts and recovery copies in this browser are cleared too; a warning
+appears if local cleanup fails. Project files, other conversations/forks and
+resources still referenced by them are kept. This cannot be undone. Cancel leaves
+the chat untouched; deletion errors stay in the dialog so you can retry. Active
+chats, chats currently being resumed, and deletion while a Pi agent's session
+identity is unknown are blocked.
+
+Cleanup checks other conversations in the configured session store. It cannot
+erase copies in other stores, other browsers/devices, backups, downloaded files
+or previously cached images. Uploads from canceled/failed requests with no saved
+conversation association cannot be safely attributed and are not swept globally.
+Legacy whiteboards without ownership metadata can be found using the current
+Herdr socket; boards opened with this version also record ownership privately so
+cleanup can find them after a socket-path change.
+
+Cleanup is retryable, not an atomic transaction across all files: a failure may
+leave the transcript with some associated files already removed. The transcript
+is staged in a private `.fernblick-delete-*` directory beside its original file
+during cleanup and restored on failure without overwriting new sessions. If the
+backend stops mid-cleanup, that directory preserves the session for manual recovery
+or completion of deletion. Small private ID-only deletion receipts are retained so
+retrying after a lost response or backend restart can finish browser-draft cleanup;
+receipts contain no transcript, drawing or image content. Cleanup fails closed if
+another session is unreadable and sharing cannot be checked.
 
 The backend reads session-file metadata for this list only; the live transcript
 still comes from Pi's live bridge. It discovers local sessions under

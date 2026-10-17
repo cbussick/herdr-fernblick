@@ -92,6 +92,11 @@ export const savedChatSchema = z.object({
   activePaneId: z.string().nullable(),
 });
 export const savedChatsResponseSchema = z.object({ chats: z.array(savedChatSchema) });
+export const deleteChatResponseSchema = z.object({
+  ok: z.literal(true),
+  sessionId: z.string().min(1).nullable(),
+  boardIds: z.array(z.string().regex(/^[a-f0-9]{64}$/)),
+});
 export const resumeChatRequestSchema = z.object({
   workspaceId: createAgentRequestSchema.shape.workspaceId,
 });

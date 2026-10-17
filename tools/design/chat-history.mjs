@@ -124,7 +124,7 @@ for (const [engine, browserType] of [
           }
           await deletionReady;
           deleted = true;
-          body = { ok: true };
+          body = { ok: true, sessionId: "deleted-session", boardIds: ["e".repeat(64)] };
         } else if (url.pathname === "/api/workspaces" && method === "POST") {
           const input = route.request().postDataJSON();
           creations.push(input);
@@ -202,6 +202,24 @@ for (const [engine, browserType] of [
       const tab = await page.getByRole("tab", { name: "Past chats", exact: true }).boundingBox();
       assert(tab && tab.x >= 0 && tab.x + tab.width <= width, "History tab fits");
       await page.screenshot({ path: `${output}/${engine}-${device}.png`, fullPage: true });
+      await page.evaluate(async () => {
+        const db = await new Promise((resolve, reject) => {
+          const request = indexedDB.open("fernblick-whiteboards", 1);
+          request.onupgradeneeded = () => request.result.createObjectStore("drafts");
+          request.onsuccess = () => resolve(request.result);
+          request.onerror = () => reject(request.error);
+        });
+        await new Promise((resolve, reject) => {
+          const tx = db.transaction("drafts", "readwrite");
+          const drafts = tx.objectStore("drafts");
+          drafts.put({ boardId: "d".repeat(64) }, JSON.stringify(["old-pane", "deleted-session"]));
+          drafts.put({ boardId: "e".repeat(64) }, JSON.stringify(["another-pane", "old-key"]));
+          drafts.put({ boardId: "f".repeat(64) }, JSON.stringify(["kept-pane", "kept-session"]));
+          tx.oncomplete = resolve;
+          tx.onabort = () => reject(tx.error);
+        });
+        db.close();
+      });
       const deleteOpener = page.getByRole("button", {
         name: `Delete ${chats[1].title}`,
         exact: true,
@@ -244,6 +262,24 @@ for (const [engine, browserType] of [
         () => document.querySelectorAll('[data-testid="saved-chat"]').length === 21,
       );
       assert.equal(deletionAttempts, 2);
+      await page.waitForFunction(async () => {
+        const request = indexedDB.open("fernblick-whiteboards", 1);
+        const db = await new Promise((resolve) => {
+          request.onsuccess = () => resolve(request.result);
+        });
+        try {
+          return await new Promise((resolve) => {
+            const read = db.transaction("drafts", "readonly").objectStore("drafts").getAllKeys();
+            read.onsuccess = () =>
+              resolve(
+                JSON.stringify(read.result) ===
+                  JSON.stringify([JSON.stringify(["kept-pane", "kept-session"])]),
+              );
+          });
+        } finally {
+          db.close();
+        }
+      });
       assert(
         await page.getByTestId("past-chats").evaluate((node) => document.activeElement === node),
       );
@@ -325,7 +361,7 @@ for (const [engine, browserType] of [
       assert.deepEqual(mutations, [{ workspaceId: "w3" }]);
       assert.deepEqual(errors, []);
       console.log(
-        `${engine} ${device}: loading, reduced motion, history, search, delete, resume, focus, overflow passed`,
+        `${engine} ${device}: loading, reduced motion, history, search, delete, local draft cleanup, resume, focus, overflow passed`,
       );
       await page.close();
     }
