@@ -66,6 +66,7 @@ export const snapshotSchema = z.object({
       boards: z.literal(true).optional(),
       skills: z.literal(true).optional(),
       compact: z.literal(true).optional(),
+      models: z.literal(true).optional(),
     })
     .optional(),
   identity: identitySchema,
@@ -136,13 +137,39 @@ export const skillsResponseSchema = z.object({
   skills: z.array(skillSchema).max(MAX_SKILLS),
   truncated: z.boolean(),
 });
+export const agentModelSchema = z.object({
+  id,
+  provider: id,
+  name: z.string().min(1).max(256),
+});
+export type AgentModel = z.infer<typeof agentModelSchema>;
+export const modelSelectionSchema = z.object({ provider: id, modelId: id });
+export const modelsResponseSchema = z.object({
+  type: z.literal("models"),
+  id: z.string().uuid(),
+  target: targetSchema,
+  models: z.array(agentModelSchema).max(1000),
+  truncated: z.boolean(),
+});
+export const modelChangedResponseSchema = z.object({
+  type: z.literal("model-changed"),
+  id: z.string().uuid(),
+  target: targetSchema,
+  model: agentModelSchema,
+});
 export const commandSchema = z
   .discriminatedUnion("action", [
     z.object({
       type: z.literal("command"),
       id: z.string().uuid(),
       target: targetSchema,
-      action: z.enum(["tree", "skills", "compact"]),
+      action: z.enum(["tree", "skills", "compact", "models"]),
+    }),
+    modelSelectionSchema.extend({
+      type: z.literal("command"),
+      id: z.string().uuid(),
+      target: targetSchema,
+      action: z.literal("set-model"),
     }),
     z.object({
       type: z.literal("command"),
@@ -206,6 +233,8 @@ export const responseSchema = z.union([
   navigationResponseSchema,
   skillsResponseSchema,
   compactionResponseSchema,
+  modelsResponseSchema,
+  modelChangedResponseSchema,
 ]);
 export type BridgeResponse = z.infer<typeof responseSchema>;
 export type Identity = z.infer<typeof identitySchema>;

@@ -235,16 +235,25 @@ export class LiveBridge {
                 ? pending.command.action === "tree"
                 : response.type === "skills"
                   ? pending.command.action === "skills"
-                  : response.type === "compacted"
-                    ? pending.command.action === "compact"
-                    : pending.command.action === "navigate";
+                  : response.type === "models"
+                    ? pending.command.action === "models"
+                    : response.type === "model-changed"
+                      ? pending.command.action === "set-model"
+                      : response.type === "compacted"
+                        ? pending.command.action === "compact"
+                        : pending.command.action === "navigate";
           const validTarget =
             response.type === "ack" ||
             (response.target.runtime === pending.command.target.runtime &&
               response.target.sessionId === pending.command.target.sessionId &&
               (response.type === "navigated" ||
                 response.target.epoch === pending.command.target.epoch));
-          if (!validType || !validTarget) {
+          const validModel =
+            response.type !== "model-changed" ||
+            (pending.command.action === "set-model" &&
+              response.model.provider === pending.command.provider &&
+              response.model.id === pending.command.modelId);
+          if (!validType || !validTarget || !validModel) {
             socket.destroy();
             return;
           }
@@ -356,7 +365,8 @@ export class LiveBridge {
           requestId?: string;
           board?: BoardGrant;
         }
-      | { action: "stop" | "tree" | "skills" | "compact" }
+      | { action: "stop" | "tree" | "skills" | "compact" | "models" }
+      | { action: "set-model"; provider: string; modelId: string }
       | { action: "navigate"; entryId: string },
   ) {
     const command = commandSchema.parse({
@@ -379,6 +389,11 @@ export class LiveBridge {
       !peer.snapshot.capabilities?.skills
     )
       throw new LiveChatError(409, "Run /reload in Pi to enable skills in Fernblick");
+    if (
+      (command.action === "models" || command.action === "set-model") &&
+      !peer.snapshot.capabilities?.models
+    )
+      throw new LiveChatError(409, "Run /reload in Pi to enable model selection");
     if (command.action === "compact" && !peer.snapshot.capabilities?.compact)
       throw new LiveChatError(409, "Run /reload in Pi to enable conversation compaction");
     if (this.pending.has(command.id)) throw new LiveChatError(409, "Command already in flight");
@@ -392,6 +407,7 @@ export class LiveBridge {
     if (
       (command.action === "send" ||
         command.action === "navigate" ||
+        command.action === "set-model" ||
         command.action === "compact") &&
       (peer.snapshot.busy || peer.snapshot.sendPending)
     )

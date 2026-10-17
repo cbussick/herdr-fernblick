@@ -1,5 +1,6 @@
 import { useEffect, useId, useRef, useState, type ReactNode } from "react";
 import { type Target } from "../../../packages/pi-live-chat/protocol";
+import { BranchIcon } from "../../shared/ui/Icons";
 import { ConversationActionsMenu } from "./ConversationActionsMenu";
 import { StateNotice } from "../../shared/ui/StateFeedback";
 import styles from "./ConversationCompaction.module.css";
@@ -13,6 +14,8 @@ interface Props {
   pending: boolean;
   notice?: { text: string; error: boolean };
   onCompact: (target: Target) => void;
+  canOpenTree?: boolean;
+  onOpenTree?: () => void;
   children: (action: ReactNode) => ReactNode;
 }
 
@@ -25,6 +28,8 @@ export function ConversationCompaction({
   pending,
   notice,
   onCompact,
+  canOpenTree,
+  onOpenTree,
   children,
 }: Props) {
   const [confirmation, setConfirmation] = useState<Target | null>(null);
@@ -63,6 +68,19 @@ export function ConversationCompaction({
         triggerRef={trigger}
         disabled={locked}
         actions={[
+          ...(onOpenTree
+            ? [
+                {
+                  id: "tree",
+                  label: "Tree",
+                  icon: <BranchIcon />,
+                  disabledReason: canOpenTree
+                    ? undefined
+                    : "Connect to Pi and finish the current action to browse the tree.",
+                  onSelect: onOpenTree,
+                },
+              ]
+            : []),
           {
             id: "compact",
             label: "Compact conversation",

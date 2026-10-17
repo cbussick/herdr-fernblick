@@ -95,8 +95,10 @@ mutations are never automatically retried.
 `POST .../compact` accepts `{target}` for peers advertising
 `capabilities.compact: true`. The composer toolbar has a three-dot **More conversation
 actions** button immediately after **/Skills**, before Send. Its overflow menu
-initially contains only **Compact conversation**, with an explanation or disabled
-reason. A native HTML popover places the menu above the composer in the top layer,
+contains **Tree**, retaining its branch icon beside the label, and **Compact
+conversation**, with an explanation or disabled reason. Tree opens the existing
+conversation-path dialog; the old toolbar Tree button is replaced by a compact
+**Change model** icon button. A native HTML popover places the menu above the composer in the top layer,
 without clipping; position follows resize/scroll and the visual viewport. This
 requires a modern Popover API browser (including Safari/iPadOS 17+).
 Arrow keys/Home/End navigate, Enter/Space select, Escape restores trigger focus,
@@ -150,6 +152,50 @@ that cleanup. Cancellation, already-compacted/small sessions and provider errors
 reach `onError`. A real isolated Pi 1.1.0 fixture uses a custom compaction hook
 to verify persistence, busy/idle state, callback completion and already-compacted
 failure, without provider calls.
+
+`POST .../models` accepts `{target}` and returns a correlated catalogue from the
+selected agent's public `ctx.modelRegistry.getAvailable()`. Only model ID,
+provider and display name cross the socket (at most 1,000 models, with an explicit
+truncation notice); no keys, headers or endpoints are exposed.
+`POST .../set-model` accepts `{target,provider,modelId}`. Both endpoints require
+`capabilities.models: true`, matching Origin, JSON, current process mapping and
+runtime/session/epoch. Older extensions show a `/reload` notice. Selection also
+requires idle state, a currently available model, and the shared in-flight guard.
+The extension calls public `pi.setModel(model)` with no preceding await after
+validation. It returns a correlated `model-changed` response only after the
+promise succeeds and current session/model state is checked; an ACK is not success.
+The operation retains serialization until settlement, even over disconnect.
+Uncertain/disconnected operations are never retried automatically.
+
+The toolbar button uses the former Tree slot, leaving the row's width unchanged.
+It opens a searchable modal with current-model indication, provider/ID metadata,
+native focus trapping, Arrow navigation and Escape/close focus restoration.
+Search Enter cannot submit the surrounding composer. Discovery happens only on
+opening (or explicit error retry), never on keystrokes, focus or reconnect.
+Pi activity disables switching; disconnect or identity replacement closes the
+picker and discards stale results. Draft text/images and history are unchanged.
+Pi persists the choice in this session without changing defaults for new agents
+and applies its native thinking-level compatibility rules. Provider setup/login
+remains in Pi. Native model selection may finish after a transport deadline;
+inspect Pi before an explicit retry.
+
+Tests cover extension discovery/filtering, idle/auth/identity gates,
+serialization, duplicates, errors and shutdown; socket/HTTP capability, Origin,
+input and correlated-result guards; browser current-model/search/loading/error
+states, explicit selection, draft/image retention and stale-target invalidation.
+An isolated real-Pi 1.1.0 fixture verifies the public API, session model-change
+entry and unchanged global defaults without a provider request.
+Synthetic Chromium/WebKit regressions cover 320/390px phones, a keyboard-height
+viewport, iPad and desktop with all API/SSE traffic intercepted:
+
+```sh
+PLAYWRIGHT_MODULE=/tmp/fernblick-design-tools/node_modules/playwright/index.mjs \
+  node tools/design/model-picker.mjs http://127.0.0.1:<static-port>
+```
+
+Screenshots are written to ignored `design-gallery/model-picker/`.
+Existing agents are never controlled by these checks; physical-device keyboard
+behavior and live provider calls remain manual verification.
 
 `POST .../skills` accepts `{target}` and returns a correlated catalogue from the
 active extension's public `pi.getCommands()`. Snapshots advertise

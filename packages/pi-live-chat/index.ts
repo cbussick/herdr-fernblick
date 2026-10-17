@@ -3,6 +3,7 @@ import { connect, type Socket } from "node:net";
 import type { ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-agent";
 import {
   commandSchema,
+  agentModelSchema,
   footerPublicationSchema,
   footerRequestEvent,
   footerUpdateEvent,
@@ -222,7 +223,7 @@ export default function liveChat(pi: ExtensionAPI) {
       return {
         type: "snapshot",
         version: 2,
-        capabilities: { boards: true, skills: true, compact: true },
+        capabilities: { boards: true, skills: true, compact: true, models: true },
         identity,
         epoch,
         seq: ++seq,
@@ -412,6 +413,80 @@ export default function liveChat(pi: ExtensionAPI) {
           } catch {
             reject("Skills unavailable in this Pi session");
           }
+          return;
+        }
+        if (command.action === "models") {
+          try {
+            // Only public display metadata crosses the socket, never credentials,
+            // endpoints, headers or provider configuration.
+            const models = context.modelRegistry.getAvailable();
+            writeFrame(client, {
+              type: "models",
+              id: command.id,
+              target: command.target,
+              models: models.slice(0, 1000).map((model) =>
+                agentModelSchema.parse({
+                  id: model.id,
+                  provider: model.provider,
+                  name: model.name,
+                }),
+              ),
+              truncated: models.length > 1000,
+            });
+          } catch {
+            reject("Models unavailable in this Pi session");
+          }
+          return;
+        }
+        if (command.action === "set-model") {
+          if (value.busy || sendPending) {
+            reject("Pi is busy or a previous send is unresolved");
+            return;
+          }
+          preparing = true;
+          void (async () => {
+            try {
+              const model = context!.modelRegistry
+                .getAvailable()
+                .find(
+                  (model) => model.provider === command.provider && model.id === command.modelId,
+                );
+              if (!model) throw new Error("Model is no longer available in Pi");
+              // No await between validating this session and invoking the native API.
+              if (!(await pi.setModel(model)))
+                throw new Error("Model authentication is unavailable");
+              const fresh = snapshot();
+              if (
+                current !== generation ||
+                client !== socket ||
+                client.destroyed ||
+                !fresh ||
+                !matchesTarget(fresh, command.target) ||
+                fresh.status.model !== model.id ||
+                fresh.status.provider !== model.provider
+              )
+                throw new Error("Model change outcome uncertain. Check Pi before trying again.");
+              requestFooter();
+              writeFrame(client, {
+                type: "model-changed",
+                id: command.id,
+                target: command.target,
+                model: { id: model.id, provider: model.provider, name: model.name },
+              });
+            } catch (error) {
+              if (current === generation && client === socket && !client.destroyed)
+                reject(
+                  error instanceof Error ? error.message.slice(0, 512) : "Model change failed",
+                );
+            } finally {
+              // Retain serialization over disconnect until the native operation settles.
+              if (current === generation) {
+                preparing = false;
+                publish();
+              }
+            }
+          })();
+          publish();
           return;
         }
         if (command.action === "tree") {

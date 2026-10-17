@@ -165,8 +165,10 @@ for (const [engine, type] of [
       }
       await page.screenshot({ path: `${output}/${engine}-${name}-toolbar.png` });
       await openMenu();
-      assert.equal(await menu.getByRole("menuitem").count(), 1);
-      assert.equal(await compact.evaluate((node) => node === document.activeElement), true);
+      assert.equal(await menu.getByRole("menuitem").count(), 2);
+      const tree = page.getByRole("menuitem", { name: "Tree", exact: true });
+      assert.equal(await tree.locator("svg").count(), 1);
+      assert.equal(await tree.evaluate((node) => node === document.activeElement), true);
       assert.equal(await menu.evaluate((node) => node.matches(":popover-open")), true);
       const bounds = await menu.boundingBox();
       assert(
@@ -198,10 +200,12 @@ for (const [engine, type] of [
         await page.screenshot({ path: `${output}/${engine}-menu-resize.png` });
         await page.setViewportSize({ width, height });
       }
-      await compact.press("End");
+      await tree.press("End");
       await compact.press("Home");
-      await compact.press("ArrowUp");
+      await tree.press("ArrowUp");
       await compact.press("ArrowDown");
+      assert.equal(await tree.evaluate((node) => node === document.activeElement), true);
+      await tree.press("ArrowDown");
       assert.equal(await compact.evaluate((node) => node === document.activeElement), true);
       await compact.press("Escape");
       assert.equal(await menu.count(), 0);
@@ -235,7 +239,10 @@ for (const [engine, type] of [
       await openMenu();
       await frame({ busy: true });
       await page.waitForFunction(
-        () => document.querySelector('[role="menuitem"]')?.getAttribute("aria-disabled") === "true",
+        () =>
+          document
+            .querySelector('[role="menuitem"][aria-label="Compact conversation"]')
+            ?.getAttribute("aria-disabled") === "true",
       );
       assert.match(await compact.innerText(), /idle/);
       await compact.evaluate((node) => node.click());

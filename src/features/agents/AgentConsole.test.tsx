@@ -527,9 +527,12 @@ it("previews all ten local draft images without uploading, sending or discarding
 it("previews restored upload IDs and closes if the displayed attachment is removed", async () => {
   vi.stubGlobal("document", { body: {}, addEventListener: vi.fn(), removeEventListener: vi.fn() });
   const ids = [`${randomUUID()}.png`, `${randomUUID()}.png`];
-  await act(async () =>
-    renderer.root.findByProps({ "aria-label": "Open conversation paths" }).props.onClick(),
-  );
+  await openActions();
+  const treeAction = renderer.root.findByProps({ role: "menuitem", "aria-label": "Tree" });
+  expect(treeAction.findAllByType("svg")).toHaveLength(1);
+  expect(renderer.root.findAllByProps({ "aria-label": "Open conversation paths" })).toHaveLength(0);
+  expect(renderer.root.findByProps({ "aria-label": "Change model" })).toBeDefined();
+  await act(async () => treeAction.props.onClick());
   const tree = renderer.root.findByType(ConversationTreeDialog);
   await act(async () => {
     tree.props.onRestorePrompt("Restored draft", ids);
