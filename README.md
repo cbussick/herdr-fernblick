@@ -13,6 +13,12 @@ start Pi. Standalone workspace creation still creates only a workspace and shell
 New shell tabs also accept an optional name; leave it blank to use Herdr's next
 tab number.
 
+Opening an agent's **New answer** in a visible browser tab marks that completion
+read and displays **Idle**, including its workspace badge. Polling does not bring
+back the same badge; a later completed answer is unread again. Read receipts are
+local to the current page and do not change Herdr's underlying agent status.
+Answers arriving while the browser tab is hidden remain unread until you return.
+
 Manrope is licensed under the SIL Open Font License 1.1. Its complete copyright notice and license ship at `/licenses/Manrope-OFL.txt`; see [font provenance](src/styles/fonts/README.md). See [styling and development conventions](docs/development.md) and the [three-viewport screenshot gallery tooling](tools/design/README.md).
 
 ## Requirements
@@ -178,6 +184,14 @@ The HTTP API does not expose a shell or arbitrary Herdr method proxy. Access to 
 
 ```bash
 npm run check
+```
+
+Read-status regression (Chromium/WebKit at phone, tablet and desktop sizes;
+all API and SSE traffic is synthetic):
+
+```sh
+PLAYWRIGHT_MODULE=/path/to/playwright/index.mjs \
+  node tools/design/read-agent-status.mjs http://127.0.0.1:<frontend-port>
 ```
 
 Agent/workspace dialog regression (Chromium/WebKit at phone, tablet and desktop
