@@ -34,23 +34,34 @@ const snapshot = {
   sendPending: false,
   truncated: false,
   messages: [{ id: "m1", role: "assistant", text: "Streaming paragraph.\n\n".repeat(100) }],
-  status: { cwd: "/fixture", totalTokens: 0, cost: 0 },
+  status: {
+    cwd: "/fixture",
+    totalTokens: 0,
+    cost: 0,
+    footerLines: [
+      "gpt-fixture high · Context 11% used · weekly 76% left (reset Thu 1:56) · ~/fixture · main",
+      "↑59k ↓5.5k R1.2M CH99.8% $0.297 10.9%/500k (fixture)",
+    ],
+  },
 };
 for (const [engine, type] of [
   ["chromium", chromium],
   ["webkit", webkit],
 ]) {
-  const browser = await type.launch({ headless: true });
+  const browser = await type.launch({ headless: true, ignoreDefaultArgs: ["--hide-scrollbars"] });
   try {
     for (const [device, width, height, expandedHeight] of [
       ["tablet", 834, 900, 1194],
       ["phone", 390, 440, 844],
+      ["pixel", 393, 427, 727],
     ]) {
+      if (process.env.SCROLL_CASE && process.env.SCROLL_CASE !== device) continue;
+      if (process.env.SCROLL_ENGINE && process.env.SCROLL_ENGINE !== engine) continue;
       const page = await browser.newPage({
         viewport: { width, height },
-        hasTouch: true,
-        isMobile: device === "phone",
-        deviceScaleFactor: device === "phone" ? 3 : 1,
+        hasTouch: device !== "tablet",
+        isMobile: device !== "tablet",
+        deviceScaleFactor: device === "pixel" ? 2.75 : device === "phone" ? 3 : 1,
       });
       const errors = [];
       const commands = [];
@@ -91,15 +102,30 @@ for (const [engine, type] of [
       const transcript = page.getByTestId("chat-transcript");
       await transcript.locator('[data-message-id="m1"]').waitFor();
       const settle = () => page.waitForTimeout(100);
-      // Mobile WebKit has no wheel input; change scrollTop and use its real scroll events.
+      const send = () => {
+        const button = page.getByRole("button", { name: "Send message", exact: true });
+        return device === "tablet" ? button.click() : button.tap();
+      };
+      // Mobile WebKit has no wheel API. Model the touch intent, then let the
+      // browser deliver real scroll events for the corresponding scrollTop change.
       const scroll = (delta) =>
-        engine === "webkit" && device === "phone"
-          ? transcript.evaluate((el, y) => el.scrollBy(0, y), delta)
+        engine === "webkit" && device !== "tablet"
+          ? transcript.evaluate((el, y) => {
+              const touch = (type, clientY) => {
+                const event = new Event(type, { bubbles: true });
+                Object.defineProperty(event, "touches", { value: [{ clientY }] });
+                el.dispatchEvent(event);
+              };
+              touch("touchstart", 100);
+              touch("touchmove", 100 - Math.sign(y) * 20);
+              el.scrollBy(0, y);
+            }, delta)
           : page.mouse.wheel(0, delta);
       const geometry = () =>
         transcript.evaluate((el) => ({
           top: el.scrollTop,
           height: el.clientHeight,
+          rectHeight: el.getBoundingClientRect().height,
           gap: el.scrollHeight - el.clientHeight - el.scrollTop,
         }));
       const bottom = async (label) => {
@@ -135,6 +161,20 @@ for (const [engine, type] of [
         await settle();
       };
       await bottom("initial follow");
+      if (device === "tablet" && engine === "chromium") {
+        const box = await transcript.boundingBox();
+        await page.mouse.click(box.x + box.width - 5, box.y + 10);
+        // Native scrollbar track clicks may animate independently of CSS scroll-behavior.
+        await page.waitForTimeout(500);
+        const reading = await geometry();
+        assert.ok(reading.gap > 1, `${engine}: scrollbar click must pause following`);
+        await stream();
+        assert.equal((await geometry()).top, reading.top, "scrollbar reader stays paused");
+        await transcript.hover();
+        await scroll(100000);
+        await bottom("return after scrollbar reading");
+        await settle();
+      }
       // A larger viewport clamps scrollTop before the deferred ResizeObserver alignment.
       await page.setViewportSize({ width, height: expandedHeight });
       await settle();
@@ -165,10 +205,40 @@ for (const [engine, type] of [
       await settle();
       assert.ok((await geometry()).gap > 1, "reader is above the bottom before sending");
       await page.locator("#agent-prompt").fill("A new turn from the composer");
-      await page.getByRole("button", { name: "Send message", exact: true }).click();
+      await send();
       for (let i = 0; i < 100 && commands.length < 1; i++) await page.waitForTimeout(20);
       assert.equal(commands.length, 1);
       await bottom("send from a paused transcript must resume following immediately");
+      if (device === "pixel") {
+        await page.evaluate(
+          (next) => {
+            window.fixtureStream.onmessage({ data: JSON.stringify(next) });
+          },
+          {
+            ...snapshot,
+            seq: ++seq,
+            busy: false,
+            sendPending: true,
+            messages: [
+              ...snapshot.messages,
+              { id: "u1", role: "user", text: "A new turn from the composer" },
+            ],
+          },
+        );
+        await transcript.locator('[data-message-id="u1"]').waitFor();
+        await bottom("local message echo before keyboard/footer changes");
+        await page.evaluate(() => {
+          const footer = document.querySelector('[data-testid="pi-session-status"]');
+          const transcript = document.querySelector('[data-testid="chat-transcript"]');
+          footer.style.display = "none";
+          // Force browser layout/clamping between two geometry changes, as can
+          // happen while the keyboard and mirrored session footer update.
+          void transcript.scrollTop;
+          footer.style.display = "";
+        });
+        await settle();
+        await bottom("send stays pinned through successive geometry changes");
+      }
       const messages = [
         ...snapshot.messages,
         { id: "u1", role: "user", text: "A new turn from the composer" },
@@ -223,7 +293,7 @@ for (const [engine, type] of [
       await page.locator("#agent-prompt").fill("A longer phone message\n".repeat(8));
       await page.setViewportSize({ width, height });
       await settle();
-      await page.getByRole("button", { name: "Send message", exact: true }).click();
+      await send();
       for (let i = 0; i < 100 && commands.length < 3; i++) await page.waitForTimeout(20);
       assert.equal(commands.length, 3);
       await bottom("multiline send with keyboard open");
@@ -246,6 +316,45 @@ for (const [engine, type] of [
         await publish(true);
         await settle();
         await bottom(`keyboard dismissal step ${step}`);
+      }
+      // Keyboard reading must pause following even during later streamed output.
+      await transcript.focus();
+      await page.keyboard.press("PageUp");
+      await page.waitForTimeout(500);
+      const keyboardReading = await geometry();
+      assert.ok(keyboardReading.gap > 1, "PageUp pauses following");
+      messages[2].text += "Output while keyboard reading.\n\n".repeat(3);
+      await publish(true);
+      await settle();
+      assert.equal((await geometry()).top, keyboardReading.top);
+      await transcript.hover();
+      await scroll(100000);
+      await bottom("return after keyboard reading");
+      await settle();
+      if (engine === "chromium" && device !== "tablet") {
+        // Real browser touch input, not a synthetic DOM event or mouse wheel.
+        const cdp = await page.context().newCDPSession(page);
+        const box = await transcript.boundingBox();
+        const point = { x: box.x + box.width / 2, y: box.y + box.height / 3 };
+        await cdp.send("Input.dispatchTouchEvent", { type: "touchStart", touchPoints: [point] });
+        for (let i = 1; i <= 8; i++) {
+          await cdp.send("Input.dispatchTouchEvent", {
+            type: "touchMove",
+            touchPoints: [{ ...point, y: point.y + i * 10 }],
+          });
+          await page.waitForTimeout(16);
+        }
+        // Hold before lifting so inertial scrolling does not race the assertion.
+        await page.waitForTimeout(150);
+        await cdp.send("Input.dispatchTouchEvent", { type: "touchEnd", touchPoints: [] });
+        await settle();
+        const touchReading = await geometry();
+        assert.ok(touchReading.gap > 1, "upward reader touch scroll pauses following");
+        messages[2].text += "Output while touch reading.\n\n".repeat(3);
+        await publish(true);
+        await settle();
+        assert.equal((await geometry()).top, touchReading.top);
+        await cdp.detach();
       }
       assert.deepEqual(errors, []);
       console.log(

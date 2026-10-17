@@ -75,6 +75,7 @@ export function ChatTranscript({
   const readerTop = useRef(0);
   const appliedTop = useRef<number | null>(null);
   const lastFollowRequest = useRef(followRequest);
+  const touchY = useRef<number | null>(null);
   const [image, setImage] = useState<{ urls: string[]; index: number } | null>(null);
   const imageOpen = Boolean(image);
   const alignScroll = useCallback(() => {
@@ -110,6 +111,13 @@ export function ChatTranscript({
     onImageOpenChange?.(imageOpen);
     return () => onImageOpenChange?.(false);
   }, [imageOpen, onImageOpenChange]);
+  function pauseFollowing() {
+    const element = output.current;
+    if (!element || !following.current) return;
+    following.current = false;
+    readerTop.current = element.scrollTop;
+    appliedTop.current = null;
+  }
   return (
     <>
       <div
@@ -125,9 +133,44 @@ export function ChatTranscript({
         aria-label="Conversation history"
         tabIndex={0}
         onLoadCapture={alignScroll}
+        onWheel={(event) => {
+          if (event.deltaY < 0) pauseFollowing();
+        }}
+        onTouchStart={(event) => {
+          touchY.current = event.touches[0]?.clientY ?? null;
+        }}
+        onTouchMove={(event) => {
+          const nextY = event.touches[0]?.clientY ?? null;
+          if (nextY !== null && touchY.current !== null && nextY > touchY.current) pauseFollowing();
+          touchY.current = nextY;
+        }}
+        onPointerDown={(event) => {
+          if (event.pointerType !== "mouse" || event.button !== 0) return;
+          const element = event.currentTarget;
+          const left = element.getBoundingClientRect().left;
+          // Native scrollbar interaction, including a left-side RTL scrollbar.
+          if (
+            event.clientX >= left + element.clientLeft + element.clientWidth ||
+            event.clientX < left + element.clientLeft
+          )
+            pauseFollowing();
+        }}
+        onKeyDown={(event) => {
+          if (
+            ["ArrowUp", "PageUp", "Home"].includes(event.key) ||
+            (event.key === " " && event.shiftKey && event.target === event.currentTarget)
+          )
+            pauseFollowing();
+        }}
         onScroll={() => {
           const element = output.current;
           if (!element) return;
+          // Browser layout/keyboard clamping can move scrollTop several times
+          // before this event. Only reader input should leave follow mode.
+          if (following.current) {
+            alignScroll();
+            return;
+          }
           const maxTop = Math.max(0, element.scrollHeight - element.clientHeight);
           // Geometry can clamp our last write before the resize callback runs.
           // That automatic movement is not the reader scrolling upward.

@@ -72,6 +72,13 @@ afterEach(async () => {
 function output() {
   return renderer.root.findByProps({ "data-ui": "chat-transcript" });
 }
+async function readerScrollTo(value: number) {
+  await act(async () => {
+    output().props.onWheel({ deltaY: value - viewport.scrollTop });
+    viewport.scrollTop = value;
+    output().props.onScroll();
+  });
+}
 it("renders all turns, status, tool errors and images with the shared thinking preference", async () => {
   let text = JSON.stringify(renderer.toJSON());
   for (const value of [
@@ -118,20 +125,30 @@ it.each(["viewport expansion", "content shrink"])(
     expect(top).toBe(1400 - viewport.clientHeight);
   },
 );
+it("keeps following when layout expands and contracts before the browser scroll event", async () => {
+  viewport.clientHeight = 500;
+  viewport.scrollTop = top;
+  // The second layout change hides the intermediate clamp from the observer.
+  viewport.clientHeight = 200;
+  await act(async () => output().props.onScroll());
+  await act(async () => resize());
+  expect(top).toBe(800);
+  viewport.scrollHeight = 1120;
+  await act(async () => renderer.update(<ChatTranscript {...props} />));
+  expect(top).toBe(920);
+});
 it("still pauses for a small reader scroll after automatic clamping", async () => {
   viewport.clientHeight = 500;
   viewport.scrollTop = viewport.scrollTop;
   await act(async () => output().props.onScroll());
-  viewport.scrollTop -= 0.5;
-  await act(async () => output().props.onScroll());
+  await readerScrollTo(viewport.scrollTop - 0.5);
   await act(async () => resize());
   viewport.scrollHeight = 1400;
   await act(async () => renderer.update(<ChatTranscript {...props} />));
   expect(top).toBe(499.5);
 });
 it("does not resume a paused reader when geometry clamps before alignment", async () => {
-  viewport.scrollTop = 300;
-  await act(async () => output().props.onScroll());
+  await readerScrollTo(300);
   await act(async () => renderer.update(<ChatTranscript {...props} />));
   viewport.clientHeight = 900;
   viewport.scrollTop = viewport.scrollTop;
@@ -147,8 +164,7 @@ it.each([12, 1, 0.5])(
     expect(top).toBe(800);
     // Delivery of our initial programmatic scroll must not change follow mode.
     await act(async () => output().props.onScroll());
-    viewport.scrollTop = 800 - distance;
-    await act(async () => output().props.onScroll());
+    await readerScrollTo(800 - distance);
     viewport.scrollHeight = 1040;
     props = {
       ...props,
@@ -166,24 +182,70 @@ it.each([12, 1, 0.5])(
     expect(top).toBe(800 - distance);
   },
 );
+it.each(["touch", "ArrowUp", "PageUp", "Home", "Shift+Space", "scrollbar"])(
+  "pauses following on upward %s input before browser scroll delivery",
+  async (input) => {
+    await act(async () => {
+      if (input === "touch") {
+        output().props.onTouchStart({ touches: [{ clientY: 100 }] });
+        output().props.onTouchMove({ touches: [{ clientY: 100.5 }] });
+      } else if (input === "scrollbar") {
+        output().props.onPointerDown({
+          pointerType: "mouse",
+          button: 0,
+          clientX: 199,
+          currentTarget: {
+            clientLeft: 0,
+            clientWidth: 185,
+            getBoundingClientRect: () => ({ left: 0 }),
+          },
+        });
+      } else {
+        output().props.onKeyDown({
+          key: input === "Shift+Space" ? " " : input,
+          shiftKey: input === "Shift+Space",
+          target: viewport,
+          currentTarget: viewport,
+        });
+      }
+      // Streaming can render between the input and its native scroll event.
+      viewport.scrollHeight = 1040;
+      renderer.update(<ChatTranscript {...props} />);
+    });
+    expect(top).toBe(800);
+    viewport.scrollTop = 799.5;
+    await act(async () => output().props.onScroll());
+    viewport.scrollHeight = 1080;
+    await act(async () => renderer.update(<ChatTranscript {...props} />));
+    expect(top).toBe(799.5);
+  },
+);
+it("does not pause for downward touch, downward wheel or button activation", async () => {
+  await act(async () => {
+    output().props.onTouchStart({ touches: [{ clientY: 100 }] });
+    output().props.onTouchMove({ touches: [{ clientY: 80 }] });
+    output().props.onWheel({ deltaY: 12 });
+    output().props.onKeyDown({ key: " ", shiftKey: true, target: {}, currentTarget: viewport });
+    output().props.onPointerDown({ pointerType: "touch", button: 0 });
+    viewport.scrollHeight = 1040;
+    renderer.update(<ChatTranscript {...props} />);
+  });
+  expect(top).toBe(840);
+});
 it("resumes following only when the reader scrolls down to the bottom", async () => {
-  viewport.scrollTop = 740;
-  await act(async () => output().props.onScroll());
-  viewport.scrollTop = 788;
-  await act(async () => output().props.onScroll());
+  await readerScrollTo(740);
+  await readerScrollTo(788);
   viewport.scrollHeight = 1040;
   await act(async () => renderer.update(<ChatTranscript {...props} />));
   expect(top).toBe(788);
   // scrollTop can be fractional even though scrollHeight/clientHeight are rounded.
-  viewport.scrollTop = 839.5;
-  await act(async () => output().props.onScroll());
+  await readerScrollTo(839.5);
   viewport.scrollHeight = 1080;
   await act(async () => renderer.update(<ChatTranscript {...props} />));
   expect(top).toBe(880);
 });
 it("preserves the reader position through streaming, clamped expansion and collapse", async () => {
-  viewport.scrollTop = 300;
-  await act(async () => output().props.onScroll());
+  await readerScrollTo(300);
   props = {
     ...props,
     messages: [...props.messages, { id: "reply", role: "assistant", text: "Streaming" }],
@@ -202,8 +264,7 @@ it("preserves the reader position through streaming, clamped expansion and colla
   expect(disconnect).toHaveBeenCalledOnce();
 });
 it("ignores its own fractional clamped scroll when rounded geometry differs", async () => {
-  viewport.scrollTop = 300;
-  await act(async () => output().props.onScroll());
+  await readerScrollTo(300);
   viewport.clientHeight = 900;
   // Browser scrollTop retains fractions; scrollHeight and clientHeight are rounded.
   bottomFraction = 0.5;
@@ -215,8 +276,7 @@ it("ignores its own fractional clamped scroll when rounded geometry differs", as
   expect(top).toBe(300);
 });
 it("realigns parent-driven expansion even when message props do not change", async () => {
-  viewport.scrollTop = 300;
-  await act(async () => output().props.onScroll());
+  await readerScrollTo(300);
   viewport.clientHeight = 900;
   await act(async () => renderer.update(<ChatTranscript {...props} />));
   expect(top).toBe(100);

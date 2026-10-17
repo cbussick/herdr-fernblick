@@ -105,17 +105,23 @@ PLAYWRIGHT_MODULE=/tmp/fernblick-design-tools/node_modules/playwright/index.mjs 
 ```
 
 Chromium/WebKit use intercepted agent APIs and synthetic streaming snapshots at
-tablet and phone sizes to check that browser scroll clamping during viewport
-expansion does not pause following. Phone cases enable mobile emulation and a 3×
-device scale factor. A small upward scroll must pause immediately, and returning
-to the bottom must resume following. Mobile WebKit uses DOM scrolling with real
-browser scroll events because Playwright wheel input is unavailable there; other
-cases use wheel input. Click and keyboard sends from a paused transcript must
-resume immediately, before an ACK or live echo. Reading upward again must remain
-paused through later ACKs and streamed output. Multiline sends must stay at the
-bottom after ACK clears the draft and during streaming with stepped viewport
-expansion simulating keyboard dismissal. No live agents or Herdr sockets are used.
-These checks simulate keyboard geometry, not a physical phone keyboard.
+tablet, phone (390px/3×) and Pixel-like (393px/2.75×) sizes. Phone cases enable mobile
+emulation; the fixture includes a wrapped, mirrored session footer. Optional
+`SCROLL_CASE=pixel` and `SCROLL_ENGINE=chromium` select a focused reproduction.
+
+The Pixel-like case changes footer geometry twice in one browser turn after a
+send, forcing intermediate scroll clamping before scroll/resize delivery. Before
+the fix this left a 65px bottom gap and disabled following without reader input.
+The test requires following to survive this, streamed replies and stepped viewport
+expansion simulating keyboard dismissal. Multiline sends must also stay pinned
+when ACK clears the draft. Click/touch and keyboard sends resume immediately,
+before an ACK or echo; a later reader pause must survive ACKs and streamed output.
+
+Wheel, PageUp and Chromium native-scrollbar checks cover reader pause/resume.
+Chromium phone cases also exercise real touch input via CDP. Mobile WebKit models
+touch intent with DOM events and changes scrollTop, using real browser scroll
+events, because Playwright has no mobile WebKit wheel/drag API. No live agents or
+Herdr sockets are used. Keyboard geometry is simulated, not a physical phone keyboard.
 
 ## Proposal regression comparison
 

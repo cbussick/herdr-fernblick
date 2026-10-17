@@ -1044,6 +1044,7 @@ it.each(["text", "image"])(
     });
     const transcript = () => renderer.root.findByProps({ "data-ui": "chat-transcript" });
     expect(viewport.scrollTop).toBe(800);
+    await act(async () => transcript().props.onWheel({ deltaY: -500 }));
     viewport.scrollTop = 300;
     await act(async () => transcript().props.onScroll());
     // An empty, rejected submission must not leave reading mode.
@@ -1079,6 +1080,7 @@ it.each(["text", "image"])(
     await act(async () => renderer.update(render()));
     expect(viewport.scrollTop).toBe(1000);
     // Reading upward again during this send must still pause following.
+    await act(async () => transcript().props.onWheel({ deltaY: -12 }));
     viewport.scrollTop = 988;
     await act(async () => transcript().props.onScroll());
     // A stale repeated submission is guarded and must not resume following again.
