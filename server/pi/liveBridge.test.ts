@@ -366,6 +366,106 @@ it("rejects skills responses from a different epoch", async () => {
   );
 });
 
+it("guards model HTTP routes by origin, capability, identity, input and idle state", async () => {
+  const p = await peer();
+  const service = { getAgent: vi.fn(async () => agent) } as unknown as HerdrService;
+  const server = createHttpServer(service, dir, bridge);
+  await new Promise<void>((done) => server.listen(0, "127.0.0.1", done));
+  const base = `http://127.0.0.1:${(server.address() as { port: number }).port}`;
+  const commands: unknown[] = [];
+  receiveFrames(p.socket, (raw) => {
+    commands.push(raw);
+    const c = raw as {
+      id: string;
+      action: string;
+      target: unknown;
+      provider: string;
+      modelId: string;
+    };
+    writeFrame(
+      p.socket,
+      c.action === "models"
+        ? {
+            type: "models",
+            id: c.id,
+            target: c.target,
+            models: [],
+            truncated: false,
+          }
+        : {
+            type: "model-changed",
+            id: c.id,
+            target: c.target,
+            model: { provider: c.provider, id: c.modelId, name: "Test model" },
+          },
+    );
+  });
+  const request = (action: string, body: object = {}, origin = base) =>
+    fetch(base + "/api/agents/w1:p1/" + action, {
+      method: "POST",
+      headers: { Origin: origin, "Content-Type": "application/json" },
+      body: JSON.stringify({ target: targetOf(p.snapshot), ...body }),
+    });
+  try {
+    expect((await request("models", {}, "https://elsewhere.test")).status).toBe(403);
+    expect((await request("models")).status).toBe(409);
+    const selection = { provider: "provider", modelId: "model" };
+    expect((await request("set-model", selection)).status).toBe(409);
+    writeFrame(p.socket, { ...p.snapshot, seq: 2, busy: true, capabilities: { models: true } });
+    await vi.waitFor(() => expect(bridge.current(agent).snapshot.seq).toBe(2));
+    expect((await request("set-model", selection)).status).toBe(409);
+    expect((await request("models")).status).toBe(200);
+    expect((await request("set-model", { provider: "provider" })).status).toBe(400);
+    writeFrame(p.socket, { ...p.snapshot, seq: 3, capabilities: { models: true } });
+    await vi.waitFor(() => expect(bridge.current(agent).snapshot.seq).toBe(3));
+    expect(
+      (
+        await request("set-model", {
+          ...selection,
+          target: { ...targetOf(p.snapshot), epoch: randomUUID() },
+        })
+      ).status,
+    ).toBe(409);
+    const result = await request("set-model", selection);
+    expect(result.status).toBe(200);
+    expect(await result.json()).toMatchObject({
+      type: "model-changed",
+      model: { provider: "provider", id: "model" },
+    });
+    expect(commands).toHaveLength(2);
+  } finally {
+    server.closeAllConnections();
+    await new Promise<void>((done) => server.close(() => done()));
+  }
+});
+it.each(["wrong-target", "wrong-model", "ack"])("rejects %s model confirmations", async (kind) => {
+  const p = await peer({ ...makeSnapshot(), capabilities: { models: true } });
+  receiveFrames(p.socket, (raw) => {
+    const c = raw as { id: string; target: object };
+    writeFrame(
+      p.socket,
+      kind === "ack"
+        ? { type: "ack", id: c.id, outcome: "invoked" }
+        : {
+            type: "model-changed",
+            id: c.id,
+            target: kind === "wrong-target" ? { ...c.target, epoch: randomUUID() } : c.target,
+            model: {
+              id: kind === "wrong-model" ? "other" : "model",
+              provider: "provider",
+              name: "Test",
+            },
+          },
+    );
+  });
+  await expect(
+    bridge.request(agent, targetOf(p.snapshot), {
+      action: "set-model",
+      provider: "provider",
+      modelId: "model",
+    }),
+  ).rejects.toThrow("uncertain");
+});
 it("reports a new agent without a saved session as connecting, not an error", async () => {
   const service = {
     getAgent: vi.fn(async () => ({ ...agent, agent_session: null })),

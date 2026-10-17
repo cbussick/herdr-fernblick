@@ -24,6 +24,8 @@ import {
   treeResponseSchema,
   navigationResponseSchema,
   skillsResponseSchema,
+  modelsResponseSchema,
+  modelChangedResponseSchema,
   type Target,
 } from "../../../packages/pi-live-chat/protocol";
 
@@ -191,6 +193,55 @@ export async function getAgentSkills(pane: string, target: Target, signal?: Abor
   )
     throw new Error("Pi session changed. Reopen Skills.");
   return response;
+}
+export async function getAgentModels(pane: string, target: Target, signal?: AbortSignal) {
+  const result = modelsResponseSchema.parse(
+    await request(`/api/agents/${encodeURIComponent(pane)}/models`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ target }),
+      signal,
+    }),
+  );
+  if (
+    result.target.runtime !== target.runtime ||
+    result.target.sessionId !== target.sessionId ||
+    result.target.epoch !== target.epoch
+  )
+    throw new Error("Pi session changed. Reopen the model picker.");
+  return result;
+}
+export async function setAgentModel(
+  pane: string,
+  target: Target,
+  provider: string,
+  modelId: string,
+) {
+  let body: unknown;
+  try {
+    body = await request(`/api/agents/${encodeURIComponent(pane)}/set-model`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ target, provider, modelId }),
+      signal: AbortSignal.timeout(15_000),
+    });
+  } catch (error) {
+    if (error instanceof ApiError) throw error;
+    throw new Error("Model change outcome uncertain. Check Pi before trying again.", {
+      cause: error,
+    });
+  }
+  const result = modelChangedResponseSchema.safeParse(body);
+  if (
+    !result.success ||
+    result.data.target.runtime !== target.runtime ||
+    result.data.target.sessionId !== target.sessionId ||
+    result.data.target.epoch !== target.epoch ||
+    result.data.model.provider !== provider ||
+    result.data.model.id !== modelId
+  )
+    throw new Error("No valid model change confirmation. Check Pi before trying again.");
+  return result.data;
 }
 export async function getAgentTree(pane: string, target: Target) {
   const response = treeResponseSchema.parse(

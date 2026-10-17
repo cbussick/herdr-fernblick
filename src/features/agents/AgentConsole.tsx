@@ -15,6 +15,7 @@ import { getAgentOutput, sendAgentKey, chatCommand, uploadImage } from "../../sh
 import { useLiveChat } from "./useLiveChat";
 import { ChatTranscript } from "./ChatTranscript";
 import { ImageLightbox } from "./ImageLightbox";
+import { ModelPicker } from "./ModelPicker";
 import { PiSessionStatus } from "./PiSessionStatus";
 import { TerminalOutput } from "./TerminalOutput";
 import { useChatAnnotations } from "./useChatAnnotations";
@@ -600,6 +601,10 @@ export function AgentConsole({ agent, onBack }: AgentConsoleProps) {
               onChange={(event) => selectImages(event.target.files)}
             />
             <ConversationCompaction
+              canOpenTree={Boolean(
+                snapshot && !live.error && !annotations.editor && !compact.pending,
+              )}
+              onOpenTree={() => snapshot && setTreeTarget(targetOf(snapshot))}
               target={snapshot ? targetOf(snapshot) : undefined}
               connected={Boolean(snapshot && !live.error)}
               locked={composerSending}
@@ -638,11 +643,20 @@ export function AgentConsole({ agent, onBack }: AgentConsoleProps) {
                   sending={composerSending}
                   canSend={canSend}
                   canAttach={attachments.length < MAX_IMAGES}
-                  canOpenTree={Boolean(
-                    snapshot && !live.error && !annotations.editor && !compact.pending,
-                  )}
+                  modelPicker={
+                    <ModelPicker
+                      pane={agent.pane_id}
+                      target={snapshot ? targetOf(snapshot) : undefined}
+                      connected={Boolean(snapshot && !live.error)}
+                      supported={Boolean(snapshot?.capabilities?.models)}
+                      enabled={
+                        canForward && !stop.isPending && !annotations.editor && !compact.pending
+                      }
+                      model={snapshot?.status.model}
+                      provider={snapshot?.status.provider}
+                    />
+                  }
                   onAttach={() => fileInputRef.current?.click()}
-                  onOpenTree={() => snapshot && setTreeTarget(targetOf(snapshot))}
                   canOpenBoard={Boolean(
                     snapshot?.version === 2 &&
                     !live.error &&

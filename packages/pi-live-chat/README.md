@@ -151,6 +151,14 @@ review handoff.
   unchanged. Backend/browser deadlines are 120/125 seconds. Disconnect or timeout
   is uncertain and never retried; the runtime guard stays held across reconnect
   until a callback. If no callback arrives, inspect/reload Pi manually.
+- Model selection is advertised by `capabilities.models`. Read-only `models`
+  requests use this session's `ctx.modelRegistry.getAvailable()`, exposing only
+  ID/provider/name for up to 1,000 entries. Idle `set-model` requests validate the
+  current target and available model, serialize through `pi.setModel(model)`,
+  and return `model-changed` only after success and current-state validation.
+  Pi records the choice in this session without changing global defaults.
+  Disconnect/timeout is uncertain and never retried. The model picker occupies
+  the former toolbar Tree slot; **Tree** is now an icon-and-label overflow action.
 - Stop invokes void `ctx.abort()`. Working/stopped state comes from later Pi
   events, not the ACK or Herdr status. `agent_end` alone is not final settlement.
 - Conversation paths are requested on open from public `getTree()/getLeafId()`,

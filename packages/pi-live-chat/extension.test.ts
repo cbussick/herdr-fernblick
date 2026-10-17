@@ -55,6 +55,9 @@ function fakePi(session = "session") {
     mode: "tui",
     cwd: "/test",
     model: { id: "model", provider: "provider" },
+    modelRegistry: {
+      getAvailable: vi.fn(() => [{ id: "model", provider: "provider", name: "Test model" }]),
+    },
     isIdle: () => idle,
     hasPendingMessages: () => false,
     abort: vi.fn(),
@@ -88,6 +91,10 @@ function fakePi(session = "session") {
       handlers.set(event, [...(handlers.get(event) ?? []), handler]);
     },
     sendUserMessage: vi.fn(),
+    setModel: vi.fn(async (model: unknown) => {
+      Object.assign(ctx, { model });
+      return true;
+    }),
     registerTool: vi.fn((definition: ToolDefinition) => tools.set(definition.name, definition)),
     getActiveTools: () => [...activeTools],
     setActiveTools: vi.fn((names: string[]) => {
@@ -179,6 +186,134 @@ async function setup(beforeStart?: (pi: ReturnType<typeof fakePi>) => void) {
   };
   return { ...pi, latest, command, ack, connections, frames, server, dir };
 }
+function modelCommand(
+  t: Awaited<ReturnType<typeof setup>>,
+  action: "models" | "set-model",
+  selection = { provider: "provider", modelId: "model" },
+  target = targetOf(t.latest()!),
+) {
+  const id = randomUUID();
+  writeFrame(t.connections.at(-1)!, { type: "command", id, action, target, ...selection });
+  return id;
+}
+it("lists bounded display-only model metadata from this session without invoking a model", async () => {
+  const t = await setup();
+  const getAvailable = vi.mocked(t.ctx.modelRegistry.getAvailable);
+  getAvailable.mockReturnValue(
+    Array.from({ length: 1001 }, (_, i) => ({
+      id: `model-${i}`,
+      name: `Model ${i}`,
+      provider: "provider",
+      apiKey: "secret",
+      baseUrl: "private",
+      headers: { Authorization: "secret" },
+    })) as unknown as ReturnType<typeof getAvailable>,
+  );
+  t.setIdle(false); // Discovery itself is read-only and allowed while busy.
+  const reply = (await t.ack(modelCommand(t, "models"))) as {
+    models: unknown[];
+    truncated: boolean;
+  };
+  expect(reply.models).toHaveLength(1000);
+  expect(reply.models[0]).toEqual({ id: "model-0", provider: "provider", name: "Model 0" });
+  expect(reply.truncated).toBe(true);
+  expect(t.pi.setModel).not.toHaveBeenCalled();
+  expect(t.pi.sendUserMessage).not.toHaveBeenCalled();
+});
+it("changes only an available model using Pi and confirms its resulting session state", async () => {
+  const t = await setup();
+  t.branch.push({
+    type: "message",
+    id: "keep",
+    message: { role: "user", content: "Keep history" },
+  });
+  const id = modelCommand(t, "set-model");
+  expect(await t.ack(id)).toMatchObject({
+    type: "model-changed",
+    target: targetOf(t.latest()!),
+    model: { id: "model", provider: "provider", name: "Test model" },
+  });
+  expect(t.pi.setModel).toHaveBeenCalledOnce();
+  expect(t.branch).toHaveLength(1);
+  expect(t.pi.sendUserMessage).not.toHaveBeenCalled();
+  writeFrame(t.connections.at(-1)!, {
+    type: "command",
+    id,
+    action: "set-model",
+    target: targetOf(t.latest()!),
+    provider: "provider",
+    modelId: "model",
+  });
+  await vi.waitFor(() =>
+    expect(t.frames).toContainEqual(
+      expect.objectContaining({ id, reason: expect.stringContaining("already seen") }),
+    ),
+  );
+  expect(t.pi.setModel).toHaveBeenCalledOnce();
+});
+it("rejects busy, stale, unknown and unauthenticated model switches", async () => {
+  const t = await setup();
+  t.setIdle(false);
+  expect(await t.ack(modelCommand(t, "set-model"))).toMatchObject({
+    outcome: "rejected",
+    reason: expect.stringContaining("busy"),
+  });
+  t.setIdle(true);
+  expect(
+    await t.ack(
+      modelCommand(t, "set-model", undefined, { ...targetOf(t.latest()!), epoch: randomUUID() }),
+    ),
+  ).toMatchObject({ outcome: "rejected" });
+  expect(
+    await t.ack(modelCommand(t, "set-model", { provider: "other", modelId: "model" })),
+  ).toMatchObject({ outcome: "rejected", reason: expect.stringContaining("no longer available") });
+  expect(t.pi.setModel).not.toHaveBeenCalled();
+  t.pi.setModel.mockResolvedValueOnce(false);
+  expect(await t.ack(modelCommand(t, "set-model"))).toMatchObject({
+    outcome: "rejected",
+    reason: expect.stringContaining("authentication"),
+  });
+  t.pi.setModel.mockRejectedValueOnce(new Error("Provider unavailable"));
+  expect(await t.ack(modelCommand(t, "set-model"))).toMatchObject({
+    outcome: "rejected",
+    reason: "Provider unavailable",
+  });
+});
+it("serializes asynchronous model switches and never confirms after shutdown", async () => {
+  const t = await setup();
+  let finish!: (value: boolean) => void;
+  t.pi.setModel.mockImplementationOnce(
+    () =>
+      new Promise((resolve) => {
+        finish = resolve;
+      }),
+  );
+  const id = modelCommand(t, "set-model");
+  await vi.waitFor(() => expect(t.pi.setModel).toHaveBeenCalledOnce());
+  expect(await t.ack(modelCommand(t, "set-model"))).toMatchObject({
+    outcome: "rejected",
+    reason: expect.stringContaining("in flight"),
+  });
+  expect(await t.ack(t.command("send"))).toMatchObject({
+    outcome: "rejected",
+    reason: expect.stringContaining("in flight"),
+  });
+  t.emit("session_shutdown");
+  finish(true);
+  await new Promise((resolve) => setTimeout(resolve, 60));
+  expect(t.frames.filter((frame) => (frame as { id?: string }).id === id)).toHaveLength(0);
+});
+it("does not confirm a model change when the native result differs", async () => {
+  const t = await setup();
+  t.pi.setModel.mockImplementationOnce(async () => {
+    Object.assign(t.ctx, { model: { id: "other", provider: "provider" } });
+    return true;
+  });
+  expect(await t.ack(modelCommand(t, "set-model"))).toMatchObject({
+    outcome: "rejected",
+    reason: expect.stringContaining("uncertain"),
+  });
+});
 it("rejects busy, stale and repeated compaction commands without invoking Pi", async () => {
   const t = await setup();
   t.setIdle(false);
@@ -1117,7 +1252,12 @@ it("delivers visual board content to Pi while activating request-scoped edit too
 });
 it("advertises boards, dispatches private RPCs before commands, and gates read-only tools until matching activation", async () => {
   const t = await setup();
-  expect(t.latest()?.capabilities).toEqual({ boards: true, skills: true, compact: true });
+  expect(t.latest()?.capabilities).toEqual({
+    boards: true,
+    skills: true,
+    compact: true,
+    models: true,
+  });
   expect(t.tools.get("board_read")).toMatchObject({
     exposure: "hidden",
     defaultActive: false,
