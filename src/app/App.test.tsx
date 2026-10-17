@@ -15,15 +15,25 @@ vi.mock("./useSinglePaneLayout", () => ({ useSinglePaneLayout: () => false }));
 vi.mock("../features/agents/AgentConsole", () => ({ AgentConsole: () => null }));
 vi.mock("../features/agents/ShellConsole", () => ({ ShellConsole: () => null }));
 vi.mock("../features/agents/AgentList", () => ({
-  AgentList: (props: { onCreate: () => void; onCreateWorkspace: () => void }) => (
+  AgentList: (props: {
+    onCreate: (workspaceId?: string) => void;
+    onCreateWorkspace: () => void;
+    workspaces: Workspace[];
+  }) => (
     <nav>
-      <button onClick={props.onCreate}>New agent</button>
+      <button onClick={() => props.onCreate()}>New agent</button>
       <button onClick={props.onCreateWorkspace}>New workspace</button>
+      {props.workspaces.map((workspace) => (
+        <button key={workspace.workspace_id} onClick={() => props.onCreate(workspace.workspace_id)}>
+          {`Add agent to ${workspace.label}`}
+        </button>
+      ))}
     </nav>
   ),
 }));
 
 const existing: Workspace = { workspace_id: "w1", label: "Existing" };
+const other: Workspace = { workspace_id: "w3", label: "Other" };
 const created: Workspace = { workspace_id: "w2", label: "New project" };
 let renderer: ReactTestRenderer;
 let client: QueryClient;
@@ -58,7 +68,7 @@ beforeEach(async () => {
   vi.clearAllMocks();
   natives.clear();
   client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
-  const response = { agents: [], tabs: [], workspaces: [existing] };
+  const response = { agents: [], tabs: [], workspaces: [existing, other] };
   client.setQueryData(["agents"], response);
   vi.mocked(getAgents).mockResolvedValue(response);
   vi.mocked(createWorkspace).mockResolvedValue(created);
@@ -145,11 +155,34 @@ it("returns to the unchanged agent draft when workspace creation is canceled", a
   expect(createAgent).not.toHaveBeenCalled();
 });
 
+it("opens creation in the requested workspace and submits that workspace", async () => {
+  await click("Add agent to Other");
+  expect(natives.get("agent")?.open).toBe(true);
+  expect(renderer.root.findByProps({ id: "new-agent-workspace" }).props.value).toBe("w3");
+  expect(createAgent).not.toHaveBeenCalled();
+  await submit(agentForm());
+  expect(createAgent).toHaveBeenCalledWith({ workspaceId: "w3" }, expect.anything());
+});
+
+it("uses a fresh workspace selection on each open and still allows changing it", async () => {
+  await click("Add agent to Other");
+  await change("new-agent-workspace", "w1");
+  await click("Cancel", agentForm());
+  await click("Add agent to Other");
+  expect(renderer.root.findByProps({ id: "new-agent-workspace" }).props.value).toBe("w3");
+  await click("Cancel", agentForm());
+  await click("New agent");
+  expect(renderer.root.findByProps({ id: "new-agent-workspace" }).props.value).toBe("w1");
+  await change("new-agent-workspace", "w3");
+  await submit(agentForm());
+  expect(createAgent).toHaveBeenCalledWith({ workspaceId: "w3" }, expect.anything());
+});
+
 it("does not open an agent dialog after standalone workspace creation", async () => {
   await click("New workspace");
   await change("new-workspace-label", "New project");
   await change("new-workspace-cwd", "/projects/new");
   await submit(workspaceForm());
-  expect(natives.get("agent")?.open).toBe(false);
+  expect(natives.get("agent")?.open).toBeFalsy();
   expect(createAgent).not.toHaveBeenCalled();
 });
