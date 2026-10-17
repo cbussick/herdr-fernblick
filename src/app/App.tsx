@@ -13,11 +13,12 @@ import { FernblickMark } from "../shared/ui/FernblickMark";
 import { StateIcon } from "../shared/ui/StateFeedback";
 import { useSinglePaneLayout } from "./useSinglePaneLayout";
 import { useReadAgentStatuses } from "./useReadAgentStatuses";
+import { usePaneNavigation } from "./usePaneNavigation";
 
 export function App() {
   const singlePane = useSinglePaneLayout();
   const queryClient = useQueryClient();
-  const [selectedPaneId, setSelectedPaneId] = useState<string | null>(null);
+  const [selectedPaneId, setSelectedPaneId] = usePaneNavigation();
   const [createDialog, setCreateDialog] = useState<{ workspaceId?: string } | null>(null);
   const [workspaceDialogOpen, setWorkspaceDialogOpen] = useState(false);
   const [tabDialogOpen, setTabDialogOpen] = useState(false);
