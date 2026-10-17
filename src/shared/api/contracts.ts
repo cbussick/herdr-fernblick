@@ -107,7 +107,7 @@ export const createWorkspaceRequestSchema = z.object({
 export const createWorkspaceResponseSchema = z.object({ workspace: workspaceSchema });
 
 export const createTabRequestSchema = z.object({
-  label: z.string().trim().min(1).max(80),
+  label: createAgentRequestSchema.shape.tabLabel,
   workspaceId: z
     .string()
     .min(1)

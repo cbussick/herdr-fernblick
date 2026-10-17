@@ -10,6 +10,8 @@ When creating an agent, **Create a new workspace** keeps the agent draft intact.
 Creating the workspace returns to that draft with the new workspace selected;
 canceling returns without changing the selection. Confirm **Create agent** to
 start Pi. Standalone workspace creation still creates only a workspace and shell.
+New shell tabs also accept an optional name; leave it blank to use Herdr's next
+tab number.
 
 Manrope is licensed under the SIL Open Font License 1.1. Its complete copyright notice and license ship at `/licenses/Manrope-OFL.txt`; see [font provenance](src/styles/fonts/README.md). See [styling and development conventions](docs/development.md) and the [three-viewport screenshot gallery tooling](tools/design/README.md).
 
