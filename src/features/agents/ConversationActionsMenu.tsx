@@ -5,6 +5,7 @@ import styles from "./ConversationActionsMenu.module.css";
 export interface ConversationAction {
   id: string;
   label: string;
+  icon?: ReactNode;
   description?: string;
   disabledReason?: string;
   onSelect: () => void;
@@ -190,7 +191,10 @@ export function ConversationActionsMenu({
                 action.onSelect();
               }}
             >
-              <span>{action.label}</span>
+              <span className={styles.label}>
+                {action.icon}
+                {action.label}
+              </span>
               {action.disabledReason || action.description ? (
                 <small id={`${menuId}-${action.id}-description`}>
                   {action.disabledReason ?? action.description}

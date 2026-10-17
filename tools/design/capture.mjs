@@ -475,7 +475,8 @@ for (const size of sizes)
             await page.getByRole("button", { name: "Close this tab" }).click();
         }
         if (id.startsWith("paths")) {
-          await page.getByRole("button", { name: "Open conversation paths" }).click();
+          await page.getByRole("button", { name: "More conversation actions" }).click();
+          await page.getByRole("menuitem", { name: "Tree", exact: true }).click();
           if (id === "paths-prompts")
             await page.getByRole("button", { name: "Your prompts", exact: true }).click();
           if (id === "paths-labels")

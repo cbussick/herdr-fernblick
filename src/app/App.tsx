@@ -12,6 +12,7 @@ import { ShellConsole } from "../features/agents/ShellConsole";
 import { FernblickMark } from "../shared/ui/FernblickMark";
 import { StateIcon } from "../shared/ui/StateFeedback";
 import { useSinglePaneLayout } from "./useSinglePaneLayout";
+import { useReadAgentStatuses } from "./useReadAgentStatuses";
 
 export function App() {
   const singlePane = useSinglePaneLayout();
@@ -26,7 +27,10 @@ export function App() {
     refetchInterval: 2_000,
   });
 
-  const agents = agentsQuery.data?.agents ?? [];
+  const agents = useReadAgentStatuses(
+    agentsQuery.data?.agents ?? [],
+    agentsQuery.isSuccess ? selectedPaneId : null,
+  );
   const tabs = agentsQuery.data?.tabs ?? [];
   const workspaces = agentsQuery.data?.workspaces ?? [];
   const selectedAgent = agents.find((agent) => agent.pane_id === selectedPaneId) ?? null;

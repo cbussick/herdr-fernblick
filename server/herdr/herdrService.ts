@@ -232,10 +232,10 @@ export class HerdrService {
     return result.workspace;
   }
 
-  async createTab(workspaceId: string, label: string) {
+  async createTab(workspaceId: string, label?: string) {
     const result = await this.client.request(
       "tab.create",
-      { workspace_id: workspaceId, label, focus: false },
+      { workspace_id: workspaceId, ...(label ? { label } : {}), focus: false },
       tabCreatedResultSchema,
     );
     return shellTabSchema.parse({

@@ -2,7 +2,7 @@ import { useEffect, useId, useRef, useState, type KeyboardEvent, type ReactNode 
 import { useQuery } from "@tanstack/react-query";
 import { getAgentSkills } from "../../shared/api/apiClient";
 import type { AgentSkill, Target } from "../../../packages/pi-live-chat/protocol";
-import { BranchIcon, CloseIcon, ImageIcon, SendIcon } from "../../shared/ui/Icons";
+import { CloseIcon, ImageIcon, SendIcon } from "../../shared/ui/Icons";
 import a11y from "../../styles/accessibility.module.css";
 import styles from "./SkillComposer.module.css";
 import { useSkillPickerOverlay } from "./useSkillPickerOverlay";
@@ -25,9 +25,8 @@ interface Props {
   sending: boolean;
   canSend: boolean;
   canAttach: boolean;
-  canOpenTree: boolean;
+  modelPicker?: ReactNode;
   onAttach: () => void;
-  onOpenTree: () => void;
   canOpenBoard?: boolean;
   onOpenBoard?: () => void;
   conversationAction?: ReactNode;
@@ -270,16 +269,7 @@ export function SkillComposer(props: Props) {
         >
           <ImageIcon />
         </button>
-        <button
-          type="button"
-          className={styles.action}
-          disabled={sending || !props.canOpenTree}
-          title="Conversation paths"
-          aria-label="Open conversation paths"
-          onClick={props.onOpenTree}
-        >
-          <BranchIcon />
-        </button>
+        {props.modelPicker}
         {props.onOpenBoard ? (
           <WhiteboardButton
             className={styles.action}

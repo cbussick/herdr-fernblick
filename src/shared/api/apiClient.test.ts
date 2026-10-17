@@ -4,6 +4,8 @@ import {
   chatCommand,
   compactAgentConversation,
   getAgentSkills,
+  getAgentModels,
+  setAgentModel,
   getAgentOutput,
   getPaneOutput,
   ApiError,
@@ -87,6 +89,41 @@ it("accepts only a skills catalogue for the requested session identity", async (
     Response.json({ ...reply, target: { ...target, epoch: randomUUID() } }),
   );
   await expect(getAgentSkills("w1:p1", target)).rejects.toThrow("session changed");
+});
+it("requires a bounded same-target model catalogue and matching model-change confirmation", async () => {
+  const model = { id: "sonnet", provider: "anthropic", name: "Sonnet" };
+  const catalogue = { type: "models", id: randomUUID(), target, models: [model], truncated: false };
+  fetchMock.mockResolvedValueOnce(Response.json(catalogue));
+  expect(await getAgentModels("w1:p1", target, controller.signal)).toEqual(catalogue);
+  expect(fetchMock.mock.calls[0][0]).toBe("/api/agents/w1%3Ap1/models");
+  expect(fetchMock.mock.calls[0][1].signal).toBe(controller.signal);
+  fetchMock.mockResolvedValueOnce(
+    Response.json({ ...catalogue, target: { ...target, epoch: randomUUID() } }),
+  );
+  await expect(getAgentModels("w1:p1", target)).rejects.toThrow("session changed");
+  const reply = { type: "model-changed", id: randomUUID(), target, model };
+  fetchMock.mockResolvedValueOnce(Response.json(reply));
+  expect(await setAgentModel("w1:p1", target, model.provider, model.id)).toEqual(reply);
+  expect(JSON.parse(fetchMock.mock.calls[2][1].body)).toEqual({
+    target,
+    provider: model.provider,
+    modelId: model.id,
+  });
+  for (const invalid of [
+    { type: "ack", id: randomUUID(), outcome: "invoked" },
+    { ...reply, model: { ...model, provider: "other" } },
+    { ...reply, target: { ...target, epoch: randomUUID() } },
+  ]) {
+    fetchMock.mockResolvedValueOnce(Response.json(invalid));
+    await expect(setAgentModel("w1:p1", target, model.provider, model.id)).rejects.toThrow(
+      "confirmation",
+    );
+  }
+});
+it("never retries uncertain model switches", async () => {
+  fetchMock.mockRejectedValueOnce(new TypeError("Disconnected"));
+  await expect(setAgentModel("w1:p1", target, "provider", "model")).rejects.toThrow("uncertain");
+  expect(fetchMock).toHaveBeenCalledOnce();
 });
 it("validates a correlated forwarding ACK and uses a bounded HTTP deadline", async () => {
   const id = randomUUID();

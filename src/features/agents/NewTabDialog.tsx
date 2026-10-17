@@ -67,14 +67,13 @@ export function NewTabDialog({ onClose, onCreated, workspaces }: NewTabDialogPro
             </option>
           ))}
         </select>
-        <label htmlFor="new-tab-label">Tab name</label>
+        <label htmlFor="new-tab-label">Tab name (optional)</label>
         <input
           id="new-tab-label"
           value={label}
           onChange={(event) => setLabel(event.target.value)}
-          placeholder="Server logs"
+          placeholder="Next tab number"
           maxLength={80}
-          required
         />
         {createMutation.isError && <p role="alert">{createMutation.error.message}</p>}
         <div className={dialogStyles["new-agent-form__actions"]}>
