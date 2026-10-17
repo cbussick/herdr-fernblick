@@ -20,7 +20,9 @@ npm install --omit=dev --ignore-scripts --legacy-peer-deps
 pi install /absolute/path/to/pi-live-chat
 ```
 
-Pi supplies the peer `@earendil-works/pi-coding-agent`; do not bundle another copy.
+Pi supplies the peers `@earendil-works/pi-coding-agent` and `@earendil-works/pi-ai`;
+do not bundle another copy. The Pi AI compatibility export supplies the same
+thinking-level capability helper used by the host.
 The checkout pins Pi 1.1.0 as a development dependency for API type-checking and
 isolated real-Pi loader, skill, navigation, and compaction tests. The backend does
 not import that development copy or use it to run user agents.
@@ -157,8 +159,16 @@ review handoff.
   current target and available model, serialize through `pi.setModel(model)`,
   and return `model-changed` only after success and current-state validation.
   Pi records the choice in this session without changing global defaults.
-  Disconnect/timeout is uncertain and never retried. The model picker occupies
-  the former toolbar Tree slot; **Tree** is now an icon-and-label overflow action.
+  Disconnect/timeout is uncertain and never retried. **Model**, **Thinking level**,
+  and **Tree** are icon-and-label rows in the three-dot menu; none occupies its
+  own toolbar slot.
+- Thinking selection is advertised by `capabilities.thinking`. `thinking-levels`
+  returns the current level and host-supported levels for the current model via
+  `pi.getThinkingLevel()` and Pi AI `getSupportedThinkingLevels()`. Idle
+  `set-thinking-level` requests require the expected provider/model and a supported
+  level before invoking synchronous `pi.setThinkingLevel()`. Only the verified
+  effective state produces `thinking-level-changed`. Choices and changes are
+  session-specific; global defaults are unchanged and no prompt is sent.
 - Stop invokes void `ctx.abort()`. Working/stopped state comes from later Pi
   events, not the ACK or Herdr status. `agent_end` alone is not final settlement.
 - Conversation paths are requested on open from public `getTree()/getLeafId()`,

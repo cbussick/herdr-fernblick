@@ -13,6 +13,7 @@ import {
   type Command,
   type Snapshot,
   type Target,
+  type ThinkingLevel,
 } from "../../packages/pi-live-chat/protocol.js";
 import {
   privateDirectory,
@@ -235,13 +236,17 @@ export class LiveBridge {
                 ? pending.command.action === "tree"
                 : response.type === "skills"
                   ? pending.command.action === "skills"
-                  : response.type === "models"
-                    ? pending.command.action === "models"
-                    : response.type === "model-changed"
-                      ? pending.command.action === "set-model"
-                      : response.type === "compacted"
-                        ? pending.command.action === "compact"
-                        : pending.command.action === "navigate";
+                  : response.type === "thinking-levels"
+                    ? pending.command.action === "thinking-levels"
+                    : response.type === "thinking-level-changed"
+                      ? pending.command.action === "set-thinking-level"
+                      : response.type === "models"
+                        ? pending.command.action === "models"
+                        : response.type === "model-changed"
+                          ? pending.command.action === "set-model"
+                          : response.type === "compacted"
+                            ? pending.command.action === "compact"
+                            : pending.command.action === "navigate";
           const validTarget =
             response.type === "ack" ||
             (response.target.runtime === pending.command.target.runtime &&
@@ -253,7 +258,13 @@ export class LiveBridge {
             (pending.command.action === "set-model" &&
               response.model.provider === pending.command.provider &&
               response.model.id === pending.command.modelId);
-          if (!validType || !validTarget || !validModel) {
+          const validThinking =
+            response.type !== "thinking-level-changed" ||
+            (pending.command.action === "set-thinking-level" &&
+              response.provider === pending.command.provider &&
+              response.modelId === pending.command.modelId &&
+              response.level === pending.command.level);
+          if (!validType || !validTarget || !validModel || !validThinking) {
             socket.destroy();
             return;
           }
@@ -365,7 +376,8 @@ export class LiveBridge {
           requestId?: string;
           board?: BoardGrant;
         }
-      | { action: "stop" | "tree" | "skills" | "compact" | "models" }
+      | { action: "stop" | "tree" | "skills" | "compact" | "models" | "thinking-levels" }
+      | { action: "set-thinking-level"; provider: string; modelId: string; level: ThinkingLevel }
       | { action: "set-model"; provider: string; modelId: string }
       | { action: "navigate"; entryId: string },
   ) {
@@ -394,6 +406,11 @@ export class LiveBridge {
       !peer.snapshot.capabilities?.models
     )
       throw new LiveChatError(409, "Run /reload in Pi to enable model selection");
+    if (
+      (command.action === "thinking-levels" || command.action === "set-thinking-level") &&
+      !peer.snapshot.capabilities?.thinking
+    )
+      throw new LiveChatError(409, "Run /reload in Pi to enable thinking level selection");
     if (command.action === "compact" && !peer.snapshot.capabilities?.compact)
       throw new LiveChatError(409, "Run /reload in Pi to enable conversation compaction");
     if (this.pending.has(command.id)) throw new LiveChatError(409, "Command already in flight");
@@ -408,6 +425,7 @@ export class LiveBridge {
       (command.action === "send" ||
         command.action === "navigate" ||
         command.action === "set-model" ||
+        command.action === "set-thinking-level" ||
         command.action === "compact") &&
       (peer.snapshot.busy || peer.snapshot.sendPending)
     )

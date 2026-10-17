@@ -18,7 +18,11 @@ it("uses real Pi's public model API, records the selection and leaves global def
     await mkdir(agentDir, { recursive: true });
     await writeFile(
       join(agentDir, "settings.json"),
-      JSON.stringify({ defaultProvider: "keep", defaultModel: "keep" }),
+      JSON.stringify({
+        defaultProvider: "keep",
+        defaultModel: "keep",
+        defaultThinkingLevel: "medium",
+      }),
     );
     const result = await promisify(execFile)(
       process.execPath,
@@ -56,6 +60,19 @@ it("uses real Pi's public model API, records the selection and leaves global def
         assert.equal(JSON.parse(await readFile(agentDir + '/settings.json', 'utf8')).defaultModel, 'keep');
         assert.equal(await pi.setModel({ ...first, provider: 'unconfigured-fixture' }), false);
         assert.equal(session.model.id, second.id);
+        const { getSupportedThinkingLevels } = await import('@earendil-works/pi-ai/compat');
+        const thinkingModel = { ...second, reasoning: true, thinkingLevelMap: { off: null, minimal: null, xhigh: 'extra', max: 'maximum' } };
+        assert.equal(await pi.setModel(thinkingModel), true);
+        assert.deepEqual(session.getAvailableThinkingLevels(), getSupportedThinkingLevels(thinkingModel));
+        assert.deepEqual(session.getAvailableThinkingLevels(), ['low', 'medium', 'high', 'xhigh', 'max']);
+        pi.setThinkingLevel('max');
+        assert.equal(pi.getThinkingLevel(), 'max');
+        assert.ok(sessionManager.getBranch().some(e => e.type === 'thinking_level_change' && e.thinkingLevel === 'max'));
+        assert.equal(settingsManager.getSettings().defaultThinkingLevel, 'medium');
+        assert.equal(JSON.parse(await readFile(agentDir + '/settings.json', 'utf8')).defaultThinkingLevel, 'medium');
+        assert.equal(await pi.setModel({ ...second, reasoning: false }), true);
+        assert.deepEqual(session.getAvailableThinkingLevels(), ['off']);
+        assert.equal(pi.getThinkingLevel(), 'off');
         console.log('Verified native model selection');
       } finally { session.dispose(); }
     `,

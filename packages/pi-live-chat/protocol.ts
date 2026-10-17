@@ -58,6 +58,16 @@ export const messageSchema = z.object({
     .max(MAX_IMAGES)
     .optional(),
 });
+export const thinkingLevelSchema = z.enum([
+  "off",
+  "minimal",
+  "low",
+  "medium",
+  "high",
+  "xhigh",
+  "max",
+]);
+export type ThinkingLevel = z.infer<typeof thinkingLevelSchema>;
 export const snapshotSchema = z.object({
   type: z.literal("snapshot"),
   version: z.union([z.literal(1), z.literal(2)]),
@@ -67,6 +77,7 @@ export const snapshotSchema = z.object({
       skills: z.literal(true).optional(),
       compact: z.literal(true).optional(),
       models: z.literal(true).optional(),
+      thinking: z.literal(true).optional(),
     })
     .optional(),
   identity: identitySchema,
@@ -82,6 +93,7 @@ export const snapshotSchema = z.object({
     cwd: z.string().max(4096),
     model: z.string().max(256).optional(),
     provider: z.string().max(256).optional(),
+    thinkingLevel: thinkingLevelSchema.optional(),
     totalTokens: z.number().finite(),
     cost: z.number().finite(),
   }),
@@ -157,13 +169,33 @@ export const modelChangedResponseSchema = z.object({
   target: targetSchema,
   model: agentModelSchema,
 });
+export const thinkingSelectionSchema = modelSelectionSchema.extend({ level: thinkingLevelSchema });
+export const thinkingStateSchema = thinkingSelectionSchema.extend({
+  levels: z.array(thinkingLevelSchema).min(1).max(7),
+});
+export const thinkingLevelsResponseSchema = thinkingStateSchema.extend({
+  type: z.literal("thinking-levels"),
+  id: z.string().uuid(),
+  target: targetSchema,
+});
+export const thinkingChangedResponseSchema = thinkingSelectionSchema.extend({
+  type: z.literal("thinking-level-changed"),
+  id: z.string().uuid(),
+  target: targetSchema,
+});
 export const commandSchema = z
   .discriminatedUnion("action", [
     z.object({
       type: z.literal("command"),
       id: z.string().uuid(),
       target: targetSchema,
-      action: z.enum(["tree", "skills", "compact", "models"]),
+      action: z.enum(["tree", "skills", "compact", "models", "thinking-levels"]),
+    }),
+    thinkingSelectionSchema.extend({
+      type: z.literal("command"),
+      id: z.string().uuid(),
+      target: targetSchema,
+      action: z.literal("set-thinking-level"),
     }),
     modelSelectionSchema.extend({
       type: z.literal("command"),
@@ -235,6 +267,8 @@ export const responseSchema = z.union([
   compactionResponseSchema,
   modelsResponseSchema,
   modelChangedResponseSchema,
+  thinkingLevelsResponseSchema,
+  thinkingChangedResponseSchema,
 ]);
 export type BridgeResponse = z.infer<typeof responseSchema>;
 export type Identity = z.infer<typeof identitySchema>;

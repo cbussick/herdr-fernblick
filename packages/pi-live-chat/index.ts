@@ -13,6 +13,7 @@ import {
   type Identity,
   type Snapshot,
 } from "./protocol.js";
+import { thinkingState } from "./thinking.js";
 import { ImageHistory, IMAGE_METADATA } from "./imageHistory.js";
 import { TranscriptProjector } from "./projector.js";
 import { prepareImages } from "./images.js";
@@ -223,7 +224,7 @@ export default function liveChat(pi: ExtensionAPI) {
       return {
         type: "snapshot",
         version: 2,
-        capabilities: { boards: true, skills: true, compact: true, models: true },
+        capabilities: { boards: true, skills: true, compact: true, models: true, thinking: true },
         identity,
         epoch,
         seq: ++seq,
@@ -238,6 +239,7 @@ export default function liveChat(pi: ExtensionAPI) {
           cwd: context.cwd,
           model: context.model?.id,
           provider: context.model?.provider,
+          thinkingLevel: pi.getThinkingLevel(),
           totalTokens: projector.totalTokens,
           cost: projector.cost,
         },
@@ -412,6 +414,66 @@ export default function liveChat(pi: ExtensionAPI) {
             });
           } catch {
             reject("Skills unavailable in this Pi session");
+          }
+          return;
+        }
+        if (command.action === "thinking-levels") {
+          try {
+            writeFrame(client, {
+              type: "thinking-levels",
+              id: command.id,
+              target: command.target,
+              ...thinkingState(pi, context),
+            });
+          } catch (error) {
+            reject(
+              error instanceof Error ? error.message.slice(0, 512) : "Thinking levels unavailable",
+            );
+          }
+          return;
+        }
+        if (command.action === "set-thinking-level") {
+          if (value.busy || sendPending) {
+            reject("Pi is busy or a previous send is unresolved");
+            return;
+          }
+          preparing = true;
+          try {
+            const state = thinkingState(pi, context);
+            if (state.provider !== command.provider || state.modelId !== command.modelId)
+              throw new Error("Model changed. Reopen Thinking level.");
+            if (!state.levels.includes(command.level))
+              throw new Error("This thinking level is not supported by the current model");
+            // Pi's public setter is synchronous; no await between validation,
+            // invocation and reading the effective level.
+            pi.setThinkingLevel(command.level);
+            const fresh = snapshot();
+            if (
+              !fresh ||
+              !matchesTarget(fresh, command.target) ||
+              fresh.status.provider !== command.provider ||
+              fresh.status.model !== command.modelId ||
+              pi.getThinkingLevel() !== command.level
+            )
+              throw new Error(
+                "Thinking level change outcome uncertain. Check Pi before trying again.",
+              );
+            requestFooter();
+            writeFrame(client, {
+              type: "thinking-level-changed",
+              id: command.id,
+              target: command.target,
+              provider: command.provider,
+              modelId: command.modelId,
+              level: command.level,
+            });
+          } catch (error) {
+            reject(
+              error instanceof Error ? error.message.slice(0, 512) : "Thinking level change failed",
+            );
+          } finally {
+            preparing = false;
+            publish();
           }
           return;
         }

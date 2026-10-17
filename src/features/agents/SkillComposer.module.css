@@ -44,7 +44,7 @@
   background: var(--color-accent-soft);
 }
 
-/* Keep all six controls touch-sized on the narrowest phones. */
+/* Keep toolbar controls touch-sized on the narrowest phones. */
 @container composer (width <= 21rem) {
   .toolbar {
     gap: 0;

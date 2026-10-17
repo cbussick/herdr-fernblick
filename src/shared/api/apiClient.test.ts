@@ -6,6 +6,8 @@ import {
   getAgentSkills,
   getAgentModels,
   setAgentModel,
+  getAgentThinkingLevels,
+  setAgentThinkingLevel,
   getAgentOutput,
   getPaneOutput,
   ApiError,
@@ -119,6 +121,46 @@ it("requires a bounded same-target model catalogue and matching model-change con
       "confirmation",
     );
   }
+});
+it("validates thinking discovery and exact target/model/level completion", async () => {
+  const selection = { provider: "anthropic", modelId: "sonnet", level: "high" as const };
+  const catalogue = {
+    type: "thinking-levels",
+    id: randomUUID(),
+    target,
+    ...selection,
+    levels: ["low", "medium", "high"],
+  };
+  fetchMock.mockResolvedValueOnce(Response.json(catalogue));
+  expect(await getAgentThinkingLevels("w1:p1", target, controller.signal)).toEqual(catalogue);
+  expect(fetchMock.mock.calls[0][1].signal).toBe(controller.signal);
+  fetchMock.mockResolvedValueOnce(
+    Response.json({ ...catalogue, target: { ...target, epoch: randomUUID() } }),
+  );
+  await expect(getAgentThinkingLevels("w1:p1", target)).rejects.toThrow("session changed");
+  const reply = { type: "thinking-level-changed", id: randomUUID(), target, ...selection };
+  fetchMock.mockResolvedValueOnce(Response.json(reply));
+  expect(
+    await setAgentThinkingLevel("w1:p1", target, selection.provider, selection.modelId, "high"),
+  ).toEqual(reply);
+  expect(fetchMock.mock.calls[2][0]).toBe("/api/agents/w1%3Ap1/set-thinking-level");
+  expect(JSON.parse(fetchMock.mock.calls[2][1].body)).toEqual({ target, ...selection });
+  for (const invalid of [
+    { type: "ack", id: randomUUID(), outcome: "invoked" },
+    { ...reply, level: "low" },
+    { ...reply, modelId: "other" },
+    { ...reply, target: { ...target, sessionId: "other" } },
+  ]) {
+    fetchMock.mockResolvedValueOnce(Response.json(invalid));
+    await expect(
+      setAgentThinkingLevel("w1:p1", target, selection.provider, selection.modelId, "high"),
+    ).rejects.toThrow("confirmation");
+  }
+  fetchMock.mockRejectedValueOnce(new TypeError("Disconnected"));
+  await expect(
+    setAgentThinkingLevel("w1:p1", target, selection.provider, selection.modelId, "high"),
+  ).rejects.toThrow("uncertain");
+  expect(fetchMock).toHaveBeenCalledTimes(8);
 });
 it("never retries uncertain model switches", async () => {
   fetchMock.mockRejectedValueOnce(new TypeError("Disconnected"));

@@ -130,7 +130,7 @@ Open **Whiteboard** from live Chat for a fullscreen, persistent Excalidraw canva
 
 ### Skills
 
-Use the **/Skills** button beside the image and conversation-path buttons to search
+Use the **/Skills** button in the composer toolbar to search
 by name or description. Arrow keys select; Enter or Tab inserts `/skill:name` into
 the draft. Add instructions or images, then send when Pi is idle. Escape dismisses
 the picker without changing the draft. Typing `/` does not open the picker; you can
@@ -142,6 +142,15 @@ folders, configured paths, packages and explicit CLI resources. Source paths and
 scope are shown in the picker. Pi owns trust, filtering and duplicate precedence.
 After updating the bridge or changing skills, run `/reload` in Pi. Other agent
 providers are not yet supported by live chat or the skills picker.
+
+### Model and thinking level
+
+Open the composer's three-dot menu for **Model**, **Thinking level**, and **Tree**.
+Each has an icon beside its label. Model opens a searchable list of the selected
+agent's available models. Thinking level offers only levels supported by its
+current model. Changes apply to that agent's session, not defaults for new agents,
+and leave the conversation, draft and images intact. Pi must be idle to change
+these settings. Existing agents need `/reload` after the bridge update.
 
 ### Removed legacy queue
 

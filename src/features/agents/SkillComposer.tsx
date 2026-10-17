@@ -25,7 +25,6 @@ interface Props {
   sending: boolean;
   canSend: boolean;
   canAttach: boolean;
-  modelPicker?: ReactNode;
   onAttach: () => void;
   canOpenBoard?: boolean;
   onOpenBoard?: () => void;
@@ -269,7 +268,6 @@ export function SkillComposer(props: Props) {
         >
           <ImageIcon />
         </button>
-        {props.modelPicker}
         {props.onOpenBoard ? (
           <WhiteboardButton
             className={styles.action}

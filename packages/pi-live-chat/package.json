@@ -12,6 +12,7 @@
     "images.ts",
     "imageHistory.ts",
     "tree.ts",
+    "thinking.ts",
     "protocol.ts",
     "projector.ts",
     "security.ts",
@@ -23,6 +24,7 @@
     "zod": "^4.3.6"
   },
   "peerDependencies": {
+    "@earendil-works/pi-ai": "*",
     "@earendil-works/pi-coding-agent": "*"
   },
   "pi": {

@@ -531,7 +531,11 @@ it("previews restored upload IDs and closes if the displayed attachment is remov
   const treeAction = renderer.root.findByProps({ role: "menuitem", "aria-label": "Tree" });
   expect(treeAction.findAllByType("svg")).toHaveLength(1);
   expect(renderer.root.findAllByProps({ "aria-label": "Open conversation paths" })).toHaveLength(0);
-  expect(renderer.root.findByProps({ "aria-label": "Change model" })).toBeDefined();
+  expect(renderer.root.findAllByProps({ "aria-label": "Change model" })).toHaveLength(0);
+  for (const label of ["Model", "Thinking level"]) {
+    const action = renderer.root.findByProps({ role: "menuitem", "aria-label": label });
+    expect(action.findAllByType("svg")).toHaveLength(1);
+  }
   await act(async () => treeAction.props.onClick());
   const tree = renderer.root.findByType(ConversationTreeDialog);
   await act(async () => {

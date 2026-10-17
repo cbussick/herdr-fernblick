@@ -2,71 +2,20 @@ import { useEffect, useRef, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import type { AgentModel, Target } from "../../../packages/pi-live-chat/protocol";
 import { getAgentModels, setAgentModel } from "../../shared/api/apiClient";
-import { CloseIcon, ModelIcon } from "../../shared/ui/Icons";
-import styles from "./ModelPicker.module.css";
+import { CloseIcon } from "../../shared/ui/Icons";
+import styles from "./SessionSettingsPicker.module.css";
 
 interface Props {
   pane: string;
-  target?: Target;
-  connected: boolean;
+  target: Target;
+  onClose: () => void;
   supported: boolean;
   enabled: boolean;
   model?: string;
   provider?: string;
 }
 
-export function ModelPicker(props: Props) {
-  const [open, setOpen] = useState(false);
-  const trigger = useRef<HTMLButtonElement>(null);
-  const wasOpen = useRef(false);
-  useEffect(() => {
-    if (wasOpen.current && !open) trigger.current?.focus({ preventScroll: true });
-    wasOpen.current = open;
-  }, [open]);
-  const key = JSON.stringify([props.pane, props.target, props.connected]);
-  const [previousKey, setPreviousKey] = useState(key);
-  if (key !== previousKey) {
-    setPreviousKey(key);
-    setOpen(false);
-  }
-  return (
-    <>
-      <button
-        type="button"
-        ref={trigger}
-        className={styles.trigger}
-        aria-label="Change model"
-        aria-haspopup="dialog"
-        aria-expanded={open}
-        disabled={!props.connected || !props.enabled}
-        title={
-          !props.enabled
-            ? "Change model when Pi is idle"
-            : `Change model: ${props.model ?? "Unknown model"}`
-        }
-        onClick={() => setOpen(true)}
-      >
-        <ModelIcon />
-      </button>
-      {open && props.target ? (
-        <ModelDialog {...props} target={props.target} onClose={() => setOpen(false)} />
-      ) : null}
-    </>
-  );
-}
-
-function ModelDialog({
-  pane,
-  target,
-  supported,
-  enabled,
-  model,
-  provider,
-  onClose,
-}: Props & {
-  target: Target;
-  onClose: () => void;
-}) {
+export function ModelPicker({ pane, target, supported, enabled, model, provider, onClose }: Props) {
   const dialog = useRef<HTMLDialogElement>(null);
   const searchInput = useRef<HTMLInputElement>(null);
   const options = useRef<(HTMLButtonElement | null)[]>([]);

@@ -31,7 +31,7 @@ const models = [
 const snapshot = {
   type: "snapshot",
   version: 2,
-  capabilities: { models: true, compact: true, skills: true, boards: true },
+  capabilities: { models: true, thinking: true, compact: true, skills: true, boards: true },
   identity: {
     ...target,
     pid: 1,
@@ -54,6 +54,7 @@ const snapshot = {
     provider: models[0].provider,
     totalTokens: 0,
     cost: 0,
+    thinkingLevel: "medium",
   },
 };
 for (const [engine, type] of [
@@ -76,6 +77,9 @@ for (const [engine, type] of [
         unexpected = 0,
         release;
       let fail = false;
+      let thinkingReads = 0,
+        thinkingChanges = 0,
+        thinkingMode = "normal";
       page.on("pageerror", (error) => errors.push(error.message));
       await page.addInitScript((initial) => {
         window.EventSource = class {
@@ -100,6 +104,39 @@ for (const [engine, type] of [
                 tabs: [],
               },
             });
+          if (path.endsWith("/thinking-levels")) {
+            thinkingReads++;
+            return route.fulfill({
+              json: {
+                type: "thinking-levels",
+                id: target.runtime,
+                target,
+                provider: models[0].provider,
+                modelId: models[0].id,
+                level: thinkingMode === "off" ? "off" : "medium",
+                levels: thinkingMode === "off" ? ["off"] : ["low", "medium", "high"],
+              },
+            });
+          }
+          if (path.endsWith("/set-thinking-level")) {
+            thinkingChanges++;
+            assert.deepEqual(route.request().postDataJSON(), {
+              target,
+              provider: models[0].provider,
+              modelId: models[0].id,
+              level: "high",
+            });
+            return route.fulfill({
+              json: {
+                type: "thinking-level-changed",
+                id: target.runtime,
+                target,
+                provider: models[0].provider,
+                modelId: models[0].id,
+                level: "high",
+              },
+            });
+          }
           if (path.endsWith("/models")) {
             reads++;
             return route.fulfill({
@@ -143,7 +180,11 @@ for (const [engine, type] of [
         ),
       });
       const more = page.getByRole("button", { name: "More conversation actions", exact: true });
-      const trigger = page.getByRole("button", { name: "Change model", exact: true });
+      const trigger = more;
+      async function openPicker(label = "Model") {
+        await more.click();
+        await page.getByRole("menuitem", { name: label, exact: true }).click();
+      }
       assert.equal(reads, 0);
       const toolbar = more.locator("..");
       const origin = await more.boundingBox();
@@ -154,18 +195,26 @@ for (const [engine, type] of [
         assert(box.x >= 0 && box.x + box.width <= width);
       }
       assert.equal(
-        await trigger.evaluate((node) => node.previousElementSibling.getAttribute("aria-label")),
-        "Attach images",
+        await page.getByRole("button", { name: "Change model", exact: true }).count(),
+        0,
       );
+      assert.equal(await toolbar.getByRole("button").count(), 5);
       await page.screenshot({ path: `${output}/${engine}-${name}-toolbar.png` });
       await more.click();
       const tree = page.getByRole("menuitem", { name: "Tree", exact: true });
       assert.equal(await tree.locator("svg").count(), 1);
       assert.equal((await tree.innerText()).trim(), "Tree");
+      for (const label of ["Model", "Thinking level"]) {
+        const row = page.getByRole("menuitem", { name: label, exact: true });
+        assert.equal(await row.locator("svg").count(), 1);
+        assert.equal((await row.innerText()).trim(), label);
+      }
+      assert.equal(reads, 0);
+      assert.equal(thinkingReads, 0);
       await page.screenshot({ path: `${output}/${engine}-${name}-menu.png` });
       await tree.press("Escape");
       assert.equal(await more.evaluate((node) => node === document.activeElement), true);
-      await trigger.click();
+      await openPicker();
       const dialog = page.getByRole("dialog", { name: "Choose model", exact: true });
       const search = page.getByRole("searchbox", { name: "Search models" });
       const other = dialog.getByRole("button", { name: /GPT-5.4/ });
@@ -199,12 +248,44 @@ for (const [engine, type] of [
       assert.equal(await draft.inputValue(), "Keep this draft");
       assert.equal(await page.getByRole("img", { name: "fixture.png" }).count(), 1);
       fail = true;
-      await trigger.click();
+      await openPicker();
       await other.click();
       await page.getByRole("alert").filter({ hasText: "Model unavailable" }).waitFor();
       assert.equal(changes, 2);
       await dialog.press("Escape");
-      await trigger.click();
+      await openPicker("Thinking level");
+      const thinkingDialog = page.getByRole("dialog", {
+        name: "Choose thinking level",
+        exact: true,
+      });
+      const high = thinkingDialog.getByRole("button", { name: "High", exact: true });
+      await high.waitFor();
+      assert.equal(thinkingReads, 1);
+      const current = thinkingDialog.getByRole("button", { name: "Medium · Current", exact: true });
+      assert.equal(await current.evaluate((node) => node === document.activeElement), true);
+      await current.press("ArrowDown");
+      assert.equal(await high.evaluate((node) => node === document.activeElement), true);
+      const thinkingBox = await thinkingDialog.boundingBox();
+      assert(
+        thinkingBox.x >= 0 &&
+          thinkingBox.y >= 0 &&
+          thinkingBox.x + thinkingBox.width <= width &&
+          thinkingBox.y + thinkingBox.height <= height,
+      );
+      await page.screenshot({ path: `${output}/${engine}-${name}-thinking.png` });
+      await high.press("Enter");
+      await thinkingDialog.waitFor({ state: "detached" });
+      assert.equal(thinkingChanges, 1);
+      assert.equal(await trigger.evaluate((node) => node === document.activeElement), true);
+      thinkingMode = "off";
+      await openPicker("Thinking level");
+      await page.getByText("This model does not support thinking.", { exact: true }).waitFor();
+      assert.equal(
+        await thinkingDialog.getByRole("button", { name: "High", exact: true }).count(),
+        0,
+      );
+      await thinkingDialog.press("Escape");
+      await openPicker();
       await page.evaluate(
         (initial) =>
           window.fixtureStream.onmessage({

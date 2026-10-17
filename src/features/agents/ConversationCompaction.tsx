@@ -1,12 +1,14 @@
 import { useEffect, useId, useRef, useState, type ReactNode } from "react";
 import { type Target } from "../../../packages/pi-live-chat/protocol";
 import { BranchIcon } from "../../shared/ui/Icons";
+import { ConversationSettings, type ConversationSettingsProps } from "./ConversationSettings";
 import { ConversationActionsMenu } from "./ConversationActionsMenu";
 import { StateNotice } from "../../shared/ui/StateFeedback";
 import styles from "./ConversationCompaction.module.css";
 
 interface Props {
   target?: Target;
+  settings?: ConversationSettingsProps;
   enabled: boolean;
   connected: boolean;
   locked: boolean;
@@ -21,6 +23,7 @@ interface Props {
 
 export function ConversationCompaction({
   target,
+  settings,
   enabled,
   connected,
   locked,
@@ -63,37 +66,43 @@ export function ConversationCompaction({
           : undefined;
   return (
     <>
-      <ConversationActionsMenu
-        contextKey={connected ? JSON.stringify(target) : "disconnected"}
-        triggerRef={trigger}
-        disabled={locked}
-        actions={[
-          ...(onOpenTree
-            ? [
-                {
-                  id: "tree",
-                  label: "Tree",
-                  icon: <BranchIcon />,
-                  disabledReason: canOpenTree
-                    ? undefined
-                    : "Connect to Pi and finish the current action to browse the tree.",
-                  onSelect: onOpenTree,
+      <ConversationSettings settings={settings} triggerRef={trigger}>
+        {(settingsActions) => (
+          <ConversationActionsMenu
+            contextKey={connected ? JSON.stringify(target) : "disconnected"}
+            triggerRef={trigger}
+            disabled={locked}
+            actions={[
+              ...(onOpenTree
+                ? [
+                    {
+                      id: "tree",
+                      label: "Tree",
+                      icon: <BranchIcon />,
+                      disabledReason: canOpenTree
+                        ? undefined
+                        : "Connect to Pi and finish the current action to browse the tree.",
+                      onSelect: onOpenTree,
+                    },
+                  ]
+                : []),
+              ...settingsActions,
+              {
+                id: "compact",
+                label: "Compact conversation",
+                description: "Summarize older context to make room.",
+                disabledReason,
+                onSelect: () => {
+                  if (target && enabled && connected && supported && !pending)
+                    setConfirmation(target);
                 },
-              ]
-            : []),
-          {
-            id: "compact",
-            label: "Compact conversation",
-            description: "Summarize older context to make room.",
-            disabledReason,
-            onSelect: () => {
-              if (target && enabled && connected && supported && !pending) setConfirmation(target);
-            },
-          },
-        ]}
-      >
-        {children}
-      </ConversationActionsMenu>
+              },
+            ]}
+          >
+            {children}
+          </ConversationActionsMenu>
+        )}
+      </ConversationSettings>
       {confirmation || pending || notice ? (
         <section
           id={panelId}

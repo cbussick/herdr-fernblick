@@ -30,6 +30,7 @@ import {
   targetSchema as chatTargetSchema,
   sendInputSchema,
   modelSelectionSchema,
+  thinkingSelectionSchema,
   MAX_IMAGE_BYTES,
 } from "../../packages/pi-live-chat/protocol.js";
 const chatCommandSchema = sendInputSchema.safeExtend({
@@ -135,7 +136,7 @@ class HttpError extends Error {
 
 function getAgentRoute(pathname: string) {
   const match = pathname.match(
-    /^\/api\/agents\/([^/]+)(?:\/(output|chat|prompt|stop|tree|tree-navigation|skills|compact|models|set-model|keys|restart))?$/,
+    /^\/api\/agents\/([^/]+)(?:\/(output|chat|prompt|stop|tree|tree-navigation|skills|compact|models|set-model|thinking-levels|set-thinking-level|keys|restart))?$/,
   );
   if (!match) return null;
 
@@ -323,6 +324,8 @@ async function handleApi(
       "compact",
       "models",
       "set-model",
+      "thinking-levels",
+      "set-thinking-level",
     ].includes(route.action)
   ) {
     requireSameOrigin(request);
@@ -338,6 +341,15 @@ async function handleApi(
         attachments: body.attachments,
         requestId: body.requestId,
       };
+    } else if (route.action === "set-thinking-level") {
+      const body = thinkingSelectionSchema.extend({ target: chatTargetSchema }).parse(raw);
+      target = body.target;
+      input = {
+        action: "set-thinking-level",
+        provider: body.provider,
+        modelId: body.modelId,
+        level: body.level,
+      };
     } else if (route.action === "set-model") {
       const body = modelSelectionSchema.extend({ target: chatTargetSchema }).parse(raw);
       target = body.target;
@@ -348,7 +360,16 @@ async function handleApi(
       if (route.action === "tree-navigation") {
         if (!body.entryId) throw new HttpError(400, "Entry ID required");
         input = { action: "navigate", entryId: body.entryId };
-      } else input = { action: route.action as "tree" | "stop" | "skills" | "compact" | "models" };
+      } else
+        input = {
+          action: route.action as
+            | "tree"
+            | "stop"
+            | "skills"
+            | "compact"
+            | "models"
+            | "thinking-levels",
+        };
     }
     const reply = await bridge.request(await service.getAgent(route.target), target, input);
     if (reply.type === "ack" && reply.outcome === "rejected")

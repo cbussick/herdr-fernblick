@@ -3,8 +3,9 @@
 ## Boundaries
 
 - `packages/pi-live-chat/` is an independently installable Pi package with a
-  `pi.extensions` manifest. Runtime dependencies are only Zod and Node built-ins;
-  Pi types are a host-provided peer. There are no backend imports or SQLite APIs.
+  `pi.extensions` manifest. Runtime dependencies are Zod and Node built-ins plus
+  the host-provided Pi AI thinking-capability helper. Pi types and Pi AI are peers.
+  There are no backend imports or SQLite APIs.
 - `server/pi/liveBridge.ts` owns the private socket, live registry, validated
   process association, and bounded one-command-in-flight request/ACK handling.
 - `server/pi/liveEvents.ts` sends an initial snapshot, then sequenced patches of
@@ -95,10 +96,11 @@ mutations are never automatically retried.
 `POST .../compact` accepts `{target}` for peers advertising
 `capabilities.compact: true`. The composer toolbar has a three-dot **More conversation
 actions** button immediately after **/Skills**, before Send. Its overflow menu
-contains **Tree**, retaining its branch icon beside the label, and **Compact
-conversation**, with an explanation or disabled reason. Tree opens the existing
-conversation-path dialog; the old toolbar Tree button is replaced by a compact
-**Change model** icon button. A native HTML popover places the menu above the composer in the top layer,
+contains **Tree**, **Model**, **Thinking level**, and **Compact conversation**.
+Tree, Model and Thinking level each retain an icon to the left of their label.
+Tree opens the existing conversation-path dialog; Model and Thinking level open
+session-settings pickers. Neither Tree nor Model has a standalone toolbar button.
+Unavailable actions include an explanation or disabled reason. A native HTML popover places the menu above the composer in the top layer,
 without clipping; position follows resize/scroll and the visual viewport. This
 requires a modern Popover API browser (including Safari/iPadOS 17+).
 Arrow keys/Home/End navigate, Enter/Space select, Escape restores trigger focus,
@@ -167,9 +169,9 @@ promise succeeds and current session/model state is checked; an ACK is not succe
 The operation retains serialization until settlement, even over disconnect.
 Uncertain/disconnected operations are never retried automatically.
 
-The toolbar button uses the former Tree slot, leaving the row's width unchanged.
-It opens a searchable modal with current-model indication, provider/ID metadata,
-native focus trapping, Arrow navigation and Escape/close focus restoration.
+The **Model** row in the three-dot menu opens a searchable modal with current-model indication, provider/ID metadata,
+native focus trapping, Arrow navigation and Escape/close focus restoration to the
+three-dot trigger.
 Search Enter cannot submit the surrounding composer. Discovery happens only on
 opening (or explicit error retry), never on keystrokes, focus or reconnect.
 Pi activity disables switching; disconnect or identity replacement closes the
@@ -196,6 +198,35 @@ PLAYWRIGHT_MODULE=/tmp/fernblick-design-tools/node_modules/playwright/index.mjs 
 Screenshots are written to ignored `design-gallery/model-picker/`.
 Existing agents are never controlled by these checks; physical-device keyboard
 behavior and live provider calls remain manual verification.
+
+`POST .../thinking-levels` accepts `{target}`, returning the current
+`{provider,modelId,level,levels}` from public `pi.getThinkingLevel()` and
+the host Pi AI `getSupportedThinkingLevels(ctx.model)` helper. No model-name
+heuristics or trial mutations determine the choices: custom `thinkingLevelMap`
+settings, extra-high/max support, and non-reasoning models are handled by Pi.
+Non-reasoning models expose only Off with an explanation.
+
+`POST .../set-thinking-level` accepts `{target,provider,modelId,level}`.
+Both endpoints require `capabilities.thinking` and the existing Origin, process,
+identity and serialization guards; setting also requires idle state, an unchanged
+model and a currently supported level. The extension calls synchronous public
+`pi.setThinkingLevel(level)` and verifies the resulting level and model before
+returning `thinking-level-changed`. A forwarding ACK is not confirmation.
+The browser validates the exact target/model/level; failures preserve the draft
+and are never automatically retried. Global defaults are unchanged.
+Snapshots carry optional `status.thinkingLevel`, refreshed by Pi's native
+thinking/model events, so terminal changes are reflected too.
+
+The **Thinking level** menu row opens a focused modal using the same styles as
+Model. Discovery runs only on opening or explicit error retry. Changing the
+session, disconnecting, or replacing the model closes it; requests also bind to
+the model shown when the choices were fetched. Busy state disables selection
+without discarding drafts/images. Legacy bridges show a reload notice.
+Tests cover unsupported/custom levels, model replacement, busy/stale/duplicate
+requests, failed or mismatched results, native Pi session persistence without
+global-default changes, and HTTP/client validation. The model-picker browser
+script also checks both labeled menu rows, thinking-level selection, keyboard
+navigation, focus restoration, non-reasoning state and touch-sized layouts.
 
 `POST .../skills` accepts `{target}` and returns a correlated catalogue from the
 active extension's public `pi.getCommands()`. Snapshots advertise
@@ -443,7 +474,7 @@ At the Pi 1.1.0 upgrade, `npm audit --package-lock-only` reports 19 findings
 The upgrade removes the `brace-expansion` finding and introduces no newly affected
 packages; the other findings remain unresolved. The Pi dependency is for
 type/loader verification, not imported by the backend at runtime. The standalone
-extension's runtime dependency is Zod. `npm run check` does not include `npm audit`.
+extension's installed runtime dependency is Zod; Pi supplies the Pi AI peer. `npm run check` does not include `npm audit`.
 
 The original conversation-tree and attachment-preview styles were restored
 narrowly from commit `435eec2`, along with the tree button/composer column. No

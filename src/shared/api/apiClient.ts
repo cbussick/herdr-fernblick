@@ -26,6 +26,9 @@ import {
   skillsResponseSchema,
   modelsResponseSchema,
   modelChangedResponseSchema,
+  thinkingLevelsResponseSchema,
+  thinkingChangedResponseSchema,
+  type ThinkingLevel,
   type Target,
 } from "../../../packages/pi-live-chat/protocol";
 
@@ -241,6 +244,57 @@ export async function setAgentModel(
     result.data.model.id !== modelId
   )
     throw new Error("No valid model change confirmation. Check Pi before trying again.");
+  return result.data;
+}
+export async function getAgentThinkingLevels(pane: string, target: Target, signal?: AbortSignal) {
+  const result = thinkingLevelsResponseSchema.parse(
+    await request(`/api/agents/${encodeURIComponent(pane)}/thinking-levels`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ target }),
+      signal,
+    }),
+  );
+  if (
+    result.target.runtime !== target.runtime ||
+    result.target.sessionId !== target.sessionId ||
+    result.target.epoch !== target.epoch
+  )
+    throw new Error("Pi session changed. Reopen Thinking level.");
+  return result;
+}
+export async function setAgentThinkingLevel(
+  pane: string,
+  target: Target,
+  provider: string,
+  modelId: string,
+  level: ThinkingLevel,
+) {
+  let body: unknown;
+  try {
+    body = await request(`/api/agents/${encodeURIComponent(pane)}/set-thinking-level`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ target, provider, modelId, level }),
+      signal: AbortSignal.timeout(15_000),
+    });
+  } catch (error) {
+    if (error instanceof ApiError) throw error;
+    throw new Error("Thinking level change outcome uncertain. Check Pi before trying again.", {
+      cause: error,
+    });
+  }
+  const result = thinkingChangedResponseSchema.safeParse(body);
+  if (
+    !result.success ||
+    result.data.target.runtime !== target.runtime ||
+    result.data.target.sessionId !== target.sessionId ||
+    result.data.target.epoch !== target.epoch ||
+    result.data.provider !== provider ||
+    result.data.modelId !== modelId ||
+    result.data.level !== level
+  )
+    throw new Error("No valid thinking level confirmation. Check Pi before trying again.");
   return result.data;
 }
 export async function getAgentTree(pane: string, target: Target) {

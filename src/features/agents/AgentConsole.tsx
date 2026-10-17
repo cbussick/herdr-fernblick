@@ -15,7 +15,6 @@ import { getAgentOutput, sendAgentKey, chatCommand, uploadImage } from "../../sh
 import { useLiveChat } from "./useLiveChat";
 import { ChatTranscript } from "./ChatTranscript";
 import { ImageLightbox } from "./ImageLightbox";
-import { ModelPicker } from "./ModelPicker";
 import { PiSessionStatus } from "./PiSessionStatus";
 import { TerminalOutput } from "./TerminalOutput";
 import { useChatAnnotations } from "./useChatAnnotations";
@@ -601,6 +600,17 @@ export function AgentConsole({ agent, onBack }: AgentConsoleProps) {
               onChange={(event) => selectImages(event.target.files)}
             />
             <ConversationCompaction
+              settings={{
+                pane: agent.pane_id,
+                target: snapshot ? targetOf(snapshot) : undefined,
+                connected: Boolean(snapshot && !live.error),
+                enabled: canForward && !stop.isPending && !annotations.editor && !compact.pending,
+                modelsSupported: Boolean(snapshot?.capabilities?.models),
+                thinkingSupported: Boolean(snapshot?.capabilities?.thinking),
+                model: snapshot?.status.model,
+                provider: snapshot?.status.provider,
+                thinkingLevel: snapshot?.status.thinkingLevel,
+              }}
               canOpenTree={Boolean(
                 snapshot && !live.error && !annotations.editor && !compact.pending,
               )}
@@ -643,19 +653,6 @@ export function AgentConsole({ agent, onBack }: AgentConsoleProps) {
                   sending={composerSending}
                   canSend={canSend}
                   canAttach={attachments.length < MAX_IMAGES}
-                  modelPicker={
-                    <ModelPicker
-                      pane={agent.pane_id}
-                      target={snapshot ? targetOf(snapshot) : undefined}
-                      connected={Boolean(snapshot && !live.error)}
-                      supported={Boolean(snapshot?.capabilities?.models)}
-                      enabled={
-                        canForward && !stop.isPending && !annotations.editor && !compact.pending
-                      }
-                      model={snapshot?.status.model}
-                      provider={snapshot?.status.provider}
-                    />
-                  }
                   onAttach={() => fileInputRef.current?.click()}
                   canOpenBoard={Boolean(
                     snapshot?.version === 2 &&

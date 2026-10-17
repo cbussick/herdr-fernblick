@@ -49,12 +49,13 @@ function fakePi(session = "session") {
     { handler: (args: string, ctx: ExtensionCommandContext) => Promise<void> }
   >();
   let idle = true;
+  let thinkingLevel = "medium";
   let activeTools = ["read", "bash"];
   const tools = new Map<string, ToolDefinition>();
   const ctx = {
     mode: "tui",
     cwd: "/test",
-    model: { id: "model", provider: "provider" },
+    model: { id: "model", provider: "provider", reasoning: true },
     modelRegistry: {
       getAvailable: vi.fn(() => [{ id: "model", provider: "provider", name: "Test model" }]),
     },
@@ -91,6 +92,10 @@ function fakePi(session = "session") {
       handlers.set(event, [...(handlers.get(event) ?? []), handler]);
     },
     sendUserMessage: vi.fn(),
+    getThinkingLevel: vi.fn(() => thinkingLevel),
+    setThinkingLevel: vi.fn((level: string) => {
+      thinkingLevel = level;
+    }),
     setModel: vi.fn(async (model: unknown) => {
       Object.assign(ctx, { model });
       return true;
@@ -196,6 +201,136 @@ function modelCommand(
   writeFrame(t.connections.at(-1)!, { type: "command", id, action, target, ...selection });
   return id;
 }
+function thinkingCommand(
+  t: Awaited<ReturnType<typeof setup>>,
+  action: "thinking-levels" | "set-thinking-level",
+  selection = { provider: "provider", modelId: "model", level: "high" },
+  target = targetOf(t.latest()!),
+) {
+  const id = randomUUID();
+  writeFrame(t.connections.at(-1)!, { type: "command", id, action, target, ...selection });
+  return id;
+}
+it("discovers host-supported thinking levels without mutating and projects the current level", async () => {
+  const t = await setup();
+  expect(t.latest()?.capabilities?.thinking).toBe(true);
+  expect(t.latest()?.status.thinkingLevel).toBe("medium");
+  Object.assign(t.ctx, {
+    model: {
+      id: "model",
+      provider: "provider",
+      reasoning: true,
+      thinkingLevelMap: { off: null, minimal: null, xhigh: "very-high", max: "maximum" },
+    },
+  });
+  t.setIdle(false);
+  expect(await t.ack(thinkingCommand(t, "thinking-levels"))).toMatchObject({
+    type: "thinking-levels",
+    provider: "provider",
+    modelId: "model",
+    level: "medium",
+    levels: ["low", "medium", "high", "xhigh", "max"],
+  });
+  expect(t.pi.setThinkingLevel).not.toHaveBeenCalled();
+  Object.assign(t.ctx, { model: { id: "model", provider: "provider", reasoning: false } });
+  expect(await t.ack(thinkingCommand(t, "thinking-levels"))).toMatchObject({ levels: ["off"] });
+});
+it("changes thinking through Pi, confirms effective state, and rejects duplicate IDs", async () => {
+  const t = await setup();
+  const id = thinkingCommand(t, "set-thinking-level");
+  expect(await t.ack(id)).toMatchObject({
+    type: "thinking-level-changed",
+    target: targetOf(t.latest()!),
+    provider: "provider",
+    modelId: "model",
+    level: "high",
+  });
+  expect(t.pi.setThinkingLevel).toHaveBeenCalledExactlyOnceWith("high");
+  await vi.waitFor(() => expect(t.latest()?.status.thinkingLevel).toBe("high"));
+  writeFrame(t.connections.at(-1)!, {
+    type: "command",
+    id,
+    action: "set-thinking-level",
+    target: targetOf(t.latest()!),
+    provider: "provider",
+    modelId: "model",
+    level: "high",
+  });
+  await vi.waitFor(() =>
+    expect(t.frames).toContainEqual(
+      expect.objectContaining({ id, reason: expect.stringContaining("already seen") }),
+    ),
+  );
+  expect(t.pi.setThinkingLevel).toHaveBeenCalledOnce();
+  expect(t.pi.sendUserMessage).not.toHaveBeenCalled();
+});
+it("rejects busy, stale, model-replaced and unsupported thinking selections without invoking Pi", async () => {
+  const t = await setup();
+  t.setIdle(false);
+  expect(await t.ack(thinkingCommand(t, "set-thinking-level"))).toMatchObject({
+    outcome: "rejected",
+    reason: expect.stringContaining("busy"),
+  });
+  t.setIdle(true);
+  expect(
+    await t.ack(
+      thinkingCommand(t, "set-thinking-level", undefined, {
+        ...targetOf(t.latest()!),
+        epoch: randomUUID(),
+      }),
+    ),
+  ).toMatchObject({ outcome: "rejected" });
+  expect(
+    await t.ack(
+      thinkingCommand(t, "set-thinking-level", {
+        provider: "other",
+        modelId: "model",
+        level: "high",
+      }),
+    ),
+  ).toMatchObject({ outcome: "rejected", reason: expect.stringContaining("Model changed") });
+  expect(
+    await t.ack(
+      thinkingCommand(t, "set-thinking-level", {
+        provider: "provider",
+        modelId: "model",
+        level: "max",
+      }),
+    ),
+  ).toMatchObject({ outcome: "rejected", reason: expect.stringContaining("not supported") });
+  expect(t.pi.setThinkingLevel).not.toHaveBeenCalled();
+  t.pi.setThinkingLevel.mockImplementationOnce(() => {});
+  expect(await t.ack(thinkingCommand(t, "set-thinking-level"))).toMatchObject({
+    outcome: "rejected",
+    reason: expect.stringContaining("uncertain"),
+  });
+  t.pi.setThinkingLevel.mockImplementationOnce(() => {
+    throw new Error("Thinking setter failed");
+  });
+  expect(await t.ack(thinkingCommand(t, "set-thinking-level"))).toMatchObject({
+    outcome: "rejected",
+    reason: "Thinking setter failed",
+  });
+});
+it("serializes thinking requests with pending model changes", async () => {
+  const t = await setup();
+  let finish!: (value: boolean) => void;
+  t.pi.setModel.mockImplementationOnce(
+    () =>
+      new Promise((resolve) => {
+        finish = resolve;
+      }),
+  );
+  const id = modelCommand(t, "set-model");
+  await vi.waitFor(() => expect(t.pi.setModel).toHaveBeenCalledOnce());
+  expect(await t.ack(thinkingCommand(t, "set-thinking-level"))).toMatchObject({
+    outcome: "rejected",
+    reason: expect.stringContaining("in flight"),
+  });
+  expect(t.pi.setThinkingLevel).not.toHaveBeenCalled();
+  finish(true);
+  await t.ack(id);
+});
 it("lists bounded display-only model metadata from this session without invoking a model", async () => {
   const t = await setup();
   const getAvailable = vi.mocked(t.ctx.modelRegistry.getAvailable);
@@ -1257,6 +1392,7 @@ it("advertises boards, dispatches private RPCs before commands, and gates read-o
     skills: true,
     compact: true,
     models: true,
+    thinking: true,
   });
   expect(t.tools.get("board_read")).toMatchObject({
     exposure: "hidden",

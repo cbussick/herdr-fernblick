@@ -165,7 +165,7 @@ for (const [engine, type] of [
       }
       await page.screenshot({ path: `${output}/${engine}-${name}-toolbar.png` });
       await openMenu();
-      assert.equal(await menu.getByRole("menuitem").count(), 2);
+      assert.equal(await menu.getByRole("menuitem").count(), 4);
       const tree = page.getByRole("menuitem", { name: "Tree", exact: true });
       assert.equal(await tree.locator("svg").count(), 1);
       assert.equal(await tree.evaluate((node) => node === document.activeElement), true);
@@ -205,7 +205,7 @@ for (const [engine, type] of [
       await tree.press("ArrowUp");
       await compact.press("ArrowDown");
       assert.equal(await tree.evaluate((node) => node === document.activeElement), true);
-      await tree.press("ArrowDown");
+      await tree.press("End");
       assert.equal(await compact.evaluate((node) => node === document.activeElement), true);
       await compact.press("Escape");
       assert.equal(await menu.count(), 0);

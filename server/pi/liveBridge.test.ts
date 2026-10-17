@@ -466,6 +466,113 @@ it.each(["wrong-target", "wrong-model", "ack"])("rejects %s model confirmations"
     }),
   ).rejects.toThrow("uncertain");
 });
+it("guards thinking HTTP routes with origin, capability, idle state, model and typed levels", async () => {
+  const p = await peer();
+  const service = { getAgent: vi.fn(async () => agent) } as unknown as HerdrService;
+  const server = createHttpServer(service, dir, bridge);
+  await new Promise<void>((done) => server.listen(0, "127.0.0.1", done));
+  const base = `http://127.0.0.1:${(server.address() as { port: number }).port}`;
+  const commands: unknown[] = [];
+  receiveFrames(p.socket, (raw) => {
+    commands.push(raw);
+    const c = raw as {
+      id: string;
+      action: string;
+      target: unknown;
+      provider: string;
+      modelId: string;
+      level: string;
+    };
+    writeFrame(
+      p.socket,
+      c.action === "thinking-levels"
+        ? {
+            type: "thinking-levels",
+            id: c.id,
+            target: c.target,
+            provider: "provider",
+            modelId: "model",
+            level: "medium",
+            levels: ["off", "low", "medium", "high"],
+          }
+        : {
+            type: "thinking-level-changed",
+            id: c.id,
+            target: c.target,
+            provider: c.provider,
+            modelId: c.modelId,
+            level: c.level,
+          },
+    );
+  });
+  const request = (action: string, body: object = {}, origin = base) =>
+    fetch(base + "/api/agents/w1:p1/" + action, {
+      method: "POST",
+      headers: { Origin: origin, "Content-Type": "application/json" },
+      body: JSON.stringify({ target: targetOf(p.snapshot), ...body }),
+    });
+  try {
+    expect((await request("thinking-levels", {}, "https://elsewhere.test")).status).toBe(403);
+    expect((await request("thinking-levels")).status).toBe(409);
+    const selection = { provider: "provider", modelId: "model", level: "high" };
+    expect((await request("set-thinking-level", selection)).status).toBe(409);
+    writeFrame(p.socket, { ...p.snapshot, seq: 2, busy: true, capabilities: { thinking: true } });
+    await vi.waitFor(() => expect(bridge.current(agent).snapshot.seq).toBe(2));
+    expect((await request("set-thinking-level", selection)).status).toBe(409);
+    expect((await request("thinking-levels")).status).toBe(200);
+    expect((await request("set-thinking-level", { ...selection, level: "turbo" })).status).toBe(
+      400,
+    );
+    expect((await request("set-thinking-level", { level: "high" })).status).toBe(400);
+    writeFrame(p.socket, { ...p.snapshot, seq: 3, capabilities: { thinking: true } });
+    await vi.waitFor(() => expect(bridge.current(agent).snapshot.seq).toBe(3));
+    expect(
+      (
+        await request("set-thinking-level", {
+          ...selection,
+          target: { ...targetOf(p.snapshot), epoch: randomUUID() },
+        })
+      ).status,
+    ).toBe(409);
+    const result = await request("set-thinking-level", selection);
+    expect(result.status).toBe(200);
+    expect(await result.json()).toMatchObject({ type: "thinking-level-changed", ...selection });
+    expect(commands).toHaveLength(2);
+  } finally {
+    server.closeAllConnections();
+    await new Promise<void>((done) => server.close(() => done()));
+  }
+});
+it.each(["wrong-target", "wrong-model", "wrong-level", "ack"])(
+  "rejects %s thinking confirmations",
+  async (kind) => {
+    const p = await peer({ ...makeSnapshot(), capabilities: { thinking: true } });
+    receiveFrames(p.socket, (raw) => {
+      const c = raw as { id: string; target: object };
+      writeFrame(
+        p.socket,
+        kind === "ack"
+          ? { type: "ack", id: c.id, outcome: "invoked" }
+          : {
+              type: "thinking-level-changed",
+              id: c.id,
+              target: kind === "wrong-target" ? { ...c.target, epoch: randomUUID() } : c.target,
+              modelId: kind === "wrong-model" ? "other" : "model",
+              provider: "provider",
+              level: kind === "wrong-level" ? "low" : "high",
+            },
+      );
+    });
+    await expect(
+      bridge.request(agent, targetOf(p.snapshot), {
+        action: "set-thinking-level",
+        provider: "provider",
+        modelId: "model",
+        level: "high",
+      }),
+    ).rejects.toThrow("uncertain");
+  },
+);
 it("reports a new agent without a saved session as connecting, not an error", async () => {
   const service = {
     getAgent: vi.fn(async () => ({ ...agent, agent_session: null })),
