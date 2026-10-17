@@ -67,6 +67,10 @@ export async function getSavedChats() {
   return savedChatsResponseSchema.parse(await request("/api/chats"));
 }
 
+export async function deleteChat(id: string) {
+  await request(`/api/chats/${encodeURIComponent(id)}`, { method: "DELETE" });
+}
+
 export async function resumeChat(input: { id: string; workspaceId: string }) {
   const body = await request(`/api/chats/${encodeURIComponent(input.id)}/resume`, {
     method: "POST",

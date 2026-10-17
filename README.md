@@ -107,6 +107,11 @@ immediately. If a chat was opened after the list loaded, Resume selects that
 existing agent instead of starting a duplicate. Resuming does not send a prompt.
 The original project directory must still exist.
 
+Use a chat's **Delete** button and confirm **Delete chat** to permanently remove
+its saved session file from disk. This cannot be undone. Cancel leaves the chat
+untouched; deletion errors stay in the dialog so you can retry. Active chats and
+chats currently being resumed cannot be deleted.
+
 The backend reads session-file metadata for this list only; the live transcript
 still comes from Pi's live bridge. It discovers local sessions under
 `~/.pi/agent/sessions` (or `PI_CODING_AGENT_DIR/sessions`). Set
@@ -121,8 +126,9 @@ This exposes saved-chat titles, prompt previews and project paths for the backen
 Unix user, not just chats created through Fernblick. Use a dedicated session
 directory for isolated development. Active-session detection is limited to the
 connected Herdr instance: do not resume a file that is open in another Herdr
-instance or standalone Pi process. No session files are deleted or rewritten by
-the catalog.
+instance or standalone Pi process. The same limitation applies to deletion: close
+a chat in all other instances before deleting it. Session files are only removed
+after an explicit delete confirmation; browsing never rewrites them.
 
 ### Whiteboard
 

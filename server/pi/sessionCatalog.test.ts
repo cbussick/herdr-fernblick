@@ -1,4 +1,13 @@
-import { appendFile, mkdir, mkdtemp, rm, symlink, utimes, writeFile } from "node:fs/promises";
+import {
+  access,
+  appendFile,
+  mkdir,
+  mkdtemp,
+  rm,
+  symlink,
+  utimes,
+  writeFile,
+} from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, expect, it } from "vitest";
@@ -89,4 +98,30 @@ it("does not resume a different session that replaced a previously listed file",
 
 it("treats a missing directory as empty", async () => {
   expect(await new SessionCatalog(join(root, "missing")).list()).toEqual([]);
+});
+
+it("deletes grouped sessions and evicts cached metadata", async () => {
+  await mkdir(join(root, "project"));
+  const path = join(root, "project", "saved.jsonl");
+  await save(path, [header]);
+  const [chat] = await catalog.list();
+  await catalog.delete(chat.id);
+  await expect(access(path)).rejects.toMatchObject({ code: "ENOENT" });
+  expect(await catalog.list()).toEqual([]);
+  await expect(catalog.delete(chat.id)).rejects.toMatchObject({ status: 404 });
+});
+
+it("does not delete a replacement session or follow a replaced symlink", async () => {
+  const path = join(root, "saved.jsonl");
+  const other = join(root, "other.jsonl");
+  await save(path, [header]);
+  const [chat] = await catalog.list();
+  await save(path, [{ ...header, id: "replacement" }]);
+  await expect(catalog.delete(chat.id)).rejects.toMatchObject({ status: 404 });
+  await expect(access(path)).resolves.toBeUndefined();
+  await save(other, [header]);
+  await rm(path);
+  await symlink(other, path);
+  await expect(catalog.delete(chat.id)).rejects.toMatchObject({ status: 404 });
+  await expect(access(other)).resolves.toBeUndefined();
 });

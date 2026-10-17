@@ -96,6 +96,7 @@ const workspaceCreatedResultSchema = z.object({
 
 export class HerdrService {
   private readonly resuming = new Map<string, Promise<Agent>>();
+  private readonly deleting = new Map<string, Promise<void>>();
   // Herdr can detect a new Pi process before its session-reporting extension catches up.
   private readonly recentlyResumed = new Map<string, { paneId: string; expires: number }>();
 
@@ -126,7 +127,32 @@ export class HerdrService {
     );
   }
 
+  deleteChat(id: string) {
+    if (this.resuming.has(id))
+      return Promise.reject(
+        new SavedChatError(409, "This chat is being resumed. Try again later."),
+      );
+    const pending = this.deleting.get(id);
+    if (pending) return pending;
+    const operation = this.deleteSavedChat(id);
+    this.deleting.set(id, operation);
+    void operation.finally(() => this.deleting.delete(id)).catch(() => {});
+    return operation;
+  }
+
+  private async deleteSavedChat(id: string) {
+    const chat = await this.sessions.get(id);
+    const dashboard = await this.getDashboard();
+    if (this.findActiveChat(chat.path, dashboard.agents))
+      throw new SavedChatError(409, "This chat is active. Close it before deleting it.");
+    await this.sessions.delete(id);
+  }
+
   resumeChat(id: string, workspaceId: string) {
+    if (this.deleting.has(id))
+      return Promise.reject(
+        new SavedChatError(409, "This chat is being deleted. Refresh the list."),
+      );
     const pending = this.resuming.get(id);
     if (pending) return pending;
     const operation = this.resumeSavedChat(id, workspaceId);

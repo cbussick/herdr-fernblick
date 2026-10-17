@@ -207,6 +207,14 @@ async function handleApi(
     return true;
   }
 
+  const deleteChatMatch = url.pathname.match(/^\/api\/chats\/([a-f0-9]{64})$/);
+  if (request.method === "DELETE" && deleteChatMatch) {
+    requireSameOrigin(request);
+    await service.deleteChat(deleteChatMatch[1]);
+    sendJson(response, 200, { ok: true });
+    return true;
+  }
+
   const resumeMatch = url.pathname.match(/^\/api\/chats\/([a-f0-9]{64})\/resume$/);
   if (request.method === "POST" && resumeMatch) {
     requireSameOrigin(request);

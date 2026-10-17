@@ -1,8 +1,9 @@
-import { useState } from "react";
+import { useRef, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { getSavedChats, resumeChat } from "../../shared/api/apiClient";
+import { deleteChat, getSavedChats, resumeChat } from "../../shared/api/apiClient";
 import type { Agent, SavedChat, Workspace } from "../../shared/api/contracts";
 import { ResumeChatDialog } from "./ResumeChatDialog";
+import { DeleteChatDialog } from "./DeleteChatDialog";
 import { StateIcon } from "../../shared/ui/StateFeedback";
 import overviewStyles from "./agentOverview.module.css";
 import styles from "./PastChats.module.css";
@@ -18,6 +19,8 @@ export function PastChats({
 }) {
   const client = useQueryClient();
   const [selectedChat, setSelectedChat] = useState<SavedChat | null>(null);
+  const [chatToDelete, setChatToDelete] = useState<SavedChat | null>(null);
+  const historyRef = useRef<HTMLElement>(null);
   const chats = useQuery({
     queryKey: ["saved-chats"],
     queryFn: getSavedChats,
@@ -44,6 +47,19 @@ export function PastChats({
       onResumed(agent);
     },
   });
+  const deletion = useMutation({
+    mutationFn: deleteChat,
+    onSuccess: async (_result, id) => {
+      await client.cancelQueries({ queryKey: ["saved-chats"] });
+      client.setQueryData(
+        ["saved-chats"],
+        (current: Awaited<ReturnType<typeof getSavedChats>> | undefined) =>
+          current ? { ...current, chats: current.chats.filter((chat) => chat.id !== id) } : current,
+      );
+      setChatToDelete(null);
+      void client.invalidateQueries({ queryKey: ["saved-chats"] });
+    },
+  });
   const search = query.trim().toLocaleLowerCase();
   const filtered =
     chats.data?.chats.filter(
@@ -56,7 +72,13 @@ export function PastChats({
 
   return (
     <>
-      <section className={styles.history} aria-label="Past chats" data-testid="past-chats">
+      <section
+        ref={historyRef}
+        tabIndex={-1}
+        className={styles.history}
+        aria-label="Past chats"
+        data-testid="past-chats"
+      >
         {chats.isPending && (
           <div className={overviewStyles["overview-empty"]} role="status" aria-busy="true">
             <StateIcon kind="loading" spinning />
@@ -93,22 +115,46 @@ export function PastChats({
                     year: "numeric",
                   })}
                 </time>
-                <button
-                  type="button"
-                  disabled={resume.isPending}
-                  aria-label={`Resume ${chat.title}`}
-                  onClick={() => {
-                    resume.reset();
-                    setSelectedChat(chat);
-                  }}
-                >
-                  {resume.isPending && resume.variables.id === chat.id ? "Opening…" : "Resume"}
-                </button>
+                <div className={styles.actions}>
+                  <button
+                    type="button"
+                    className={styles.delete}
+                    disabled={resume.isPending || deletion.isPending}
+                    aria-label={`Delete ${chat.title}`}
+                    onClick={() => {
+                      deletion.reset();
+                      setChatToDelete(chat);
+                    }}
+                  >
+                    Delete
+                  </button>
+                  <button
+                    type="button"
+                    disabled={resume.isPending || deletion.isPending}
+                    aria-label={`Resume ${chat.title}`}
+                    onClick={() => {
+                      resume.reset();
+                      setSelectedChat(chat);
+                    }}
+                  >
+                    {resume.isPending && resume.variables.id === chat.id ? "Opening…" : "Resume"}
+                  </button>
+                </div>
               </div>
             </li>
           ))}
         </ul>
       </section>
+      {chatToDelete && (
+        <DeleteChatDialog
+          chat={chatToDelete}
+          pending={deletion.isPending}
+          error={deletion.isError ? deletion.error.message : undefined}
+          onConfirm={() => deletion.mutate(chatToDelete.id)}
+          onClose={() => setChatToDelete(null)}
+          fallbackFocusRef={historyRef}
+        />
+      )}
       {selectedChat && (
         <ResumeChatDialog
           key={selectedChat.id}

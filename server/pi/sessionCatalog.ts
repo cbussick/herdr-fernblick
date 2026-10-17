@@ -1,6 +1,6 @@
 import { createHash } from "node:crypto";
 import { constants } from "node:fs";
-import { open, readdir } from "node:fs/promises";
+import { open, readdir, unlink } from "node:fs/promises";
 import { homedir } from "node:os";
 import { isAbsolute, join, resolve } from "node:path";
 import { z } from "zod";
@@ -83,6 +83,22 @@ export class SessionCatalog {
     if (!chat)
       throw new SavedChatError(404, "This saved chat is no longer available. Refresh the list.");
     return chat;
+  }
+
+  async delete(id: string) {
+    // Resolve the opaque ID again: never accept a client-supplied filesystem path.
+    const chat = await this.get(id);
+    try {
+      await unlink(chat.path);
+      this.cache.delete(chat.path);
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code === "ENOENT")
+        throw new SavedChatError(404, "This saved chat is no longer available. Refresh the list.");
+      throw new SavedChatError(
+        503,
+        "Cannot delete this saved chat. Check the session directory permissions.",
+      );
+    }
   }
 
   private async read(path: string): Promise<CatalogChat | null> {

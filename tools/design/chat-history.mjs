@@ -76,6 +76,12 @@ for (const [engine, browserType] of [
               { workspace_id: "w2", label: "API" },
             ];
       let resumed = false;
+      let deleted = false;
+      let deletionAttempts = 0;
+      let releaseDelete;
+      const deletionReady = new Promise((resolve) => {
+        releaseDelete = resolve;
+      });
       let releaseHistory;
       const historyReady = new Promise((resolve) => {
         releaseHistory = resolve;
@@ -99,10 +105,26 @@ for (const [engine, browserType] of [
         else if (url.pathname === "/api/chats" && method === "GET") {
           await historyReady;
           body = {
-            chats: chats.map((chat) =>
-              resumed && chat.id === chats[0].id ? { ...chat, activePaneId: agent.pane_id } : chat,
-            ),
+            chats: chats
+              .filter((chat) => !deleted || chat.id !== chats[1].id)
+              .map((chat) =>
+                resumed && chat.id === chats[0].id
+                  ? { ...chat, activePaneId: agent.pane_id }
+                  : chat,
+              ),
           };
+        } else if (url.pathname === `/api/chats/${chats[1].id}` && method === "DELETE") {
+          deletionAttempts++;
+          if (deletionAttempts === 1) {
+            await route.fulfill({
+              status: 409,
+              json: { error: "This chat is active. Close it first." },
+            });
+            return;
+          }
+          await deletionReady;
+          deleted = true;
+          body = { ok: true };
         } else if (url.pathname === "/api/workspaces" && method === "POST") {
           const input = route.request().postDataJSON();
           creations.push(input);
@@ -180,6 +202,52 @@ for (const [engine, browserType] of [
       const tab = await page.getByRole("tab", { name: "Past chats", exact: true }).boundingBox();
       assert(tab && tab.x >= 0 && tab.x + tab.width <= width, "History tab fits");
       await page.screenshot({ path: `${output}/${engine}-${device}.png`, fullPage: true });
+      const deleteOpener = page.getByRole("button", {
+        name: `Delete ${chats[1].title}`,
+        exact: true,
+      });
+      const deleteDialog = page.getByRole("dialog", { name: "Delete chat?", exact: true });
+      await deleteOpener.click();
+      await deleteDialog.waitFor();
+      const cancelDelete = deleteDialog.getByRole("button", { name: "Cancel", exact: true });
+      assert(await cancelDelete.evaluate((node) => document.activeElement === node));
+      await page.keyboard.press("Escape");
+      await deleteDialog.waitFor({ state: "hidden" });
+      assert(await deleteOpener.evaluate((node) => document.activeElement === node));
+      assert.equal(deletionAttempts, 0);
+      await deleteOpener.click();
+      await cancelDelete.click();
+      await deleteDialog.waitFor({ state: "hidden" });
+      assert.equal(deletionAttempts, 0);
+      await deleteOpener.click();
+      const confirmDelete = deleteDialog.getByRole("button", { name: "Delete chat", exact: true });
+      await confirmDelete.click();
+      await deleteDialog.getByRole("alert").waitFor();
+      assert.equal(await page.getByTestId("saved-chat").count(), 22);
+      await page.screenshot({
+        path: `${output}/${engine}-${device}-delete-dialog.png`,
+        fullPage: true,
+      });
+      await confirmDelete.click();
+      await page.waitForFunction(
+        () =>
+          document
+            .querySelector('[data-testid="delete-chat-dialog"] form')
+            ?.getAttribute("aria-busy") === "true",
+      );
+      assert(await cancelDelete.isDisabled());
+      await page.keyboard.press("Escape");
+      assert(await deleteDialog.isVisible());
+      releaseDelete();
+      await deleteDialog.waitFor({ state: "hidden" });
+      await page.waitForFunction(
+        () => document.querySelectorAll('[data-testid="saved-chat"]').length === 21,
+      );
+      assert.equal(deletionAttempts, 2);
+      assert(
+        await page.getByTestId("past-chats").evaluate((node) => document.activeElement === node),
+      );
+      assert(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth));
       const opener = page.getByRole("button", { name: `Resume ${chats[0].title}`, exact: true });
       const dialog = page.getByRole("dialog", { name: "Open in which workspace?" });
       await opener.click();
@@ -252,12 +320,12 @@ for (const [engine, browserType] of [
       await dialog.waitFor({ state: "hidden" });
       await page.waitForFunction(() => document.querySelector('[data-testid="console"]') !== null);
       await page.waitForFunction(
-        () => document.querySelectorAll('[data-testid="saved-chat"]').length === 21,
+        () => document.querySelectorAll('[data-testid="saved-chat"]').length === 20,
       );
       assert.deepEqual(mutations, [{ workspaceId: "w3" }]);
       assert.deepEqual(errors, []);
       console.log(
-        `${engine} ${device}: loading, reduced motion, history, search, resume, overflow passed`,
+        `${engine} ${device}: loading, reduced motion, history, search, delete, resume, focus, overflow passed`,
       );
       await page.close();
     }

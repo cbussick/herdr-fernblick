@@ -1,4 +1,4 @@
-import { mkdtemp, rm, writeFile } from "node:fs/promises";
+import { access, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import type { Server } from "node:http";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -184,4 +184,70 @@ it("reports launch failures instead of claiming a successful resume", async () =
     return original(...args);
   });
   expect((await resume()).status).toBe(500);
+});
+
+const deleteChat = (chatId = id, origin: string | null = base) =>
+  fetch(`${base}/api/chats/${chatId}`, {
+    method: "DELETE",
+    headers: origin ? { Origin: origin } : {},
+  });
+
+it("deletes only the selected session and removes it from the catalog", async () => {
+  const other = join(directory, "other.jsonl");
+  await writeFile(other, await readFile(sessionPath));
+  expect((await deleteChat()).status).toBe(200);
+  await expect(access(sessionPath)).rejects.toMatchObject({ code: "ENOENT" });
+  await expect(access(other)).resolves.toBeUndefined();
+  const list = await (await fetch(`${base}/api/chats`)).json();
+  expect(list.chats).toHaveLength(1);
+  expect(list.chats[0].id).not.toBe(id);
+  expect((await deleteChat()).status).toBe(404);
+  expect((await resume()).status).toBe(404);
+  expect(request.mock.calls.every(([method]) => method === "session.snapshot")).toBe(true);
+});
+
+it("requires same-origin deletion and rejects arbitrary paths or unknown IDs", async () => {
+  expect((await deleteChat(id, "https://other.invalid")).status).toBe(403);
+  expect((await deleteChat(id, null)).status).toBe(403);
+  expect((await deleteChat(encodeURIComponent(sessionPath))).status).toBe(404);
+  expect((await deleteChat("a".repeat(64))).status).toBe(404);
+  expect(request).not.toHaveBeenCalled();
+  await expect(access(sessionPath)).resolves.toBeUndefined();
+});
+
+it.each([false, true])(
+  "refuses to delete active chats (registration delayed: %s)",
+  async (delayed) => {
+    await resume();
+    if (delayed) active = [{ ...agent, agent_session: null }];
+    const response = await deleteChat();
+    expect(response.status).toBe(409);
+    expect(await response.json()).toEqual({
+      error: "This chat is active. Close it before deleting it.",
+    });
+    await expect(access(sessionPath)).resolves.toBeUndefined();
+  },
+);
+
+it("blocks deletion during resume without interrupting the launch", async () => {
+  const pending = service.resumeChat(id, "w1");
+  await expect(service.deleteChat(id)).rejects.toMatchObject({ status: 409 });
+  await pending;
+  await expect(access(sessionPath)).resolves.toBeUndefined();
+});
+
+it("coalesces deletes and prevents a concurrent resume", async () => {
+  const pending = service.deleteChat(id);
+  expect(service.deleteChat(id)).toBe(pending);
+  await expect(service.resumeChat(id, "w1")).rejects.toMatchObject({ status: 409 });
+  await pending;
+  await expect(access(sessionPath)).rejects.toMatchObject({ code: "ENOENT" });
+  await expect(service.resumeChat(id, "w1")).rejects.toMatchObject({ status: 404 });
+});
+
+it("does not delete if active-session detection is unavailable, and allows retry", async () => {
+  request.mockRejectedValueOnce(new Error("Herdr unavailable"));
+  expect((await deleteChat()).status).toBe(500);
+  await expect(access(sessionPath)).resolves.toBeUndefined();
+  expect((await deleteChat()).status).toBe(200);
 });
