@@ -98,8 +98,6 @@
   gap: var(--space-3);
   cursor: pointer;
   list-style: none;
-  -webkit-touch-callout: none;
-  user-select: none;
 }
 
 .workspace-disclosure summary::-webkit-details-marker {

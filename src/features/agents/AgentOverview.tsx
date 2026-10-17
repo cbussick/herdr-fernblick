@@ -1,6 +1,5 @@
 import overviewStyles from "./agentOverview.module.css";
 import uiStyles from "../../shared/ui/ui.module.css";
-import { useEffect, useRef } from "react";
 import type { Agent, AgentStatus, ShellTab, Workspace } from "../../shared/api/contracts";
 import { ChevronIcon, FolderIcon, PlusIcon, SearchIcon } from "../../shared/ui/Icons";
 import { StatusIndicator, TabKindIcon } from "../../shared/ui";
@@ -94,45 +93,8 @@ function WorkspaceSummary({
   status: AgentStatus;
   onCreateAgent: () => void;
 }) {
-  const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const origin = useRef({ x: 0, y: 0 });
-  const suppressClick = useRef(false);
-
-  function clearPress() {
-    if (timer.current !== null) clearTimeout(timer.current);
-    timer.current = null;
-  }
-  useEffect(() => clearPress, []);
-
   return (
-    <summary
-      onPointerDown={(event) => {
-        clearPress();
-        suppressClick.current = false;
-        if (event.pointerType === "mouse" || event.button !== 0 || !event.isPrimary) return;
-        origin.current = { x: event.clientX, y: event.clientY };
-        timer.current = setTimeout(() => {
-          timer.current = null;
-          suppressClick.current = true;
-          onCreateAgent();
-        }, 550);
-      }}
-      onPointerMove={(event) => {
-        if (Math.hypot(event.clientX - origin.current.x, event.clientY - origin.current.y) > 10) {
-          clearPress();
-        }
-      }}
-      onPointerUp={clearPress}
-      onPointerCancel={clearPress}
-      onPointerLeave={clearPress}
-      onContextMenu={(event) => event.preventDefault()}
-      onClick={(event) => {
-        if (!suppressClick.current || event.detail === 0) return;
-        event.preventDefault();
-        event.stopPropagation();
-        suppressClick.current = false;
-      }}
-    >
+    <summary>
       <span className={overviewStyles["workspace-disclosure__copy"]}>
         <strong>{label}</strong>
         <small>
@@ -146,7 +108,6 @@ function WorkspaceSummary({
         className={overviewStyles["workspace-disclosure__create"]}
         aria-label={`Create agent in ${label}`}
         title={`Create agent in ${label}`}
-        onPointerDown={(event) => event.stopPropagation()}
         onClick={(event) => {
           event.preventDefault();
           event.stopPropagation();
