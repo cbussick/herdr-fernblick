@@ -9,11 +9,12 @@ import {
   type Workspace,
 } from "../../shared/api/contracts";
 import { createAgent } from "../../shared/api/apiClient";
+import { NewWorkspaceDialog } from "./NewWorkspaceDialog";
 
 interface NewAgentDialogProps {
   onClose: () => void;
   onCreated: (agent: Agent) => void;
-  onCreateWorkspace: () => void;
+  onWorkspaceCreated: (workspace: Workspace) => void;
   open: boolean;
   workspaces: Workspace[];
 }
@@ -21,7 +22,7 @@ interface NewAgentDialogProps {
 export function NewAgentDialog({
   onClose,
   onCreated,
-  onCreateWorkspace,
+  onWorkspaceCreated,
   open,
   workspaces,
 }: NewAgentDialogProps) {
@@ -30,6 +31,7 @@ export function NewAgentDialog({
   const [nameError, setNameError] = useState<string | null>(null);
   const [tabLabel, setTabLabel] = useState("");
   const [workspaceId, setWorkspaceId] = useState("");
+  const [workspaceDialogOpen, setWorkspaceDialogOpen] = useState(false);
   const selectedWorkspaceId = workspaces.some((workspace) => workspace.workspace_id === workspaceId)
     ? workspaceId
     : (workspaces[0]?.workspace_id ?? "");
@@ -85,7 +87,13 @@ export function NewAgentDialog({
   }
 
   return (
-    <dialog ref={dialogRef} className={dialogStyles["new-agent-dialog"]} onClose={handleClose}>
+    <dialog
+      ref={dialogRef}
+      className={dialogStyles["new-agent-dialog"]}
+      onClose={(event) => {
+        if (event.target === event.currentTarget) handleClose();
+      }}
+    >
       <form className={dialogStyles["new-agent-form"]} onSubmit={handleSubmit} noValidate>
         <div className={dialogStyles["new-agent-form__header"]}>
           <div>
@@ -119,10 +127,7 @@ export function NewAgentDialog({
         <button
           type="button"
           className={dialogStyles["new-agent-form__inline-action"]}
-          onClick={() => {
-            dialogRef.current?.close();
-            onCreateWorkspace();
-          }}
+          onClick={() => setWorkspaceDialogOpen(true)}
         >
           + Create a new workspace
         </button>
@@ -182,6 +187,16 @@ export function NewAgentDialog({
           </button>
         </div>
       </form>
+      {workspaceDialogOpen && (
+        <NewWorkspaceDialog
+          onClose={() => setWorkspaceDialogOpen(false)}
+          onCreated={(workspace) => {
+            onWorkspaceCreated(workspace);
+            setWorkspaceId(workspace.workspace_id);
+            setWorkspaceDialogOpen(false);
+          }}
+        />
+      )}
     </dialog>
   );
 }
