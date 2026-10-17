@@ -104,13 +104,18 @@ PLAYWRIGHT_MODULE=/tmp/fernblick-design-tools/node_modules/playwright/index.mjs 
   node tools/design/transcript-follow.mjs http://127.0.0.1:<vite-port>
 ```
 
-Chromium/WebKit use intercepted agent APIs and synthetic streaming snapshots to
-check that browser scroll clamping during viewport expansion does not pause
-following. A small upward wheel scroll must still pause immediately, and returning
-to the bottom must resume following. Click and keyboard sends from a paused
-transcript must resume immediately, before an ACK or live echo. Reading upward
-again must remain paused through later ACKs and streamed output. No live agents
-or Herdr sockets are used.
+Chromium/WebKit use intercepted agent APIs and synthetic streaming snapshots at
+tablet and phone sizes to check that browser scroll clamping during viewport
+expansion does not pause following. Phone cases enable mobile emulation and a 3×
+device scale factor. A small upward scroll must pause immediately, and returning
+to the bottom must resume following. Mobile WebKit uses DOM scrolling with real
+browser scroll events because Playwright wheel input is unavailable there; other
+cases use wheel input. Click and keyboard sends from a paused transcript must
+resume immediately, before an ACK or live echo. Reading upward again must remain
+paused through later ACKs and streamed output. Multiline sends must stay at the
+bottom after ACK clears the draft and during streaming with stepped viewport
+expansion simulating keyboard dismissal. No live agents or Herdr sockets are used.
+These checks simulate keyboard geometry, not a physical phone keyboard.
 
 ## Proposal regression comparison
 
