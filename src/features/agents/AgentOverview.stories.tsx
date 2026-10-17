@@ -60,6 +60,7 @@ export const Workspaces: Story = {
       selectedPaneId={null}
       onSelectAgent={fn()}
       onSelectTab={fn()}
+      onCreateAgent={fn()}
       query=""
     />
   ),
@@ -76,6 +77,7 @@ export const FilteredWorkspaces: Story = {
       selectedPaneId={null}
       onSelectAgent={fn()}
       onSelectTab={fn()}
+      onCreateAgent={fn()}
       query="deploy"
     />
   ),

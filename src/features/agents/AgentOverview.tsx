@@ -1,7 +1,8 @@
 import overviewStyles from "./agentOverview.module.css";
 import uiStyles from "../../shared/ui/ui.module.css";
+import { useEffect, useRef } from "react";
 import type { Agent, AgentStatus, ShellTab, Workspace } from "../../shared/api/contracts";
-import { ChevronIcon, FolderIcon, SearchIcon } from "../../shared/ui/Icons";
+import { ChevronIcon, FolderIcon, PlusIcon, SearchIcon } from "../../shared/ui/Icons";
 import { StatusIndicator, TabKindIcon } from "../../shared/ui";
 import {
   getAgentTabLabel,
@@ -80,6 +81,85 @@ export function PaneRow({
   );
 }
 
+function WorkspaceSummary({
+  label,
+  agentCount,
+  shellCount,
+  status,
+  onCreateAgent,
+}: {
+  label: string;
+  agentCount: number;
+  shellCount: number;
+  status: AgentStatus;
+  onCreateAgent: () => void;
+}) {
+  const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const origin = useRef({ x: 0, y: 0 });
+  const suppressClick = useRef(false);
+
+  function clearPress() {
+    if (timer.current !== null) clearTimeout(timer.current);
+    timer.current = null;
+  }
+  useEffect(() => clearPress, []);
+
+  return (
+    <summary
+      onPointerDown={(event) => {
+        clearPress();
+        suppressClick.current = false;
+        if (event.pointerType === "mouse" || event.button !== 0 || !event.isPrimary) return;
+        origin.current = { x: event.clientX, y: event.clientY };
+        timer.current = setTimeout(() => {
+          timer.current = null;
+          suppressClick.current = true;
+          onCreateAgent();
+        }, 550);
+      }}
+      onPointerMove={(event) => {
+        if (Math.hypot(event.clientX - origin.current.x, event.clientY - origin.current.y) > 10) {
+          clearPress();
+        }
+      }}
+      onPointerUp={clearPress}
+      onPointerCancel={clearPress}
+      onPointerLeave={clearPress}
+      onContextMenu={(event) => event.preventDefault()}
+      onClick={(event) => {
+        if (!suppressClick.current || event.detail === 0) return;
+        event.preventDefault();
+        event.stopPropagation();
+        suppressClick.current = false;
+      }}
+    >
+      <span className={overviewStyles["workspace-disclosure__copy"]}>
+        <strong>{label}</strong>
+        <small>
+          {agentCount} {agentCount === 1 ? "agent" : "agents"}
+          {shellCount ? ` / ${shellCount} ${shellCount === 1 ? "shell" : "shells"}` : ""}
+        </small>
+      </span>
+      <StatusIndicator status={status} label={getStatusLabel(status)} />
+      <button
+        type="button"
+        className={overviewStyles["workspace-disclosure__create"]}
+        aria-label={`Create agent in ${label}`}
+        title={`Create agent in ${label}`}
+        onPointerDown={(event) => event.stopPropagation()}
+        onClick={(event) => {
+          event.preventDefault();
+          event.stopPropagation();
+          onCreateAgent();
+        }}
+      >
+        <PlusIcon />
+      </button>
+      <ChevronIcon />
+    </summary>
+  );
+}
+
 export function WorkspaceList({
   agents,
   tabs,
@@ -87,6 +167,7 @@ export function WorkspaceList({
   selectedPaneId,
   onSelectAgent,
   onSelectTab,
+  onCreateAgent,
   query,
 }: {
   agents: Agent[];
@@ -95,6 +176,7 @@ export function WorkspaceList({
   selectedPaneId: string | null;
   onSelectAgent: (agent: Agent) => void;
   onSelectTab: (tab: ShellTab) => void;
+  onCreateAgent: (workspaceId: string) => void;
   query: string;
 }) {
   const normalized = query.trim().toLowerCase();
@@ -138,19 +220,13 @@ export function WorkspaceList({
             key={group.workspace_id}
             open={normalized ? true : undefined}
           >
-            <summary>
-              <span className={overviewStyles["workspace-disclosure__copy"]}>
-                <strong>{group.label}</strong>
-                <small>
-                  {group.agents.length} {group.agents.length === 1 ? "agent" : "agents"}
-                  {group.tabs.length
-                    ? ` / ${group.tabs.length} ${group.tabs.length === 1 ? "shell" : "shells"}`
-                    : ""}
-                </small>
-              </span>
-              <StatusIndicator status={status} label={getStatusLabel(status)} />
-              <ChevronIcon />
-            </summary>
+            <WorkspaceSummary
+              label={group.label}
+              agentCount={group.agents.length}
+              shellCount={group.tabs.length}
+              status={status}
+              onCreateAgent={() => onCreateAgent(group.workspace_id)}
+            />
             <div className={overviewStyles["workspace-disclosure__content"]}>
               {groupAgents.map((agent) => (
                 <PaneRow

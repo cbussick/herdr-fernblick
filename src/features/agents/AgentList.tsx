@@ -8,7 +8,7 @@ import { PastChats } from "./PastChats";
 
 interface AgentListProps {
   agents: Agent[];
-  onCreate: () => void;
+  onCreate: (workspaceId?: string) => void;
   onCreateTab: () => void;
   onCreateWorkspace: () => void;
   onSelect: (agent: Agent) => void;
@@ -45,7 +45,7 @@ export function AgentList({
       label: "New Agent",
       description: "Start Pi in a workspace",
       kind: "agent" as const,
-      onSelect: onCreate,
+      onSelect: () => onCreate(),
     },
     {
       id: "shell",
@@ -117,6 +117,7 @@ export function AgentList({
             tabs={tabs}
             workspaces={workspaces}
             selectedPaneId={selectedPaneId}
+            onCreateAgent={onCreate}
             onSelectAgent={onSelect}
             onSelectTab={onSelectTab}
             query={query}

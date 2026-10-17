@@ -17,7 +17,7 @@ export function App() {
   const singlePane = useSinglePaneLayout();
   const queryClient = useQueryClient();
   const [selectedPaneId, setSelectedPaneId] = useState<string | null>(null);
-  const [createDialogOpen, setCreateDialogOpen] = useState(false);
+  const [createDialog, setCreateDialog] = useState<{ workspaceId?: string } | null>(null);
   const [workspaceDialogOpen, setWorkspaceDialogOpen] = useState(false);
   const [tabDialogOpen, setTabDialogOpen] = useState(false);
   const agentsQuery = useQuery({
@@ -81,7 +81,7 @@ export function App() {
           <AgentList
             agents={agents}
             tabs={tabs}
-            onCreate={() => setCreateDialogOpen(true)}
+            onCreate={(workspaceId) => setCreateDialog({ workspaceId })}
             onCreateTab={() => setTabDialogOpen(true)}
             onCreateWorkspace={() => setWorkspaceDialogOpen(true)}
             selectedPaneId={selectedPaneId}
@@ -125,17 +125,20 @@ export function App() {
         </div>
       )}
 
-      <NewAgentDialog
-        open={createDialogOpen}
-        workspaces={workspaces}
-        onClose={() => setCreateDialogOpen(false)}
-        onWorkspaceCreated={handleWorkspaceCreated}
-        onCreated={(agent) => {
-          setSelectedPaneId(agent.pane_id);
-          setCreateDialogOpen(false);
-          void agentsQuery.refetch();
-        }}
-      />
+      {createDialog && (
+        <NewAgentDialog
+          open
+          initialWorkspaceId={createDialog.workspaceId}
+          workspaces={workspaces}
+          onClose={() => setCreateDialog(null)}
+          onWorkspaceCreated={handleWorkspaceCreated}
+          onCreated={(agent) => {
+            setSelectedPaneId(agent.pane_id);
+            setCreateDialog(null);
+            void agentsQuery.refetch();
+          }}
+        />
+      )}
       {workspaceDialogOpen && (
         <NewWorkspaceDialog
           onClose={() => setWorkspaceDialogOpen(false)}

@@ -16,6 +16,7 @@ interface NewAgentDialogProps {
   onCreated: (agent: Agent) => void;
   onWorkspaceCreated: (workspace: Workspace) => void;
   open: boolean;
+  initialWorkspaceId?: string;
   workspaces: Workspace[];
 }
 
@@ -24,13 +25,14 @@ export function NewAgentDialog({
   onCreated,
   onWorkspaceCreated,
   open,
+  initialWorkspaceId,
   workspaces,
 }: NewAgentDialogProps) {
   const dialogRef = useRef<HTMLDialogElement>(null);
   const [name, setName] = useState("");
   const [nameError, setNameError] = useState<string | null>(null);
   const [tabLabel, setTabLabel] = useState("");
-  const [workspaceId, setWorkspaceId] = useState("");
+  const [workspaceId, setWorkspaceId] = useState(initialWorkspaceId ?? "");
   const [workspaceDialogOpen, setWorkspaceDialogOpen] = useState(false);
   const selectedWorkspaceId = workspaces.some((workspace) => workspace.workspace_id === workspaceId)
     ? workspaceId
