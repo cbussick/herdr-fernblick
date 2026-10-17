@@ -6,6 +6,13 @@ A small mobile web controller for agents running inside Herdr. Dashboard and Ter
 
 React 19 and TypeScript, built with Vite. The light-blue interface is smartphone-first, with single-pane navigation on portrait iPads and a persistent workspace sidebar on landscape iPads and desktop. Fernblick styles use CSS Modules; icons are custom SVGs and Manrope is bundled locally, with no external font requests. The lazy-loaded Excalidraw whiteboard uses its vendor stylesheet and locally served fonts.
 
+When creating an agent, **Create a new workspace** keeps the agent draft intact.
+Creating the workspace returns to that draft with the new workspace selected;
+canceling returns without changing the selection. Confirm **Create agent** to
+start Pi. Standalone workspace creation still creates only a workspace and shell.
+New shell tabs also accept an optional name; leave it blank to use Herdr's next
+tab number.
+
 Manrope is licensed under the SIL Open Font License 1.1. Its complete copyright notice and license ship at `/licenses/Manrope-OFL.txt`; see [font provenance](src/styles/fonts/README.md). See [styling and development conventions](docs/development.md) and the [three-viewport screenshot gallery tooling](tools/design/README.md).
 
 ## Requirements
@@ -171,6 +178,14 @@ The HTTP API does not expose a shell or arbitrary Herdr method proxy. Access to 
 
 ```bash
 npm run check
+```
+
+Agent/workspace dialog regression (Chromium/WebKit at phone, tablet and desktop
+sizes; all API requests are intercepted with synthetic fixtures):
+
+```sh
+PLAYWRIGHT_MODULE=/path/to/playwright/index.mjs \
+  node tools/design/agent-workspace.mjs http://127.0.0.1:<frontend-port>
 ```
 
 Saved-chat browser regression (Chromium/WebKit at phone, tablet and desktop sizes;

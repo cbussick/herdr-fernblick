@@ -1,7 +1,7 @@
 import appStyles from "./App.module.css";
 import { useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import type { Agent, ShellTab } from "../shared/api/contracts";
+import type { Agent, ShellTab, Workspace } from "../shared/api/contracts";
 import { getAgents } from "../shared/api/apiClient";
 import { AgentList } from "../features/agents/AgentList";
 import { AgentConsole } from "../features/agents/AgentConsole";
@@ -32,6 +32,25 @@ export function App() {
   const selectedAgent = agents.find((agent) => agent.pane_id === selectedPaneId) ?? null;
   const selectedTab = tabs.find((tab) => tab.pane_id === selectedPaneId) ?? null;
   const detailOpen = selectedAgent || selectedTab;
+
+  function handleWorkspaceCreated(workspace: Workspace) {
+    queryClient.setQueryData(
+      ["agents"],
+      (current: Awaited<ReturnType<typeof getAgents>> | undefined) =>
+        current
+          ? {
+              ...current,
+              workspaces: [
+                ...current.workspaces.filter(
+                  (item) => item.workspace_id !== workspace.workspace_id,
+                ),
+                workspace,
+              ],
+            }
+          : current,
+    );
+    void agentsQuery.refetch();
+  }
 
   return (
     <div
@@ -110,7 +129,7 @@ export function App() {
         open={createDialogOpen}
         workspaces={workspaces}
         onClose={() => setCreateDialogOpen(false)}
-        onCreateWorkspace={() => setWorkspaceDialogOpen(true)}
+        onWorkspaceCreated={handleWorkspaceCreated}
         onCreated={(agent) => {
           setSelectedPaneId(agent.pane_id);
           setCreateDialogOpen(false);
@@ -120,9 +139,9 @@ export function App() {
       {workspaceDialogOpen && (
         <NewWorkspaceDialog
           onClose={() => setWorkspaceDialogOpen(false)}
-          onCreated={() => {
+          onCreated={(workspace) => {
             setWorkspaceDialogOpen(false);
-            void agentsQuery.refetch();
+            handleWorkspaceCreated(workspace);
           }}
         />
       )}
