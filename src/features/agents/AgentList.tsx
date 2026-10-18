@@ -1,10 +1,11 @@
 import overviewStyles from "./agentOverview.module.css";
-import { useState } from "react";
+import { useCallback, useState } from "react";
 import type { Agent, ShellTab, Workspace } from "../../shared/api/contracts";
 import { SearchField, SegmentedTabs, SpeedDial } from "../../shared/ui";
 import { FlatAgentList, WorkspaceList } from "./AgentOverview";
 import { FernblickMark } from "../../shared/ui/FernblickMark";
 import { PastChats } from "./PastChats";
+import { Snackbar } from "../../shared/ui/Snackbar";
 
 interface AgentListProps {
   agents: Agent[];
@@ -22,7 +23,7 @@ type OverviewView = "workspaces" | "agents" | "history";
 const options = [
   { value: "workspaces", label: "Workspaces" },
   { value: "agents", label: "Agents" },
-  { value: "history", label: "Past chats" },
+  { value: "history", label: "Past sessions" },
 ] as const;
 
 export function AgentList({
@@ -39,6 +40,8 @@ export function AgentList({
 }: AgentListProps) {
   const [view, setView] = useState<OverviewView>("workspaces");
   const [query, setQuery] = useState("");
+  const [removalNotice, setRemovalNotice] = useState(0);
+  const dismissNotice = useCallback(() => setRemovalNotice(0), []);
   const actions = [
     {
       id: "agent",
@@ -92,14 +95,14 @@ export function AgentList({
         <SearchField
           label={
             view === "history"
-              ? "Search past chats"
+              ? "Search past sessions"
               : view === "workspaces"
                 ? "Search workspaces"
                 : "Search agents"
           }
           placeholder={
             view === "history"
-              ? "Search past chats"
+              ? "Search past sessions"
               : view === "workspaces"
                 ? "Search workspaces"
                 : "Search agents"
@@ -110,7 +113,12 @@ export function AgentList({
       </header>
       <div className={overviewStyles["overview-content"]}>
         {view === "history" ? (
-          <PastChats query={query} workspaces={workspaces} onResumed={onResumed} />
+          <PastChats
+            query={query}
+            workspaces={workspaces}
+            onResumed={onResumed}
+            onRemoved={() => setRemovalNotice((notice) => notice + 1)}
+          />
         ) : view === "workspaces" ? (
           <WorkspaceList
             agents={agents}
@@ -132,6 +140,9 @@ export function AgentList({
         )}
       </div>
       <SpeedDial actions={actions} />
+      {removalNotice > 0 && (
+        <Snackbar key={removalNotice} message="Session removed" onDismiss={dismissNotice} />
+      )}
     </nav>
   );
 }

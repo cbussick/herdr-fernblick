@@ -139,7 +139,7 @@ export class HerdrService {
   deleteChat(id: string) {
     if (this.resuming.has(id))
       return Promise.reject(
-        new SavedChatError(409, "This chat is being resumed. Try again later."),
+        new SavedChatError(409, "This session is being resumed. Try again later."),
       );
     const pending = this.deleting.get(id);
     if (pending) return pending;
@@ -166,7 +166,7 @@ export class HerdrService {
     }
     const dashboard = await this.getDashboard();
     if (this.findActiveChat(chat.path, dashboard.agents))
-      throw new SavedChatError(409, "This chat is active. Close it before deleting it.");
+      throw new SavedChatError(409, "This session is active. Close it before deleting it.");
     if (
       dashboard.agents.some((agent) => agent.agent === "pi" && agent.agent_session?.kind !== "path")
     )
@@ -185,7 +185,7 @@ export class HerdrService {
   resumeChat(id: string, workspaceId: string) {
     if (this.deleting.has(id))
       return Promise.reject(
-        new SavedChatError(409, "This chat is being deleted. Refresh the list."),
+        new SavedChatError(409, "This session is being deleted. Refresh the list."),
       );
     const pending = this.resuming.get(id);
     if (pending) return pending;

@@ -45,6 +45,7 @@ const agent: Agent = {
 let renderer: ReactTestRenderer;
 let client: QueryClient;
 const onResumed = vi.fn();
+const onRemoved = vi.fn();
 const newWorkspace: Workspace = { workspace_id: "w3", label: "web" };
 const nativeDialog = {
   open: false,
@@ -84,6 +85,7 @@ function view(query = "", withWorkspaces = true) {
             : []
         }
         onResumed={onResumed}
+        onRemoved={onRemoved}
       />
     </QueryClientProvider>
   );
@@ -143,18 +145,19 @@ it.each([
     });
     const status = renderer.root.findByProps({ role: "status" });
     expect(status.props["aria-busy"]).toBe("true");
-    expect(status.findByType("p").children).toEqual(["Loading past chats…"]);
+    expect(status.findByType("p").children).toEqual(["Loading past sessions…"]);
     expect(status.findByProps({ "data-testid": "empty-state-icon" }).props).toMatchObject({
       "data-state-kind": "loading",
       "data-spinning": true,
     });
     expect(rows()).toHaveLength(0);
-    expect(JSON.stringify(renderer.toJSON())).not.toContain("No past chats yet.");
+    expect(JSON.stringify(renderer.toJSON())).not.toContain("No past sessions yet.");
     await act(async () => complete({ chats: [...result] }));
     await settle();
     expect(renderer.root.findAllByProps({ role: "status" })).toHaveLength(0);
     expect(rows()).toHaveLength(result.length ? 1 : 0);
-    if (!result.length) expect(JSON.stringify(renderer.toJSON())).toContain("No past chats yet.");
+    if (!result.length)
+      expect(JSON.stringify(renderer.toJSON())).toContain("No past sessions yet.");
   },
 );
 
@@ -207,7 +210,7 @@ it("lists only closed chats and filters by project, title and preview", async ()
   expect(rows()).toHaveLength(0);
   await act(async () => renderer.update(view("not found")));
   expect(rows()).toHaveLength(0);
-  expect(JSON.stringify(renderer.toJSON())).toContain("No chats match your search.");
+  expect(JSON.stringify(renderer.toJSON())).toContain("No sessions match your search.");
 });
 
 it("resumes in the chosen workspace, disables duplicate actions and selects the returned agent", async () => {
@@ -301,7 +304,7 @@ it("updates visibility when a chat opens or closes between list refreshes", asyn
   });
   await settle();
   expect(rows()).toHaveLength(0);
-  expect(JSON.stringify(renderer.toJSON())).toContain("No past chats yet.");
+  expect(JSON.stringify(renderer.toJSON())).toContain("No past sessions yet.");
   await act(async () => {
     client.setQueryData(["saved-chats"], {
       chats: chats.map((chat) => ({ ...chat, activePaneId: null })),
@@ -550,7 +553,7 @@ it("keeps ordinary workspace creation blank unless initial values are supplied",
 });
 
 it("offers a retry after a list failure and shows the empty state", async () => {
-  vi.mocked(getSavedChats).mockRejectedValueOnce(new Error("Cannot read saved chats"));
+  vi.mocked(getSavedChats).mockRejectedValueOnce(new Error("Cannot read saved sessions"));
   await act(async () => {
     renderer = create(view());
   });
@@ -564,7 +567,7 @@ it("offers a retry after a list failure and shows the empty state", async () => 
     .find((button) => button.children.includes("Try again"))!;
   await act(async () => refresh.props.onClick());
   await settle();
-  expect(JSON.stringify(renderer.toJSON())).toContain("No past chats yet.");
+  expect(JSON.stringify(renderer.toJSON())).toContain("No past sessions yet.");
 });
 
 async function openDelete() {
@@ -583,7 +586,7 @@ it.each(["Cancel", "Escape"])(
     });
     await settle();
     await openDelete();
-    expect(dialog().findByType("h2").children).toEqual(["Delete chat?"]);
+    expect(dialog().findByType("h2").children).toEqual(["Delete session?"]);
     expect(JSON.stringify(dialog().findByType("p").children)).toContain(chats[0].title);
     expect(deleteChat).not.toHaveBeenCalled();
     if (action === "Escape")
@@ -592,6 +595,7 @@ it.each(["Cancel", "Escape"])(
     expect(renderer.root.findAllByType("dialog")).toHaveLength(0);
     expect(rows()).toHaveLength(1);
     expect(deleteChat).not.toHaveBeenCalled();
+    expect(onRemoved).not.toHaveBeenCalled();
     expect(resumeChat).not.toHaveBeenCalled();
   },
 );
@@ -625,6 +629,7 @@ it("waits for confirmed deletion, blocks duplicates and immediately removes the 
   await act(async () => submit());
   await act(async () => dialog().props.onCancel({ preventDefault: vi.fn() }));
   expect(deleteChat).toHaveBeenCalledOnce();
+  expect(onRemoved).not.toHaveBeenCalled();
   expect(renderer.root.findAllByType("dialog")).toHaveLength(1);
   vi.mocked(getSavedChats).mockImplementation(() => new Promise(() => {}));
   await act(async () => complete());
@@ -633,11 +638,12 @@ it("waits for confirmed deletion, blocks duplicates and immediately removes the 
   expect(renderer.root.findAllByType("dialog")).toHaveLength(0);
   expect(client.getQueryData(["saved-chats"])).toEqual({ chats: [chats[1]] });
   expect(removeWhiteboardDrafts).toHaveBeenCalledWith(deletedChat.sessionId, deletedChat.boardIds);
+  expect(onRemoved).toHaveBeenCalledOnce();
   expect(onResumed).not.toHaveBeenCalled();
 });
 
 it("keeps deletion errors visible, allows retry and clears old errors on reopening", async () => {
-  vi.mocked(deleteChat).mockRejectedValueOnce(new Error("This chat is active."));
+  vi.mocked(deleteChat).mockRejectedValueOnce(new Error("This session is active."));
   await act(async () => {
     renderer = create(view());
   });
@@ -645,9 +651,10 @@ it("keeps deletion errors visible, allows retry and clears old errors on reopeni
   await openDelete();
   await act(async () => submit());
   await settle();
-  expect(dialog().findByProps({ role: "alert" }).children).toEqual(["This chat is active."]);
+  expect(dialog().findByProps({ role: "alert" }).children).toEqual(["This session is active."]);
   expect(rows()).toHaveLength(1);
   expect(deleteChat).toHaveBeenCalledOnce();
+  expect(onRemoved).not.toHaveBeenCalled();
   await act(async () => dialog().findByProps({ type: "button" }).props.onClick());
   await openDelete();
   expect(dialog().findAllByProps({ role: "alert" })).toHaveLength(0);
