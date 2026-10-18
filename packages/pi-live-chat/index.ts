@@ -14,6 +14,7 @@ import {
   type Snapshot,
 } from "./protocol.js";
 import { thinkingState } from "./thinking.js";
+import { saveGlobalDefault } from "./globalDefaults.js";
 import { ImageHistory, IMAGE_METADATA } from "./imageHistory.js";
 import { TranscriptProjector } from "./projector.js";
 import { prepareImages } from "./images.js";
@@ -224,7 +225,14 @@ export default function liveChat(pi: ExtensionAPI) {
       return {
         type: "snapshot",
         version: 2,
-        capabilities: { boards: true, skills: true, compact: true, models: true, thinking: true },
+        capabilities: {
+          boards: true,
+          skills: true,
+          compact: true,
+          models: true,
+          thinking: true,
+          defaults: true,
+        },
         identity,
         epoch,
         seq: ++seq,
@@ -415,6 +423,69 @@ export default function liveChat(pi: ExtensionAPI) {
           } catch {
             reject("Skills unavailable in this Pi session");
           }
+          return;
+        }
+        if (command.action === "save-default") {
+          if (value.busy || sendPending) {
+            reject("Pi is busy or a previous send is unresolved");
+            return;
+          }
+          const ctx = context;
+          preparing = true;
+          void (async () => {
+            try {
+              const selection = command.selection;
+              if (ctx.model?.provider !== selection.provider || ctx.model.id !== selection.modelId)
+                throw new Error("Model changed. Reopen the settings dialog.");
+              if (selection.kind === "thinking") {
+                const state = thinkingState(pi, ctx);
+                if (state.level !== selection.level || !state.levels.includes(selection.level))
+                  throw new Error(
+                    "Thinking level changed or is unsupported. Reopen Thinking level.",
+                  );
+              } else if (
+                !ctx.modelRegistry
+                  .getAvailable()
+                  .some(
+                    (model) =>
+                      model.provider === selection.provider && model.id === selection.modelId,
+                  )
+              ) {
+                throw new Error("Model is no longer available in Pi");
+              }
+              // Save only the displayed current value; never change the live
+              // session or allow arbitrary settings/file paths over the bridge.
+              await saveGlobalDefault(ctx.cwd, selection);
+              const fresh = snapshot();
+              if (
+                current !== generation ||
+                client !== socket ||
+                client.destroyed ||
+                !fresh ||
+                !matchesTarget(fresh, command.target)
+              )
+                throw new Error(
+                  "Default save outcome uncertain. Check Pi settings before trying again.",
+                );
+              writeFrame(client, {
+                type: "default-saved",
+                id: command.id,
+                target: command.target,
+                selection,
+              });
+            } catch (error) {
+              if (current === generation && client === socket && !client.destroyed)
+                reject(
+                  error instanceof Error ? error.message.slice(0, 512) : "Default save failed",
+                );
+            } finally {
+              if (current === generation) {
+                preparing = false;
+                publish();
+              }
+            }
+          })();
+          publish();
           return;
         }
         if (command.action === "thinking-levels") {

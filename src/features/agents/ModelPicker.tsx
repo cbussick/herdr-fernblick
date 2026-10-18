@@ -1,7 +1,8 @@
 import { useEffect, useRef, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import type { AgentModel, Target } from "../../../packages/pi-live-chat/protocol";
-import { getAgentModels, setAgentModel } from "../../shared/api/apiClient";
+import { getAgentModels, setAgentModel, saveAgentGlobalDefault } from "../../shared/api/apiClient";
+import { GlobalDefaultAction } from "./GlobalDefaultAction";
 import { CloseIcon } from "../../shared/ui/Icons";
 import styles from "./SessionSettingsPicker.module.css";
 
@@ -10,12 +11,22 @@ interface Props {
   target: Target;
   onClose: () => void;
   supported: boolean;
+  defaultsSupported?: boolean;
   enabled: boolean;
   model?: string;
   provider?: string;
 }
 
-export function ModelPicker({ pane, target, supported, enabled, model, provider, onClose }: Props) {
+export function ModelPicker({
+  pane,
+  target,
+  supported,
+  defaultsSupported = false,
+  enabled,
+  model,
+  provider,
+  onClose,
+}: Props) {
   const dialog = useRef<HTMLDialogElement>(null);
   const searchInput = useRef<HTMLInputElement>(null);
   const options = useRef<(HTMLButtonElement | null)[]>([]);
@@ -24,6 +35,9 @@ export function ModelPicker({ pane, target, supported, enabled, model, provider,
   const [search, setSearch] = useState("");
   const [pending, setPending] = useState(false);
   const [error, setError] = useState("");
+  const [savingDefault, setSavingDefault] = useState(false);
+  const [savedDefault, setSavedDefault] = useState("");
+  const currentKey = JSON.stringify([provider, model]);
   const catalog = useQuery({
     queryKey: ["agent-models", pane, target.runtime, target.sessionId, target.epoch],
     queryFn: ({ signal }) => getAgentModels(pane, target, signal),
@@ -47,15 +61,26 @@ export function ModelPicker({ pane, target, supported, enabled, model, provider,
   const models = (catalog.data?.models ?? []).filter((entry) =>
     `${entry.name} ${entry.id} ${entry.provider}`.toLowerCase().includes(search.toLowerCase()),
   );
-  const ready = enabled && !pending && !catalog.isFetching && !catalog.isError;
-  async function select(entry: AgentModel) {
-    if (!ready || switching.current) return;
+  const ready = enabled && supported && !pending && !catalog.isFetching && !catalog.isError;
+  async function select(entry: AgentModel, saveDefault = false) {
+    if (!ready || switching.current || (saveDefault && !defaultsSupported)) return;
     switching.current = true;
     setPending(true);
+    setSavingDefault(saveDefault);
+    setSavedDefault("");
     setError("");
     try {
-      await setAgentModel(pane, target, entry.provider, entry.id);
-      if (mounted.current) onClose();
+      if (saveDefault) {
+        await saveAgentGlobalDefault(pane, target, {
+          kind: "model",
+          provider: entry.provider,
+          modelId: entry.id,
+        });
+        if (mounted.current) setSavedDefault(JSON.stringify([entry.provider, entry.id]));
+      } else {
+        await setAgentModel(pane, target, entry.provider, entry.id);
+        if (mounted.current) onClose();
+      }
     } catch (error) {
       if (mounted.current)
         setError(
@@ -182,9 +207,17 @@ export function ModelPicker({ pane, target, supported, enabled, model, provider,
           ) : null}
         </>
       )}
+      <GlobalDefaultAction
+        supported={defaultsSupported}
+        enabled={Boolean(ready && supported && model && provider)}
+        saved={savedDefault === currentKey}
+        onSave={() => {
+          if (model && provider) void select({ id: model, provider, name: model }, true);
+        }}
+      />
       {pending ? (
         <p className={styles.notice} role="status">
-          Changing model…
+          {savingDefault ? "Saving global default…" : "Changing model…"}
         </p>
       ) : !enabled ? (
         <p className={styles.notice}>Available when Pi is idle.</p>

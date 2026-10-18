@@ -8,6 +8,8 @@ import {
   commandSchema,
   COMPACT_TIMEOUT_MS,
   matchesTarget,
+  sameDefaultSelection,
+  type DefaultSelection,
   snapshotSchema,
   type BridgeResponse,
   type Command,
@@ -232,21 +234,23 @@ export class LiveBridge {
               ? response.outcome === "rejected" ||
                 pending.command.action === "send" ||
                 pending.command.action === "stop"
-              : response.type === "tree"
-                ? pending.command.action === "tree"
-                : response.type === "skills"
-                  ? pending.command.action === "skills"
-                  : response.type === "thinking-levels"
-                    ? pending.command.action === "thinking-levels"
-                    : response.type === "thinking-level-changed"
-                      ? pending.command.action === "set-thinking-level"
-                      : response.type === "models"
-                        ? pending.command.action === "models"
-                        : response.type === "model-changed"
-                          ? pending.command.action === "set-model"
-                          : response.type === "compacted"
-                            ? pending.command.action === "compact"
-                            : pending.command.action === "navigate";
+              : response.type === "default-saved"
+                ? pending.command.action === "save-default"
+                : response.type === "tree"
+                  ? pending.command.action === "tree"
+                  : response.type === "skills"
+                    ? pending.command.action === "skills"
+                    : response.type === "thinking-levels"
+                      ? pending.command.action === "thinking-levels"
+                      : response.type === "thinking-level-changed"
+                        ? pending.command.action === "set-thinking-level"
+                        : response.type === "models"
+                          ? pending.command.action === "models"
+                          : response.type === "model-changed"
+                            ? pending.command.action === "set-model"
+                            : response.type === "compacted"
+                              ? pending.command.action === "compact"
+                              : pending.command.action === "navigate";
           const validTarget =
             response.type === "ack" ||
             (response.target.runtime === pending.command.target.runtime &&
@@ -264,7 +268,11 @@ export class LiveBridge {
               response.provider === pending.command.provider &&
               response.modelId === pending.command.modelId &&
               response.level === pending.command.level);
-          if (!validType || !validTarget || !validModel || !validThinking) {
+          const validDefault =
+            response.type !== "default-saved" ||
+            (pending.command.action === "save-default" &&
+              sameDefaultSelection(response.selection, pending.command.selection));
+          if (!validType || !validTarget || !validModel || !validThinking || !validDefault) {
             socket.destroy();
             return;
           }
@@ -379,6 +387,7 @@ export class LiveBridge {
       | { action: "stop" | "tree" | "skills" | "compact" | "models" | "thinking-levels" }
       | { action: "set-thinking-level"; provider: string; modelId: string; level: ThinkingLevel }
       | { action: "set-model"; provider: string; modelId: string }
+      | { action: "save-default"; selection: DefaultSelection }
       | { action: "navigate"; entryId: string },
   ) {
     const command = commandSchema.parse({
@@ -411,6 +420,8 @@ export class LiveBridge {
       !peer.snapshot.capabilities?.thinking
     )
       throw new LiveChatError(409, "Run /reload in Pi to enable thinking level selection");
+    if (command.action === "save-default" && !peer.snapshot.capabilities?.defaults)
+      throw new LiveChatError(409, "Run /reload in Pi to enable global defaults");
     if (command.action === "compact" && !peer.snapshot.capabilities?.compact)
       throw new LiveChatError(409, "Run /reload in Pi to enable conversation compaction");
     if (this.pending.has(command.id)) throw new LiveChatError(409, "Command already in flight");
@@ -426,6 +437,7 @@ export class LiveBridge {
         command.action === "navigate" ||
         command.action === "set-model" ||
         command.action === "set-thinking-level" ||
+        command.action === "save-default" ||
         command.action === "compact") &&
       (peer.snapshot.busy || peer.snapshot.sendPending)
     )

@@ -12,6 +12,7 @@ export interface ConversationSettingsProps {
   enabled: boolean;
   modelsSupported: boolean;
   thinkingSupported: boolean;
+  defaultsSupported?: boolean;
   model?: string;
   provider?: string;
   thinkingLevel?: ThinkingLevel;
@@ -77,6 +78,7 @@ export function ConversationSettings({
             target={settings.target}
             enabled={settings.enabled}
             supported={settings.modelsSupported}
+            defaultsSupported={settings.defaultsSupported}
             model={settings.model}
             provider={settings.provider}
             onClose={() => setPicker(null)}
@@ -87,6 +89,7 @@ export function ConversationSettings({
             target={settings.target}
             enabled={settings.enabled}
             supported={settings.thinkingSupported}
+            defaultsSupported={settings.defaultsSupported}
             model={settings.model}
             provider={settings.provider}
             thinkingLevel={settings.thinkingLevel}

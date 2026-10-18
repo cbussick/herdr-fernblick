@@ -29,6 +29,9 @@ import {
   modelChangedResponseSchema,
   thinkingLevelsResponseSchema,
   thinkingChangedResponseSchema,
+  defaultSavedResponseSchema,
+  sameDefaultSelection,
+  type DefaultSelection,
   type ThinkingLevel,
   type Target,
 } from "../../../packages/pi-live-chat/protocol";
@@ -302,6 +305,36 @@ export async function setAgentThinkingLevel(
     result.data.level !== level
   )
     throw new Error("No valid thinking level confirmation. Check Pi before trying again.");
+  return result.data;
+}
+export async function saveAgentGlobalDefault(
+  pane: string,
+  target: Target,
+  selection: DefaultSelection,
+) {
+  let body: unknown;
+  try {
+    body = await request(`/api/agents/${encodeURIComponent(pane)}/save-default`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ target, selection }),
+      signal: AbortSignal.timeout(15_000),
+    });
+  } catch (error) {
+    if (error instanceof ApiError) throw error;
+    throw new Error("Default save outcome uncertain. Check Pi settings before trying again.", {
+      cause: error,
+    });
+  }
+  const result = defaultSavedResponseSchema.safeParse(body);
+  if (
+    !result.success ||
+    result.data.target.runtime !== target.runtime ||
+    result.data.target.sessionId !== target.sessionId ||
+    result.data.target.epoch !== target.epoch ||
+    !sameDefaultSelection(result.data.selection, selection)
+  )
+    throw new Error("No valid default save confirmation. Check Pi settings before trying again.");
   return result.data;
 }
 export async function getAgentTree(pane: string, target: Target) {

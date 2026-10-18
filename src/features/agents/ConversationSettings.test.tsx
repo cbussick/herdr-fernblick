@@ -9,12 +9,14 @@ const api = vi.hoisted(() => ({
   change: vi.fn(),
   thinking: vi.fn(),
   changeThinking: vi.fn(),
+  saveDefault: vi.fn(),
 }));
 vi.mock("../../shared/api/apiClient", () => ({
   getAgentModels: api.models,
   setAgentModel: api.change,
   getAgentThinkingLevels: api.thinking,
   setAgentThinkingLevel: api.changeThinking,
+  saveAgentGlobalDefault: api.saveDefault,
 }));
 const target = { runtime: "runtime", epoch: "epoch", sessionId: "session" };
 const models = [
@@ -67,6 +69,7 @@ beforeEach(async () => {
     enabled: true,
     modelsSupported: true,
     thinkingSupported: true,
+    defaultsSupported: true,
     model: "sonnet",
     provider: "anthropic",
   };
@@ -79,6 +82,7 @@ beforeEach(async () => {
     levels: ["low", "medium", "high"],
   });
   api.changeThinking.mockReset().mockResolvedValue({});
+  api.saveDefault.mockReset().mockResolvedValue({});
   client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
   await act(async () => {
     renderer = create(view(), {
@@ -90,6 +94,102 @@ afterEach(async () => {
   await act(async () => renderer.unmount());
   client.clear();
   vi.unstubAllGlobals();
+});
+function defaultButton() {
+  return renderer.root
+    .findAllByType("button")
+    .find((button) => button.children.includes("Use current as global default"))!;
+}
+it.each(["model", "thinking"])(
+  "explicitly saves the current %s globally without changing the session",
+  async (kind) => {
+    if (kind === "model") await open();
+    else await openThinking();
+    expect(api.saveDefault).not.toHaveBeenCalled();
+    expect(defaultButton().props.type).toBe("button");
+    await act(async () => defaultButton().props.onClick());
+    expect(api.saveDefault).toHaveBeenCalledExactlyOnceWith("w1:p1", target, {
+      kind,
+      provider: "anthropic",
+      modelId: "sonnet",
+      ...(kind === "thinking" ? { level: "medium" } : {}),
+    });
+    expect(renderer.root.findByProps({ role: "status" }).children.join("")).toContain(
+      "Saved as global default",
+    );
+    expect(renderer.root.findAllByType("dialog")).toHaveLength(1);
+    expect(api.change).not.toHaveBeenCalled();
+    expect(api.changeThinking).not.toHaveBeenCalled();
+  },
+);
+it.each(["model", "thinking"])(
+  "serializes %s default saves against selection and shows failures without retry",
+  async (kind) => {
+    let reject!: (error: Error) => void;
+    api.saveDefault.mockImplementationOnce(
+      () =>
+        new Promise((_resolve, fail) => {
+          reject = fail;
+        }),
+    );
+    if (kind === "model") await open();
+    else await openThinking();
+    const save = defaultButton();
+    const option = renderer.root.findAllByProps({ "aria-pressed": false })[0];
+    await act(async () => {
+      save.props.onClick();
+      save.props.onClick();
+      option.props.onClick();
+    });
+    expect(api.saveDefault).toHaveBeenCalledOnce();
+    expect(api.change).not.toHaveBeenCalled();
+    expect(api.changeThinking).not.toHaveBeenCalled();
+    expect(defaultButton().props.disabled).toBe(true);
+    expect(option.props.disabled).toBe(true);
+    expect(renderer.root.findByProps({ role: "status" }).children.join("")).toContain(
+      "Saving global default",
+    );
+    await act(async () => reject(new Error("Settings unavailable")));
+    expect(renderer.root.findByProps({ role: "alert" }).children.join("")).toContain(
+      "Settings unavailable",
+    );
+    expect(defaultButton().props.disabled).toBe(false);
+    expect(api.saveDefault).toHaveBeenCalledOnce();
+  },
+);
+it.each(["model", "thinking"])(
+  "gates %s defaults for legacy peers and busy sessions",
+  async (kind) => {
+    props = { ...props, defaultsSupported: false };
+    await act(async () => renderer.update(view()));
+    if (kind === "model") await open();
+    else await openThinking();
+    expect(defaultButton().props.disabled).toBe(true);
+    await act(async () => defaultButton().props.onClick());
+    expect(api.saveDefault).not.toHaveBeenCalled();
+    expect(JSON.stringify(renderer.toJSON())).toContain("Run /reload");
+    props = { ...props, defaultsSupported: true, enabled: false };
+    await act(async () => renderer.update(view()));
+    expect(defaultButton().props.disabled).toBe(true);
+    await act(async () => defaultButton().props.onClick());
+    expect(api.saveDefault).not.toHaveBeenCalled();
+  },
+);
+it("discards late default-save results after target replacement", async () => {
+  let finish!: () => void;
+  api.saveDefault.mockImplementationOnce(
+    () =>
+      new Promise<void>((resolve) => {
+        finish = resolve;
+      }),
+  );
+  await open();
+  await act(async () => defaultButton().props.onClick());
+  props = { ...props, target: { ...target, epoch: "replacement" } };
+  await act(async () => renderer.update(view()));
+  await open();
+  await act(async () => finish());
+  expect(renderer.root.findAllByProps({ role: "status" })).toHaveLength(0);
 });
 it("fetches only on opening, searches providers, marks current and explicitly switches without sending", async () => {
   expect(api.models).not.toHaveBeenCalled();

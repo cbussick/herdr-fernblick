@@ -13,6 +13,8 @@ import type {
 } from "@earendil-works/pi-coding-agent";
 import { afterEach, expect, it, vi } from "vitest";
 import liveChat from "./index.js";
+import { saveGlobalDefault } from "./globalDefaults.js";
+vi.mock("./globalDefaults.js", () => ({ saveGlobalDefault: vi.fn(async () => {}) }));
 import {
   footerRequestEvent,
   footerUpdateEvent,
@@ -156,6 +158,7 @@ async function setup(beforeStart?: (pi: ReturnType<typeof fakePi>) => void) {
     await new Promise<void>((done) => server.close(() => done()));
     await rm(dir, { recursive: true, force: true });
   });
+  vi.mocked(saveGlobalDefault).mockReset().mockResolvedValue(undefined);
   const pi = fakePi();
   cleanup.push(() => {
     pi.emit("session_shutdown");
@@ -191,6 +194,137 @@ async function setup(beforeStart?: (pi: ReturnType<typeof fakePi>) => void) {
   };
   return { ...pi, latest, command, ack, connections, frames, server, dir };
 }
+function defaultCommand(
+  t: Awaited<ReturnType<typeof setup>>,
+  selection: object = { kind: "model", provider: "provider", modelId: "model" },
+  target = targetOf(t.latest()!),
+) {
+  const id = randomUUID();
+  writeFrame(t.connections.at(-1)!, {
+    type: "command",
+    id,
+    action: "save-default",
+    target,
+    selection,
+  });
+  return id;
+}
+it("saves only explicit global defaults without invoking session setters or prompting", async () => {
+  const t = await setup();
+  expect(t.latest()?.capabilities?.defaults).toBe(true);
+  for (const selection of [
+    { kind: "model", provider: "provider", modelId: "model" },
+    { kind: "thinking", provider: "provider", modelId: "model", level: "medium" },
+  ]) {
+    const id = defaultCommand(t, selection);
+    expect(await t.ack(id)).toEqual({
+      type: "default-saved",
+      id,
+      target: targetOf(t.latest()!),
+      selection,
+    });
+    expect(saveGlobalDefault).toHaveBeenLastCalledWith("/test", selection);
+  }
+  expect(t.pi.setModel).not.toHaveBeenCalled();
+  expect(t.pi.setThinkingLevel).not.toHaveBeenCalled();
+  expect(t.pi.sendUserMessage).not.toHaveBeenCalled();
+});
+it("rejects busy, stale, model/level mismatched, unavailable and unsupported default saves", async () => {
+  const t = await setup();
+  t.setIdle(false);
+  expect(await t.ack(defaultCommand(t))).toMatchObject({
+    outcome: "rejected",
+    reason: expect.stringContaining("busy"),
+  });
+  t.setIdle(true);
+  expect(
+    await t.ack(defaultCommand(t, undefined, { ...targetOf(t.latest()!), epoch: randomUUID() })),
+  ).toMatchObject({ outcome: "rejected" });
+  expect(
+    await t.ack(defaultCommand(t, { kind: "model", provider: "other", modelId: "model" })),
+  ).toMatchObject({ outcome: "rejected", reason: expect.stringContaining("Model changed") });
+  expect(
+    await t.ack(
+      defaultCommand(t, {
+        kind: "thinking",
+        provider: "provider",
+        modelId: "model",
+        level: "high",
+      }),
+    ),
+  ).toMatchObject({
+    outcome: "rejected",
+    reason: expect.stringContaining("Thinking level changed"),
+  });
+  Object.assign(t.ctx, { model: { ...t.ctx.model, reasoning: false } });
+  expect(
+    await t.ack(
+      defaultCommand(t, {
+        kind: "thinking",
+        provider: "provider",
+        modelId: "model",
+        level: "medium",
+      }),
+    ),
+  ).toMatchObject({ outcome: "rejected", reason: expect.stringContaining("unsupported") });
+  vi.mocked(t.ctx.modelRegistry.getAvailable).mockReturnValue([]);
+  expect(await t.ack(defaultCommand(t))).toMatchObject({
+    outcome: "rejected",
+    reason: expect.stringContaining("no longer available"),
+  });
+  expect(saveGlobalDefault).not.toHaveBeenCalled();
+});
+it("confirms only after persistence, serializes requests, rejects duplicates and surfaces write failures", async () => {
+  const t = await setup();
+  let finish!: () => void;
+  vi.mocked(saveGlobalDefault).mockImplementationOnce(
+    () =>
+      new Promise<void>((resolve) => {
+        finish = resolve;
+      }),
+  );
+  const id = defaultCommand(t);
+  await vi.waitFor(() => expect(saveGlobalDefault).toHaveBeenCalledOnce());
+  expect(t.frames.some((frame) => (frame as { id?: string }).id === id)).toBe(false);
+  expect(await t.ack(defaultCommand(t))).toMatchObject({
+    outcome: "rejected",
+    reason: expect.stringContaining("in flight"),
+  });
+  finish();
+  expect(await t.ack(id)).toMatchObject({ type: "default-saved" });
+  writeFrame(t.connections.at(-1)!, {
+    type: "command",
+    id,
+    action: "save-default",
+    target: targetOf(t.latest()!),
+    selection: { kind: "model", provider: "provider", modelId: "model" },
+  });
+  await vi.waitFor(() =>
+    expect(t.frames).toContainEqual(expect.objectContaining({ id, outcome: "rejected" })),
+  );
+  vi.mocked(saveGlobalDefault).mockRejectedValueOnce(new Error("Settings write failed"));
+  expect(await t.ack(defaultCommand(t))).toMatchObject({
+    outcome: "rejected",
+    reason: "Settings write failed",
+  });
+  expect(saveGlobalDefault).toHaveBeenCalledTimes(2);
+});
+it("does not confirm a default save after shutdown", async () => {
+  const t = await setup();
+  let finish!: () => void;
+  vi.mocked(saveGlobalDefault).mockImplementationOnce(
+    () =>
+      new Promise<void>((resolve) => {
+        finish = resolve;
+      }),
+  );
+  const id = defaultCommand(t);
+  await vi.waitFor(() => expect(saveGlobalDefault).toHaveBeenCalledOnce());
+  t.emit("session_shutdown");
+  finish();
+  await new Promise((resolve) => setTimeout(resolve, 50));
+  expect(t.frames.some((frame) => (frame as { id?: string }).id === id)).toBe(false);
+});
 function modelCommand(
   t: Awaited<ReturnType<typeof setup>>,
   action: "models" | "set-model",
@@ -1393,6 +1527,7 @@ it("advertises boards, dispatches private RPCs before commands, and gates read-o
     compact: true,
     models: true,
     thinking: true,
+    defaults: true,
   });
   expect(t.tools.get("board_read")).toMatchObject({
     exposure: "hidden",

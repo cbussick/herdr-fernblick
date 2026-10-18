@@ -13,6 +13,7 @@
     "imageHistory.ts",
     "tree.ts",
     "thinking.ts",
+    "globalDefaults.ts",
     "protocol.ts",
     "projector.ts",
     "security.ts",

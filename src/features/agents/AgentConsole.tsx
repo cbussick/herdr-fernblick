@@ -630,6 +630,7 @@ function PiAgentConsole({ agent, onBack }: AgentConsoleProps) {
                 enabled: canForward && !stop.isPending && !annotations.editor && !compact.pending,
                 modelsSupported: Boolean(snapshot?.capabilities?.models),
                 thinkingSupported: Boolean(snapshot?.capabilities?.thinking),
+                defaultsSupported: Boolean(snapshot?.capabilities?.defaults),
                 model: snapshot?.status.model,
                 provider: snapshot?.status.provider,
                 thinkingLevel: snapshot?.status.thinkingLevel,

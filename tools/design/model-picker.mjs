@@ -31,7 +31,14 @@ const models = [
 const snapshot = {
   type: "snapshot",
   version: 2,
-  capabilities: { models: true, thinking: true, compact: true, skills: true, boards: true },
+  capabilities: {
+    models: true,
+    thinking: true,
+    compact: true,
+    skills: true,
+    boards: true,
+    defaults: true,
+  },
   identity: {
     ...target,
     pid: 1,
@@ -77,6 +84,7 @@ for (const [engine, type] of [
         unexpected = 0,
         release;
       let fail = false;
+      const savedDefaults = [];
       let thinkingReads = 0,
         thinkingChanges = 0,
         thinkingMode = "normal";
@@ -104,6 +112,22 @@ for (const [engine, type] of [
                 tabs: [],
               },
             });
+          if (path.endsWith("/save-default")) {
+            const body = route.request().postDataJSON();
+            assert.deepEqual(body.target, target);
+            assert.equal(body.selection.provider, models[0].provider);
+            assert.equal(body.selection.modelId, models[0].id);
+            if (body.selection.kind === "thinking") assert.equal(body.selection.level, "medium");
+            savedDefaults.push(body.selection);
+            return route.fulfill({
+              json: {
+                type: "default-saved",
+                id: target.runtime,
+                target,
+                selection: body.selection,
+              },
+            });
+          }
           if (path.endsWith("/thinking-levels")) {
             thinkingReads++;
             return route.fulfill({
@@ -238,6 +262,23 @@ for (const [engine, type] of [
         await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth),
         true,
       );
+      const saveModel = dialog.getByRole("button", {
+        name: "Use current as global default",
+        exact: true,
+      });
+      await saveModel.click();
+      await dialog.getByRole("status").filter({ hasText: "Saved as global default." }).waitFor();
+      assert.equal(savedDefaults.length, 1);
+      assert.equal(savedDefaults[0].kind, "model");
+      assert.equal(changes, 0);
+      assert.equal(await draft.inputValue(), "Keep this draft");
+      const saveBox = await saveModel.boundingBox();
+      assert(
+        saveBox.width >= 44 &&
+          saveBox.height >= 44 &&
+          saveBox.x >= 0 &&
+          saveBox.x + saveBox.width <= width,
+      );
       await page.screenshot({ path: `${output}/${engine}-${name}-picker.png` });
       await other.press("Enter");
       await page.getByText("Changing model…", { exact: true }).waitFor();
@@ -272,6 +313,16 @@ for (const [engine, type] of [
           thinkingBox.x + thinkingBox.width <= width &&
           thinkingBox.y + thinkingBox.height <= height,
       );
+      await thinkingDialog
+        .getByRole("button", { name: "Use current as global default", exact: true })
+        .click();
+      await thinkingDialog
+        .getByRole("status")
+        .filter({ hasText: "Saved as global default." })
+        .waitFor();
+      assert.equal(savedDefaults.length, 2);
+      assert.equal(savedDefaults[1].kind, "thinking");
+      assert.equal(thinkingChanges, 0);
       await page.screenshot({ path: `${output}/${engine}-${name}-thinking.png` });
       await high.press("Enter");
       await thinkingDialog.waitFor({ state: "detached" });

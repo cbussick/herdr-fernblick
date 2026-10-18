@@ -169,6 +169,16 @@ review handoff.
   level before invoking synchronous `pi.setThinkingLevel()`. Only the verified
   effective state produces `thinking-level-changed`. Choices and changes are
   session-specific; global defaults are unchanged and no prompt is sent.
+- **Use current as global default** in either settings dialog sends a separate
+  `save-default` command, gated by `capabilities.defaults`, idle state and the
+  current target/model/level. The extension uses Pi's public `SettingsManager`
+  to save model/provider together or only the thinking default in this Pi
+  process's global agent directory (`PI_CODING_AGENT_DIR` is respected).
+  Project settings and unrelated global preferences are preserved. Only a
+  successful flush with no settings errors produces `default-saved`; no ACK,
+  automatic retry, session mutation or prompt is used. Defaults affect newly
+  launched Pi sessions, including outside Fernblick; project/per-model/resume/CLI
+  overrides still apply. Run `/reload` in older agents to enable this capability.
 - Stop invokes void `ctx.abort()`. Working/stopped state comes from later Pi
   events, not the ACK or Herdr status. `agent_end` alone is not final settlement.
 - Conversation paths are requested on open from public `getTree()/getLeafId()`,

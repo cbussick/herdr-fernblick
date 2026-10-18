@@ -78,6 +78,7 @@ export const snapshotSchema = z.object({
       compact: z.literal(true).optional(),
       models: z.literal(true).optional(),
       thinking: z.literal(true).optional(),
+      defaults: z.literal(true).optional(),
     })
     .optional(),
   identity: identitySchema,
@@ -183,8 +184,34 @@ export const thinkingChangedResponseSchema = thinkingSelectionSchema.extend({
   id: z.string().uuid(),
   target: targetSchema,
 });
+export const defaultSelectionSchema = z.discriminatedUnion("kind", [
+  modelSelectionSchema.extend({ kind: z.literal("model") }),
+  thinkingSelectionSchema.extend({ kind: z.literal("thinking") }),
+]);
+export type DefaultSelection = z.infer<typeof defaultSelectionSchema>;
+export const defaultSavedResponseSchema = z.object({
+  type: z.literal("default-saved"),
+  id: z.string().uuid(),
+  target: targetSchema,
+  selection: defaultSelectionSchema,
+});
+export function sameDefaultSelection(a: DefaultSelection, b: DefaultSelection) {
+  return (
+    a.kind === b.kind &&
+    a.provider === b.provider &&
+    a.modelId === b.modelId &&
+    (a.kind !== "thinking" || (b.kind === "thinking" && a.level === b.level))
+  );
+}
 export const commandSchema = z
   .discriminatedUnion("action", [
+    z.object({
+      type: z.literal("command"),
+      id: z.string().uuid(),
+      target: targetSchema,
+      action: z.literal("save-default"),
+      selection: defaultSelectionSchema,
+    }),
     z.object({
       type: z.literal("command"),
       id: z.string().uuid(),
@@ -269,6 +296,7 @@ export const responseSchema = z.union([
   modelChangedResponseSchema,
   thinkingLevelsResponseSchema,
   thinkingChangedResponseSchema,
+  defaultSavedResponseSchema,
 ]);
 export type BridgeResponse = z.infer<typeof responseSchema>;
 export type Identity = z.infer<typeof identitySchema>;

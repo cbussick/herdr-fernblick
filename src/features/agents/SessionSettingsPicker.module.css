@@ -99,6 +99,27 @@
   background: var(--color-accent-soft);
 }
 
+.defaults {
+  padding-top: var(--space-3);
+  padding-bottom: var(--space-2);
+  margin-top: var(--space-2);
+  border-top: 1px solid var(--color-border-strong);
+}
+
+.save-default[type="button"] {
+  width: calc(100% - 2rem);
+  min-height: 2.75rem;
+  height: auto;
+  padding: var(--space-2) var(--space-3);
+  margin: 0 var(--space-4);
+  color: var(--color-text);
+  background: var(--color-canvas);
+  border: 1px solid var(--color-border-strong);
+  border-radius: var(--radius-sm);
+  font: inherit;
+  font-size: 0.875rem;
+}
+
 @media (hover: hover) {
   .option[type="button"]:hover:not(:disabled) {
     background: var(--color-surface-hover);

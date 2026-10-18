@@ -573,6 +573,88 @@ it.each(["wrong-target", "wrong-model", "wrong-level", "ack"])(
     ).rejects.toThrow("uncertain");
   },
 );
+it("guards global default writes with Origin, capability, identity, idle state and validated selections", async () => {
+  const p = await peer();
+  const service = { getAgent: vi.fn(async () => agent) } as unknown as HerdrService;
+  const server = createHttpServer(service, dir, bridge);
+  await new Promise<void>((done) => server.listen(0, "127.0.0.1", done));
+  const base = `http://127.0.0.1:${(server.address() as { port: number }).port}`;
+  const commands: unknown[] = [];
+  receiveFrames(p.socket, (raw) => {
+    commands.push(raw);
+    const c = raw as { id: string; target: unknown; selection: unknown };
+    writeFrame(p.socket, {
+      type: "default-saved",
+      id: c.id,
+      target: c.target,
+      selection: c.selection,
+    });
+  });
+  const model = { kind: "model", provider: "provider", modelId: "model" };
+  const request = (selection: object = model, origin = base, target = targetOf(p.snapshot)) =>
+    fetch(base + "/api/agents/w1:p1/save-default", {
+      method: "POST",
+      headers: { Origin: origin, "Content-Type": "application/json" },
+      body: JSON.stringify({ target, selection }),
+    });
+  try {
+    expect((await request(model, "https://elsewhere.test")).status).toBe(403);
+    expect((await request()).status).toBe(409);
+    writeFrame(p.socket, { ...p.snapshot, seq: 2, busy: true, capabilities: { defaults: true } });
+    await vi.waitFor(() => expect(bridge.current(agent).snapshot.seq).toBe(2));
+    expect((await request()).status).toBe(409);
+    writeFrame(p.socket, { ...p.snapshot, seq: 3, capabilities: { defaults: true } });
+    await vi.waitFor(() => expect(bridge.current(agent).snapshot.seq).toBe(3));
+    expect((await request({ ...model, kind: "thinking", level: "turbo" })).status).toBe(400);
+    expect((await request({ kind: "model" })).status).toBe(400);
+    expect(
+      (await request(model, base, { ...targetOf(p.snapshot), epoch: randomUUID() })).status,
+    ).toBe(409);
+    for (const selection of [model, { ...model, kind: "thinking", level: "high" }]) {
+      const response = await request(selection);
+      expect(response.status).toBe(200);
+      expect(await response.json()).toMatchObject({ type: "default-saved", selection });
+    }
+    expect(commands).toHaveLength(2);
+  } finally {
+    server.closeAllConnections();
+    await new Promise<void>((done) => server.close(() => done()));
+  }
+});
+it.each(["wrong-target", "wrong-model", "wrong-kind", "wrong-level", "ack"])(
+  "rejects %s default-save confirmations",
+  async (kind) => {
+    const p = await peer({ ...makeSnapshot(), capabilities: { defaults: true } });
+    const selection = {
+      kind: "thinking",
+      provider: "provider",
+      modelId: "model",
+      level: "high",
+    } as const;
+    receiveFrames(p.socket, (raw) => {
+      const c = raw as { id: string; target: object };
+      writeFrame(
+        p.socket,
+        kind === "ack"
+          ? { type: "ack", id: c.id, outcome: "invoked" }
+          : {
+              type: "default-saved",
+              id: c.id,
+              target: kind === "wrong-target" ? { ...c.target, epoch: randomUUID() } : c.target,
+              selection: {
+                ...selection,
+                kind: kind === "wrong-kind" ? "model" : "thinking",
+                modelId: kind === "wrong-model" ? "other" : "model",
+                level: kind === "wrong-level" ? "low" : "high",
+              },
+            },
+      );
+    });
+    await expect(
+      bridge.request(agent, targetOf(p.snapshot), { action: "save-default", selection }),
+    ).rejects.toThrow("uncertain");
+  },
+);
 it("reports a new agent without a saved session as connecting, not an error", async () => {
   const service = {
     getAgent: vi.fn(async () => ({ ...agent, agent_session: null })),

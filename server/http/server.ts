@@ -31,6 +31,7 @@ import {
   sendInputSchema,
   modelSelectionSchema,
   thinkingSelectionSchema,
+  defaultSelectionSchema,
   MAX_IMAGE_BYTES,
 } from "../../packages/pi-live-chat/protocol.js";
 const chatCommandSchema = sendInputSchema.safeExtend({
@@ -136,7 +137,7 @@ class HttpError extends Error {
 
 function getAgentRoute(pathname: string) {
   const match = pathname.match(
-    /^\/api\/agents\/([^/]+)(?:\/(output|chat|prompt|stop|tree|tree-navigation|skills|compact|models|set-model|thinking-levels|set-thinking-level|keys|restart))?$/,
+    /^\/api\/agents\/([^/]+)(?:\/(output|chat|prompt|stop|tree|tree-navigation|skills|compact|models|set-model|thinking-levels|set-thinking-level|save-default|keys|restart))?$/,
   );
   if (!match) return null;
 
@@ -340,6 +341,7 @@ async function handleApi(
       "set-model",
       "thinking-levels",
       "set-thinking-level",
+      "save-default",
     ].includes(route.action)
   ) {
     requireSameOrigin(request);
@@ -355,6 +357,12 @@ async function handleApi(
         attachments: body.attachments,
         requestId: body.requestId,
       };
+    } else if (route.action === "save-default") {
+      const body = z
+        .object({ target: chatTargetSchema, selection: defaultSelectionSchema })
+        .parse(raw);
+      target = body.target;
+      input = { action: "save-default", selection: body.selection };
     } else if (route.action === "set-thinking-level") {
       const body = thinkingSelectionSchema.extend({ target: chatTargetSchema }).parse(raw);
       target = body.target;

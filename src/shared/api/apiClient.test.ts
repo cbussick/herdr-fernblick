@@ -8,6 +8,7 @@ import {
   setAgentModel,
   getAgentThinkingLevels,
   setAgentThinkingLevel,
+  saveAgentGlobalDefault,
   getAgentOutput,
   getPaneOutput,
   ApiError,
@@ -162,6 +163,43 @@ it("validates thinking discovery and exact target/model/level completion", async
   ).rejects.toThrow("uncertain");
   expect(fetchMock).toHaveBeenCalledTimes(8);
 });
+it.each(["model", "thinking"] as const)(
+  "validates exact %s default-save confirmations and never retries",
+  async (kind) => {
+    const selection =
+      kind === "model"
+        ? { kind, provider: "provider", modelId: "model" }
+        : { kind, provider: "provider", modelId: "model", level: "high" as const };
+    const reply = { type: "default-saved", id: randomUUID(), target, selection };
+    fetchMock.mockResolvedValueOnce(Response.json(reply));
+    expect(await saveAgentGlobalDefault("w1:p1", target, selection)).toEqual(reply);
+    expect(fetchMock.mock.calls[0][0]).toBe("/api/agents/w1%3Ap1/save-default");
+    expect(JSON.parse(fetchMock.mock.calls[0][1].body)).toEqual({ target, selection });
+    for (const invalid of [
+      { type: "ack", id: randomUUID(), outcome: "invoked" },
+      { ...reply, target: { ...target, epoch: randomUUID() } },
+      { ...reply, selection: { ...selection, provider: "other" } },
+      { ...reply, selection: { ...selection, modelId: "other" } },
+      {
+        ...reply,
+        selection: { ...selection, kind: kind === "model" ? "thinking" : "model", level: "low" },
+      },
+      ...(kind === "thinking" ? [{ ...reply, selection: { ...selection, level: "low" } }] : []),
+    ]) {
+      fetchMock.mockResolvedValueOnce(Response.json(invalid));
+      await expect(saveAgentGlobalDefault("w1:p1", target, selection)).rejects.toThrow(
+        "confirmation",
+      );
+    }
+    fetchMock.mockClear().mockRejectedValueOnce(new TypeError("Disconnected"));
+    await expect(saveAgentGlobalDefault("w1:p1", target, selection)).rejects.toThrow("uncertain");
+    expect(fetchMock).toHaveBeenCalledOnce();
+    fetchMock.mockResolvedValueOnce(Response.json({ error: "Settings invalid" }, { status: 409 }));
+    await expect(saveAgentGlobalDefault("w1:p1", target, selection)).rejects.toThrow(
+      "Settings invalid",
+    );
+  },
+);
 it("never retries uncertain model switches", async () => {
   fetchMock.mockRejectedValueOnce(new TypeError("Disconnected"));
   await expect(setAgentModel("w1:p1", target, "provider", "model")).rejects.toThrow("uncertain");
