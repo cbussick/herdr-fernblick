@@ -17,10 +17,13 @@ const mocks = vi.hoisted(() => ({
   upload: vi.fn(),
   skills: vi.fn(),
   output: vi.fn(),
+  paneInput: vi.fn(),
+  paneKey: vi.fn(),
+  liveChat: vi.fn(),
 }));
 vi.mock("react-dom", () => ({ createPortal: (children: ReactNode) => children }));
 vi.mock("../whiteboard/boardApi", () => ({ boardApi: { prompt: mocks.boardPrompt } }));
-vi.mock("./useLiveChat", () => ({ useLiveChat: () => mocks.live }));
+vi.mock("./useLiveChat", () => ({ useLiveChat: mocks.liveChat }));
 vi.mock("./CloseTabButton", () => ({ CloseTabButton: () => null }));
 vi.mock("./ConversationTreeDialog", () => ({ ConversationTreeDialog: () => null }));
 vi.mock("../whiteboard/Whiteboard", () => ({ Whiteboard: () => null }));
@@ -30,6 +33,9 @@ vi.mock("../../shared/api/apiClient", () => ({
   uploadImage: mocks.upload,
   getAgentSkills: mocks.skills,
   getAgentOutput: mocks.output,
+  getPaneOutput: mocks.output,
+  sendPaneInput: mocks.paneInput,
+  sendPaneKey: mocks.paneKey,
   sendAgentKey: vi.fn(),
 }));
 let renderer: ReactTestRenderer;
@@ -81,6 +87,9 @@ beforeEach(async () => {
       status: { cwd: "/", totalTokens: 0, cost: 0 },
     },
   };
+  mocks.liveChat.mockReset().mockImplementation(() => mocks.live);
+  mocks.paneInput.mockReset().mockResolvedValue(undefined);
+  mocks.paneKey.mockReset().mockResolvedValue(undefined);
   mocks.command.mockReset().mockImplementation(async (...args: unknown[]) => ({
     type: "ack",
     id: args[5] ?? randomUUID(),
@@ -386,6 +395,76 @@ it.each(["disconnect", "replacement", "error"])(
     expect(mocks.compact).toHaveBeenCalledOnce();
   },
 );
+
+it.each(["codex", "claude", "other"])(
+  "opens a %s tab in a usable terminal without connecting to Pi chat",
+  async (kind) => {
+    await act(async () => renderer.unmount());
+    mocks.liveChat.mockClear();
+    mocks.live = { error: "A saved Pi session is required for live chat" };
+    const terminalAgent = { ...agent, agent: kind, tab_label: "My CLI" };
+    await act(async () => {
+      renderer = create(render(terminalAgent));
+    });
+    await flush();
+    expect(renderer.root.findByProps({ "data-testid": "output-panel" }).props["aria-label"]).toBe(
+      "Terminal output",
+    );
+    expect(renderer.root.findByType("pre").children).toEqual(["Current screen"]);
+    expect(renderer.root.findByType("h2").children).toEqual(["My CLI"]);
+    expect(mocks.liveChat).not.toHaveBeenCalled();
+    expect(JSON.stringify(renderer.toJSON())).not.toContain("A saved Pi session");
+    expect(renderer.root.findAllByProps({ "aria-label": "Switch to Chat view" })).toHaveLength(0);
+    await act(async () =>
+      renderer.root.findByType("textarea").props.onChange({ target: { value: "Check my code" } }),
+    );
+    await act(async () => renderer.root.findByType("form").props.onSubmit({ preventDefault() {} }));
+    await flush();
+    expect(mocks.paneInput).toHaveBeenCalledWith(agent.pane_id, "Check my code");
+    expect(renderer.root.findByType("textarea").props.value).toBe("");
+    await act(async () =>
+      renderer.root
+        .findAllByType("button")
+        .find((button) => button.children.includes("Enter"))!
+        .props.onClick(),
+    );
+    await flush();
+    expect(mocks.paneKey).toHaveBeenCalledWith(agent.pane_id, "enter");
+    expect(mocks.command).not.toHaveBeenCalled();
+  },
+);
+
+it("retains non-Pi terminal input after a failed send without retrying through Pi", async () => {
+  mocks.paneInput.mockRejectedValueOnce(new Error("Terminal unavailable"));
+  await act(async () => renderer.update(render({ ...agent, agent: "codex" })));
+  await act(async () =>
+    renderer.root.findByType("textarea").props.onChange({ target: { value: "Keep this text" } }),
+  );
+  await act(async () => renderer.root.findByType("form").props.onSubmit({ preventDefault() {} }));
+  await flush();
+  expect(renderer.root.findByType("textarea").props.value).toBe("Keep this text");
+  expect(JSON.stringify(renderer.toJSON())).toContain("Terminal unavailable");
+  expect(mocks.paneInput).toHaveBeenCalledOnce();
+  expect(mocks.command).not.toHaveBeenCalled();
+});
+
+it("uses Pi chat again when a non-Pi CLI in the same pane is replaced by Pi", async () => {
+  await act(async () => renderer.update(render({ ...agent, agent: "codex" })));
+  await act(async () => renderer.update(render()));
+  expect(renderer.root.findByProps({ "data-testid": "output-panel" }).props["data-view"]).toBe(
+    "chat",
+  );
+  expect(mocks.liveChat).toHaveBeenLastCalledWith(agent.pane_id, true, undefined);
+});
+
+it("keeps a newly started Pi in chat while it waits for its saved session", async () => {
+  mocks.live = {};
+  await act(async () => renderer.update(render()));
+  expect(renderer.root.findByProps({ "data-testid": "output-panel" }).props["data-view"]).toBe(
+    "chat",
+  );
+  expect(JSON.stringify(renderer.toJSON())).toContain("Starting Pi…");
+});
 
 it("shows the live terminal by default and keeps loaded history when the agent starts working", async () => {
   await act(async () =>

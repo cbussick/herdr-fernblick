@@ -17,6 +17,7 @@ import { ChatTranscript } from "./ChatTranscript";
 import { ImageLightbox } from "./ImageLightbox";
 import { PiSessionStatus } from "./PiSessionStatus";
 import { TerminalOutput } from "./TerminalOutput";
+import { ShellConsole } from "./ShellConsole";
 import { useChatAnnotations } from "./useChatAnnotations";
 import { AnnotationPopover, AnnotationSelectionAction, AnnotationTray } from "./ChatAnnotations";
 import { annotationPrompt } from "./annotations";
@@ -71,6 +72,28 @@ const keyControls: { key: KeyName; label: string }[] = [
 ];
 
 export function AgentConsole({ agent, onBack }: AgentConsoleProps) {
+  // Native chat is a Pi-only protocol. Other CLIs remain usable as terminals,
+  // including when Herdr detects an agent started inside an ordinary shell tab.
+  if (agent.agent !== "pi") {
+    return (
+      <ShellConsole
+        tab={{
+          label: getAgentTabLabel(agent),
+          pane_id: agent.pane_id,
+          tab_id: agent.tab_id,
+          workspace_id: agent.workspace_id,
+          workspace_label: agent.workspace_label,
+          revision: agent.revision,
+        }}
+        agent={agent}
+        onBack={onBack}
+      />
+    );
+  }
+  return <PiAgentConsole agent={agent} onBack={onBack} />;
+}
+
+function PiAgentConsole({ agent, onBack }: AgentConsoleProps) {
   const target = getAgentTarget(agent);
   const [prompt, setPrompt] = useState("");
   const [attachments, setAttachments] = useState<Attachment[]>([]);

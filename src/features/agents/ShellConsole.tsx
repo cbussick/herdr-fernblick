@@ -2,15 +2,17 @@ import a11yStyles from "../../styles/accessibility.module.css";
 import consoleStyles from "./Console.module.css";
 import { useState, type FormEvent } from "react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
-import type { KeyName, ShellTab } from "../../shared/api/contracts";
+import type { Agent, KeyName, ShellTab } from "../../shared/api/contracts";
 import { getPaneOutput, sendPaneInput, sendPaneKey } from "../../shared/api/apiClient";
 import { CloseTabButton } from "./CloseTabButton";
 import { BackIcon, SendIcon } from "../../shared/ui/Icons";
-import { IconButton, TabKindIcon } from "../../shared/ui";
+import { IconButton, StatusIndicator, TabKindIcon } from "../../shared/ui";
+import { getAgentTarget, getStatusLabel } from "./agentPresentation";
 import { StateNotice } from "../../shared/ui/StateFeedback";
 import { TerminalOutput } from "./TerminalOutput";
 interface ShellConsoleProps {
   tab: ShellTab;
+  agent?: Agent;
   onBack: () => void;
 }
 const controls: { key: KeyName; label: string }[] = [
@@ -20,7 +22,7 @@ const controls: { key: KeyName; label: string }[] = [
   { key: "down", label: "↓" },
   { key: "enter", label: "Enter" },
 ];
-export function ShellConsole({ tab, onBack }: ShellConsoleProps) {
+export function ShellConsole({ tab, agent, onBack }: ShellConsoleProps) {
   const [command, setCommand] = useState("");
   const queryClient = useQueryClient();
   const inputMutation = useMutation({
@@ -52,15 +54,23 @@ export function ShellConsole({ tab, onBack }: ShellConsoleProps) {
           </div>
         </div>
         <CloseTabButton
-          agentRunning={false}
+          agentRunning={Boolean(agent)}
+          agentName={agent?.name}
+          agentTarget={agent ? getAgentTarget(agent) : undefined}
+          agentStatus={agent?.agent_status}
+          supportsPi={false}
           label={tab.label}
           tabId={tab.tab_id}
           onClosed={onBack}
         />
-        <span className={consoleStyles["shell-status"]}>
-          <i aria-hidden="true" />
-          Shell
-        </span>
+        {agent ? (
+          <StatusIndicator status={agent.agent_status} label={getStatusLabel(agent.agent_status)} />
+        ) : (
+          <span className={consoleStyles["shell-status"]}>
+            <i aria-hidden="true" />
+            Shell
+          </span>
+        )}
       </header>
       <section
         className={consoleStyles["output-panel"] + " " + consoleStyles["output-panel--shell"]}
@@ -71,7 +81,7 @@ export function ShellConsole({ tab, onBack }: ShellConsoleProps) {
           key={tab.pane_id}
           queryKey={["pane-output", tab.pane_id]}
           read={(source, signal) => getPaneOutput(tab.pane_id, source, signal)}
-          canLoadHistory
+          canLoadHistory={!agent || agent.agent_status === "idle" || agent.agent_status === "done"}
         />
       </section>
       <div className={consoleStyles["key-controls"]} aria-label="Terminal controls">
@@ -88,7 +98,7 @@ export function ShellConsole({ tab, onBack }: ShellConsoleProps) {
       </div>
       <form className={consoleStyles["prompt-composer"]} onSubmit={submit}>
         <label htmlFor="shell-command" className={a11yStyles["sr-only"]}>
-          Shell command
+          {agent ? "Terminal input" : "Shell command"}
         </label>
         <div className={consoleStyles["prompt-composer__surface"]}>
           <div
@@ -102,14 +112,14 @@ export function ShellConsole({ tab, onBack }: ShellConsoleProps) {
               id="shell-command"
               value={command}
               onChange={(event) => setCommand(event.target.value)}
-              placeholder="Enter a shell command…"
+              placeholder={agent ? "Send text to the terminal…" : "Enter a shell command…"}
               rows={1}
               maxLength={32000}
               disabled={inputMutation.isPending}
             />
             <button
               type="submit"
-              aria-label="Run command"
+              aria-label={agent ? "Send text" : "Run command"}
               disabled={!command.trim() || inputMutation.isPending}
             >
               <SendIcon />

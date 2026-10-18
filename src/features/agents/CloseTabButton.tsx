@@ -14,6 +14,7 @@ interface CloseTabButtonProps {
   onClosed: () => void;
   onShowThinkingChange?: (show: boolean) => void;
   showThinking?: boolean;
+  supportsPi?: boolean;
   tabId: string;
 }
 const agentNamePattern = /^[a-z][a-z0-9_-]{0,31}$/;
@@ -26,6 +27,7 @@ export function CloseTabButton({
   onClosed,
   onShowThinkingChange,
   showThinking = true,
+  supportsPi = true,
   tabId,
 }: CloseTabButtonProps) {
   const dialogRef = useRef<HTMLDialogElement>(null);
@@ -191,7 +193,7 @@ export function CloseTabButton({
                 required
               />
             </label>
-            {agentRunning ? (
+            {agentRunning && supportsPi ? (
               <label className={dialogStyles["edit-thinking-toggle"]}>
                 <span>
                   Show thinking chips
@@ -206,7 +208,7 @@ export function CloseTabButton({
               </label>
             ) : null}
             {saveMutation.isError ? <p role="alert">{saveMutation.error.message}</p> : null}
-            {agentRunning && agentTarget ? (
+            {agentRunning && supportsPi && agentTarget ? (
               <button
                 type="button"
                 className={dialogStyles["edit-restart-button"]}
