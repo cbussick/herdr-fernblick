@@ -94,13 +94,31 @@ export class SessionCatalog {
     for (const path of files) {
       const chat = await this.read(path);
       if (chat) chats.push(chat);
-      else if (strict)
+      else if (strict && !(await this.isEmpty(path)))
         throw new SavedChatError(
           503,
           "Cannot verify shared files because a saved session is unreadable or invalid.",
         );
     }
     return chats.sort((a, b) => b.updatedAt.localeCompare(a.updatedAt) || a.id.localeCompare(b.id));
+  }
+
+  private async isEmpty(path: string): Promise<boolean> {
+    // An uninitialized session cannot reference shared assets. Distinguish that
+    // from a nonempty/corrupt or unreadable file; those still fail closed.
+    const file = await open(
+      path,
+      constants.O_RDONLY | constants.O_NOFOLLOW | constants.O_NONBLOCK,
+    ).catch(() => null);
+    if (!file) return false;
+    try {
+      const stats = await file.stat();
+      return stats.isFile() && stats.size === 0;
+    } catch {
+      return false;
+    } finally {
+      await file.close();
+    }
   }
 
   async get(id: string) {

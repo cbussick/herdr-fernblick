@@ -125,3 +125,15 @@ it("does not delete a replacement session or follow a replaced symlink", async (
   await expect(catalog.delete(chat.id)).rejects.toMatchObject({ status: 404 });
   await expect(access(other)).resolves.toBeUndefined();
 });
+
+it("ignores empty placeholders in strict scans and discovers them once initialized", async () => {
+  const path = join(root, "placeholder.jsonl");
+  await writeFile(path, "");
+  expect(await catalog.list(true)).toEqual([]);
+  const uploadId = "00000000-0000-0000-0000-000000000000.png";
+  await save(path, [
+    header,
+    { type: "custom", customType: "fernblick-image-uploads", data: [{ id: uploadId }] },
+  ]);
+  expect(await catalog.list(true)).toMatchObject([{ sessionId: header.id, uploadIds: [uploadId] }]);
+});

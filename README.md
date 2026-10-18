@@ -133,7 +133,9 @@ backend stops mid-cleanup, that directory preserves the session for manual recov
 or completion of deletion. Small private ID-only deletion receipts are retained so
 retrying after a lost response or backend restart can finish browser-draft cleanup;
 receipts contain no transcript, drawing or image content. Cleanup fails closed if
-another session is unreadable and sharing cannot be checked.
+another nonempty session is unreadable or invalid and sharing cannot be checked.
+Readable zero-byte session placeholders are ignored by the sharing scan and left
+untouched; they contain no conversation or asset references.
 
 The backend reads session-file metadata for this list only; the live transcript
 still comes from Pi's live bridge. It discovers local sessions under

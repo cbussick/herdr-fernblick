@@ -268,3 +268,23 @@ it("replays the deletion result after a lost reply or backend restart without ke
   expect(receipt).not.toContain(chat.path);
   expect(receipt).not.toContain(chat.title);
 });
+
+it("deletes a closed chat alongside an empty session placeholder without weakening shared-file protection", async () => {
+  const ownUpload = await images.saveImageUpload(png, "image/png");
+  const sharedUpload = await images.saveImageUpload(png, "image/png");
+  const chat = await save("original", [header(), refs(ownUpload.id, sharedUpload.id)]);
+  const other = await save("other", [header("other"), refs(sharedUpload.id)]);
+  const placeholder = join(root, "empty.jsonl");
+  await writeFile(placeholder, "");
+  const board = await boards.open(key("original"));
+  await expect(service.deleteChat(chat.id)).resolves.toEqual({
+    sessionId: "original",
+    boardIds: [board.id],
+  });
+  expect(await exists(chat.path)).toBe(false);
+  expect(await exists(ownUpload.path)).toBe(false);
+  expect(await exists(sharedUpload.path)).toBe(true);
+  expect(await exists(other.path)).toBe(true);
+  expect(await readFile(placeholder, "utf8")).toBe("");
+  await expect(boards.read(board.id)).rejects.toMatchObject({ status: 404 });
+});
