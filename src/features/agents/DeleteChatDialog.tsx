@@ -56,11 +56,11 @@ export function DeleteChatDialog({
           if (!pending) onConfirm();
         }}
       >
-        <h2 id="delete-chat-heading">Delete chat?</h2>
+        <h2 id="delete-chat-heading">Delete session?</h2>
         <p id="delete-chat-description">
           Permanently delete “{chat.title}” and its whiteboards, saved snapshots and uploads that
-          aren’t shared with another chat? Local whiteboard drafts in this browser are also removed.
-          Other chats and project files are kept. This cannot be undone.
+          aren’t shared with another session? Local whiteboard drafts in this browser are also
+          removed. Other sessions and project files are kept. This cannot be undone.
         </p>
         {error && <p role="alert">{error}</p>}
         <div className={styles["confirm-dialog__actions"]}>
@@ -68,7 +68,7 @@ export function DeleteChatDialog({
             Cancel
           </button>
           <button type="submit" className={styles["confirm-dialog__danger"]} disabled={pending}>
-            {pending ? "Deleting…" : "Delete chat"}
+            {pending ? "Deleting…" : "Delete session"}
           </button>
         </div>
       </form>

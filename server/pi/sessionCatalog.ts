@@ -84,7 +84,7 @@ export class SessionCatalog {
       if ((error as NodeJS.ErrnoException).code === "ENOENT") return [];
       throw new SavedChatError(
         503,
-        "Cannot read saved chats. Check the session directory permissions.",
+        "Cannot read saved sessions. Check the session directory permissions.",
       );
     }
     const present = new Set(files);
@@ -124,7 +124,7 @@ export class SessionCatalog {
   async get(id: string) {
     const chat = (await this.list()).find((candidate) => candidate.id === id);
     if (!chat)
-      throw new SavedChatError(404, "This saved chat is no longer available. Refresh the list.");
+      throw new SavedChatError(404, "This saved session is no longer available. Refresh the list.");
     return chat;
   }
 
@@ -135,7 +135,7 @@ export class SessionCatalog {
       constants.O_RDONLY | constants.O_NOFOLLOW | constants.O_NONBLOCK,
     ).catch((error: NodeJS.ErrnoException) => {
       if (error.code === "ENOENT") return null;
-      throw new SavedChatError(503, "Cannot read the chat deletion receipt.");
+      throw new SavedChatError(503, "Cannot read the session deletion receipt.");
     });
     if (!file) return null;
     try {
@@ -147,7 +147,7 @@ export class SessionCatalog {
         stats.nlink !== 1 ||
         stats.size > 256 * 1024
       )
-        throw new SavedChatError(503, "Unsafe chat deletion receipt.");
+        throw new SavedChatError(503, "Unsafe session deletion receipt.");
       const bytes = Buffer.alloc(stats.size + 1);
       let size = 0;
       while (size < bytes.length) {
@@ -155,7 +155,7 @@ export class SessionCatalog {
         if (!result.bytesRead) break;
         size += result.bytesRead;
       }
-      if (size !== stats.size) throw new SavedChatError(503, "Chat deletion receipt changed.");
+      if (size !== stats.size) throw new SavedChatError(503, "Session deletion receipt changed.");
       return receiptSchema.parse(JSON.parse(bytes.subarray(0, size).toString("utf8")));
     } finally {
       await file.close();
@@ -179,7 +179,7 @@ export class SessionCatalog {
         `${stats.dev}:${stats.ino}` !== chat.fileIdentity ||
         staged?.sessionId !== chat.sessionId
       )
-        throw new SavedChatError(409, "This chat changed during deletion. Refresh the list.");
+        throw new SavedChatError(409, "This session changed during deletion. Refresh the list.");
       const result = await cleanup?.(staged);
       const receipt = receiptSchema.safeParse(result);
       if (receipt.success) {
@@ -209,10 +209,13 @@ export class SessionCatalog {
       }
       if (error instanceof SavedChatError) throw error;
       if ((error as NodeJS.ErrnoException).code === "ENOENT")
-        throw new SavedChatError(404, "This saved chat is no longer available. Refresh the list.");
+        throw new SavedChatError(
+          404,
+          "This saved session is no longer available. Refresh the list.",
+        );
       throw new SavedChatError(
         503,
-        "Chat cleanup failed. Some related files may already be removed. Try again.",
+        "Session cleanup failed. Some related files may already be removed. Try again.",
       );
     } finally {
       this.cache.delete(stagedPath);
@@ -320,7 +323,7 @@ export class SessionCatalog {
         uploadIds: [...uploadIds],
         boardIds: [...boardIds],
         fileIdentity: `${stats.dev}:${stats.ino}`,
-        title: title.replace(/\s+/g, " ").trim() || preview || "Untitled chat",
+        title: title.replace(/\s+/g, " ").trim() || preview || "Untitled session",
         preview,
         cwd: header.cwd,
         updatedAt: stats.mtime.toISOString(),

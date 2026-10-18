@@ -236,7 +236,7 @@ it.each([false, true])(
     const response = await deleteChat();
     expect(response.status).toBe(409);
     expect(await response.json()).toEqual({
-      error: "This chat is active. Close it before deleting it.",
+      error: "This session is active. Close it before deleting it.",
     });
     await expect(access(sessionPath)).resolves.toBeUndefined();
   },

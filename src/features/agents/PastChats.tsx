@@ -13,10 +13,12 @@ export function PastChats({
   query,
   workspaces,
   onResumed,
+  onRemoved,
 }: {
   query: string;
   workspaces: Workspace[];
   onResumed: (agent: Agent) => void;
+  onRemoved: () => void;
 }) {
   const client = useQueryClient();
   const [selectedChat, setSelectedChat] = useState<SavedChat | null>(null);
@@ -59,12 +61,13 @@ export function PastChats({
           current ? { ...current, chats: current.chats.filter((chat) => chat.id !== id) } : current,
       );
       setChatToDelete(null);
+      onRemoved();
       void client.invalidateQueries({ queryKey: ["saved-chats"] });
       try {
         await removeWhiteboardDrafts(result.sessionId, result.boardIds);
       } catch {
         setCleanupWarning(
-          "Chat deleted, but local whiteboard drafts could not be cleared in this browser.",
+          "Session removed, but local whiteboard drafts could not be cleared in this browser.",
         );
       }
     },
@@ -85,14 +88,14 @@ export function PastChats({
         ref={historyRef}
         tabIndex={-1}
         className={styles.history}
-        aria-label="Past chats"
+        aria-label="Past sessions"
         data-testid="past-chats"
       >
         {cleanupWarning && <p role="status">{cleanupWarning}</p>}
         {chats.isPending && (
           <div className={overviewStyles["overview-empty"]} role="status" aria-busy="true">
             <StateIcon kind="loading" spinning />
-            <p>Loading past chats…</p>
+            <p>Loading past sessions…</p>
           </div>
         )}
         {chats.isError && (
@@ -106,8 +109,8 @@ export function PastChats({
         {chats.isSuccess && !filtered.length && (
           <p>
             {search
-              ? "No chats match your search."
-              : "No past chats yet. Saved conversations appear here after they close."}
+              ? "No sessions match your search."
+              : "No past sessions yet. Saved sessions appear here after they close."}
           </p>
         )}
         <ul className={styles.list}>

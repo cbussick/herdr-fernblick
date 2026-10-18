@@ -91,30 +91,32 @@ paths restore search, filters, labels, active-branch display and edit-and-branch
 including available images from a restored prompt. Tree data and navigation use
 the direct Pi bridge, never session-file reads or terminal command injection.
 
-### Past chats
+### Past sessions
 
-Open **Past chats** in the sidebar to search saved Pi conversations by title, first
+Open **Past sessions** in the sidebar to search saved Pi conversations by title, first
 message, or project path. Only closed conversations are shown, ordered by most
 recently modified; find open conversations in **Agents** or **Workspaces**. Click a
-chat's **Resume** button, choose a workspace in the dialog, then confirm **Resume**
+session's **Resume** button, choose a workspace in the dialog, then confirm **Resume**
 to start Pi in a new tab in the original project directory,
 with the original session and conversation context. **Create new workspace** is
-always available in this dialog, with the chat's original directory and a suggested
-name prefilled. Creating one returns to the same chat with the new workspace
+always available in this dialog, with the session's original directory and a suggested
+name prefilled. Creating one returns to the same session with the new workspace
 selected; confirm **Resume** to launch Pi. Canceling creation returns to the
-workspace choice without launching anything. A resumed chat leaves the list
-immediately. If a chat was opened after the list loaded, Resume selects that
+workspace choice without launching anything. A resumed session leaves the list
+immediately. If a session was opened after the list loaded, Resume selects that
 existing agent instead of starting a duplicate. Resuming does not send a prompt.
 The original project directory must still exist.
 
-Use a chat's **Delete** button and confirm **Delete chat** to permanently remove
+Use a session's **Delete** button and confirm **Delete session** to permanently remove
 its saved session file, associated whiteboards (including embedded assets and saved
-snapshots), and referenced image uploads not shared with another saved chat.
+snapshots), and referenced image uploads not shared with another saved session.
 Whiteboard drafts and recovery copies in this browser are cleared too; a warning
 appears if local cleanup fails. Project files, other conversations/forks and
 resources still referenced by them are kept. This cannot be undone. Cancel leaves
-the chat untouched; deletion errors stay in the dialog so you can retry. Active
-chats, chats currently being resumed, and deletion while a Pi agent's session
+the session untouched; deletion errors stay in the dialog so you can retry. A
+“Session removed” snackbar confirms successful deletion, dismisses after six
+seconds, and can be closed manually. Its timer pauses while hovered or focused. Active
+sessions, sessions currently being resumed, and deletion while a Pi agent's session
 identity is unknown are blocked.
 
 Cleanup checks other conversations in the configured session store. It cannot
@@ -144,15 +146,15 @@ still comes from Pi's live bridge. It discovers local sessions under
 store; `PI_CODING_AGENT_SESSION_DIR` is also recognized. Both flat stores and Pi's
 one-level project grouping are supported. Custom Pi CLI/settings directories are
 not discovered automatically. Symlinked entries and invalid session headers are
-ignored; missing stores show an empty list. Past chats appear as cards and refresh
+ignored; missing stores show an empty list. Past sessions appear as cards and refresh
 automatically every 30 seconds while visible. A retry action appears if loading fails.
 
-This exposes saved-chat titles, prompt previews and project paths for the backend's
-Unix user, not just chats created through Fernblick. Use a dedicated session
+This exposes saved-session titles, prompt previews and project paths for the backend's
+Unix user, not just sessions created through Fernblick. Use a dedicated session
 directory for isolated development. Active-session detection is limited to the
 connected Herdr instance: do not resume a file that is open in another Herdr
 instance or standalone Pi process. The same limitation applies to deletion: close
-a chat in all other instances before deleting it. Session files are only removed
+a session in all other instances before deleting it. Session files are only removed
 after an explicit delete confirmation; browsing never rewrites them.
 
 ### Whiteboard
@@ -206,19 +208,19 @@ The HTTP API does not expose a shell or arbitrary Herdr method proxy. Access to 
 
 ## Configuration
 
-| Variable                    | Default                                 | Purpose                                                                    |
-| --------------------------- | --------------------------------------- | -------------------------------------------------------------------------- |
-| `HOST`                      | `127.0.0.1`                             | Address for the HTTP server                                                |
-| `PORT`                      | `8787`                                  | HTTP port                                                                  |
-| `HERDR_SOCKET_PATH`         | `~/.config/herdr/herdr.sock`            | Herdr session socket                                                       |
-| `FERNBLICK_PI_SOCKET`       | `~/.local/share/fernblick/live/pi.sock` | Private Pi bridge socket (also configure Pi)                               |
-| `FERNBLICK_UPLOAD_DIR`      | `/tmp/fernblick`                        | Shared private upload directory; configure backend and Pi identically      |
-| `FERNBLICK_PI_SESSION_DIR`  | Pi session directory (see Past chats)   | Backend-only saved-chat discovery root; use an absolute path               |
-| `FERNBLICK_PI_GLOBAL`       | unset                                   | Set to `1` to use a globally installed extension for created agents        |
-| `FERNBLICK_BOARD_DIR`       | `~/.local/share/fernblick/boards`       | Private persistent whiteboard scenes and sent snapshots                    |
-| `FERNBLICK_API_TARGET`      | `http://127.0.0.1:8787`                 | Vite development API proxy target                                          |
-| `FERNBLICK_PI_ISOLATED`     | unset                                   | Set to `1` to disable auto-discovered Pi extensions for development agents |
-| `FERNBLICK_HERDR_EXTENSION` | unset                                   | Herdr state extension path to explicitly retain with isolated Pi loading   |
+| Variable                    | Default                                  | Purpose                                                                    |
+| --------------------------- | ---------------------------------------- | -------------------------------------------------------------------------- |
+| `HOST`                      | `127.0.0.1`                              | Address for the HTTP server                                                |
+| `PORT`                      | `8787`                                   | HTTP port                                                                  |
+| `HERDR_SOCKET_PATH`         | `~/.config/herdr/herdr.sock`             | Herdr session socket                                                       |
+| `FERNBLICK_PI_SOCKET`       | `~/.local/share/fernblick/live/pi.sock`  | Private Pi bridge socket (also configure Pi)                               |
+| `FERNBLICK_UPLOAD_DIR`      | `/tmp/fernblick`                         | Shared private upload directory; configure backend and Pi identically      |
+| `FERNBLICK_PI_SESSION_DIR`  | Pi session directory (see Past sessions) | Backend-only saved-chat discovery root; use an absolute path               |
+| `FERNBLICK_PI_GLOBAL`       | unset                                    | Set to `1` to use a globally installed extension for created agents        |
+| `FERNBLICK_BOARD_DIR`       | `~/.local/share/fernblick/boards`        | Private persistent whiteboard scenes and sent snapshots                    |
+| `FERNBLICK_API_TARGET`      | `http://127.0.0.1:8787`                  | Vite development API proxy target                                          |
+| `FERNBLICK_PI_ISOLATED`     | unset                                    | Set to `1` to disable auto-discovered Pi extensions for development agents |
+| `FERNBLICK_HERDR_EXTENSION` | unset                                    | Herdr state extension path to explicitly retain with isolated Pi loading   |
 
 ## Checks
 

@@ -118,7 +118,7 @@ for (const [engine, browserType] of [
           if (deletionAttempts === 1) {
             await route.fulfill({
               status: 409,
-              json: { error: "This chat is active. Close it first." },
+              json: { error: "This session is active. Close it first." },
             });
             return;
           }
@@ -142,10 +142,10 @@ for (const [engine, browserType] of [
         await route.fulfill({ json: body });
       });
       await page.goto(base);
-      await page.getByRole("tab", { name: "Past chats", exact: true }).click();
+      await page.getByRole("tab", { name: "Past sessions", exact: true }).click();
       const loading = page.getByTestId("past-chats").getByRole("status");
       await loading.waitFor();
-      assert.equal(await loading.textContent(), "Loading past chats…");
+      assert.equal(await loading.textContent(), "Loading past sessions…");
       assert.equal(await loading.getAttribute("aria-busy"), "true");
       const spinner = loading.locator("svg");
       assert.equal(await spinner.evaluate((node) => getComputedStyle(node).animationName), "none");
@@ -182,24 +182,24 @@ for (const [engine, browserType] of [
           .count(),
         0,
       );
-      const search = page.getByRole("searchbox", { name: "Search past chats" });
+      const search = page.getByRole("searchbox", { name: "Search past sessions" });
       assert.equal(
         await page.getByRole("heading", { name: "An already open conversation" }).count(),
         0,
       );
       await search.fill("An already open conversation");
-      await page.getByText("No chats match your search.").waitFor();
+      await page.getByText("No sessions match your search.").waitFor();
       await search.fill("/projects/api");
       await page.getByRole("heading", { name: "Prepare the API release" }).waitFor();
       assert.equal(await page.getByTestId("saved-chat").count(), 1);
       await search.fill("not found");
-      await page.getByText("No chats match your search.").waitFor();
+      await page.getByText("No sessions match your search.").waitFor();
       await search.fill("");
       assert(
         await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth),
         "No document overflow",
       );
-      const tab = await page.getByRole("tab", { name: "Past chats", exact: true }).boundingBox();
+      const tab = await page.getByRole("tab", { name: "Past sessions", exact: true }).boundingBox();
       assert(tab && tab.x >= 0 && tab.x + tab.width <= width, "History tab fits");
       await page.screenshot({ path: `${output}/${engine}-${device}.png`, fullPage: true });
       await page.evaluate(async () => {
@@ -224,7 +224,7 @@ for (const [engine, browserType] of [
         name: `Delete ${chats[1].title}`,
         exact: true,
       });
-      const deleteDialog = page.getByRole("dialog", { name: "Delete chat?", exact: true });
+      const deleteDialog = page.getByRole("dialog", { name: "Delete session?", exact: true });
       await deleteOpener.click();
       await deleteDialog.waitFor();
       const cancelDelete = deleteDialog.getByRole("button", { name: "Cancel", exact: true });
@@ -233,14 +233,19 @@ for (const [engine, browserType] of [
       await deleteDialog.waitFor({ state: "hidden" });
       assert(await deleteOpener.evaluate((node) => document.activeElement === node));
       assert.equal(deletionAttempts, 0);
+      assert.equal(await page.getByTestId("snackbar").count(), 0);
       await deleteOpener.click();
       await cancelDelete.click();
       await deleteDialog.waitFor({ state: "hidden" });
       assert.equal(deletionAttempts, 0);
       await deleteOpener.click();
-      const confirmDelete = deleteDialog.getByRole("button", { name: "Delete chat", exact: true });
+      const confirmDelete = deleteDialog.getByRole("button", {
+        name: "Delete session",
+        exact: true,
+      });
       await confirmDelete.click();
       await deleteDialog.getByRole("alert").waitFor();
+      assert.equal(await page.getByTestId("snackbar").count(), 0);
       assert.equal(await page.getByTestId("saved-chat").count(), 22);
       await page.screenshot({
         path: `${output}/${engine}-${device}-delete-dialog.png`,
@@ -256,6 +261,7 @@ for (const [engine, browserType] of [
       assert(await cancelDelete.isDisabled());
       await page.keyboard.press("Escape");
       assert(await deleteDialog.isVisible());
+      assert.equal(await page.getByTestId("snackbar").count(), 0);
       releaseDelete();
       await deleteDialog.waitFor({ state: "hidden" });
       await page.waitForFunction(
@@ -284,6 +290,29 @@ for (const [engine, browserType] of [
         await page.getByTestId("past-chats").evaluate((node) => document.activeElement === node),
       );
       assert(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth));
+      const snackbar = page.getByTestId("snackbar");
+      await snackbar.waitFor();
+      assert.equal(await snackbar.getByRole("status").textContent(), "Session removed");
+      assert.equal(await snackbar.getByRole("status").getAttribute("aria-live"), "polite");
+      const snackBounds = await snackbar.boundingBox();
+      const createBounds = await page
+        .getByRole("button", { name: "Open create menu", exact: true })
+        .boundingBox();
+      assert(snackBounds && snackBounds.x >= 0 && snackBounds.x + snackBounds.width <= width);
+      assert(snackBounds.y >= 0 && snackBounds.y + snackBounds.height <= height);
+      assert(
+        createBounds && snackBounds.y + snackBounds.height <= createBounds.y,
+        "Removal confirmation must not overlap the create button",
+      );
+      await page.screenshot({
+        path: `${output}/${engine}-${device}-session-removed.png`,
+        fullPage: true,
+      });
+      await page.getByRole("tab", { name: "Workspaces", exact: true }).click();
+      assert(await snackbar.isVisible(), "Confirmation survives an overview tab change");
+      await page.getByRole("tab", { name: "Past sessions", exact: true }).click();
+      await snackbar.getByRole("button", { name: "Dismiss notification", exact: true }).click();
+      await snackbar.waitFor({ state: "hidden" });
       const opener = page.getByRole("button", { name: `Resume ${chats[0].title}`, exact: true });
       const dialog = page.getByRole("dialog", { name: "Open in which workspace?" });
       await opener.click();
@@ -361,7 +390,7 @@ for (const [engine, browserType] of [
       assert.deepEqual(mutations, [{ workspaceId: "w3" }]);
       assert.deepEqual(errors, []);
       console.log(
-        `${engine} ${device}: loading, reduced motion, history, search, delete, local draft cleanup, resume, focus, overflow passed`,
+        `${engine} ${device}: loading, reduced motion, history, search, session labels, delete, snackbar, local draft cleanup, resume, focus, overflow passed`,
       );
       await page.close();
     }

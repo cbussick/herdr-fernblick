@@ -59,7 +59,7 @@ it("refreshes changed metadata, retains stable IDs and evicts removed files", as
   const path = join(root, "saved.jsonl");
   await save(path, [header]);
   const [original] = await catalog.list();
-  expect(original.title).toBe("Untitled chat");
+  expect(original.title).toBe("Untitled session");
   await appendFile(path, JSON.stringify({ type: "session_info", name: "Renamed" }) + "\n");
   expect(await catalog.get(original.id)).toMatchObject({ id: original.id, title: "Renamed" });
   await rm(path);
