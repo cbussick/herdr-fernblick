@@ -686,12 +686,17 @@ it("does not report compaction success after a target change or shutdown", async
   );
 });
 
-it("uses real pinned Pi command dispatch and navigateTree(user.id) to reach the root without model work", async () => {
+it("restores a root prompt through real Pi even when a tree hook appends extension state", async () => {
   const t = await setup();
   t.emit("session_shutdown");
   vi.stubEnv("PI_OFFLINE", "1");
+  const extraExtension = process.env.PI_TREE_TEST_EXTENSION;
+  if (extraExtension) vi.stubEnv("HOME", t.dir);
+  const stateType = extraExtension ? "plannotator" : "tree-fixture-state";
   const { createAgentSession, DefaultResourceLoader, SessionManager, SettingsManager } =
-    await import("@earendil-works/pi-coding-agent");
+    (await import(
+      process.env.PI_TREE_TEST_MODULE ?? "@earendil-works/pi-coding-agent"
+    )) as typeof import("@earendil-works/pi-coding-agent");
   const manager = SessionManager.create(t.dir, join(t.dir, "sessions"));
   const root = manager.appendMessage({
     role: "user",
@@ -722,9 +727,19 @@ it("uses real pinned Pi command dispatch and navigateTree(user.id) to reach the 
     noPromptTemplates: true,
     noThemes: true,
     noContextFiles: true,
-    extensionFactories: [liveChat],
+    additionalExtensionPaths: extraExtension ? [extraExtension] : [],
+    extensionFactories: [
+      liveChat,
+      (pi) => {
+        // Plannotator and other extensions persist non-message state after
+        // navigation. This legitimately advances the leaf before Pi returns.
+        if (!extraExtension)
+          pi.on("session_tree", () => pi.appendEntry(stateType, { phase: "idle" }));
+      },
+    ],
   });
   await resourceLoader.reload();
+  expect(resourceLoader.getExtensions().errors).toEqual([]);
   const { session } = await createAgentSession({
     cwd: t.dir,
     agentDir,
@@ -795,11 +810,16 @@ it("uses real pinned Pi command dispatch and navigateTree(user.id) to reach the 
       action: "navigate",
       entryId: root,
     });
-    expect(await t.ack(id)).toMatchObject({
+    const result = await t.ack(id);
+    expect(result, JSON.stringify(result)).toMatchObject({
       type: "navigated",
       prompt: { text: "original root prompt", attachments: [] },
     });
-    expect(manager.getLeafId()).toBeNull();
+    expect(manager.getBranch()).toEqual([
+      expect.objectContaining({ type: "custom", customType: stateType, parentId: null }),
+    ]);
+    for (const preserved of [root, active, alternate])
+      expect(manager.getEntry(preserved)).toBeDefined();
     await session.sendUserMessage("/fernblick-bridge-stale-token ignored", {
       expandPromptTemplates: true,
     });

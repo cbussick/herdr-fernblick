@@ -19,7 +19,7 @@ import { ImageHistory, IMAGE_METADATA } from "./imageHistory.js";
 import { TranscriptProjector } from "./projector.js";
 import { prepareImages } from "./images.js";
 import { skillCatalog, skillPrompt } from "./skills.js";
-import { projectTree, contentText } from "./tree.js";
+import { projectTree, contentText, matchesNavigationDestination } from "./tree.js";
 import { processIdentity, socketPath, validateSocket } from "./security.js";
 import { receiveFrames, writeFrame } from "./transport.js";
 import { BoardTools, type BoardConnection } from "./boardTools.js";
@@ -154,7 +154,7 @@ export default function liveChat(pi: ExtensionAPI) {
           operation.client !== socket ||
           operation.client.destroyed ||
           ctx.sessionManager.getSessionId() !== operation.command.target.sessionId ||
-          ctx.sessionManager.getLeafId() !== expectedLeaf
+          !matchesNavigationDestination(ctx.sessionManager, expectedLeaf)
         )
           throw new Error("Navigation outcome changed or connection lost; inspect Pi");
         epoch = randomUUID();

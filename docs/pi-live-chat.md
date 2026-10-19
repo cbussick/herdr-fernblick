@@ -346,6 +346,12 @@ settings, CLI, sessions, session-format, message-types and SDK) and actual
   failures and reports rejection itself, revalidates before navigation, awaits
   `ctx.navigateTree(entry.id,{summarize:false})`, then replies on the captured
   socket. Pi moves user targets to their parent, including the null root.
+  Completion accepts a tail of non-message `custom` entries appended by
+  `session_tree` hooks only if its ancestry reaches that exact destination.
+  Plannotator persists its phase this way; comparing the final leaf ID literally
+  used to reject a successful rewind and discard the restored prompt. Messages,
+  custom messages, summaries, model/thinking changes, missing/cyclic ancestry
+  and other branches still fail validation. Identity/connection checks remain.
   Reload/session replacement are not exposed. This ephemeral nonce is not a
   delivery queue; timeout/shutdown cancels it and no model work is requested.
 
@@ -515,8 +521,25 @@ A real Pi 1.1.0 `createAgentSession`/SessionManager harness exercises
 It verifies labels and active branch via real `getLeafId()`, user-to-root
 navigation, and that both the agent prompt and model stream remain uncalled,
 including an internal token that reaches the normal input guard.
-Tests do not call a provider; existing user agents and browser layout have not
-been manually exercised.
+The real navigation regression also registers a `session_tree` hook that
+appends extension state, asserting that the root prompt still returns and old
+branches remain intact. Destination-validation tests reject actual context
+changes even behind a custom-entry tail. Optional installed-host verification:
+
+```sh
+PI_TREE_TEST_MODULE=/absolute/path/to/pi-coding-agent/dist/index.js \
+PI_TREE_TEST_EXTENSION=/absolute/path/to/@plannotator/pi-extension/index.ts \
+  npm test -- packages/pi-live-chat/extension.test.ts -t 'restores a root prompt through real Pi'
+```
+
+The optional extension case isolates `HOME` and loads only the named extension
+beside this checkout's live-chat extension. Verified with Pi 1.3.0 and Plannotator
+0.28.23: the old leaf-equality check rejects navigation, while ancestry validation
+returns the prompt. Default CI uses the synthetic metadata hook and pinned Pi,
+not an installed Plannotator dependency.
+
+Tests do not call a provider or navigate existing user agents; browser layout
+has not been manually exercised in this regression.
 
 At the Pi 1.1.0 upgrade, `npm audit --package-lock-only` reports 19 findings
 (3 low, 1 moderate, 11 high, 4 critical), compared with 20 on the previous lockfile.

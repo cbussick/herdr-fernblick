@@ -1,6 +1,25 @@
 import type { ExtensionContext, SessionTreeNode } from "@earendil-works/pi-coding-agent";
 import { MAX_SNAPSHOT, MAX_TEXT, type PiTree, type PiTreeNode } from "./protocol.js";
 
+// session_tree hooks may append non-message extension state (e.g. Plannotator)
+// before navigateTree returns. Accept that tail only when it reaches the exact
+// destination; messages, summaries, settings changes and other branches still fail.
+export function matchesNavigationDestination(
+  manager: Pick<ExtensionContext["sessionManager"], "getEntry" | "getLeafId">,
+  expectedLeaf: string | null,
+): boolean {
+  let cursor = manager.getLeafId();
+  const visited = new Set<string>();
+  while (cursor !== expectedLeaf) {
+    if (cursor === null || visited.has(cursor)) return false;
+    visited.add(cursor);
+    const entry = manager.getEntry(cursor);
+    if (entry?.type !== "custom") return false;
+    cursor = entry.parentId;
+  }
+  return true;
+}
+
 export function contentText(content: unknown): string {
   if (typeof content === "string") return content;
   if (!Array.isArray(content)) return "";
