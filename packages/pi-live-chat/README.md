@@ -31,7 +31,9 @@ not install local package dependencies. Keep the directory in place. An npm
 publication of this package would install its declared runtime dependency normally.
 
 The user-run `pi install` command writes personal Pi settings. Fernblick does not
-edit global settings. Start a new interactive Pi or use `/reload` yourself.
+install or reconfigure Pi automatically; only the explicit **Use current as global
+default** action saves model/provider or thinking defaults in global settings.
+Start a new interactive Pi or use `/reload` yourself.
 Loading the extension grants Fernblick access to model chat, thinking, and
 send/abort controls for the same Unix user.
 

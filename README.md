@@ -67,8 +67,9 @@ pi install /absolute/path/to/herdr-fernblick/packages/pi-live-chat
 
 Then start Pi or reload it yourself. This local-path installation requires the
 checkout's `npm ci`; see the [package README](packages/pi-live-chat/README.md) for
-installing a standalone copy. Fernblick never changes your global Pi configuration.
-Created agents load that same extension explicitly; set `FERNBLICK_PI_GLOBAL=1`
+installing a standalone copy. Fernblick does not install or reconfigure Pi automatically.
+The explicit **Use current as global default** action saves only model/provider or
+thinking defaults in Pi's global settings. Created agents load that same extension explicitly; set `FERNBLICK_PI_GLOBAL=1`
 on the backend to omit explicit loading when installed globally.
 
 The extension connects persistently to
@@ -183,7 +184,10 @@ Each has an icon beside its label. Model opens a searchable list of the selected
 agent's available models. Thinking level offers only levels supported by its
 current model. Changes apply to that agent's session, not defaults for new agents,
 and leave the conversation, draft and images intact. Pi must be idle to change
-these settings. Existing agents need `/reload` after the bridge update.
+these settings. Both dialogs also offer **Use current as global default** to save
+the displayed value for newly launched Pi sessions, including outside Fernblick.
+Project, per-model and explicit launch overrides still apply; running sessions
+stay unchanged. Existing agents need `/reload` after the bridge update.
 
 ### Removed legacy queue
 
