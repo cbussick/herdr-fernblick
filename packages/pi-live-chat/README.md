@@ -197,7 +197,10 @@ review handoff.
   and no LLM prompt is submitted. The handler awaits
   `ctx.navigateTree(entryId,{summarize:false})` before replying; Pi itself moves
   user selections to their parent/root. User text and available image IDs return
-  to the composer. Tree success creates a fresh epoch/SSE snapshot.
+  to the composer. Non-message extension state appended by `session_tree` hooks
+  (such as Plannotator's phase state) is allowed after the exact destination;
+  actual conversation/settings changes or another branch still reject the result.
+  Tree success creates a fresh epoch/SSE snapshot.
 - Commands are serialized, including image preparation and navigation. A nonce
   expires after four seconds; shutdown invalidates it. Cancellation, stale
   identity, busy Pi, a missing entry/handler, disconnect or timeout is not reported
