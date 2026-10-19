@@ -1,6 +1,7 @@
 import { Fragment, useMemo, type ReactNode } from "react";
 import { splitMessageLinks } from "./chatMessageLinks";
 import { ChatCodeBlock } from "./ChatCodeBlock";
+import { ChatMarkdownImage } from "./ChatMarkdownImage";
 import { formatMessageText, type MessagePart } from "./chatMessageFormatting";
 import {
   annotationGeneralPromptIntro,
@@ -117,7 +118,7 @@ export function ChatMessageText({
     });
   }
 
-  function render(part: MessagePart, index: number): ReactNode {
+  function render(part: MessagePart, index: number, linked = false): ReactNode {
     if (part.kind === "syntax") {
       // Range.toString() includes display:none text; native copying does not.
       // Keep raw delimiters/destinations in the DOM only for assistant annotation
@@ -130,8 +131,22 @@ export function ChatMessageText({
     }
     if (part.kind === "text")
       return <Fragment key={index}>{highlighted(part.start, part.end)}</Fragment>;
-    const content = part.children.map(render);
+    const content = part.children.map((child, i) =>
+      render(child, i, linked || part.kind === "link"),
+    );
     switch (part.kind) {
+      case "image":
+        return (
+          <Fragment key={index}>
+            {content}
+            <ChatMarkdownImage
+              src={part.href!}
+              alt={part.alt ?? ""}
+              title={part.title}
+              linked={linked}
+            />
+          </Fragment>
+        );
       case "paragraph":
         return <p key={index}>{content}</p>;
       case "heading": {
@@ -228,7 +243,11 @@ export function ChatMessageText({
       data-ui="chat-message-text"
       data-annotation-source={annotationSource}
     >
-      {emphasizeLabels ? <p>{parts.map(render)}</p> : parts.map(render)}
+      {emphasizeLabels ? (
+        <p>{parts.map((part, i) => render(part, i))}</p>
+      ) : (
+        parts.map((part, i) => render(part, i))
+      )}
     </div>
   );
 }

@@ -24,6 +24,11 @@ test("serves the locally hosted Manrope font and its complete OFL license", asyn
     const base = `http://127.0.0.1:${(server.address() as AddressInfo).port}`;
     const license = await fetch(`${base}/licenses/Manrope-OFL.txt`);
     expect(license.status).toBe(200);
+    const policy = license.headers.get("content-security-policy");
+    expect(policy).toContain("img-src 'self' blob: data: http: https:;");
+    expect(policy).toContain("connect-src 'self';");
+    expect(policy).toContain("script-src 'self';");
+    expect(license.headers.get("referrer-policy")).toBe("no-referrer");
     expect(license.headers.get("content-type")).toBe("text/plain; charset=utf-8");
     expect(await license.text()).toBe(
       await readFile("src/styles/fonts/Manrope-LICENSE.txt", "utf8"),

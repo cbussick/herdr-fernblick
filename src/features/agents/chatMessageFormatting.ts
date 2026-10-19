@@ -15,6 +15,7 @@ type FormattedPart = {
     | "emphasis"
     | "code"
     | "link"
+    | "image"
     | "paragraph"
     | "heading"
     | "blockquote"
@@ -28,6 +29,8 @@ type FormattedPart = {
   start: number;
   end: number;
   href?: string;
+  alt?: string;
+  title?: string;
   depth?: 1 | 2 | 3 | 4 | 5 | 6;
   ordered?: boolean;
   listStart?: number;
@@ -264,6 +267,21 @@ export function formatMessageText(text: string): MessagePart[] {
       }
       return [part];
     }
+    if (node.type === "image") {
+      const href = webDestination(node.url);
+      if (!href) return [literal(start, end)];
+      return [
+        {
+          kind: "image",
+          start,
+          end,
+          href,
+          alt: node.alt ?? "",
+          title: node.title ?? undefined,
+          children: [syntax(start, end)],
+        },
+      ];
+    }
     if (node.type === "inlineCode") {
       const delimiter = /^`+/.exec(text.slice(start, end))![0].length;
       return [
@@ -298,7 +316,7 @@ export function formatMessageText(text: string): MessagePart[] {
         },
       ];
     }
-    // Never autolink code examples, HTML, images or unresolved references.
+    // Never autolink code examples, HTML or unresolved references.
     if ("children" in node && node.type !== "linkReference")
       return children(node.children, start, end, autolink);
     return [literal(start, end)];

@@ -3,6 +3,51 @@ import { describe, expect, it } from "vitest";
 import { ChatMessageText } from "./ChatMessageText";
 
 describe("ChatMessageText formatting", () => {
+  it("renders the screenshot's Markdown image as a linked, lazy inline preview", () => {
+    const src = "http://100.71.229.1:8790/xr-matching-redesign.png";
+    const html = renderToStaticMarkup(
+      <ChatMessageText text={`![Generated matching-exercise redesign](${src} "Concept")`} />,
+    );
+    expect(html).toContain(`href="${src}"`);
+    expect(html).toContain(`src="${src}"`);
+    expect(html).toContain('alt="Generated matching-exercise redesign"');
+    expect(html).toContain('title="Concept"');
+    expect(html).toContain('loading="lazy"');
+    expect(html).toContain('referrerPolicy="no-referrer"');
+    expect(html).not.toContain("![");
+  });
+
+  it("does not nest anchors for linked images", () => {
+    const html = renderToStaticMarkup(
+      <ChatMessageText text="[![Preview](https://example.com/image.png)](https://example.com/page)" />,
+    );
+    expect(html.match(/<a /g)).toHaveLength(1);
+    expect(html).toContain('href="https://example.com/page"');
+    expect(html).toContain("<img ");
+  });
+
+  it("keeps unsafe images, unresolved references, and code examples literal", () => {
+    const html = renderToStaticMarkup(
+      <ChatMessageText
+        text={
+          "![bad](javascript:alert%281%29) ![data](data:image/png;base64,AA) ![local](file:///tmp/a.png) ![unknown][ref]\n\n`![example](https://example.com/a.png)`\n\n```md\n![example](https://example.com/a.png)\n```"
+        }
+      />,
+    );
+    expect(html).not.toContain("<img");
+    expect(html).not.toContain("<a ");
+  });
+
+  it("preserves raw annotation offsets around images throughout streaming", () => {
+    const text = "Before ![A & B](https://example.com/a_(b).png) **after**.";
+    for (let end = 0; end <= text.length; end++) {
+      const html = renderToStaticMarkup(
+        <ChatMessageText text={text.slice(0, end)} annotationSource="a1" />,
+      );
+      expect(html.replace(/<[^>]+>/g, "")).toBe(renderToStaticMarkup(<>{text.slice(0, end)}</>));
+    }
+  });
+
   it("renders bare URLs without swallowing punctuation or valid path characters", () => {
     const html = renderToStaticMarkup(
       <ChatMessageText text="See https://example.com/docs?q=chat, **https://example.com/file_name_** and www.example.com/a_(b)." />,

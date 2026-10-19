@@ -68,6 +68,14 @@
   margin-top: 0.75em;
 }
 
+.image {
+  display: block;
+  max-width: 100%;
+  height: auto;
+  margin-block: 0.5em;
+  border-radius: var(--radius-sm);
+}
+
 .syntax {
   display: none;
 }
