@@ -56,6 +56,8 @@ const contentTypes: Record<string, string> = {
   ".html": "text/html; charset=utf-8",
   ".js": "text/javascript; charset=utf-8",
   ".json": "application/json; charset=utf-8",
+  ".webmanifest": "application/manifest+json; charset=utf-8",
+  ".png": "image/png",
   ".txt": "text/plain; charset=utf-8",
   ".woff2": "font/woff2",
   ".woff": "font/woff",
@@ -425,6 +427,8 @@ function serveStatic(request: IncomingMessage, response: ServerResponse, publicD
   if (!existsSync(filePath)) return false;
 
   response.statusCode = 200;
+  // Revalidate the shell and worker so an installed app can discover releases.
+  response.setHeader("Cache-Control", "no-cache");
   response.setHeader("Content-Type", contentTypes[extname(filePath)] ?? "application/octet-stream");
   if (request.method === "HEAD") response.end();
   else createReadStream(filePath).pipe(response);

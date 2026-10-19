@@ -67,7 +67,13 @@ export function App() {
         Skip to content
       </a>
 
-      {agentsQuery.isPending ? (
+      {agentsQuery.isPending && agentsQuery.isPaused ? (
+        <div className={appStyles["page-state"]} data-testid="page-state" role="status">
+          <StateIcon kind="unavailable" />
+          <h1>Fernblick is offline</h1>
+          <p>Connect to your tailnet to load agents. This screen will reconnect automatically.</p>
+        </div>
+      ) : agentsQuery.isPending ? (
         <div className={appStyles["page-state"]} data-testid="page-state" aria-busy="true">
           <StateIcon kind="loading" />
           <p>Loading agents…</p>

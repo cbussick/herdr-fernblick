@@ -4,6 +4,8 @@ import { AppErrorBoundary } from "./AppErrorBoundary";
 
 const queryClient = new QueryClient({
   defaultOptions: {
+    // Agent actions must fail offline, not wait and execute after reconnection.
+    mutations: { networkMode: "always", retry: false },
     queries: {
       retry: 1,
       refetchOnWindowFocus: true,
