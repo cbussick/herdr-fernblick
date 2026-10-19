@@ -188,9 +188,12 @@ review handoff.
   Fernblick; project/per-model/resume/CLI overrides still apply.
 - Stop invokes void `ctx.abort()`. Working/stopped state comes from later Pi
   events, not the ACK or Herdr status. `agent_end` alone is not final settlement.
-- Conversation paths are requested on open from public `getTree()/getLeafId()`,
-  with labels and the actual active branch, not JSONL or polling. The original
-  dialog/search/filters are restored. Navigation validates the selected entry and
+- Conversation paths use public `getEntries()/getLeafId()`, with labels and the
+  actual active branch, not JSONL or polling. The `treePages` capability enables
+  flat pages of up to 50 short previews (128 KiB per page). Search and filters scan
+  the whole session; branch browsing and paging do not navigate Pi. A revision
+  check rejects stale offsets and asks for an explicit refresh. Run `/reload` in
+  existing Pi sessions to enable this protocol. Navigation validates the selected entry and
   uses an instance-unique registered `/fernblick-bridge-<instance>` command plus
   a one-use in-memory nonce to obtain a real command context. Internal command
   tokens reaching normal input are consumed. No command is sent through Herdr
@@ -206,8 +209,10 @@ review handoff.
   identity, busy Pi, a missing entry/handler, disconnect or timeout is not reported
   as successful navigation. An already-running navigation cannot be rolled back
   on disconnect/timeout: inspect Pi before retrying; no automatic retries occur.
-  Trees over 2000 raw entries, 256 levels or 2 MiB are rejected explicitly. Prompts
-  over 32,000 characters cannot be restored; use Pi for those cases.
+  The legacy `tree` command still rejects trees over 2000 raw entries, 256 levels
+  or 2 MiB. The new dialog uses `tree-page` instead: no raw-depth restriction,
+  iterative ancestry handling, bounded responses and explicit page controls.
+  Prompts over 32,000 characters still cannot be restored; use Pi for those cases.
 - Public extension events are **not a complete TUI mirror**. Shell commands,
   custom entries/messages/renderers, compaction summaries and arbitrary terminal
   UI are out of scope. Nested tool execution can appear provisionally; only

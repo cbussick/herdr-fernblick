@@ -20,6 +20,7 @@ import { TranscriptProjector } from "./projector.js";
 import { prepareImages } from "./images.js";
 import { skillCatalog, skillPrompt } from "./skills.js";
 import { projectTree, contentText, matchesNavigationDestination } from "./tree.js";
+import { readTreePage } from "./treePage.js";
 import { processIdentity, socketPath, validateSocket } from "./security.js";
 import { receiveFrames, writeFrame } from "./transport.js";
 import { BoardTools, type BoardConnection } from "./boardTools.js";
@@ -232,6 +233,7 @@ export default function liveChat(pi: ExtensionAPI) {
           models: true,
           thinking: true,
           defaults: true,
+          treePages: true,
         },
         identity,
         epoch,
@@ -620,6 +622,23 @@ export default function liveChat(pi: ExtensionAPI) {
             }
           })();
           publish();
+          return;
+        }
+        if (command.action === "tree-page") {
+          try {
+            writeFrame(client, {
+              type: "tree-page",
+              id: command.id,
+              target: command.target,
+              page: readTreePage(context.sessionManager, command.page),
+            });
+          } catch (error) {
+            reject(
+              error instanceof Error
+                ? error.message.slice(0, 512)
+                : "Conversation paths unavailable",
+            );
+          }
           return;
         }
         if (command.action === "tree") {

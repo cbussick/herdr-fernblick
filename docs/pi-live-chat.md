@@ -86,12 +86,23 @@ handoff update this one row without shifting the composer; a live busy event tak
 precedence and changes it to `Working` or `Compacting…`. Stop appears only while
 Pi is busy, never during upload/forwarding/handoff. The row disappears when idle.
 
-`POST .../tree` accepts `{target}` and returns a correlated typed tree from
-public Pi `getTree()/getLeafId()`. `POST .../tree-navigation` accepts
-`{target,entryId}` and returns `navigated` only after command-context navigation
-completes, with the new target epoch and optional restored `{text,attachments}`.
-Opening the original dialog makes one request, without focus/reconnect polling;
-mutations are never automatically retried.
+`POST .../tree-page` accepts `{target,page}` for peers advertising
+`capabilities.treePages: true`. The dialog requests a flat, bounded page from
+public Pi `getEntries()/getLeafId()`: at most 50 rows, 240-character text previews,
+and 128 KiB of page data. Initial browsing ends at the current visible leaf;
+explicit branch exploration can follow an abandoned continuation. Search and
+Your prompts/Labels filters cover the entire session, not only the loaded path.
+No recursive tree or full message bodies are sent to the browser. See
+[conversation path paging](conversation-paths.md) for cursors, branches and limits.
+
+`POST .../tree-navigation` still accepts `{target,entryId}` and returns `navigated`
+only after command-context navigation completes, with the new target epoch and
+optional restored **full** `{text,attachments}`. Previews are never submitted as
+prompts. Reads are serialized/debounced in the browser, with no focus/reconnect
+polling or automatic retries; navigation is also never retried. Older live
+extensions receive a specific `/reload` explanation before an unknown command is
+sent. The original `/tree` endpoint and wire response remain for legacy clients;
+they retain their old size/depth limits but are no longer used by this dialog.
 
 `POST .../compact` accepts `{target}` for peers advertising
 `capabilities.compact: true`. The composer toolbar has a three-dot **More conversation

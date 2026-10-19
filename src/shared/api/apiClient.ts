@@ -23,6 +23,7 @@ import {
   COMPACT_TIMEOUT_MS,
   compactionResponseSchema,
   treeResponseSchema,
+  treePageResponseSchema,
   navigationResponseSchema,
   skillsResponseSchema,
   modelsResponseSchema,
@@ -337,6 +338,31 @@ export async function saveAgentGlobalDefault(
     throw new Error("No valid default save confirmation. Check Pi settings before trying again.");
   return result.data;
 }
+export async function getAgentTreePage(
+  pane: string,
+  target: Target,
+  page: import("../../../packages/pi-live-chat/treeProtocol").TreePageRequest,
+  signal?: AbortSignal,
+) {
+  const response = treePageResponseSchema.parse(
+    await request(`/api/agents/${encodeURIComponent(pane)}/tree-page`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ target, page }),
+      signal: signal
+        ? AbortSignal.any([signal, AbortSignal.timeout(15_000)])
+        : AbortSignal.timeout(15_000),
+    }),
+  );
+  if (
+    response.target.runtime !== target.runtime ||
+    response.target.epoch !== target.epoch ||
+    response.target.sessionId !== target.sessionId
+  )
+    throw new Error("Conversation session changed. Reopen conversation paths.");
+  return response.page;
+}
+
 export async function getAgentTree(pane: string, target: Target) {
   const response = treeResponseSchema.parse(
     await request(`/api/agents/${encodeURIComponent(pane)}/tree`, {

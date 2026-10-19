@@ -22,6 +22,7 @@ import {
   footerRequestEvent,
   footerUpdateEvent,
   snapshotSchema,
+  treePageResponseSchema,
   targetOf,
   type Snapshot,
 } from "./protocol.js";
@@ -698,9 +699,10 @@ it("restores a root prompt through real Pi even when a tree hook appends extensi
       process.env.PI_TREE_TEST_MODULE ?? "@earendil-works/pi-coding-agent"
     )) as typeof import("@earendil-works/pi-coding-agent");
   const manager = SessionManager.create(t.dir, join(t.dir, "sessions"));
+  const rootPrompt = "original root prompt ".repeat(100);
   const root = manager.appendMessage({
     role: "user",
-    content: "original root prompt",
+    content: rootPrompt,
     timestamp: 1,
   });
   const active = manager.appendMessage({
@@ -802,18 +804,29 @@ it("restores a root prompt through real Pi even when a tree hook appends extensi
         expect.objectContaining({ id: alternate, isActivePath: false }),
       ]),
     );
+    const pageId = randomUUID();
+    writeFrame(t.connections.at(-1)!, {
+      type: "command",
+      id: pageId,
+      target: targetOf(t.latest()!),
+      action: "tree-page",
+      page: { query: "original root" },
+    });
+    const page = treePageResponseSchema.parse(await t.ack(pageId)).page;
+    expect(page.rows[0]).toMatchObject({ id: root, textTruncated: true });
+    expect(page.rows[0].text.length).toBe(240);
     const id = randomUUID();
     writeFrame(t.connections.at(-1)!, {
       type: "command",
       id,
       target: targetOf(t.latest()!),
       action: "navigate",
-      entryId: root,
+      entryId: page.rows[0].id,
     });
     const result = await t.ack(id);
     expect(result, JSON.stringify(result)).toMatchObject({
       type: "navigated",
-      prompt: { text: "original root prompt", attachments: [] },
+      prompt: { text: rootPrompt, attachments: [] },
     });
     expect(manager.getBranch()).toEqual([
       expect.objectContaining({ type: "custom", customType: stateType, parentId: null }),
@@ -1590,6 +1603,7 @@ it("advertises boards, dispatches private RPCs before commands, and gates read-o
     models: true,
     thinking: true,
     defaults: true,
+    treePages: true,
   });
   expect(t.tools.get("board_read")).toMatchObject({
     exposure: "hidden",

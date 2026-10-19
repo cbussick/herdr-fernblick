@@ -2,7 +2,7 @@
 /* stylelint-disable no-descending-specificity */
 
 .conversation-tree-dialog {
-  width: min(72rem, calc(100% - 2rem));
+  width: min(62rem, calc(100% - 2rem));
   height: min(48rem, calc(100dvh - 2rem));
   max-width: none;
   max-height: none;
@@ -22,6 +22,7 @@
 .conversation-tree-dialog__layout {
   display: grid;
   height: 100%;
+  min-width: 0;
   grid-template-rows: auto auto minmax(0, 1fr) auto;
 }
 
@@ -29,7 +30,7 @@
   display: grid;
   grid-template-columns: auto minmax(0, 1fr) auto;
   align-items: center;
-  gap: var(--space-4);
+  gap: var(--space-3);
   padding: var(--space-4) var(--space-5);
   border-bottom: 1px solid var(--color-border);
 }
@@ -51,8 +52,8 @@
 
 .conversation-tree-dialog__header > button {
   display: grid;
-  width: 2.25rem;
-  height: 2.25rem;
+  width: 2.75rem;
+  height: 2.75rem;
   padding: 0;
   place-items: center;
   background: transparent;
@@ -88,7 +89,7 @@
 
 .conversation-tree-dialog__toolbar label {
   position: relative;
-  min-width: 12rem;
+  min-width: 0;
   flex: 1;
 }
 
@@ -103,8 +104,8 @@
 
 .conversation-tree-dialog__toolbar input {
   width: 100%;
-  height: 2.5rem;
-  padding: 0 var(--space-4) 0 2.3rem;
+  min-height: 2.75rem;
+  padding: 0 var(--space-3) 0 2.3rem;
   background: var(--color-surface);
   border: 1px solid var(--color-border-strong);
   border-radius: var(--radius-sm);
@@ -116,6 +117,7 @@
 }
 
 .conversation-tree-dialog__toolbar > div button {
+  min-height: 2.75rem;
   padding: 0 var(--space-3);
   color: var(--color-text-secondary);
   font-size: 0.75rem;
@@ -131,79 +133,93 @@
   border-color: var(--color-border-strong);
 }
 
+.conversation-tree-dialog__history {
+  display: grid;
+  min-height: 0;
+  min-width: 0;
+  grid-template-rows: auto minmax(0, 1fr);
+}
+
+.conversation-tree-dialog__navigation {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+  padding: var(--space-2) var(--space-5);
+  border-bottom: 1px solid var(--color-border);
+}
+
+.conversation-tree-dialog__navigation button,
+.conversation-tree__branches button,
+.conversation-tree__page {
+  display: inline-flex;
+  min-height: 2.75rem;
+  align-items: center;
+  justify-content: center;
+  gap: var(--space-2);
+  padding: var(--space-2) var(--space-3);
+  color: var(--color-accent);
+  font-size: 0.75rem;
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-sm);
+}
+
+.conversation-tree-dialog__navigation span {
+  margin-left: auto;
+  color: var(--color-text-secondary);
+  font-size: 0.75rem;
+}
+
 .conversation-tree-dialog__body {
-  padding: var(--space-5);
+  position: relative;
+  min-width: 0;
+  padding: var(--space-3) var(--space-5);
   overflow: auto;
+  overflow-wrap: anywhere;
   scrollbar-gutter: stable;
   overscroll-behavior: contain;
 }
 
+.conversation-tree__state {
+  display: flex;
+  min-height: 100%;
+  align-items: center;
+  flex-direction: column;
+  justify-content: center;
+  padding-block: var(--space-3);
+  color: var(--color-text-secondary);
+  font-size: 0.85rem;
+  text-align: center;
+}
+
+.conversation-tree__state[role="alert"] {
+  --state-icon-color: var(--color-danger);
+  --state-icon-background: var(--color-danger-soft);
+
+  color: var(--color-danger);
+}
+
 .conversation-tree__list {
-  position: relative;
   padding: 0;
   margin: 0;
   list-style: none;
 }
 
-.conversation-tree__list .conversation-tree__list {
-  margin-left: 6.4rem;
-  padding-left: 1.8rem;
-}
-
-.conversation-tree__list .conversation-tree__list::before {
-  position: absolute;
-  top: 0;
-  bottom: 1.8rem;
-  left: 0;
-  width: 2px;
-  background: var(--color-border-strong);
-  content: "";
-}
-
-.conversation-tree__list li {
-  position: relative;
-}
-
-.conversation-tree__list .conversation-tree__list > li::before {
-  position: absolute;
-  top: 1.8rem;
-  left: -1.8rem;
-  width: 2.3rem;
-  height: 2px;
-  background: var(--color-border-strong);
-  content: "";
+.conversation-tree__list li + li {
+  border-top: 1px solid var(--color-border);
 }
 
 .conversation-tree__row {
-  display: grid;
-  min-height: 3.6rem;
-  grid-template-columns: 1rem 4.6rem minmax(0, 1fr) auto;
-  align-items: center;
-  gap: var(--space-3);
-}
-
-.conversation-tree__node {
-  position: relative;
-  z-index: 1;
-  width: 0.65rem;
-  height: 0.65rem;
-  justify-self: center;
-  background: var(--color-surface);
-  border: 2px solid var(--color-text-tertiary);
-  border-radius: 50%;
-}
-
-.conversation-tree__row time {
-  color: var(--color-text-tertiary);
-  font: 0.67rem var(--font-mono);
-  text-align: right;
-}
-
-.conversation-tree__row > button {
-  display: flex;
   min-width: 0;
-  align-items: baseline;
-  gap: var(--space-2);
+  padding-block: var(--space-1);
+}
+
+.conversation-tree__message {
+  display: grid;
+  width: 100%;
+  min-height: 2.75rem;
+  gap: var(--space-1);
   padding: var(--space-3);
   text-align: left;
   background: transparent;
@@ -211,45 +227,77 @@
   border-radius: var(--radius-sm);
 }
 
-.conversation-tree__row > button:hover {
+.conversation-tree__message:hover {
   background: var(--color-surface-hover);
 }
 
-.conversation-tree__row > button[aria-selected="true"] {
+.conversation-tree__message[aria-pressed="true"] {
   background: var(--color-accent-soft);
   border-color: var(--color-border-strong);
 }
 
-.conversation-tree__row > button strong {
-  flex: none;
+.conversation-tree__meta {
+  display: flex;
+  align-items: baseline;
+  flex-wrap: wrap;
+  gap: var(--space-2);
   color: var(--color-text-secondary);
   font-size: 0.7rem;
 }
 
-.conversation-tree__row > button span {
-  min-width: 0;
+.conversation-tree__meta small {
+  margin-left: auto;
+  font-size: inherit;
+}
+
+.conversation-tree__message[aria-current] small {
+  color: var(--color-success);
+  font-weight: 750;
+}
+
+.conversation-tree__preview {
+  display: -webkit-box;
   overflow: hidden;
   font-size: 0.82rem;
+  line-height: 1.5;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+}
+
+.conversation-tree__message em {
+  overflow: hidden;
+  color: var(--color-accent);
+  font-size: 0.7rem;
+  font-style: normal;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 
-.conversation-tree__row > button em {
-  flex: none;
-  padding: 0.18rem 0.45rem;
-  color: var(--color-accent);
-  font-size: 0.65rem;
-  font-style: normal;
-  font-weight: 750;
-  background: color-mix(in srgb, var(--color-accent-soft) 72%, var(--color-accent));
-  border-radius: var(--radius-round);
+.conversation-tree__branches {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+  padding-inline: var(--space-3);
+  border-left: 2px solid var(--color-border-strong);
+  margin-left: var(--space-3);
 }
 
-.conversation-tree__row > small {
-  color: var(--color-success);
-  font-size: 0.7rem;
-  font-weight: 750;
-  white-space: nowrap;
+.conversation-tree__branches:empty {
+  display: none;
+}
+
+.conversation-tree__branches svg {
+  width: 1rem;
+}
+
+.conversation-tree__page {
+  width: 100%;
+  margin-block: var(--space-2);
+}
+
+.conversation-tree-dialog button:disabled {
+  color: var(--color-text-tertiary);
+  cursor: default;
 }
 
 .conversation-tree-dialog__footer {
@@ -265,28 +313,29 @@
   min-width: 0;
 }
 
-.conversation-tree-dialog__footer strong,
-.conversation-tree-dialog__footer span {
+.conversation-tree-dialog__footer > div:first-child strong,
+.conversation-tree-dialog__footer > div:first-child span {
   display: block;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 
-.conversation-tree-dialog__footer strong {
+.conversation-tree-dialog__footer > div:first-child strong {
   font-size: 0.8rem;
 }
 
-.conversation-tree-dialog__footer span {
+.conversation-tree-dialog__footer > div:first-child span {
   margin-top: var(--space-1);
   color: var(--color-text-secondary);
   font-size: 0.73rem;
 }
 
-.conversation-tree-dialog__footer > p,
 .conversation-tree-dialog__footer > [data-ui="state-notice"] {
   grid-column: 1 / -1;
+  max-height: 4.5rem;
   margin: 0;
+  overflow: auto;
   color: var(--color-danger);
   font-size: 0.75rem;
 }
@@ -299,19 +348,18 @@
   border-radius: var(--radius-sm);
 }
 
-.conversation-tree-dialog__footer .secondary-button {
+.secondary-button {
   background: var(--color-surface);
   border: 1px solid var(--color-border-strong);
 }
 
-.conversation-tree-dialog__footer .primary-button {
+.primary-button {
   color: var(--color-on-accent);
   background: var(--color-accent);
   border: 1px solid var(--color-accent);
 }
 
-.conversation-tree-dialog__footer .primary-button:disabled {
-  color: var(--color-text-tertiary);
+.primary-button:disabled {
   background: var(--color-surface-subtle);
   border-color: var(--color-border);
 }
@@ -329,38 +377,53 @@
     flex-direction: column;
   }
 
-  .conversation-tree-dialog__toolbar > div {
-    overflow-x: auto;
-  }
-
   .conversation-tree-dialog__toolbar > div button {
-    min-height: 2.5rem;
+    flex: 1;
     white-space: nowrap;
   }
 
-  .conversation-tree-dialog__body {
+  .conversation-tree-dialog__header,
+  .conversation-tree-dialog__toolbar,
+  .conversation-tree-dialog__navigation,
+  .conversation-tree-dialog__body,
+  .conversation-tree-dialog__footer {
     padding-inline: var(--space-3);
   }
 
-  .conversation-tree-dialog__body > .conversation-tree__list {
-    width: max-content;
-    min-width: 100%;
-  }
-
-  .conversation-tree__list .conversation-tree__list {
-    margin-left: var(--space-5);
-  }
-
-  .conversation-tree__row {
-    width: calc(100dvw - 1.5rem);
+  .conversation-tree-dialog__navigation span {
+    width: 100%;
+    margin: 0;
   }
 
   .conversation-tree-dialog__footer {
-    grid-template-columns: minmax(0, 1fr) auto auto;
-    padding-inline: var(--space-3);
+    grid-template-columns: 1fr 1fr;
   }
 
-  .conversation-tree-dialog__footer > div span {
-    max-width: 12rem;
+  .conversation-tree-dialog__footer > div {
+    grid-column: 1 / -1;
+  }
+}
+
+@media (height < 38rem) {
+  .conversation-tree-dialog__header {
+    grid-template-columns: minmax(0, 1fr) auto;
+    padding-block: var(--space-2);
+  }
+
+  .conversation-tree-dialog__icon,
+  .conversation-tree-dialog__header p,
+  .conversation-tree-dialog__footer > div:first-child span {
+    display: none;
+  }
+
+  .conversation-tree-dialog__toolbar {
+    gap: var(--space-1);
+    padding-block: var(--space-2);
+  }
+
+  .conversation-tree__state {
+    flex-direction: row;
+    gap: var(--space-3);
+    text-align: left;
   }
 }

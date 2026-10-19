@@ -144,6 +144,22 @@ touch intent with DOM events and changes scrollTop, using real browser scroll
 events, because Playwright has no mobile WebKit wheel/drag API. No live agents or
 Herdr sockets are used. Keyboard geometry is simulated, not a physical phone keyboard.
 
+## Long conversation paths
+
+`tree-pages.mjs` exercises the production dialog with the actual flat page reader
+and synthetic in-memory session history. Chromium/WebKit cover five phone,
+keyboard-height, tablet and desktop layouts, bounded paging, full-session search,
+alternate paths, stale-page/error recovery, cancellation and full prompt restoration.
+All HTTP/SSE traffic is intercepted; no live agents are controlled.
+
+```sh
+PLAYWRIGHT_MODULE=/path/to/playwright/index.mjs \
+  node --import tsx tools/design/tree-pages.mjs http://127.0.0.1:<static-port>
+```
+
+See [conversation path paging](../../docs/conversation-paths.md) for the fixture
+scope and protocol. Results are in ignored `design-gallery/tree-pages/`.
+
 ## Proposal regression comparison
 
 Before the module migration, preserve the accepted proposal's `design-gallery/after/` directory separately. After capturing the finished implementation:

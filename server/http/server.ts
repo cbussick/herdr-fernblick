@@ -34,6 +34,7 @@ import {
   defaultSelectionSchema,
   MAX_IMAGE_BYTES,
 } from "../../packages/pi-live-chat/protocol.js";
+import { treePageRequestSchema } from "../../packages/pi-live-chat/treeProtocol.js";
 const chatCommandSchema = sendInputSchema.safeExtend({
   target: chatTargetSchema,
   requestId: z.string().uuid().optional(),
@@ -140,7 +141,7 @@ class HttpError extends Error {
 
 function getAgentRoute(pathname: string) {
   const match = pathname.match(
-    /^\/api\/agents\/([^/]+)(?:\/(output|chat|prompt|stop|tree|tree-navigation|skills|compact|models|set-model|thinking-levels|set-thinking-level|save-default|keys|restart))?$/,
+    /^\/api\/agents\/([^/]+)(?:\/(output|chat|prompt|stop|tree|tree-page|tree-navigation|skills|compact|models|set-model|thinking-levels|set-thinking-level|save-default|keys|restart))?$/,
   );
   if (!match) return null;
 
@@ -337,6 +338,7 @@ async function handleApi(
       "prompt",
       "stop",
       "tree",
+      "tree-page",
       "tree-navigation",
       "skills",
       "compact",
@@ -360,6 +362,10 @@ async function handleApi(
         attachments: body.attachments,
         requestId: body.requestId,
       };
+    } else if (route.action === "tree-page") {
+      const body = z.object({ target: chatTargetSchema, page: treePageRequestSchema }).parse(raw);
+      target = body.target;
+      input = { action: "tree-page", page: body.page };
     } else if (route.action === "save-default") {
       const body = z
         .object({ target: chatTargetSchema, selection: defaultSelectionSchema })

@@ -134,8 +134,11 @@ Stop invokes Pi's abort method and then observes events. Attach up to ten PNG,
 JPEG, GIF or WebP images (10 MiB each), including image-only messages. Tap a draft
 thumbnail or a sent image to preview that batch in a gallery; use Previous/Next or
 Left/Right arrow keys to cycle, and Escape or Close to return without changing the draft. Conversation
-paths restore search, filters, labels, active-branch display and edit-and-branch,
-including available images from a restored prompt. Tree data and navigation use
+paths page long histories with short previews, whole-session search, labels and
+explicit branch exploration. Paging and viewing another path do not change Pi’s
+active conversation. **Edit and branch** restores the full prompt and available
+images. Existing Pi sessions need `/reload` for paged paths; older peers show a
+reload notice. [Paging and limits](docs/conversation-paths.md). Tree data and navigation use
 the direct Pi bridge, never session-file reads or terminal command injection.
 
 ### Past sessions

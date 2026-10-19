@@ -104,6 +104,54 @@ const tree = {
   ],
   leafId: "m4",
 };
+function fixtureTreePage(request = {}) {
+  const rows = [];
+  const visit = (nodes, parentId = null) => {
+    for (const item of nodes) {
+      rows.push({
+        ...item,
+        parentId,
+        children: undefined,
+        text: item.text.slice(0, 240),
+        textTruncated: item.text.length > 240,
+        childCount: item.children.length,
+      });
+      visit(item.children, item.id);
+    }
+  };
+  visit(tree.roots);
+  const mode =
+    request.query || (request.filter && request.filter !== "all")
+      ? "search"
+      : request.branchesOf !== undefined
+        ? "branches"
+        : "path";
+  const matches = rows.filter((row) =>
+    mode === "search"
+      ? (!request.query ||
+          `${row.text} ${row.label ?? ""}`.toLowerCase().includes(request.query.toLowerCase())) &&
+        (request.filter === "user"
+          ? row.role === "user"
+          : request.filter === "labels"
+            ? Boolean(row.label)
+            : true)
+      : mode === "branches"
+        ? row.parentId === request.branchesOf
+        : row.isActivePath || row.id === request.focusId,
+  );
+  return {
+    rows: matches,
+    leafId: tree.leafId,
+    focusId: request.focusId ?? tree.leafId,
+    mode,
+    total: matches.length,
+    rootCount: 1,
+    offset: 0,
+    previousOffset: null,
+    nextOffset: null,
+    revision: "a".repeat(64),
+  };
+}
 const scenarios = [
   ["workspaces", "Workspace overview", "Overview"],
   ["expanded", "Workspace contents", "Overview"],
@@ -286,20 +334,29 @@ for (const size of sizes)
                     workspaces,
                   },
           });
-        if (url.endsWith("/tree") && id === "paths-loading") return;
+        if ((url.endsWith("/tree") || url.endsWith("/tree-page")) && id === "paths-loading") return;
         if (url.endsWith("/prompt") && id === "send-pending") return; // Keep the actual forwarding request pending for the spinner capture.
         if (url.endsWith("/prompt") && id === "send-acknowledged")
           return route.fulfill({
             json: { type: "ack", id: route.request().postDataJSON().requestId, outcome: "invoked" },
           });
-        if (url.endsWith("/tree"))
+        if (url.endsWith("/tree") || url.endsWith("/tree-page"))
           return route.fulfill(
             id === "paths-error"
               ? {
                   status: 503,
                   json: { error: "Pi disconnected. Try again when the agent reconnects." },
                 }
-              : { json: { type: "tree", id: target.runtime, target, tree } },
+              : {
+                  json: url.endsWith("/tree-page")
+                    ? {
+                        type: "tree-page",
+                        id: target.runtime,
+                        target,
+                        page: fixtureTreePage(route.request().postDataJSON().page),
+                      }
+                    : { type: "tree", id: target.runtime, target, tree },
+                },
           );
         if (url.includes("/output?") && ["terminal-loading", "shell-loading"].includes(id)) return;
         if (url.includes("/output?"))
@@ -481,8 +538,7 @@ for (const size of sizes)
             await page.getByRole("button", { name: "Your prompts", exact: true }).click();
           if (id === "paths-labels")
             await page.getByRole("button", { name: "Labels", exact: true }).click();
-          if (id === "paths-empty")
-            await page.getByPlaceholder("Search this conversation…").fill("not present");
+          if (id === "paths-empty") await page.getByRole("searchbox").fill("not present");
           if (id === "paths-branch")
             await page
               .locator(

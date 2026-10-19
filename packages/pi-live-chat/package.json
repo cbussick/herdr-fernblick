@@ -12,6 +12,8 @@
     "images.ts",
     "imageHistory.ts",
     "tree.ts",
+    "treePage.ts",
+    "treeProtocol.ts",
     "thinking.ts",
     "globalDefaults.ts",
     "protocol.ts",

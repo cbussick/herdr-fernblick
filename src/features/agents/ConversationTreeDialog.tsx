@@ -1,16 +1,14 @@
 import a11yStyles from "../../styles/accessibility.module.css";
-import consoleStyles from "./Console.module.css";
 import treeStyles from "./ConversationTreeDialog.module.css";
-import uiStyles from "../../shared/ui/ui.module.css";
-import { useEffect, useMemo, useRef, useState } from "react";
-import { useMutation, useQuery } from "@tanstack/react-query";
-import type { PiTreeNode, Target } from "../../../packages/pi-live-chat/protocol";
-import { getAgentTree, navigateAgentTree } from "../../shared/api/apiClient";
+import { useEffect, useLayoutEffect, useRef, useState } from "react";
+import { keepPreviousData, useMutation, useQuery } from "@tanstack/react-query";
+import type { Target } from "../../../packages/pi-live-chat/protocol";
+import type { TreePageRequest, TreePageRow } from "../../../packages/pi-live-chat/treeProtocol";
+import { getAgentTreePage, navigateAgentTree } from "../../shared/api/apiClient";
 import { BranchIcon, CloseIcon, SearchIcon } from "../../shared/ui/Icons";
 import { StateIcon, StateNotice } from "../../shared/ui/StateFeedback";
 
 type Filter = "all" | "user" | "labels";
-
 interface ConversationTreeDialogProps {
   open: boolean;
   target: string;
@@ -18,71 +16,6 @@ interface ConversationTreeDialogProps {
   busy: boolean;
   onClose: () => void;
   onRestorePrompt: (text: string, attachments: string[]) => void;
-}
-
-function filterNodes(nodes: PiTreeNode[], query: string, filter: Filter): PiTreeNode[] {
-  return nodes.flatMap((node) => {
-    const children = filterNodes(node.children, query, filter);
-    const matchesQuery =
-      !query ||
-      node.text.toLocaleLowerCase().includes(query) ||
-      node.label?.toLocaleLowerCase().includes(query);
-    const matchesFilter =
-      filter === "all" ||
-      (filter === "user" && node.role === "user") ||
-      (filter === "labels" && Boolean(node.label));
-    return matchesQuery && matchesFilter ? [{ ...node, children }] : children;
-  });
-}
-
-function flatten(nodes: PiTreeNode[]): PiTreeNode[] {
-  return nodes.flatMap((node) => [node, ...flatten(node.children)]);
-}
-
-function TreeNodes({
-  nodes,
-  selectedId,
-  onSelect,
-}: {
-  nodes: PiTreeNode[];
-  selectedId: string | null;
-  onSelect: (node: PiTreeNode) => void;
-}) {
-  return (
-    <ul className={treeStyles["conversation-tree__list"]}>
-      {nodes.map((node) => (
-        <li key={node.id}>
-          <div
-            className={treeStyles["conversation-tree__row"]}
-            data-testid="conversation-tree__row"
-          >
-            <span className={treeStyles["conversation-tree__node"]} aria-hidden="true" />
-            <time>
-              {node.timestamp
-                ? new Date(node.timestamp).toLocaleTimeString([], {
-                    hour: "2-digit",
-                    minute: "2-digit",
-                  })
-                : ""}
-            </time>
-            <button
-              type="button"
-              aria-selected={selectedId === node.id}
-              onClick={() => onSelect(node)}
-            >
-              <strong>{node.role === "user" ? "You" : "Agent"}</strong>
-              <span>{node.text || "Image attachment"}</span>
-              {node.label ? <em>{node.label}</em> : null}
-            </button>
-            {node.id === selectedId && node.isActivePath ? <small>You are here</small> : null}
-          </div>
-          {node.children.length ? (
-            <TreeNodes nodes={node.children} selectedId={selectedId} onSelect={onSelect} />
-          ) : null}
-        </li>
-      ))}
-    </ul>
-  );
 }
 
 export function ConversationTreeDialog({
@@ -94,41 +27,99 @@ export function ConversationTreeDialog({
   onRestorePrompt,
 }: ConversationTreeDialogProps) {
   const dialogRef = useRef<HTMLDialogElement>(null);
+  const bodyRef = useRef<HTMLDivElement>(null);
+  const requests = useRef<Promise<unknown>>(Promise.resolve());
   const [search, setSearch] = useState("");
   const [filter, setFilter] = useState<Filter>("all");
+  const [request, setRequest] = useState<TreePageRequest>({});
   const [selectedId, setSelectedId] = useState<string | null>(null);
+  const [refresh, setRefresh] = useState(0);
+  const searchPending =
+    search.trim() !== (request.query ?? "") || filter !== (request.filter ?? "all");
+  useEffect(() => {
+    if (!searchPending) return;
+    const timer = setTimeout(() => {
+      setRequest((current) => ({ query: search.trim(), filter, focusId: current.focusId }));
+      setSelectedId(null);
+    }, 300);
+    return () => clearTimeout(timer);
+  }, [search, filter, searchPending]);
   const treeQuery = useQuery({
-    queryKey: ["agent-tree", target, identity.runtime, identity.epoch],
-    queryFn: () => getAgentTree(target, identity),
+    queryKey: [
+      "agent-tree-page",
+      target,
+      identity.runtime,
+      identity.epoch,
+      identity.sessionId,
+      request,
+      refresh,
+    ],
+    queryFn: ({ signal }) => {
+      // Finish an in-flight read before issuing another: aborting browser fetch
+      // does not cancel the bridge command. Superseded queued searches never run.
+      const run = requests.current
+        .catch(() => undefined)
+        .then(async () => {
+          signal.throwIfAborted();
+          const result = await getAgentTreePage(target, identity, request);
+          signal.throwIfAborted();
+          return result;
+        });
+      requests.current = run;
+      return run;
+    },
     retry: false,
     refetchOnWindowFocus: false,
     refetchOnReconnect: false,
     gcTime: 0,
+    placeholderData: keepPreviousData,
     enabled: open,
   });
-  const allNodes = useMemo(() => flatten(treeQuery.data?.roots ?? []), [treeQuery.data]);
-  const effectiveSelectedId = allNodes.some((node) => node.id === selectedId)
-    ? selectedId
-    : (treeQuery.data?.leafId ?? null);
-  const selected = allNodes.find((node) => node.id === effectiveSelectedId) ?? null;
-  const visibleNodes = useMemo(
-    () => filterNodes(treeQuery.data?.roots ?? [], search.trim().toLocaleLowerCase(), filter),
-    [filter, search, treeQuery.data],
-  );
+  const page = treeQuery.data;
+  const effectiveSelectedId = selectedId ?? page?.focusId ?? page?.leafId;
+  const selected = page?.rows.find((row) => row.id === effectiveSelectedId) ?? null;
   const navigateMutation = useMutation({
-    mutationFn: (node: PiTreeNode) => navigateAgentTree(target, treeQuery.data!.target, node.id),
+    mutationFn: (row: TreePageRow) => navigateAgentTree(target, identity, row.id),
     retry: false,
     onSuccess: (result) => {
       if (result.prompt) onRestorePrompt(result.prompt.text, result.prompt.attachments);
       onClose();
     },
   });
-
+  const reading = treeQuery.isFetching || treeQuery.isPlaceholderData || searchPending;
+  const locked = reading || navigateMutation.isPending || busy;
+  const currentAssistant = selected?.role === "assistant" && selected.id === page?.leafId;
+  function browse(next: TreePageRequest) {
+    setSearch(next.query ?? "");
+    setFilter(next.filter ?? "all");
+    setSelectedId(null);
+    setRequest(next);
+  }
+  function load(offset: number) {
+    if (!page) return;
+    setSelectedId(null);
+    setRequest({ ...request, offset, revision: page.revision });
+  }
+  function refreshPaths() {
+    setSelectedId(null);
+    setRequest(({ offset: _offset, revision: _revision, ...rest }) => rest);
+    setRefresh((value) => value + 1);
+  }
   useEffect(() => {
     const dialog = dialogRef.current;
     if (open && dialog && !dialog.open) dialog.showModal();
     if (!open && dialog?.open) dialog.close();
   }, [open]);
+  useLayoutEffect(() => {
+    if (!page || treeQuery.isPlaceholderData || !bodyRef.current) return;
+    bodyRef.current.scrollTop = 0;
+    if (page.mode === "path") {
+      const focus = Array.from(
+        bodyRef.current.querySelectorAll<HTMLElement>("[data-entry-id]"),
+      ).find((element) => element.dataset.entryId === page.focusId);
+      focus?.scrollIntoView({ block: "nearest" });
+    }
+  }, [page, treeQuery.isPlaceholderData]);
   return (
     <dialog
       ref={dialogRef}
@@ -146,7 +137,7 @@ export function ConversationTreeDialog({
           </span>
           <div>
             <h2 id="conversation-tree-title">Conversation paths</h2>
-            <p>Choose a message to continue from that point in the conversation.</p>
+            <p>Browse a path, or search every message in this session.</p>
           </div>
           <button
             type="button"
@@ -164,8 +155,10 @@ export function ConversationTreeDialog({
             <input
               type="search"
               value={search}
+              maxLength={256}
               onChange={(event) => setSearch(event.target.value)}
-              placeholder="Search this conversation…"
+              placeholder="Search the whole conversation…"
+              disabled={navigateMutation.isPending}
             />
           </label>
           <div aria-label="Filter conversation entries">
@@ -175,58 +168,180 @@ export function ConversationTreeDialog({
                 type="button"
                 aria-pressed={filter === value}
                 onClick={() => setFilter(value)}
+                disabled={navigateMutation.isPending}
               >
                 {value === "all" ? "All messages" : value === "user" ? "Your prompts" : "Labels"}
               </button>
             ))}
           </div>
         </div>
-        <div className={treeStyles["conversation-tree-dialog__body"]}>
-          {treeQuery.isPending ? (
-            <div className={consoleStyles["terminal-state"]} aria-busy="true">
-              <StateIcon kind="loading" />
-              <p>Reading conversation paths…</p>
-            </div>
-          ) : treeQuery.isError ? (
-            <div
-              className={
-                consoleStyles["terminal-state"] + " " + consoleStyles["terminal-state--error"]
-              }
-              data-testid="terminal-state--error"
-              role="alert"
+        <section
+          className={treeStyles["conversation-tree-dialog__history"]}
+          aria-label="Conversation path browser"
+        >
+          <div className={treeStyles["conversation-tree-dialog__navigation"]}>
+            <button type="button" onClick={() => browse({})} disabled={locked}>
+              Current path
+            </button>
+            {page && page.rootCount > 1 ? (
+              <button type="button" onClick={() => browse({ branchesOf: null })} disabled={locked}>
+                Starting paths ({page.rootCount})
+              </button>
+            ) : null}
+            <button
+              type="button"
+              onClick={refreshPaths}
+              disabled={treeQuery.isFetching || navigateMutation.isPending || busy}
             >
-              <StateIcon kind="unavailable" />
-              <p>Could not read conversation paths. {treeQuery.error.message}</p>
-            </div>
-          ) : visibleNodes.length ? (
-            <TreeNodes
-              nodes={visibleNodes}
-              selectedId={effectiveSelectedId}
-              onSelect={(node) => setSelectedId(node.id)}
-            />
-          ) : (
-            <div className={consoleStyles["terminal-state"]}>
-              <span className={uiStyles["empty-state-icon"]} data-testid="empty-state-icon">
-                <SearchIcon />
-              </span>
-              <p>No matching messages.</p>
-            </div>
-          )}
-        </div>
+              Refresh paths
+            </button>
+            <span role="status">
+              {reading
+                ? "Reading paths…"
+                : page && !treeQuery.isError
+                  ? `${page.mode === "search" ? "Matches" : page.mode === "branches" ? "Branches" : "Messages"} ${page.rows.length ? page.offset + 1 : 0}–${page.offset + page.rows.length} of ${page.total}`
+                  : ""}
+            </span>
+          </div>
+          <div
+            ref={bodyRef}
+            className={treeStyles["conversation-tree-dialog__body"]}
+            aria-busy={reading}
+          >
+            {treeQuery.isPending ? (
+              <div className={treeStyles["conversation-tree__state"]}>
+                <StateIcon kind="loading" />
+                <p>Reading conversation paths…</p>
+              </div>
+            ) : treeQuery.isError ? (
+              <div
+                className={treeStyles["conversation-tree__state"]}
+                data-testid="terminal-state--error"
+                role="alert"
+              >
+                <StateIcon kind="unavailable" />
+                <p>Could not read conversation paths. {treeQuery.error.message}</p>
+              </div>
+            ) : page ? (
+              <>
+                {page.previousOffset !== null ? (
+                  <button
+                    type="button"
+                    className={treeStyles["conversation-tree__page"]}
+                    disabled={locked}
+                    onClick={() => load(page.previousOffset!)}
+                  >
+                    {page.mode === "path" ? "Load earlier" : "Previous results"}
+                  </button>
+                ) : null}
+                {page.rows.length ? (
+                  <ol className={treeStyles["conversation-tree__list"]}>
+                    {page.rows.map((row) => (
+                      <li key={row.id}>
+                        <div
+                          className={treeStyles["conversation-tree__row"]}
+                          data-testid="conversation-tree__row"
+                          data-entry-id={row.id}
+                        >
+                          <button
+                            type="button"
+                            className={treeStyles["conversation-tree__message"]}
+                            aria-pressed={selected?.id === row.id}
+                            aria-current={row.id === page.leafId ? "location" : undefined}
+                            disabled={locked}
+                            onClick={() => setSelectedId(row.id)}
+                          >
+                            <span className={treeStyles["conversation-tree__meta"]}>
+                              <strong>{row.role === "user" ? "You" : "Agent"}</strong>
+                              {row.timestamp ? (
+                                <time dateTime={row.timestamp}>
+                                  {new Date(row.timestamp).toLocaleString([], {
+                                    month: "short",
+                                    day: "numeric",
+                                    hour: "2-digit",
+                                    minute: "2-digit",
+                                  })}
+                                </time>
+                              ) : null}
+                              {row.id === page.leafId ? (
+                                <small>Current point</small>
+                              ) : !row.isActivePath ? (
+                                <small>Other path</small>
+                              ) : null}
+                            </span>
+                            <span className={treeStyles["conversation-tree__preview"]}>
+                              {row.text || "Image attachment"}
+                              {row.textTruncated ? "…" : ""}
+                            </span>
+                            {row.label ? <em>{row.label}</em> : null}
+                          </button>
+                          <div className={treeStyles["conversation-tree__branches"]}>
+                            {page.mode !== "path" ? (
+                              <button
+                                type="button"
+                                disabled={locked}
+                                onClick={() => browse({ focusId: row.id })}
+                              >
+                                View path
+                              </button>
+                            ) : null}
+                            {row.childCount > 1 ||
+                            (row.id === page.leafId && row.childCount > 0) ? (
+                              <button
+                                type="button"
+                                disabled={locked}
+                                onClick={() => browse({ branchesOf: row.id })}
+                              >
+                                <BranchIcon />
+                                {row.childCount === 1
+                                  ? "View continuation"
+                                  : `${row.childCount} branches`}
+                              </button>
+                            ) : null}
+                          </div>
+                        </div>
+                      </li>
+                    ))}
+                  </ol>
+                ) : (
+                  <div className={treeStyles["conversation-tree__state"]}>
+                    <StateIcon kind="empty" />
+                    <p>No matching messages.</p>
+                  </div>
+                )}
+                {page.nextOffset !== null ? (
+                  <button
+                    type="button"
+                    className={treeStyles["conversation-tree__page"]}
+                    disabled={locked}
+                    onClick={() => load(page.nextOffset!)}
+                  >
+                    {page.mode === "path" ? "Load later" : "More results"}
+                  </button>
+                ) : null}
+              </>
+            ) : null}
+          </div>
+        </section>
         <footer className={treeStyles["conversation-tree-dialog__footer"]}>
           <div>
-            {selected ? (
+            {selected && !treeQuery.isError ? (
               <>
-                <strong>{selected.text || "Image attachment"}</strong>
+                <strong>
+                  {selected.text || "Image attachment"}
+                  {selected.textTruncated ? "…" : ""}
+                </strong>
                 <span>
-                  {selected.id === treeQuery.data?.leafId
-                    ? "You are currently at this point"
-                    : selected.role === "user"
-                      ? "Your prompt will return to the composer so you can edit it"
+                  {selected.role === "user"
+                    ? "The full prompt and available images will return to the composer"
+                    : currentAssistant
+                      ? "You are currently at this point"
                       : "Your next prompt will continue the conversation from here"}
                 </span>
               </>
-            ) : null}
+            ) : (
+              <span>Select a message to continue from it.</span>
+            )}
           </div>
           {navigateMutation.isError ? (
             <StateNotice kind="unavailable" role="alert">
@@ -244,18 +359,12 @@ export function ConversationTreeDialog({
           <button
             type="button"
             className={treeStyles["primary-button"]}
-            disabled={
-              busy ||
-              treeQuery.isFetching ||
-              !selected ||
-              (selected.role !== "user" && selected.id === treeQuery.data?.leafId) ||
-              navigateMutation.isPending
-            }
+            disabled={locked || treeQuery.isError || !selected || currentAssistant}
             onClick={() => selected && navigateMutation.mutate(selected)}
           >
             {navigateMutation.isPending
               ? "Switching…"
-              : selected?.role !== "user" && selected?.id === treeQuery.data?.leafId
+              : currentAssistant
                 ? "Current point"
                 : selected?.role === "user"
                   ? "Edit and branch"

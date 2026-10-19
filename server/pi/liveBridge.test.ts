@@ -10,6 +10,7 @@ import type { HerdrService } from "../herdr/herdrService.js";
 import type { Agent } from "../../src/shared/api/contracts.js";
 import { type Snapshot, targetOf } from "../../packages/pi-live-chat/protocol.js";
 import { receiveFrames, writeFrame } from "../../packages/pi-live-chat/transport.js";
+import { readTreePage } from "../../packages/pi-live-chat/treePage.js";
 
 const agent: Agent = {
   agent: "pi",
@@ -203,6 +204,50 @@ it("carries the browser request ID through HTTP and requires the current send br
     const response = await send();
     expect(response.status).toBe(200);
     expect(await response.json()).toMatchObject({ id: requestId, outcome: "invoked" });
+  } finally {
+    server.closeAllConnections();
+    await new Promise<void>((done) => server.close(() => done()));
+  }
+});
+
+it("pages trees over HTTP, rejects unsafe/stale requests and explains older peers", async () => {
+  const p = await peer();
+  const service = { getAgent: vi.fn(async () => agent) } as unknown as HerdrService;
+  const server = createHttpServer(service, dir, bridge);
+  await new Promise<void>((done) => server.listen(0, "127.0.0.1", done));
+  const base = `http://127.0.0.1:${(server.address() as { port: number }).port}`;
+  const commands: unknown[] = [];
+  const page = readTreePage({ getEntries: () => [], getLeafId: () => null }, {});
+  receiveFrames(p.socket, (raw) => {
+    const command = raw as { id: string; target: unknown };
+    commands.push(raw);
+    writeFrame(p.socket, { type: "tree-page", id: command.id, target: command.target, page });
+  });
+  const request = (body: unknown = {}, origin = base, target = targetOf(p.snapshot)) =>
+    fetch(base + "/api/agents/w1:p1/tree-page", {
+      method: "POST",
+      headers: { Origin: origin, "Content-Type": "application/json" },
+      body: JSON.stringify({ target, page: body }),
+    });
+  try {
+    expect((await request({}, "https://elsewhere.test")).status).toBe(403);
+    const old = await request();
+    expect(old.status).toBe(409);
+    expect(await old.text()).toContain("/reload");
+    writeFrame(p.socket, { ...p.snapshot, seq: 2, capabilities: { treePages: true } });
+    await vi.waitFor(() => expect(bridge.current(agent).snapshot.seq).toBe(2));
+    expect((await request({ offset: 10 })).status).toBe(400);
+    expect((await request({ query: "x".repeat(257) })).status).toBe(400);
+    expect((await request({}, base, { ...targetOf(p.snapshot), epoch: randomUUID() })).status).toBe(
+      409,
+    );
+    expect(commands).toHaveLength(0);
+    const response = await request({ query: "Needle", filter: "user" });
+    expect(response.status).toBe(200);
+    expect(await response.json()).toMatchObject({ type: "tree-page", page });
+    expect(commands).toEqual([
+      expect.objectContaining({ action: "tree-page", page: { query: "Needle", filter: "user" } }),
+    ]);
   } finally {
     server.closeAllConnections();
     await new Promise<void>((done) => server.close(() => done()));

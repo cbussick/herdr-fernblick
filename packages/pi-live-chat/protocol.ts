@@ -1,5 +1,6 @@
 import { z } from "zod";
 import { boardGrantSchema } from "./boardProtocol.js";
+import { treePageRequestSchema, treePageSchema } from "./treeProtocol.js";
 
 export const MAX_FRAME = 4 * 1024 * 1024;
 export const MAX_TEXT = 32_000;
@@ -79,6 +80,7 @@ export const snapshotSchema = z.object({
       models: z.literal(true).optional(),
       thinking: z.literal(true).optional(),
       defaults: z.literal(true).optional(),
+      treePages: z.literal(true).optional(),
     })
     .optional(),
   identity: identitySchema,
@@ -230,6 +232,13 @@ export const commandSchema = z
       target: targetSchema,
       action: z.enum(["tree", "skills", "compact", "models", "thinking-levels"]),
     }),
+    z.object({
+      type: z.literal("command"),
+      id: z.string().uuid(),
+      target: targetSchema,
+      action: z.literal("tree-page"),
+      page: treePageRequestSchema,
+    }),
     thinkingSelectionSchema.extend({
       type: z.literal("command"),
       id: z.string().uuid(),
@@ -282,6 +291,12 @@ export const treeResponseSchema = z.object({
   target: targetSchema,
   tree: piTreeSchema,
 });
+export const treePageResponseSchema = z.object({
+  type: z.literal("tree-page"),
+  id: z.string().uuid(),
+  target: targetSchema,
+  page: treePageSchema,
+});
 export const navigationResponseSchema = z.object({
   type: z.literal("navigated"),
   id: z.string().uuid(),
@@ -301,6 +316,7 @@ export const compactionResponseSchema = z.object({
 export const responseSchema = z.union([
   ackSchema,
   treeResponseSchema,
+  treePageResponseSchema,
   navigationResponseSchema,
   skillsResponseSchema,
   compactionResponseSchema,

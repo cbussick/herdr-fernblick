@@ -29,6 +29,7 @@ import {
   type BoardRequest,
 } from "../../packages/pi-live-chat/boardProtocol.js";
 import { BoardStore } from "../boards/storage.js";
+import type { TreePageRequest } from "../../packages/pi-live-chat/treeProtocol.js";
 
 export function boardSessionKey(snapshot: Snapshot) {
   return JSON.stringify([resolve(snapshot.identity.herdrSocket), snapshot.identity.sessionId]);
@@ -236,21 +237,23 @@ export class LiveBridge {
                 pending.command.action === "stop"
               : response.type === "default-saved"
                 ? pending.command.action === "save-default"
-                : response.type === "tree"
-                  ? pending.command.action === "tree"
-                  : response.type === "skills"
-                    ? pending.command.action === "skills"
-                    : response.type === "thinking-levels"
-                      ? pending.command.action === "thinking-levels"
-                      : response.type === "thinking-level-changed"
-                        ? pending.command.action === "set-thinking-level"
-                        : response.type === "models"
-                          ? pending.command.action === "models"
-                          : response.type === "model-changed"
-                            ? pending.command.action === "set-model"
-                            : response.type === "compacted"
-                              ? pending.command.action === "compact"
-                              : pending.command.action === "navigate";
+                : response.type === "tree-page"
+                  ? pending.command.action === "tree-page"
+                  : response.type === "tree"
+                    ? pending.command.action === "tree"
+                    : response.type === "skills"
+                      ? pending.command.action === "skills"
+                      : response.type === "thinking-levels"
+                        ? pending.command.action === "thinking-levels"
+                        : response.type === "thinking-level-changed"
+                          ? pending.command.action === "set-thinking-level"
+                          : response.type === "models"
+                            ? pending.command.action === "models"
+                            : response.type === "model-changed"
+                              ? pending.command.action === "set-model"
+                              : response.type === "compacted"
+                                ? pending.command.action === "compact"
+                                : pending.command.action === "navigate";
           const validTarget =
             response.type === "ack" ||
             (response.target.runtime === pending.command.target.runtime &&
@@ -388,7 +391,8 @@ export class LiveBridge {
       | { action: "set-thinking-level"; provider: string; modelId: string; level: ThinkingLevel }
       | { action: "set-model"; provider: string; modelId: string }
       | { action: "save-default"; selection: DefaultSelection }
-      | { action: "navigate"; entryId: string },
+      | { action: "navigate"; entryId: string }
+      | { action: "tree-page"; page: TreePageRequest },
   ) {
     const command = commandSchema.parse({
       ...input,
@@ -420,6 +424,8 @@ export class LiveBridge {
       !peer.snapshot.capabilities?.thinking
     )
       throw new LiveChatError(409, "Run /reload in Pi to enable thinking level selection");
+    if (command.action === "tree-page" && !peer.snapshot.capabilities?.treePages)
+      throw new LiveChatError(409, "Run /reload in Pi to browse large conversation paths");
     if (command.action === "save-default" && !peer.snapshot.capabilities?.defaults)
       throw new LiveChatError(409, "Run /reload in Pi to enable global defaults");
     if (command.action === "compact" && !peer.snapshot.capabilities?.compact)
