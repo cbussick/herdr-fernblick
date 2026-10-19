@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { ChatImagePreviewLink } from "./ChatImagePreviewLink";
 import styles from "./ChatMessageText.module.css";
 
 export function ChatMarkdownImage({
@@ -33,14 +34,13 @@ export function ChatMarkdownImage({
   return linked ? (
     <span data-message-control>{content}</span>
   ) : (
-    <a
+    <ChatImagePreviewLink
       href={src}
-      target="_blank"
-      rel="noopener noreferrer"
-      aria-label={alt || "Open image"}
-      data-message-control
+      images={[{ url: src, alt }]}
+      label={alt ? `Preview image: ${alt}` : "Preview image"}
+      control
     >
       {content}
-    </a>
+    </ChatImagePreviewLink>
   );
 }

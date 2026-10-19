@@ -19,6 +19,7 @@
 
 .toolbar {
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
   justify-content: space-between;
   gap: var(--space-2);
@@ -48,9 +49,21 @@
   border-radius: 50%;
 }
 
-.toolbar button:focus-visible {
+.toolbar :is(button, a):focus-visible {
   outline: 2px solid #fff;
   outline-offset: 2px;
+}
+
+.open-link {
+  display: inline-flex;
+  align-items: center;
+  min-height: 2.75rem;
+  padding-inline: var(--space-3);
+  margin-inline-start: auto;
+  color: #fff;
+  font-size: 0.875rem;
+  border: 1px solid rgb(255 255 255 / 24%);
+  border-radius: var(--radius-sm);
 }
 
 .toolbar svg {

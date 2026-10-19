@@ -3,12 +3,13 @@ import { createPortal } from "react-dom";
 import { BackIcon, ChevronIcon, CloseIcon, ImageIcon } from "../../shared/ui/Icons";
 import styles from "./ImageLightbox.module.css";
 
-type PreviewImage = { url: string; alt: string };
+export type PreviewImage = { url: string; alt: string };
 interface ImageLightboxProps {
   images: PreviewImage[];
   index: number;
   onIndexChange: (index: number) => void;
   onClose: () => void;
+  openLink?: string;
 }
 
 function ExpandedImage({ url, alt }: PreviewImage) {
@@ -19,12 +20,18 @@ function ExpandedImage({ url, alt }: PreviewImage) {
       <p>Attachment no longer available</p>
     </div>
   ) : (
-    <img src={url} alt={alt} onError={() => setUnavailable(true)} />
+    <img src={url} alt={alt} referrerPolicy="no-referrer" onError={() => setUnavailable(true)} />
   );
 }
 
 /** Shared modal for draft attachments and each chat message's image gallery. */
-export function ImageLightbox({ images, index, onIndexChange, onClose }: ImageLightboxProps) {
+export function ImageLightbox({
+  images,
+  index,
+  onIndexChange,
+  onClose,
+  openLink,
+}: ImageLightboxProps) {
   const lightbox = useRef<HTMLDialogElement>(null);
   const image = images[index];
   const multiple = images.length > 1;
@@ -45,6 +52,7 @@ export function ImageLightbox({ images, index, onIndexChange, onClose }: ImageLi
     <dialog
       ref={lightbox}
       data-ui="chat-image-preview"
+      data-message-control
       className={styles.lightbox}
       aria-label="Image preview"
       onClose={(event) => {
@@ -80,6 +88,16 @@ export function ImageLightbox({ images, index, onIndexChange, onClose }: ImageLi
             </button>
           ) : null}
         </div>
+        {openLink ? (
+          <a
+            className={styles["open-link"]}
+            href={openLink}
+            target="_blank"
+            rel="noopener noreferrer"
+          >
+            Open link
+          </a>
+        ) : null}
         <button
           type="button"
           aria-label="Close image preview"

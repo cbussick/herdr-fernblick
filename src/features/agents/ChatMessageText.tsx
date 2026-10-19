@@ -2,6 +2,8 @@ import { Fragment, useMemo, type ReactNode } from "react";
 import { splitMessageLinks } from "./chatMessageLinks";
 import { ChatCodeBlock } from "./ChatCodeBlock";
 import { ChatMarkdownImage } from "./ChatMarkdownImage";
+import { ChatImagePreviewLink } from "./ChatImagePreviewLink";
+import type { PreviewImage } from "./ImageLightbox";
 import { formatMessageText, type MessagePart } from "./chatMessageFormatting";
 import {
   annotationGeneralPromptIntro,
@@ -11,6 +13,11 @@ import {
 } from "./annotations";
 import annotationStyles from "./ChatAnnotations.module.css";
 import styles from "./ChatMessageText.module.css";
+
+function previewImages(part: MessagePart): PreviewImage[] {
+  if (part.kind === "image") return [{ url: part.href!, alt: part.alt ?? "" }];
+  return "children" in part ? part.children.flatMap(previewImages) : [];
+}
 
 // Generated user feedback keeps quotes verbatim and formats only its labels.
 function annotationLabels(value: string) {
@@ -228,12 +235,20 @@ export function ChatMessageText({
             {content}
           </code>
         );
-      case "link":
+      case "link": {
+        const images = previewImages(part);
+        if (images.length)
+          return (
+            <ChatImagePreviewLink key={index} href={part.href!} images={images}>
+              {content}
+            </ChatImagePreviewLink>
+          );
         return (
           <a key={index} href={part.href} target="_blank" rel="noopener noreferrer">
             {content}
           </a>
         );
+      }
     }
   }
 
