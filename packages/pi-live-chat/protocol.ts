@@ -157,7 +157,18 @@ export const agentModelSchema = z.object({
 });
 export type AgentModel = z.infer<typeof agentModelSchema>;
 export const modelSelectionSchema = z.object({ provider: id, modelId: id });
+export const globalDefaultsSchema = z.object({
+  model: modelSelectionSchema.nullable(),
+  thinkingLevel: thinkingLevelSchema.nullable(),
+});
+export type GlobalDefaults = z.infer<typeof globalDefaultsSchema>;
+// Optional for older bridges. Present defaults also advertise row-level saving.
+const defaultInfoShape = {
+  defaults: globalDefaultsSchema.optional(),
+  defaultsError: z.string().max(512).optional(),
+};
 export const modelsResponseSchema = z.object({
+  ...defaultInfoShape,
   type: z.literal("models"),
   id: z.string().uuid(),
   target: targetSchema,
@@ -175,6 +186,7 @@ export const thinkingStateSchema = thinkingSelectionSchema.extend({
   levels: z.array(thinkingLevelSchema).min(1).max(7),
 });
 export const thinkingLevelsResponseSchema = thinkingStateSchema.extend({
+  ...defaultInfoShape,
   type: z.literal("thinking-levels"),
   id: z.string().uuid(),
   target: targetSchema,

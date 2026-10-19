@@ -3,7 +3,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { SettingsManager } from "@earendil-works/pi-coding-agent";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
-import { saveGlobalDefault } from "./globalDefaults.js";
+import { globalDefaultInfo, saveGlobalDefault } from "./globalDefaults.js";
 
 let dir: string;
 let agentDir: string;
@@ -74,6 +74,35 @@ it("fails closed on unreadable or malformed global settings and ignores malforme
   await saveGlobalDefault(dir, model);
   expect(JSON.parse(await readFile(settingsFile, "utf8")).defaultModel).toBe(model.modelId);
   expect(await readFile(join(dir, ".pi/settings.json"), "utf8")).toBe("{broken");
+});
+it("reads only explicit global defaults, fresh on each call, without exposing unrelated settings", async () => {
+  expect(globalDefaultInfo(dir)).toEqual({ defaults: { model: null, thinkingLevel: null } });
+  await expect(readFile(settingsFile)).rejects.toMatchObject({ code: "ENOENT" });
+  await mkdir(join(dir, ".pi"));
+  await writeFile(
+    join(dir, ".pi/settings.json"),
+    JSON.stringify({ defaultModel: "project", defaultThinkingLevel: "off" }),
+  );
+  const settings = {
+    defaultProvider: "provider",
+    defaultModel: "model",
+    defaultThinkingLevel: "high",
+    modelThinkingLevels: { "provider/model": "low" },
+    privateValue: "must-not-leak",
+  };
+  await writeFile(settingsFile, JSON.stringify(settings));
+  expect(globalDefaultInfo(dir)).toEqual({
+    defaults: { model: { provider: "provider", modelId: "model" }, thinkingLevel: "high" },
+  });
+  expect(await readFile(settingsFile, "utf8")).toBe(JSON.stringify(settings));
+  await writeFile(
+    settingsFile,
+    JSON.stringify({ defaultModel: "incomplete-model-selection", defaultThinkingLevel: "off" }),
+  );
+  expect(globalDefaultInfo(dir)).toEqual({ defaults: { model: null, thinkingLevel: "off" } });
+  await writeFile(settingsFile, "{broken");
+  expect(globalDefaultInfo(dir)).toEqual({ defaultsError: expect.stringContaining("unavailable") });
+  expect(await readFile(settingsFile, "utf8")).toBe("{broken");
 });
 it("reports queued persistence errors rather than treating flush completion as success", async () => {
   const settings = SettingsManager.fromStorage(

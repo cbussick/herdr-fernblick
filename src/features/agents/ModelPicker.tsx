@@ -2,7 +2,8 @@ import { useEffect, useRef, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import type { AgentModel, Target } from "../../../packages/pi-live-chat/protocol";
 import { getAgentModels, setAgentModel, saveAgentGlobalDefault } from "../../shared/api/apiClient";
-import { GlobalDefaultAction } from "./GlobalDefaultAction";
+import { GlobalDefaultAction, GlobalDefaultsNotice } from "./GlobalDefaultAction";
+import a11y from "../../styles/accessibility.module.css";
 import { CloseIcon } from "../../shared/ui/Icons";
 import styles from "./SessionSettingsPicker.module.css";
 
@@ -36,8 +37,7 @@ export function ModelPicker({
   const [pending, setPending] = useState(false);
   const [error, setError] = useState("");
   const [savingDefault, setSavingDefault] = useState(false);
-  const [savedDefault, setSavedDefault] = useState("");
-  const currentKey = JSON.stringify([provider, model]);
+  const [savedDefault, setSavedDefault] = useState<AgentModel>();
   const catalog = useQuery({
     queryKey: ["agent-models", pane, target.runtime, target.sessionId, target.epoch],
     queryFn: ({ signal }) => getAgentModels(pane, target, signal),
@@ -62,12 +62,17 @@ export function ModelPicker({
     `${entry.name} ${entry.id} ${entry.provider}`.toLowerCase().includes(search.toLowerCase()),
   );
   const ready = enabled && supported && !pending && !catalog.isFetching && !catalog.isError;
+  const canSaveDefault = defaultsSupported && Boolean(catalog.data?.defaults);
+  const defaultModel = savedDefault
+    ? { provider: savedDefault.provider, modelId: savedDefault.id }
+    : catalog.data?.defaults?.model;
+  const defaultUnavailable =
+    catalog.data?.defaultsError ?? "Run /reload in Pi to enable row defaults.";
   async function select(entry: AgentModel, saveDefault = false) {
-    if (!ready || switching.current || (saveDefault && !defaultsSupported)) return;
+    if (!ready || switching.current || (saveDefault && !canSaveDefault)) return;
     switching.current = true;
     setPending(true);
     setSavingDefault(saveDefault);
-    setSavedDefault("");
     setError("");
     try {
       if (saveDefault) {
@@ -76,7 +81,7 @@ export function ModelPicker({
           provider: entry.provider,
           modelId: entry.id,
         });
-        if (mounted.current) setSavedDefault(JSON.stringify([entry.provider, entry.id]));
+        if (mounted.current) setSavedDefault(entry);
       } else {
         await setAgentModel(pane, target, entry.provider, entry.id);
         if (mounted.current) onClose();
@@ -153,52 +158,76 @@ export function ModelPicker({
               </button>
             </div>
           ) : (
-            <div className={styles.list} aria-label="Available models">
-              {models.map((entry, index) => {
-                const current = entry.id === model && entry.provider === provider;
-                return (
-                  <button
-                    key={`${entry.provider}/${entry.id}`}
-                    type="button"
-                    className={styles.option}
-                    ref={(element) => {
-                      options.current[index] = element;
-                    }}
-                    aria-pressed={current}
-                    disabled={!ready}
-                    onClick={() => void select(entry)}
-                    onKeyDown={(event) => {
-                      if (["ArrowDown", "ArrowUp", "Home", "End"].includes(event.key)) {
-                        event.preventDefault();
-                        const next =
-                          event.key === "Home"
-                            ? 0
-                            : event.key === "End"
-                              ? models.length - 1
-                              : (index + (event.key === "ArrowDown" ? 1 : -1) + models.length) %
-                                models.length;
-                        options.current[next]?.focus();
-                      }
-                    }}
-                  >
-                    <strong>
-                      {entry.name}
-                      {current ? " · Current" : ""}
-                    </strong>
-                    <small>
-                      {entry.provider} / {entry.id}
-                    </small>
-                  </button>
-                );
-              })}
-              {!models.length ? (
-                <p className={styles.notice}>
-                  {catalog.data?.models.length
-                    ? "No matching models."
-                    : "No models available. Configure a provider in Pi first."}
-                </p>
-              ) : null}
-            </div>
+            <>
+              <GlobalDefaultsNotice
+                available={canSaveDefault}
+                error={catalog.data?.defaultsError}
+                onRetry={() => void catalog.refetch()}
+                retryEnabled={!pending}
+              />
+              <div className={styles.list} aria-label="Available models">
+                {models.map((entry, index) => {
+                  const current = entry.id === model && entry.provider === provider;
+                  return (
+                    <div
+                      key={`${entry.provider}/${entry.id}`}
+                      className={styles.row}
+                      data-current={current}
+                      data-testid="model-row"
+                    >
+                      <button
+                        type="button"
+                        className={styles.option}
+                        ref={(element) => {
+                          options.current[index] = element;
+                        }}
+                        aria-pressed={current}
+                        disabled={!ready}
+                        onClick={() => void select(entry)}
+                        onKeyDown={(event) => {
+                          if (["ArrowDown", "ArrowUp", "Home", "End"].includes(event.key)) {
+                            event.preventDefault();
+                            const next =
+                              event.key === "Home"
+                                ? 0
+                                : event.key === "End"
+                                  ? models.length - 1
+                                  : (index + (event.key === "ArrowDown" ? 1 : -1) + models.length) %
+                                    models.length;
+                            options.current[next]?.focus();
+                          }
+                        }}
+                      >
+                        <strong>
+                          {entry.name}
+                          {current ? " · Current" : ""}
+                        </strong>
+                        <small>
+                          {entry.provider} / {entry.id}
+                        </small>
+                      </button>
+                      <GlobalDefaultAction
+                        name={`${entry.name} (${entry.provider})`}
+                        enabled={ready && canSaveDefault}
+                        saved={
+                          entry.id === defaultModel?.modelId &&
+                          entry.provider === defaultModel.provider
+                        }
+                        unavailableReason={canSaveDefault ? undefined : defaultUnavailable}
+                        onSave={() => void select(entry, true)}
+                      />
+                    </div>
+                  );
+                })}
+                {!models.length ? (
+                  <p className={styles.notice}>
+                    {catalog.data?.models.length
+                      ? "No matching models."
+                      : "No models available. Configure a provider in Pi first."}
+                  </p>
+                ) : null}
+              </div>
+            </>
           )}
           {catalog.data?.truncated ? (
             <p className={styles.notice}>
@@ -207,21 +236,16 @@ export function ModelPicker({
           ) : null}
         </>
       )}
-      <GlobalDefaultAction
-        supported={defaultsSupported}
-        enabled={Boolean(ready && supported && model && provider)}
-        saved={savedDefault === currentKey}
-        onSave={() => {
-          if (model && provider) void select({ id: model, provider, name: model }, true);
-        }}
-      />
-      {pending ? (
-        <p className={styles.notice} role="status">
-          {savingDefault ? "Saving global default…" : "Changing model…"}
+      {pending || savedDefault ? (
+        <p className={pending ? styles.notice : a11y["sr-only"]} role="status">
+          {pending
+            ? savingDefault
+              ? "Saving global default…"
+              : "Changing model…"
+            : `${savedDefault?.name} saved as global default.`}
         </p>
-      ) : !enabled ? (
-        <p className={styles.notice}>Available when Pi is idle.</p>
       ) : null}
+      {!pending && !enabled ? <p className={styles.notice}>Available when Pi is idle.</p> : null}
       {error ? (
         <p className={styles.notice} role="alert">
           {error}

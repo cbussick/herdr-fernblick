@@ -14,7 +14,7 @@ import {
   type Snapshot,
 } from "./protocol.js";
 import { thinkingState } from "./thinking.js";
-import { saveGlobalDefault } from "./globalDefaults.js";
+import { globalDefaultInfo, saveGlobalDefault } from "./globalDefaults.js";
 import { ImageHistory, IMAGE_METADATA } from "./imageHistory.js";
 import { TranscriptProjector } from "./projector.js";
 import { prepareImages } from "./images.js";
@@ -435,14 +435,12 @@ export default function liveChat(pi: ExtensionAPI) {
           void (async () => {
             try {
               const selection = command.selection;
-              if (ctx.model?.provider !== selection.provider || ctx.model.id !== selection.modelId)
-                throw new Error("Model changed. Reopen the settings dialog.");
               if (selection.kind === "thinking") {
                 const state = thinkingState(pi, ctx);
-                if (state.level !== selection.level || !state.levels.includes(selection.level))
-                  throw new Error(
-                    "Thinking level changed or is unsupported. Reopen Thinking level.",
-                  );
+                if (state.provider !== selection.provider || state.modelId !== selection.modelId)
+                  throw new Error("Model changed. Reopen Thinking level.");
+                if (!state.levels.includes(selection.level))
+                  throw new Error("This thinking level is not supported by the current model");
               } else if (
                 !ctx.modelRegistry
                   .getAvailable()
@@ -453,8 +451,8 @@ export default function liveChat(pi: ExtensionAPI) {
               ) {
                 throw new Error("Model is no longer available in Pi");
               }
-              // Save only the displayed current value; never change the live
-              // session or allow arbitrary settings/file paths over the bridge.
+              // Save any available model / supported level directly from its
+              // row, without changing the live session or accepting file paths.
               await saveGlobalDefault(ctx.cwd, selection);
               const fresh = snapshot();
               if (
@@ -495,6 +493,7 @@ export default function liveChat(pi: ExtensionAPI) {
               id: command.id,
               target: command.target,
               ...thinkingState(pi, context),
+              ...globalDefaultInfo(context.cwd),
             });
           } catch (error) {
             reject(
@@ -565,6 +564,7 @@ export default function liveChat(pi: ExtensionAPI) {
                 }),
               ),
               truncated: models.length > 1000,
+              ...globalDefaultInfo(context.cwd),
             });
           } catch {
             reject("Models unavailable in this Pi session");

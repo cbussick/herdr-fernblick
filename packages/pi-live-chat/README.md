@@ -31,7 +31,7 @@ not install local package dependencies. Keep the directory in place. An npm
 publication of this package would install its declared runtime dependency normally.
 
 The user-run `pi install` command writes personal Pi settings. Fernblick does not
-install or reconfigure Pi automatically; only the explicit **Use current as global
+install or reconfigure Pi automatically; only the explicit row-star **Set as global
 default** action saves model/provider or thinking defaults in global settings.
 Start a new interactive Pi or use `/reload` yourself.
 Loading the extension grants Fernblick access to model chat, thinking, and
@@ -171,16 +171,21 @@ review handoff.
   level before invoking synchronous `pi.setThinkingLevel()`. Only the verified
   effective state produces `thinking-level-changed`. Choices and changes are
   session-specific; global defaults are unchanged and no prompt is sent.
-- **Use current as global default** in either settings dialog sends a separate
-  `save-default` command, gated by `capabilities.defaults`, idle state and the
-  current target/model/level. The extension uses Pi's public `SettingsManager`
-  to save model/provider together or only the thinking default in this Pi
-  process's global agent directory (`PI_CODING_AGENT_DIR` is respected).
-  Project settings and unrelated global preferences are preserved. Only a
-  successful flush with no settings errors produces `default-saved`; no ACK,
-  automatic retry, session mutation or prompt is used. Defaults affect newly
-  launched Pi sessions, including outside Fernblick; project/per-model/resume/CLI
-  overrides still apply. Run `/reload` in older agents to enable this capability.
+- Each settings row has a **Set as global default** star. It sends a separate
+  `save-default` command without switching the session or closing the dialog.
+  The persisted choice is marked with a filled star and **Default**, independently
+  of **Current**. Catalogues include `defaults` read fresh from global settings,
+  or `defaultsError` without blocking ordinary session selection. Missing metadata
+  disables row saves and asks for `/reload`; older bridges only support saving
+  the current choice. Saving requires `capabilities.defaults`, idle state,
+  the current target, an available model or a supported level for the expected
+  current model. Pi's public `SettingsManager` saves model/provider together or
+  only the thinking default in this process's global agent directory
+  (`PI_CODING_AGENT_DIR` is respected). Project settings and unrelated global
+  preferences are preserved. Only a successful flush with no settings errors
+  produces `default-saved`; no ACK, automatic retry, session mutation or prompt
+  is used. Defaults affect newly launched Pi sessions, including outside
+  Fernblick; project/per-model/resume/CLI overrides still apply.
 - Stop invokes void `ctx.abort()`. Working/stopped state comes from later Pi
   events, not the ACK or Herdr status. `agent_end` alone is not final settlement.
 - Conversation paths are requested on open from public `getTree()/getLeafId()`,

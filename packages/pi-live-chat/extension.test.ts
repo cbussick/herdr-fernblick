@@ -13,8 +13,11 @@ import type {
 } from "@earendil-works/pi-coding-agent";
 import { afterEach, expect, it, vi } from "vitest";
 import liveChat from "./index.js";
-import { saveGlobalDefault } from "./globalDefaults.js";
-vi.mock("./globalDefaults.js", () => ({ saveGlobalDefault: vi.fn(async () => {}) }));
+import { globalDefaultInfo, saveGlobalDefault } from "./globalDefaults.js";
+vi.mock("./globalDefaults.js", () => ({
+  saveGlobalDefault: vi.fn(async () => {}),
+  globalDefaultInfo: vi.fn(),
+}));
 import {
   footerRequestEvent,
   footerUpdateEvent,
@@ -159,6 +162,11 @@ async function setup(beforeStart?: (pi: ReturnType<typeof fakePi>) => void) {
     await rm(dir, { recursive: true, force: true });
   });
   vi.mocked(saveGlobalDefault).mockReset().mockResolvedValue(undefined);
+  vi.mocked(globalDefaultInfo)
+    .mockReset()
+    .mockReturnValue({
+      defaults: { model: null, thinkingLevel: null },
+    });
   const pi = fakePi();
   cleanup.push(() => {
     pi.emit("session_shutdown");
@@ -209,12 +217,15 @@ function defaultCommand(
   });
   return id;
 }
-it("saves only explicit global defaults without invoking session setters or prompting", async () => {
+it("saves any available model or supported level without switching the current session or prompting", async () => {
   const t = await setup();
+  vi.mocked(t.ctx.modelRegistry.getAvailable).mockReturnValue([
+    { ...t.ctx.model!, id: "other", provider: "other-provider", name: "Other" },
+  ]);
   expect(t.latest()?.capabilities?.defaults).toBe(true);
   for (const selection of [
-    { kind: "model", provider: "provider", modelId: "model" },
-    { kind: "thinking", provider: "provider", modelId: "model", level: "medium" },
+    { kind: "model", provider: "other-provider", modelId: "other" },
+    { kind: "thinking", provider: "provider", modelId: "model", level: "high" },
   ]) {
     const id = defaultCommand(t, selection);
     expect(await t.ack(id)).toEqual({
@@ -225,11 +236,13 @@ it("saves only explicit global defaults without invoking session setters or prom
     });
     expect(saveGlobalDefault).toHaveBeenLastCalledWith("/test", selection);
   }
+  expect(t.ctx.model?.id).toBe("model");
+  expect(t.pi.getThinkingLevel()).toBe("medium");
   expect(t.pi.setModel).not.toHaveBeenCalled();
   expect(t.pi.setThinkingLevel).not.toHaveBeenCalled();
   expect(t.pi.sendUserMessage).not.toHaveBeenCalled();
 });
-it("rejects busy, stale, model/level mismatched, unavailable and unsupported default saves", async () => {
+it("rejects busy, stale, model-mismatched, unavailable and unsupported default saves", async () => {
   const t = await setup();
   t.setIdle(false);
   expect(await t.ack(defaultCommand(t))).toMatchObject({
@@ -242,19 +255,19 @@ it("rejects busy, stale, model/level mismatched, unavailable and unsupported def
   ).toMatchObject({ outcome: "rejected" });
   expect(
     await t.ack(defaultCommand(t, { kind: "model", provider: "other", modelId: "model" })),
-  ).toMatchObject({ outcome: "rejected", reason: expect.stringContaining("Model changed") });
+  ).toMatchObject({ outcome: "rejected", reason: expect.stringContaining("no longer available") });
   expect(
     await t.ack(
       defaultCommand(t, {
         kind: "thinking",
         provider: "provider",
-        modelId: "model",
+        modelId: "changed-model",
         level: "high",
       }),
     ),
   ).toMatchObject({
     outcome: "rejected",
-    reason: expect.stringContaining("Thinking level changed"),
+    reason: expect.stringContaining("Model changed"),
   });
   Object.assign(t.ctx, { model: { ...t.ctx.model, reasoning: false } });
   expect(
@@ -266,13 +279,42 @@ it("rejects busy, stale, model/level mismatched, unavailable and unsupported def
         level: "medium",
       }),
     ),
-  ).toMatchObject({ outcome: "rejected", reason: expect.stringContaining("unsupported") });
+  ).toMatchObject({ outcome: "rejected", reason: expect.stringContaining("not supported") });
   vi.mocked(t.ctx.modelRegistry.getAvailable).mockReturnValue([]);
   expect(await t.ack(defaultCommand(t))).toMatchObject({
     outcome: "rejected",
     reason: expect.stringContaining("no longer available"),
   });
   expect(saveGlobalDefault).not.toHaveBeenCalled();
+});
+it("includes fresh persisted global defaults in both catalogues without changing the session", async () => {
+  const t = await setup();
+  const defaults = {
+    model: { provider: "other", modelId: "other" },
+    thinkingLevel: "high" as const,
+  };
+  vi.mocked(globalDefaultInfo).mockReturnValue({ defaults });
+  expect(await t.ack(modelCommand(t, "models"))).toMatchObject({ type: "models", defaults });
+  expect(await t.ack(thinkingCommand(t, "thinking-levels"))).toMatchObject({
+    type: "thinking-levels",
+    defaults,
+  });
+  expect(globalDefaultInfo).toHaveBeenCalledTimes(2);
+  expect(globalDefaultInfo).toHaveBeenLastCalledWith("/test");
+  vi.mocked(globalDefaultInfo).mockReturnValue({ defaultsError: "Global defaults unavailable" });
+  expect(await t.ack(modelCommand(t, "models"))).toMatchObject({
+    type: "models",
+    models: [{ id: "model" }],
+    defaultsError: "Global defaults unavailable",
+  });
+  expect(await t.ack(thinkingCommand(t, "thinking-levels"))).toMatchObject({
+    type: "thinking-levels",
+    level: "medium",
+    defaultsError: "Global defaults unavailable",
+  });
+  expect(saveGlobalDefault).not.toHaveBeenCalled();
+  expect(t.pi.setModel).not.toHaveBeenCalled();
+  expect(t.pi.setThinkingLevel).not.toHaveBeenCalled();
 });
 it("confirms only after persistence, serializes requests, rejects duplicates and surfaces write failures", async () => {
   const t = await setup();

@@ -85,6 +85,10 @@ for (const [engine, type] of [
         release;
       let fail = false;
       const savedDefaults = [];
+      let defaults = {
+        model: { provider: models[0].provider, modelId: models[0].id },
+        thinkingLevel: "medium",
+      };
       let thinkingReads = 0,
         thinkingChanges = 0,
         thinkingMode = "normal";
@@ -115,9 +119,19 @@ for (const [engine, type] of [
           if (path.endsWith("/save-default")) {
             const body = route.request().postDataJSON();
             assert.deepEqual(body.target, target);
-            assert.equal(body.selection.provider, models[0].provider);
-            assert.equal(body.selection.modelId, models[0].id);
-            if (body.selection.kind === "thinking") assert.equal(body.selection.level, "medium");
+            if (body.selection.kind === "model") {
+              assert.equal(body.selection.provider, models[1].provider);
+              assert.equal(body.selection.modelId, models[1].id);
+              defaults = {
+                ...defaults,
+                model: { provider: body.selection.provider, modelId: body.selection.modelId },
+              };
+            } else {
+              assert.equal(body.selection.provider, models[0].provider);
+              assert.equal(body.selection.modelId, models[0].id);
+              assert.equal(body.selection.level, "high");
+              defaults = { ...defaults, thinkingLevel: body.selection.level };
+            }
             savedDefaults.push(body.selection);
             return route.fulfill({
               json: {
@@ -139,6 +153,7 @@ for (const [engine, type] of [
                 modelId: models[0].id,
                 level: thinkingMode === "off" ? "off" : "medium",
                 levels: thinkingMode === "off" ? ["off"] : ["low", "medium", "high"],
+                defaults,
               },
             });
           }
@@ -164,7 +179,14 @@ for (const [engine, type] of [
           if (path.endsWith("/models")) {
             reads++;
             return route.fulfill({
-              json: { type: "models", id: target.runtime, target, models, truncated: false },
+              json: {
+                type: "models",
+                id: target.runtime,
+                target,
+                models,
+                truncated: false,
+                defaults,
+              },
             });
           }
           if (path.endsWith("/set-model")) {
@@ -241,7 +263,7 @@ for (const [engine, type] of [
       await openPicker();
       const dialog = page.getByRole("dialog", { name: "Choose model", exact: true });
       const search = page.getByRole("searchbox", { name: "Search models" });
-      const other = dialog.getByRole("button", { name: /GPT-5.4/ });
+      const other = dialog.getByRole("button", { name: /^GPT-5.4/ });
       await other.waitFor();
       assert.equal(reads, 1);
       assert.equal(await dialog.locator('[aria-pressed="true"]').count(), 1);
@@ -262,12 +284,23 @@ for (const [engine, type] of [
         await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth),
         true,
       );
-      const saveModel = dialog.getByRole("button", {
-        name: "Use current as global default",
-        exact: true,
-      });
-      await saveModel.click();
-      await dialog.getByRole("status").filter({ hasText: "Saved as global default." }).waitFor();
+      const saveModel = dialog.getByTestId("global-default");
+      await other.press("Tab");
+      assert.equal(await saveModel.evaluate((node) => node === document.activeElement), true);
+      assert.equal(
+        await saveModel.getAttribute("aria-label"),
+        "Set GPT-5.4 (openai-codex) as global default",
+      );
+      await saveModel.press("Enter");
+      await dialog
+        .getByRole("status")
+        .filter({ hasText: "GPT-5.4 saved as global default." })
+        .waitFor();
+      assert.equal(await saveModel.getAttribute("data-default"), "true");
+      assert.equal(await saveModel.evaluate((node) => node === document.activeElement), true);
+      assert.equal(await saveModel.innerText(), "Default");
+      assert.equal(await dialog.locator("footer").count(), 0);
+      assert.equal(await dialog.getByText("For new Pi sessions", { exact: false }).count(), 0);
       assert.equal(savedDefaults.length, 1);
       assert.equal(savedDefaults[0].kind, "model");
       assert.equal(changes, 0);
@@ -290,6 +323,12 @@ for (const [engine, type] of [
       assert.equal(await page.getByRole("img", { name: "fixture.png" }).count(), 1);
       fail = true;
       await openPicker();
+      assert.equal(
+        await dialog
+          .getByRole("button", { name: "Global default: GPT-5.4 (openai-codex)", exact: true })
+          .getAttribute("data-default"),
+        "true",
+      );
       await other.click();
       await page.getByRole("alert").filter({ hasText: "Model unavailable" }).waitFor();
       assert.equal(changes, 2);
@@ -314,12 +353,19 @@ for (const [engine, type] of [
           thinkingBox.y + thinkingBox.height <= height,
       );
       await thinkingDialog
-        .getByRole("button", { name: "Use current as global default", exact: true })
+        .getByRole("button", { name: "Set High as global default", exact: true })
         .click();
       await thinkingDialog
         .getByRole("status")
-        .filter({ hasText: "Saved as global default." })
+        .filter({ hasText: "High saved as global default." })
         .waitFor();
+      assert.equal(
+        await thinkingDialog
+          .getByRole("button", { name: "Global default: High", exact: true })
+          .innerText(),
+        "Default",
+      );
+      assert.equal(await current.getAttribute("aria-pressed"), "true");
       assert.equal(savedDefaults.length, 2);
       assert.equal(savedDefaults[1].kind, "thinking");
       assert.equal(thinkingChanges, 0);
@@ -327,6 +373,14 @@ for (const [engine, type] of [
       await high.press("Enter");
       await thinkingDialog.waitFor({ state: "detached" });
       assert.equal(thinkingChanges, 1);
+      await openPicker("Thinking level");
+      assert.equal(
+        await thinkingDialog
+          .getByRole("button", { name: "Global default: High", exact: true })
+          .getAttribute("data-default"),
+        "true",
+      );
+      await thinkingDialog.press("Escape");
       assert.equal(await trigger.evaluate((node) => node === document.activeElement), true);
       thinkingMode = "off";
       await openPicker("Thinking level");

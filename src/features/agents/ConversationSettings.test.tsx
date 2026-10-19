@@ -19,6 +19,7 @@ vi.mock("../../shared/api/apiClient", () => ({
   saveAgentGlobalDefault: api.saveDefault,
 }));
 const target = { runtime: "runtime", epoch: "epoch", sessionId: "session" };
+const defaults = { model: { provider: "anthropic", modelId: "sonnet" }, thinkingLevel: "medium" };
 const models = [
   { id: "sonnet", provider: "anthropic", name: "Sonnet" },
   { id: "gpt", provider: "openai", name: "GPT" },
@@ -73,13 +74,14 @@ beforeEach(async () => {
     model: "sonnet",
     provider: "anthropic",
   };
-  api.models.mockReset().mockResolvedValue({ models, truncated: false });
+  api.models.mockReset().mockResolvedValue({ models, truncated: false, defaults });
   api.change.mockReset().mockResolvedValue({});
   api.thinking.mockReset().mockResolvedValue({
     provider: "anthropic",
     modelId: "sonnet",
     level: "medium",
     levels: ["low", "medium", "high"],
+    defaults,
   });
   api.changeThinking.mockReset().mockResolvedValue({});
   api.saveDefault.mockReset().mockResolvedValue({});
@@ -95,13 +97,16 @@ afterEach(async () => {
   client.clear();
   vi.unstubAllGlobals();
 });
-function defaultButton() {
+function defaultButtons() {
   return renderer.root
     .findAllByType("button")
-    .find((button) => button.children.includes("Use current as global default"))!;
+    .filter((button) => button.props["data-testid"] === "global-default");
+}
+function defaultButton() {
+  return defaultButtons().find((button) => !button.props["data-default"])!;
 }
 it.each(["model", "thinking"])(
-  "explicitly saves the current %s globally without changing the session",
+  "saves a non-current %s from its row without switching or closing, and moves the Default marker",
   async (kind) => {
     if (kind === "model") await open();
     else await openThinking();
@@ -110,13 +115,23 @@ it.each(["model", "thinking"])(
     await act(async () => defaultButton().props.onClick());
     expect(api.saveDefault).toHaveBeenCalledExactlyOnceWith("w1:p1", target, {
       kind,
-      provider: "anthropic",
-      modelId: "sonnet",
-      ...(kind === "thinking" ? { level: "medium" } : {}),
+      provider: kind === "model" ? "openai" : "anthropic",
+      modelId: kind === "model" ? "gpt" : "sonnet",
+      ...(kind === "thinking" ? { level: "low" } : {}),
     });
     expect(renderer.root.findByProps({ role: "status" }).children.join("")).toContain(
-      "Saved as global default",
+      "saved as global default",
     );
+    const saved = defaultButtons().filter((button) => button.props["data-default"]);
+    expect(saved).toHaveLength(1);
+    expect(saved[0].props["aria-label"]).toBe(
+      kind === "model" ? "Global default: GPT (openai)" : "Global default: Low",
+    );
+    expect(
+      renderer.root.findByProps({ "aria-pressed": true }).findByType("strong").children.join(""),
+    ).toContain(kind === "model" ? "Sonnet" : "Medium");
+    expect(renderer.root.findAllByType("footer")).toHaveLength(0);
+    expect(JSON.stringify(renderer.toJSON())).not.toContain("For new Pi sessions");
     expect(renderer.root.findAllByType("dialog")).toHaveLength(1);
     expect(api.change).not.toHaveBeenCalled();
     expect(api.changeThinking).not.toHaveBeenCalled();
@@ -144,7 +159,10 @@ it.each(["model", "thinking"])(
     expect(api.saveDefault).toHaveBeenCalledOnce();
     expect(api.change).not.toHaveBeenCalled();
     expect(api.changeThinking).not.toHaveBeenCalled();
-    expect(defaultButton().props.disabled).toBe(true);
+    expect(defaultButton().props["aria-disabled"]).toBe(true);
+    expect(
+      defaultButtons().find((button) => button.props["data-default"])!.props["aria-label"],
+    ).toBe(kind === "model" ? "Global default: Sonnet (anthropic)" : "Global default: Medium");
     expect(option.props.disabled).toBe(true);
     expect(renderer.root.findByProps({ role: "status" }).children.join("")).toContain(
       "Saving global default",
@@ -153,7 +171,10 @@ it.each(["model", "thinking"])(
     expect(renderer.root.findByProps({ role: "alert" }).children.join("")).toContain(
       "Settings unavailable",
     );
-    expect(defaultButton().props.disabled).toBe(false);
+    expect(defaultButton().props["aria-disabled"]).toBe(false);
+    expect(
+      defaultButtons().find((button) => button.props["data-default"])!.props["aria-label"],
+    ).toBe(kind === "model" ? "Global default: Sonnet (anthropic)" : "Global default: Medium");
     expect(api.saveDefault).toHaveBeenCalledOnce();
   },
 );
@@ -164,17 +185,118 @@ it.each(["model", "thinking"])(
     await act(async () => renderer.update(view()));
     if (kind === "model") await open();
     else await openThinking();
-    expect(defaultButton().props.disabled).toBe(true);
+    expect(defaultButton().props["aria-disabled"]).toBe(true);
     await act(async () => defaultButton().props.onClick());
     expect(api.saveDefault).not.toHaveBeenCalled();
     expect(JSON.stringify(renderer.toJSON())).toContain("Run /reload");
     props = { ...props, defaultsSupported: true, enabled: false };
     await act(async () => renderer.update(view()));
-    expect(defaultButton().props.disabled).toBe(true);
+    expect(defaultButton().props["aria-disabled"]).toBe(true);
     await act(async () => defaultButton().props.onClick());
     expect(api.saveDefault).not.toHaveBeenCalled();
   },
 );
+it.each(["model", "thinking"])(
+  "reads the saved %s marker independently from Current on every opening",
+  async (kind) => {
+    const persisted = { model: { provider: "openai", modelId: "gpt" }, thinkingLevel: "high" };
+    api.models.mockResolvedValue({ models, truncated: false, defaults: persisted });
+    api.thinking.mockResolvedValue({
+      provider: "anthropic",
+      modelId: "sonnet",
+      level: "medium",
+      levels: ["low", "medium", "high"],
+      defaults: persisted,
+    });
+    for (let attempt = 0; attempt < 2; attempt++) {
+      if (kind === "model") await open();
+      else await openThinking();
+      const saved = defaultButtons().filter((button) => button.props["data-default"]);
+      expect(saved).toHaveLength(1);
+      expect(saved[0].props["aria-label"]).toBe(
+        kind === "model" ? "Global default: GPT (openai)" : "Global default: High",
+      );
+      expect(saved[0].props["aria-disabled"]).toBe(true);
+      await act(async () => saved[0].props.onClick());
+      expect(api.saveDefault).not.toHaveBeenCalled();
+      expect(
+        renderer.root.findByProps({ "aria-pressed": true }).findByType("strong").children.join(""),
+      ).toContain(kind === "model" ? "Sonnet" : "Medium");
+      await act(async () => renderer.root.findByType("dialog").props.onClose());
+    }
+    expect(kind === "model" ? api.models : api.thinking).toHaveBeenCalledTimes(2);
+  },
+);
+it("matches default models by provider and ID, and keeps indicators while filtering", async () => {
+  api.models.mockResolvedValue({
+    models: [...models, { ...models[0], provider: "other" }],
+    truncated: false,
+    defaults,
+  });
+  await open();
+  expect(defaultButtons().filter((button) => button.props["data-default"])).toHaveLength(1);
+  await act(async () =>
+    renderer.root
+      .findByProps({ "aria-label": "Search models" })
+      .props.onChange({ target: { value: "other" } }),
+  );
+  expect(defaultButtons()).toHaveLength(1);
+  expect(defaultButtons()[0].props["data-default"]).toBe(false);
+  await act(async () =>
+    renderer.root
+      .findByProps({ "aria-label": "Search models" })
+      .props.onChange({ target: { value: "anthropic" } }),
+  );
+  expect(defaultButtons()[0].props["data-default"]).toBe(true);
+});
+it.each(["model", "thinking"])(
+  "does not infer a %s default from Current when no explicit default exists",
+  async (kind) => {
+    const empty = { model: null, thinkingLevel: null };
+    api.models.mockResolvedValue({ models, truncated: false, defaults: empty });
+    api.thinking.mockResolvedValue({
+      provider: "anthropic",
+      modelId: "sonnet",
+      level: "medium",
+      levels: ["low", "medium", "high"],
+      defaults: empty,
+    });
+    if (kind === "model") await open();
+    else await openThinking();
+    expect(defaultButtons().some((button) => button.props["data-default"])).toBe(false);
+    expect(defaultButton().props["aria-disabled"]).toBe(false);
+  },
+);
+it("keeps session selection available on defaults-read failure and supports explicit retry", async () => {
+  api.models.mockResolvedValueOnce({
+    models,
+    truncated: false,
+    defaultsError: "Global defaults unavailable",
+  });
+  await open();
+  expect(renderer.root.findByProps({ role: "alert" }).findByType("p").children.join("")).toContain(
+    "unavailable",
+  );
+  expect(defaultButton().props["aria-disabled"]).toBe(true);
+  expect(renderer.root.findByProps({ "aria-pressed": false }).props.disabled).toBe(false);
+  await act(async () =>
+    renderer.root
+      .findAllByType("button")
+      .find((button) => button.children.includes("Retry defaults"))!
+      .props.onClick(),
+  );
+  await flush();
+  expect(defaultButton().props["aria-disabled"]).toBe(false);
+  expect(api.models).toHaveBeenCalledTimes(2);
+});
+it("gates row saves for an older defaults-capable bridge without default metadata", async () => {
+  api.models.mockResolvedValue({ models, truncated: false });
+  await open();
+  expect(defaultButton().props["aria-disabled"]).toBe(true);
+  await act(async () => defaultButton().props.onClick());
+  expect(api.saveDefault).not.toHaveBeenCalled();
+  expect(JSON.stringify(renderer.toJSON())).toContain("Run /reload");
+});
 it("discards late default-save results after target replacement", async () => {
   let finish!: () => void;
   api.saveDefault.mockImplementationOnce(

@@ -47,6 +47,13 @@ export function ChevronIcon(props: IconProps) {
     </IconBase>
   );
 }
+export function StarIcon(props: IconProps) {
+  return (
+    <IconBase {...props}>
+      <path d="m12 3 2.8 5.7 6.3.9-4.5 4.4 1.1 6.3-5.7-3-5.7 3 1.1-6.3-4.5-4.4 6.3-.9Z" />
+    </IconBase>
+  );
+}
 export function ModelIcon(props: IconProps) {
   return (
     <IconBase {...props}>

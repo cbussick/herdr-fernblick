@@ -95,7 +95,14 @@ it("accepts only a skills catalogue for the requested session identity", async (
 });
 it("requires a bounded same-target model catalogue and matching model-change confirmation", async () => {
   const model = { id: "sonnet", provider: "anthropic", name: "Sonnet" };
-  const catalogue = { type: "models", id: randomUUID(), target, models: [model], truncated: false };
+  const catalogue = {
+    type: "models",
+    id: randomUUID(),
+    target,
+    models: [model],
+    truncated: false,
+    defaults: { model: { provider: "other", modelId: "other" }, thinkingLevel: null },
+  };
   fetchMock.mockResolvedValueOnce(Response.json(catalogue));
   expect(await getAgentModels("w1:p1", target, controller.signal)).toEqual(catalogue);
   expect(fetchMock.mock.calls[0][0]).toBe("/api/agents/w1%3Ap1/models");
@@ -131,6 +138,7 @@ it("validates thinking discovery and exact target/model/level completion", async
     target,
     ...selection,
     levels: ["low", "medium", "high"],
+    defaults: { model: null, thinkingLevel: "low" },
   };
   fetchMock.mockResolvedValueOnce(Response.json(catalogue));
   expect(await getAgentThinkingLevels("w1:p1", target, controller.signal)).toEqual(catalogue);

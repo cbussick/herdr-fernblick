@@ -228,19 +228,34 @@ global-default changes, and HTTP/client validation. The model-picker browser
 script also checks both labeled menu rows, thinking-level selection, keyboard
 navigation, focus restoration, non-reasoning state and touch-sized layouts.
 
-Both settings dialogs also offer **Use current as global default**. This is a
+Each settings row also offers a star to **Set as global default**. This is a
 separate, explicit save: ordinary model/thinking selection remains session-only.
-The button saves the displayed current value, stays open, and confirms only after
-persistence. To make another value the default, select it and reopen the dialog.
-Drafts, images, conversation history and running sessions are untouched.
+A star saves that row directly without switching the current session or closing
+the dialog. The saved choice shows a filled star and **Default** on the right,
+independently of **Current**. No footer button or explanatory copy is needed.
+Buttons are siblings, not nested; star labels identify the choice and global
+scope. Keyboard focus remains on the star after saving, with a screen-reader
+announcement; visible feedback is the updated row marker. Drafts, images,
+conversation history and running sessions are untouched.
+
+Model/thinking catalogues include `defaults:{model,thinkingLevel}` from fresh
+global settings. The model is `{provider,modelId}` or null; the thinking level
+is an explicit saved level or null. Null means no explicit global default, not
+the active choice or a project/per-model override. Only these allowlisted fields
+cross the socket. A read failure includes `defaultsError`, allows normal session
+selection, disables default saves and offers an explicit retry. Metadata is
+optional for compatibility: older bridges lack it, so row saves are disabled
+with a reload notice. Reopening always re-reads settings, including defaults
+saved by another process; markers also update only after a confirmed save.
 
 `POST .../save-default` accepts `{target,selection}`, where selection is
 `{kind:"model",provider,modelId}` or
 `{kind:"thinking",provider,modelId,level}`. It requires `capabilities.defaults`,
 same-Origin JSON, verified process mapping, matching runtime/session/epoch,
-idle state and the shared serialization guard. The extension rejects a changed
-current model/level, unavailable model or unsupported thinking level. Older
-extensions show a reload notice and cannot accept default saves.
+idle state and the shared serialization guard. The extension accepts any
+currently available model without requiring it to be selected first. Thinking
+saves accept any supported level but bind to the expected current provider/model.
+Unavailable models, a changed thinking model or unsupported levels are rejected.
 
 Persistence runs in the selected Pi process through its public `SettingsManager`,
 using its global agent directory (normally `~/.pi/agent`, respecting
@@ -258,7 +273,9 @@ resumed-session choices and explicit launch options still take precedence.
 Existing processes retain their current session state; no live setters or
 prompts are invoked. Tests cover real isolated settings persistence, preservation
 of project/unrelated settings, queued write errors, busy/stale/duplicate guards,
-exact HTTP/client confirmation and both dialogs' feedback/serialization.
+exact HTTP/client confirmation and both dialogs' feedback/serialization. Browser
+checks cover direct row saves, persisted indicators on reopen, keyboard star
+activation/focus, independent Current/Default state and removal of the footer.
 
 `POST .../skills` accepts `{target}` and returns a correlated catalogue from the
 active extension's public `pi.getCommands()`. Snapshots advertise

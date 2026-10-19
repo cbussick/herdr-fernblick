@@ -6,7 +6,8 @@ import {
   setAgentThinkingLevel,
   saveAgentGlobalDefault,
 } from "../../shared/api/apiClient";
-import { GlobalDefaultAction } from "./GlobalDefaultAction";
+import { GlobalDefaultAction, GlobalDefaultsNotice } from "./GlobalDefaultAction";
+import a11y from "../../styles/accessibility.module.css";
 import { CloseIcon } from "../../shared/ui/Icons";
 import styles from "./SessionSettingsPicker.module.css";
 
@@ -50,7 +51,7 @@ export function ThinkingLevelPicker({
   const [pending, setPending] = useState(false);
   const [error, setError] = useState("");
   const [savingDefault, setSavingDefault] = useState(false);
-  const [savedDefault, setSavedDefault] = useState("");
+  const [savedDefault, setSavedDefault] = useState<ThinkingLevel>();
   const catalog = useQuery({
     queryKey: [
       "agent-thinking-levels",
@@ -80,7 +81,9 @@ export function ThinkingLevelPicker({
   }, []);
   const state = catalog.data;
   const current = thinkingLevel ?? state?.level;
-  const currentKey = JSON.stringify([provider, model, current]);
+  const canSaveDefault = defaultsSupported && Boolean(state?.defaults);
+  const defaultLevel = savedDefault ?? state?.defaults?.thinkingLevel;
+  const defaultUnavailable = state?.defaultsError ?? "Run /reload in Pi to enable row defaults.";
   const modelMatches = state && state.provider === provider && state.modelId === model;
   const ready =
     enabled && supported && modelMatches && !pending && !catalog.isFetching && !catalog.isError;
@@ -91,11 +94,10 @@ export function ThinkingLevelPicker({
     }
   }, [state, modelMatches]);
   async function select(level: ThinkingLevel, saveDefault = false) {
-    if (!ready || switching.current || (saveDefault && !defaultsSupported)) return;
+    if (!ready || switching.current || (saveDefault && !canSaveDefault)) return;
     switching.current = true;
     setPending(true);
     setSavingDefault(saveDefault);
-    setSavedDefault("");
     setError("");
     try {
       if (saveDefault) {
@@ -105,8 +107,7 @@ export function ThinkingLevelPicker({
           modelId: state.modelId,
           level,
         });
-        if (mounted.current)
-          setSavedDefault(JSON.stringify([state.provider, state.modelId, level]));
+        if (mounted.current) setSavedDefault(level);
       } else {
         await setAgentThinkingLevel(pane, target, state.provider, state.modelId, level);
         if (mounted.current) onClose();
@@ -176,56 +177,70 @@ export function ThinkingLevelPicker({
                 : "This model supports only one thinking level."}
             </p>
           ) : null}
+          <GlobalDefaultsNotice
+            available={canSaveDefault}
+            error={state.defaultsError}
+            onRetry={() => void catalog.refetch()}
+            retryEnabled={!pending}
+          />
           <div className={styles.list} aria-label="Available thinking levels">
             {state.levels.map((level, index) => (
-              <button
-                type="button"
+              <div
                 key={level}
-                className={styles.option}
-                ref={(element) => {
-                  options.current[index] = element;
-                }}
-                aria-pressed={level === current}
-                disabled={!ready}
-                onClick={() => void select(level)}
-                onKeyDown={(event) => {
-                  if (["ArrowDown", "ArrowUp", "Home", "End"].includes(event.key)) {
-                    event.preventDefault();
-                    const next =
-                      event.key === "Home"
-                        ? 0
-                        : event.key === "End"
-                          ? state.levels.length - 1
-                          : (index + (event.key === "ArrowDown" ? 1 : -1) + state.levels.length) %
-                            state.levels.length;
-                    options.current[next]?.focus();
-                  }
-                }}
+                className={styles.row}
+                data-current={level === current}
+                data-testid="thinking-row"
               >
-                <strong>
-                  {labels[level]}
-                  {level === current ? " · Current" : ""}
-                </strong>
-              </button>
+                <button
+                  type="button"
+                  className={styles.option}
+                  ref={(element) => {
+                    options.current[index] = element;
+                  }}
+                  aria-pressed={level === current}
+                  disabled={!ready}
+                  onClick={() => void select(level)}
+                  onKeyDown={(event) => {
+                    if (["ArrowDown", "ArrowUp", "Home", "End"].includes(event.key)) {
+                      event.preventDefault();
+                      const next =
+                        event.key === "Home"
+                          ? 0
+                          : event.key === "End"
+                            ? state.levels.length - 1
+                            : (index + (event.key === "ArrowDown" ? 1 : -1) + state.levels.length) %
+                              state.levels.length;
+                      options.current[next]?.focus();
+                    }
+                  }}
+                >
+                  <strong>
+                    {labels[level]}
+                    {level === current ? " · Current" : ""}
+                  </strong>
+                </button>
+                <GlobalDefaultAction
+                  name={labels[level]}
+                  enabled={Boolean(ready && canSaveDefault)}
+                  saved={level === defaultLevel}
+                  unavailableReason={canSaveDefault ? undefined : defaultUnavailable}
+                  onSave={() => void select(level, true)}
+                />
+              </div>
             ))}
           </div>
         </>
       ) : null}
-      <GlobalDefaultAction
-        supported={defaultsSupported}
-        enabled={Boolean(ready && current && state?.levels.includes(current))}
-        saved={savedDefault === currentKey}
-        onSave={() => {
-          if (current) void select(current, true);
-        }}
-      />
-      {pending ? (
-        <p className={styles.notice} role="status">
-          {savingDefault ? "Saving global default…" : "Changing thinking level…"}
+      {pending || savedDefault ? (
+        <p className={pending ? styles.notice : a11y["sr-only"]} role="status">
+          {pending
+            ? savingDefault
+              ? "Saving global default…"
+              : "Changing thinking level…"
+            : `${savedDefault ? labels[savedDefault] : ""} saved as global default.`}
         </p>
-      ) : !enabled ? (
-        <p className={styles.notice}>Available when Pi is idle.</p>
       ) : null}
+      {!pending && !enabled ? <p className={styles.notice}>Available when Pi is idle.</p> : null}
       {error ? (
         <p className={styles.notice} role="alert">
           {error}
