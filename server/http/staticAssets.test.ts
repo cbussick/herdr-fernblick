@@ -1,4 +1,4 @@
-import { mkdtemp, mkdir, copyFile, readFile, rm } from "node:fs/promises";
+import { mkdtemp, mkdir, copyFile, readFile, writeFile, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type { AddressInfo } from "node:net";
@@ -28,6 +28,20 @@ test("serves the locally hosted Manrope font and its complete OFL license", asyn
     expect(await license.text()).toBe(
       await readFile("src/styles/fonts/Manrope-LICENSE.txt", "utf8"),
     );
+    // Install metadata and worker must have correct MIME types with nosniff enabled.
+    for (const [name, type, content] of [
+      ["manifest.webmanifest", "application/manifest+json; charset=utf-8", '{"name":"Fernblick"}'],
+      ["sw.js", "text/javascript; charset=utf-8", "// worker"],
+      ["icon.png", "image/png", "fixture"],
+    ]) {
+      await writeFile(join(directory, name), content);
+      const asset = await fetch(`${base}/${name}`);
+      expect(asset.status).toBe(200);
+      expect(asset.headers.get("content-type")).toBe(type);
+      expect(asset.headers.get("cache-control")).toBe("no-cache");
+      expect(asset.headers.get("x-content-type-options")).toBe("nosniff");
+      expect(await asset.text()).toBe(content);
+    }
     const font = await fetch(`${base}/manrope.woff2`);
     expect(font.status).toBe(200);
     expect(font.headers.get("content-type")).toBe("font/woff2");

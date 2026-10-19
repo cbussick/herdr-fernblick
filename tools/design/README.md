@@ -61,6 +61,27 @@ node tools/design/verify.mjs http://100.71.229.1:5197 http://127.0.0.1:5198
 
 The gallery server exposes only static synthetic artifacts and binds to the Tailnet interface, not a public interface. A separate loopback listener can serve the same directory with `python3 -m http.server 5197 --bind 127.0.0.1 --directory design-gallery`; this supports standard localhost forwarding. Restrict access in the Tailnet policy if needed. After editing `gallery.html`, copy it to `design-gallery/index.html` or recapture.
 
+## PWA regression
+
+After `npm run check`, run:
+
+```sh
+PLAYWRIGHT_MODULE=/tmp/fernblick-design-tools/node_modules/playwright/index.mjs \
+  node tools/design/pwa.mjs
+```
+
+This creates and removes its own loopback server, copied build, and Chromium
+profile. It serves a synthetic empty dashboard through the production HTTP
+handler; no Herdr/Pi sockets are opened. It checks Chrome installability and
+manifest/icon MIME types, PNG sizes, real service-worker installation, manual
+updates across two windows with an unsent workspace draft, Later, offline relaunch,
+API cache exclusion and automatic reconnect. Screenshots are written to ignored
+`design-gallery/pwa/`. Optional `CHROMIUM_EXECUTABLE` selects a browser binary.
+
+Physical Android/iOS installation, home-screen branding, external-link routing,
+and real software-keyboard behavior still require device verification. Headless
+installability checks do not establish which Android app handles a tapped link.
+
 ## Skills picker regression
 
 ```sh

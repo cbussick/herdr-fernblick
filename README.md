@@ -49,6 +49,52 @@ HOST="$(tailscale ip -4)" npm start
 
 Then open `http://<vps-magicdns-name>:8787` from a device on the same tailnet. Restrict TCP port 8787 to your user or phone in the tailnet policy. Do not expose this port to the public internet.
 
+### Install as an app (PWA)
+
+Use HTTPS for installation and service-worker support. For a new deployment,
+prefer a loopback-only backend and private Tailscale Serve:
+
+```bash
+HOST=127.0.0.1 npm start
+# In another terminal; check that the HTTPS port is unused first:
+tailscale serve --bg --https=4445 http://127.0.0.1:8787
+```
+
+Open the HTTPS URL reported by Serve directly in Chrome on Android, then use
+**Install app** (or **Add to Home screen**) from the browser menu. On iOS/iPadOS,
+open it in Safari and use **Share → Add to Home Screen**. The installed app is
+named **Fernblick** and uses its blue horizon icon. Do not install from an
+embedded browser opened by another app.
+
+The current VPS endpoint is
+`https://hetzner-vps.tail6b5377.ts.net:4445/`; its existing Serve mapping points
+at the already-running backend on `100.71.229.1:8787`. Changing that backend to
+loopback requires changing the proxy target too. Shelf stays on port 4444.
+Different ports isolate service workers and browser storage, but Android's
+external-link routing can still associate a link with another installed app.
+Verify home-screen launch separately from links opened by other apps.
+
+Serve is tailnet-only; do not use Funnel. HTTPS uses a publicly trusted certificate,
+whose hostname is public in certificate-transparency logs, not public app access.
+Keep tailnet access rules restricted to the intended users/devices.
+
+After a successful online visit and worker installation, the frontend shell can
+open offline. Agent lists, chat, API responses, uploaded images and drawings are
+**not** added to the service-worker cache. Existing whiteboard local-draft storage
+is unchanged. Offline startup shows a connection notice; using agents still needs
+the backend and tailnet. No background command queue or notifications are added.
+
+Updates download in the background and offer **Refresh app** / **Later**. Finish
+drafts in all open windows before refreshing: refresh reloads that window and can
+discard unsent text or images. Another window accepting an update never forces
+this window to reload. Foregrounding and reconnecting check for updates; a mobile
+OS may suspend connections while the app is backgrounded.
+
+Changing the HTTPS port or hostname creates a different browser origin. Install
+from the final URL; local data and permissions do not migrate automatically.
+Service workers are disabled in Vite development; test a production build on
+localhost or HTTPS.
+
 The default Herdr socket is `~/.config/herdr/herdr.sock`. For a named session, set it explicitly:
 
 ```bash
