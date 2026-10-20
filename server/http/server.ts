@@ -14,6 +14,7 @@ import {
   terminalReadSourceSchema,
 } from "../../src/shared/api/contracts.js";
 import { HerdrRequestError } from "../herdr/HerdrClient.js";
+import { LocalImageError, readLocalImage } from "../images/localImages.js";
 import {
   mimeTypeForUpload,
   readImageUpload,
@@ -174,6 +175,20 @@ async function handleApi(
   bridge: LiveBridge,
 ) {
   const url = new URL(request.url ?? "/", `http://${request.headers.host ?? "localhost"}`);
+
+  if (request.method === "GET" && url.pathname === "/api/local-images") {
+    response.setHeader("Cache-Control", "private, no-store");
+    response.setHeader("Cross-Origin-Resource-Policy", "same-origin");
+    if (request.headers.origin) requireSameOrigin(request);
+    const site = request.headers["sec-fetch-site"];
+    if (site && site !== "same-origin" && site !== "none")
+      throw new HttpError(403, "Cross-origin request rejected");
+    const { bytes, mimeType } = await readLocalImage(url.searchParams.get("path") ?? "");
+    response.setHeader("Content-Type", mimeType);
+    response.setHeader("Content-Length", bytes.length);
+    response.end(bytes);
+    return true;
+  }
 
   const uploadMatch = url.pathname.match(/^\/api\/uploads\/([^/]+)$/);
   if (request.method === "GET" && uploadMatch) {
@@ -471,6 +486,7 @@ export function createHttpServer(
       }
       if (
         error instanceof HttpError ||
+        error instanceof LocalImageError ||
         error instanceof LiveChatError ||
         error instanceof BoardError ||
         error instanceof SavedChatError

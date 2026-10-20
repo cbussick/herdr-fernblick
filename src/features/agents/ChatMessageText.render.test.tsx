@@ -17,6 +17,40 @@ describe("ChatMessageText formatting", () => {
     expect(html).not.toContain("![");
   });
 
+  it("renders absolute local image paths through the backend without changing annotation text", () => {
+    const text = "Before ![Logo](</tmp/logo draft #1.png>) **after**.";
+    const src = "/api/local-images?path=%2Ftmp%2Flogo%20draft%20%231.png";
+    const html = renderToStaticMarkup(<ChatMessageText text={text} />);
+    expect(html).toContain(`src="${src}"`);
+    expect(html).toContain(`href="${src}"`);
+    expect(html).toContain('alt="Logo"');
+    expect(html).not.toContain("![");
+    for (let end = 0; end <= text.length; end++) {
+      const partial = text.slice(0, end);
+      const annotated = renderToStaticMarkup(
+        <ChatMessageText text={partial} annotationSource="a1" />,
+      );
+      expect(annotated.replace(/<[^>]+>/g, "")).toBe(renderToStaticMarkup(<>{partial}</>));
+    }
+  });
+
+  it("does not load local paths from prose, ordinary links, code, escaped images or unsupported destinations", () => {
+    const html = renderToStaticMarkup(
+      <ChatMessageText
+        text={
+          "/tmp/a.png [file](/tmp/a.png) `![code](/tmp/a.png)` \\![escaped](/tmp/a.png)\n\n```md\n![code](/tmp/a.png)\n```\n\n![relative](./a.png) ![network](//host/a.png) ![file](file:///tmp/a.png) ![null](/tmp/a%00.png)"
+        }
+      />,
+    );
+    expect(html).not.toContain("<img");
+    expect(html).not.toContain("/api/local-images");
+  });
+
+  it("decodes URL-encoded local names once", () => {
+    const html = renderToStaticMarkup(<ChatMessageText text="![Logo](/tmp/logo%20%2520%3F.png)" />);
+    expect(html).toContain('src="/api/local-images?path=%2Ftmp%2Flogo%20%2520%3F.png"');
+  });
+
   it("does not nest anchors for linked images", () => {
     const html = renderToStaticMarkup(
       <ChatMessageText text="[![Preview](https://example.com/image.png)](https://example.com/page)" />,

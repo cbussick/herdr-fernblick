@@ -141,6 +141,23 @@ images. Existing Pi sessions need `/reload` for paged paths; older peers show a
 reload notice. [Paging and limits](docs/conversation-paths.md). Tree data and navigation use
 the direct Pi bridge, never session-file reads or terminal command injection.
 
+### Local images in chat
+
+Markdown images can refer directly to an absolute path on the VPS:
+`![Logo](/tmp/logo.png)`. For spaces, use `![Logo](</tmp/logo draft.png>)`.
+Fernblick reads the original file through its existing backend and shows it in
+chat with the normal image preview. **It does not copy the file or create an
+attachment.** Each new request reads the current file; moved, deleted or unreadable
+files show as unavailable. Files are not watched for live changes.
+
+Any directory the backend user can read is supported, including symlinks. This
+makes local images accessible to people with access to your private Fernblick
+instance; keep it tailnet-only. Only PNG, JPEG, GIF and WebP content up to 10 MiB
+is served, with no browser caching and cross-origin embedding blocked. SVG, local
+`file:` URLs and relative paths are unsupported. Only Markdown image destinations
+are resolved; plain paths, ordinary links and code examples are not loaded. Paths
+refer to the backend VPS, not your phone or another agent machine.
+
 ### Past sessions
 
 Open **Past sessions** in the sidebar to search saved Pi conversations by title, first
