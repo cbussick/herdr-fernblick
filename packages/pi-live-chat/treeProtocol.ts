@@ -21,7 +21,7 @@ export const treePageRequestSchema = z
     "Paging requires a tree revision",
   );
 export type TreePageRequest = z.input<typeof treePageRequestSchema>;
-export const treePageRowSchema = z.object({
+const treePageRowSchema = z.object({
   id,
   parentId: id.nullable(),
   role: z.enum(["user", "assistant"]),

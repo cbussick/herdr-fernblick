@@ -24,14 +24,14 @@ export const MAX_SNAPSHOT = 2 * 1024 * 1024;
 const id = z.string().min(1).max(256);
 export const footerRequestEvent = "pi.status-footer.request.v1";
 export const footerUpdateEvent = "pi.status-footer.update.v1";
-export const footerLinesSchema = z.array(z.string().max(8192)).min(1).max(2);
+const footerLinesSchema = z.array(z.string().max(8192)).min(1).max(2);
 export const footerPublicationSchema = z.object({
   version: z.literal(1),
   sessionId: id,
   sessionFile: z.string().startsWith("/").max(4096),
   lines: footerLinesSchema.nullable(),
 });
-export const identitySchema = z.object({
+const identitySchema = z.object({
   runtime: z.string().uuid(),
   pid: z.number().int().positive(),
   processStart: id,
@@ -59,15 +59,7 @@ export const messageSchema = z.object({
     .max(MAX_IMAGES)
     .optional(),
 });
-export const thinkingLevelSchema = z.enum([
-  "off",
-  "minimal",
-  "low",
-  "medium",
-  "high",
-  "xhigh",
-  "max",
-]);
+const thinkingLevelSchema = z.enum(["off", "minimal", "low", "medium", "high", "xhigh", "max"]);
 export type ThinkingLevel = z.infer<typeof thinkingLevelSchema>;
 export const snapshotSchema = z.object({
   type: z.literal("snapshot"),
@@ -117,7 +109,7 @@ export type PiTreeNode = {
   isActivePath: boolean;
   children: PiTreeNode[];
 };
-export const piTreeNodeSchema: z.ZodType<PiTreeNode> = z.lazy(() =>
+const piTreeNodeSchema: z.ZodType<PiTreeNode> = z.lazy(() =>
   z.object({
     id,
     parentId: id.nullable(),
@@ -129,7 +121,7 @@ export const piTreeNodeSchema: z.ZodType<PiTreeNode> = z.lazy(() =>
     children: z.array(piTreeNodeSchema).max(2000),
   }),
 );
-export const piTreeSchema = z.object({
+const piTreeSchema = z.object({
   roots: z.array(piTreeNodeSchema).max(2000),
   leafId: id.nullable(),
 });
@@ -164,7 +156,6 @@ export const globalDefaultsSchema = z.object({
   model: modelSelectionSchema.nullable(),
   thinkingLevel: thinkingLevelSchema.nullable(),
 });
-export type GlobalDefaults = z.infer<typeof globalDefaultsSchema>;
 // Optional for older bridges. Present defaults also advertise row-level saving.
 const defaultInfoShape = {
   defaults: globalDefaultsSchema.optional(),
@@ -314,7 +305,7 @@ export const compactionResponseSchema = z.object({
   id: z.string().uuid(),
   target: targetSchema,
 });
-export const shutdownResponseSchema = z.object({
+const shutdownResponseSchema = z.object({
   type: z.literal("shutdown-requested"),
   id: z.string().uuid(),
   target: targetSchema,
@@ -338,7 +329,6 @@ export type Identity = z.infer<typeof identitySchema>;
 export type Snapshot = z.infer<typeof snapshotSchema>;
 export type ChatMessage = z.infer<typeof messageSchema>;
 export type Command = z.infer<typeof commandSchema>;
-export type Ack = z.infer<typeof ackSchema>;
 export type Target = z.infer<typeof targetSchema>;
 export function targetOf(s: Snapshot): Target {
   return { runtime: s.identity.runtime, epoch: s.epoch, sessionId: s.identity.sessionId };

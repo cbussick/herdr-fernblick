@@ -31,7 +31,7 @@ const promptSchema = sendSchema
     uploadId: uploadIdSchema.optional(),
   })
   .strict();
-export const boardEventSchema = z.discriminatedUnion("type", [
+const boardEventSchema = z.discriminatedUnion("type", [
   z.object({
     type: z.literal("changed"),
     revision: z.number().int().nonnegative(),

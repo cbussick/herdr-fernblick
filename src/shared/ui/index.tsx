@@ -12,6 +12,7 @@ import {
 import type { AgentStatus } from "../../shared/api/contracts";
 import { CloseIcon, PlusIcon, SearchIcon } from "./Icons";
 
+/** @internal Retained for the Storybook component gallery, not used by the app. */
 export function Button({
   variant = "primary",
   size = "default",
@@ -121,6 +122,7 @@ export function SearchField({
     </label>
   );
 }
+/** @internal Retained for the Storybook component gallery, not used by the app. */
 export function FormField({
   label,
   help,

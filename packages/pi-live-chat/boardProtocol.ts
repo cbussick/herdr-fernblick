@@ -4,14 +4,14 @@ import { z } from "zod";
 // bounded summary and a deliberately small operation vocabulary, never JS.
 export const MAX_BOARD_BYTES = 12 * 1024 * 1024;
 export const boardIdSchema = z.string().regex(/^[a-f0-9]{64}$/);
-export const elementIdSchema = z
+const elementIdSchema = z
   .string()
   .min(1)
   .max(128)
   .regex(/^[A-Za-z0-9_-]+$/);
 const coordinate = z.number().finite().min(-1_000_000).max(1_000_000);
 const dimension = z.number().finite().min(0).max(100_000);
-export const boardElementSchema = z
+const boardElementSchema = z
   .object({
     id: elementIdSchema,
     type: z.enum([
@@ -32,7 +32,7 @@ export const boardElementSchema = z
     isDeleted: z.boolean().optional(),
   })
   .catchall(z.json());
-export const boardFileSchema = z.object({
+const boardFileSchema = z.object({
   id: z.string().min(1).max(128),
   mimeType: z.enum(["image/png", "image/jpeg", "image/gif", "image/webp"]),
   dataURL: z
@@ -51,8 +51,6 @@ export const boardSceneSchema = z.object({
 });
 export type BoardScene = z.infer<typeof boardSceneSchema>;
 export type BoardElement = z.infer<typeof boardElementSchema>;
-export const boardModeSchema = z.enum(["image", "read", "edit"]);
-export type BoardMode = z.infer<typeof boardModeSchema>;
 export const boardGrantSchema = z.object({
   boardId: boardIdSchema,
   grantId: z.string().uuid(),
@@ -71,7 +69,7 @@ const operationContext = {
   dependsOn: z.array(elementIdSchema).max(50).optional(),
   groupId: elementIdSchema.optional(),
 };
-export const boardOperationSchema = z.discriminatedUnion("op", [
+const boardOperationSchema = z.discriminatedUnion("op", [
   z
     .object({
       ...operationContext,
@@ -131,12 +129,11 @@ export const boardReplySchema = z.object({
   error: z.string().max(1024).optional(),
   data: z.json().optional(),
 });
-export type BoardReply = z.infer<typeof boardReplySchema>;
 export const boardRevokeSchema = z.object({
   type: z.literal("board-revoke"),
   grantId: z.string().uuid(),
 });
-export const boardSnapshotRefSchema = z.object({
+const boardSnapshotRefSchema = z.object({
   id: z.string().uuid(),
   revision: z.number().int().nonnegative(),
   createdAt: z.number(),
