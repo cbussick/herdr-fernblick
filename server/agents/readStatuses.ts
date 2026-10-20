@@ -1,6 +1,6 @@
 import { createHash } from "node:crypto";
 import { constants } from "node:fs";
-import { lstat, mkdir, open, realpath, stat } from "node:fs/promises";
+import { lstat, mkdir, open, readdir, realpath, stat, unlink } from "node:fs/promises";
 import { join, resolve } from "node:path";
 import type { Agent } from "../../src/shared/api/contracts.js";
 import type { HerdrService } from "../herdr/herdrService.js";
@@ -26,12 +26,16 @@ function missing(error: unknown) {
 /** Fernblick-owned receipts. This module only reads Herdr; it never focuses or reports state. */
 export class AgentReadStatuses {
   private readonly directory: string;
+  private readonly namespace: string;
 
   constructor(
     private readonly service: HerdrService,
     private readonly options: ReadReceiptOptions,
   ) {
     this.directory = resolve(options.directory);
+    // Stable across Herdr restarts at this configured endpoint. A separate
+    // socket's receipts must never be garbage-collected from our snapshot.
+    this.namespace = createHash("sha256").update(resolve(options.herdrSocket)).digest("hex");
   }
 
   private async scope() {
@@ -87,7 +91,7 @@ export class AgentReadStatuses {
 
   private async receipt(id: string, create = false) {
     // IDs come from completionId, never from filenames supplied by a browser.
-    const path = join(this.directory, `${id}.read`);
+    const path = join(this.directory, `${this.namespace}.${id}.read`);
     let file;
     try {
       file = await open(
@@ -131,9 +135,42 @@ export class AgentReadStatuses {
     return true;
   }
 
+  private async cleanup(candidates: string[], current: Set<string>) {
+    for (const name of candidates) {
+      const id = name.slice(this.namespace.length + 1, -".read".length);
+      if (current.has(id)) continue;
+      const path = join(this.directory, name);
+      try {
+        // Only remove our empty, private marker files. Never follow links or
+        // recursively delete directories/unrecognized content in this store.
+        const info = await lstat(path);
+        if (
+          info.isFile() &&
+          info.uid === process.getuid?.() &&
+          (info.mode & 0o077) === 0 &&
+          info.nlink === 1 &&
+          info.size === 0
+        )
+          await unlink(path);
+      } catch (error) {
+        if (!missing(error)) throw error;
+      }
+    }
+  }
+
   async getDashboard() {
-    const { dashboard, scope } = await this.snapshot();
     await this.prepare();
+    // Enumerate BEFORE requesting the authoritative snapshot. A slow refresh
+    // must not delete receipts written for a newer answer while it was waiting,
+    // including writes from another backend sharing this directory.
+    const pattern = new RegExp(`^${this.namespace}\\.[a-f0-9]{64}\\.read$`);
+    const candidates = (await readdir(this.directory)).filter((name) => pattern.test(name));
+    const { dashboard, scope } = await this.snapshot();
+    const current = new Set(dashboard.agents.map((agent) => this.completionId(agent, scope)));
+    await this.cleanup(candidates, current).catch(() => {
+      // Cleanup is retryable maintenance; a failure must not hide current agents.
+      console.warn("Could not clean up stale read receipts; will retry on the next refresh.");
+    });
     return {
       ...dashboard,
       agents: await Promise.all(

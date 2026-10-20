@@ -28,8 +28,13 @@ running in a container. The directory must be owned by the backend user, mode
 separate reader accounts). Each marker identifies a Herdr socket generation,
 pane/terminal, agent session, and completion sequence. A cold Herdr restart or
 socket replacement establishes a new namespace so reused IDs cannot hide new
-answers. Markers have no automatic expiry; deleting them resets Fernblick's read
-history. No conversation text is stored in receipts.
+answers. On each successful dashboard refresh, Fernblick removes receipts for
+superseded answers, closed agents, and older generations of that configured
+Herdr socket. Current receipts do not expire with age. Cleanup skips other
+socket namespaces, unrecognized files, and symlinks; it never treats an
+unavailable Herdr as an empty session. When no browser is polling, cleanup waits
+until the next dashboard request. Manually deleting current markers resets
+Fernblick's read history. No conversation text is stored in receipts.
 
 Manrope is licensed under the SIL Open Font License 1.1. Its complete copyright notice and license ship at `/licenses/Manrope-OFL.txt`; see [font provenance](src/styles/fonts/README.md). See [styling and development conventions](docs/development.md) and the [three-viewport screenshot gallery tooling](tools/design/README.md).
 
