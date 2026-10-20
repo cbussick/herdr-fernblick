@@ -69,6 +69,8 @@ function fakePi(session = "session") {
     hasPendingMessages: () => false,
     abort: vi.fn(),
     compact: vi.fn(),
+    shutdown: vi.fn(),
+    ui: { getEditorText: vi.fn(() => ""), setEditorText: vi.fn() },
     sessionManager: {
       getBranch: () => branch,
       getEntries: () => branch,
@@ -179,7 +181,7 @@ async function setup(beforeStart?: (pi: ReturnType<typeof fakePi>) => void) {
   expect(pi.emit("session_start")).toEqual([undefined]);
   await vi.waitFor(() => expect(latest()).toBeDefined());
   const command = (
-    action: "send" | "stop" | "compact",
+    action: "send" | "stop" | "compact" | "shutdown",
     target = targetOf(latest()!),
     text = "hello",
   ) => {
@@ -203,6 +205,71 @@ async function setup(beforeStart?: (pi: ReturnType<typeof fakePi>) => void) {
   };
   return { ...pi, latest, command, ack, connections, frames, server, dir };
 }
+it.each(["Old draft", "  ", "Line one\nLine two", "[Image attachment]"])(
+  "refuses shutdown without submitting or discarding editor text: %j",
+  async (draft) => {
+    const t = await setup();
+    vi.mocked(t.ctx.ui.getEditorText).mockReturnValue(draft);
+    expect(await t.ack(t.command("shutdown"))).toMatchObject({
+      type: "ack",
+      outcome: "rejected",
+      reason: expect.stringContaining("unsent draft"),
+    });
+    expect(t.ctx.shutdown).not.toHaveBeenCalled();
+    expect(t.ctx.ui.setEditorText).not.toHaveBeenCalled();
+    expect(t.pi.sendUserMessage).not.toHaveBeenCalled();
+    expect(t.branch).toEqual([]);
+  },
+);
+
+it("requests orderly shutdown once with correlated confirmation, never a prompt", async () => {
+  const t = await setup();
+  const target = targetOf(t.latest()!);
+  const id = t.command("shutdown");
+  expect(await t.ack(id)).toMatchObject({ type: "shutdown-requested", id, target });
+  expect(t.ctx.shutdown).toHaveBeenCalledOnce();
+  expect(await t.ack(t.command("send"))).toMatchObject({
+    outcome: "rejected",
+    reason: "Pi is shutting down",
+  });
+  expect(await t.ack(t.command("shutdown"))).toMatchObject({ outcome: "rejected" });
+  expect(t.pi.sendUserMessage).not.toHaveBeenCalled();
+  expect(t.ctx.ui.setEditorText).not.toHaveBeenCalled();
+  expect(t.branch).toEqual([]);
+});
+
+it("delivers shutdown confirmation even when cleanup closes the socket immediately", async () => {
+  const t = await setup();
+  vi.mocked(t.ctx.shutdown).mockImplementation(() => {
+    t.emit("session_shutdown");
+  });
+  expect(await t.ack(t.command("shutdown"))).toMatchObject({ type: "shutdown-requested" });
+  expect(t.ctx.shutdown).toHaveBeenCalledOnce();
+});
+
+it.each(["busy", "queued", "send-pending", "stale", "unreadable-editor"])(
+  "refuses unsafe shutdown: %s",
+  async (condition) => {
+    const t = await setup();
+    if (condition === "busy") t.setIdle(false);
+    if (condition === "queued") t.ctx.hasPendingMessages = () => true;
+    if (condition === "send-pending") await t.ack(t.command("send"));
+    if (condition === "unreadable-editor")
+      vi.mocked(t.ctx.ui.getEditorText).mockImplementation(() => {
+        throw new Error("Editor unavailable");
+      });
+    const target = targetOf(t.latest()!);
+    if (condition === "stale") target.epoch = randomUUID();
+    expect(await t.ack(t.command("shutdown", target))).toMatchObject({
+      type: "ack",
+      outcome: "rejected",
+    });
+    expect(t.ctx.shutdown).not.toHaveBeenCalled();
+    expect(t.ctx.ui.setEditorText).not.toHaveBeenCalled();
+    expect(t.pi.sendUserMessage).toHaveBeenCalledTimes(condition === "send-pending" ? 1 : 0);
+  },
+);
+
 function defaultCommand(
   t: Awaited<ReturnType<typeof setup>>,
   selection: object = { kind: "model", provider: "provider", modelId: "model" },
@@ -844,6 +911,103 @@ it("restores a root prompt through real Pi even when a tree hook appends extensi
       type: "session_shutdown",
       reason: "quit",
     });
+    session.dispose();
+  }
+}, 20_000);
+
+it("uses real Pi shutdown bindings without submitting or changing a terminal draft", async () => {
+  const t = await setup();
+  t.emit("session_shutdown");
+  vi.stubEnv("PI_OFFLINE", "1");
+  const { createAgentSession, DefaultResourceLoader, SessionManager, SettingsManager } =
+    (await import(
+      process.env.PI_TREE_TEST_MODULE ?? "@earendil-works/pi-coding-agent"
+    )) as typeof import("@earendil-works/pi-coding-agent");
+  const { Editor } = (await import(
+    process.env.PI_EDITOR_TEST_MODULE ?? "@earendil-works/pi-tui"
+  )) as typeof import("@earendil-works/pi-tui");
+  const identity = (text: string) => text;
+  const editor = new Editor(
+    {
+      requestRender() {},
+      terminal: { rows: 24, columns: 80 },
+    } as unknown as import("@earendil-works/pi-tui").TUI,
+    {
+      borderColor: identity,
+      selectList: {
+        selectedPrefix: identity,
+        selectedText: identity,
+        description: identity,
+        scrollInfo: identity,
+        noMatch: identity,
+      },
+    },
+  );
+  editor.setText("An older unsent prompt");
+  const submitted = vi.fn();
+  editor.onSubmit = submitted;
+  const manager = SessionManager.create(t.dir, join(t.dir, "sessions"));
+  manager.appendMessage({ role: "user", content: "saved conversation", timestamp: 1 });
+  const settingsManager = SettingsManager.inMemory();
+  const agentDir = join(t.dir, "isolated-agent");
+  const resourceLoader = new DefaultResourceLoader({
+    cwd: t.dir,
+    agentDir,
+    settingsManager,
+    noExtensions: true,
+    noSkills: true,
+    noPromptTemplates: true,
+    noThemes: true,
+    noContextFiles: true,
+    extensionFactories: [liveChat],
+  });
+  await resourceLoader.reload();
+  expect(resourceLoader.getExtensions().errors).toEqual([]);
+  const { session } = await createAgentSession({
+    cwd: t.dir,
+    agentDir,
+    settingsManager,
+    resourceLoader,
+    sessionManager: manager,
+    tools: [],
+  });
+  const prompt = vi.spyOn(session.agent, "prompt");
+  const stream = vi.fn(() => {
+    throw new Error("Model must never be called");
+  });
+  session.agent.streamFunction = stream;
+  const shutdown = vi.fn();
+  const errors: unknown[] = [];
+  try {
+    await session.bindExtensions({
+      mode: "tui",
+      shutdownHandler: shutdown,
+      uiContext: {
+        ...t.ctx.ui,
+        getEditorText: () => editor.getExpandedText(),
+        setEditorText: (text) => editor.setText(text),
+      },
+      onError: (error) => errors.push(error),
+    });
+    await vi.waitFor(() => expect(t.latest()?.identity.sessionId).toBe(manager.getSessionId()));
+    const entries = manager.getEntries();
+    expect(await t.ack(t.command("shutdown"))).toMatchObject({
+      outcome: "rejected",
+      reason: expect.stringContaining("unsent draft"),
+    });
+    expect(editor.getText()).toBe("An older unsent prompt");
+    expect(shutdown).not.toHaveBeenCalled();
+    // Simulate the user saving/clearing their editor, never the restart code.
+    editor.setText("");
+    expect(await t.ack(t.command("shutdown"))).toMatchObject({ type: "shutdown-requested" });
+    expect(shutdown).toHaveBeenCalledOnce();
+    expect(prompt).not.toHaveBeenCalled();
+    expect(stream).not.toHaveBeenCalled();
+    expect(submitted).not.toHaveBeenCalled();
+    expect(manager.getEntries()).toEqual(entries);
+    expect(errors).toEqual([]);
+  } finally {
+    await session.extensionRunner?.emit({ type: "session_shutdown", reason: "quit" });
     session.dispose();
   }
 }, 20_000);
@@ -1604,6 +1768,7 @@ it("advertises boards, dispatches private RPCs before commands, and gates read-o
     thinking: true,
     defaults: true,
     treePages: true,
+    shutdown: true,
   });
   expect(t.tools.get("board_read")).toMatchObject({
     exposure: "hidden",

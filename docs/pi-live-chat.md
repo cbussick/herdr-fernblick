@@ -86,6 +86,27 @@ handoff update this one row without shifting the composer; a live busy event tak
 precedence and changes it to `Working` or `Compacting…`. Stop appears only while
 Pi is busy, never during upload/forwarding/handoff. The row disappears when idle.
 
+`POST .../restart` never sends terminal text or Enter. It resolves the foreground
+live peer for the saved session, requires `capabilities.shutdown: true`, and sends
+a correlated `shutdown` command with the captured runtime/session/epoch. The
+extension refuses busy/queued/preparing work and any nonempty terminal editor
+(including whitespace or image markers). It neither submits nor clears a draft.
+With an empty editor it returns `shutdown-requested` and invokes public
+`ctx.shutdown()`. This reply confirms a request, **not process exit**: Fernblick
+also waits for the old agent to disappear before starting the same session in the
+same pane. Concurrent restarts of that pane are rejected. Rejection, missing
+capability, stale identity, disconnect or timeout never falls back to typed
+`/quit`, and no restart is automatically retried. A lost confirmation may leave
+Pi stopped without a replacement; inspect Pi before explicitly resuming.
+
+Existing Pi sessions must manually `/reload` the live-chat extension to enable
+safe restart. If Pi has an editor draft, preserve it elsewhere and clear the
+terminal editor yourself before retrying. The browser composer is separate and
+is not read or changed by this operation. The old restart implementation pasted
+`/quit` into that potentially nonempty terminal editor, which could submit an
+abandoned prompt as a new message; this is covered by an actual Pi Editor
+regression in `server/herdr/restart.test.ts` and real SDK shutdown-binding tests.
+
 `POST .../tree-page` accepts `{target,page}` for peers advertising
 `capabilities.treePages: true`. The dialog requests a flat, bounded page from
 public Pi `getEntries()/getLeafId()`: at most 50 rows, 240-character text previews,

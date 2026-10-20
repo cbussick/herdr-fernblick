@@ -8,6 +8,7 @@ import {
   commandSchema,
   COMPACT_TIMEOUT_MS,
   matchesTarget,
+  targetOf,
   sameDefaultSelection,
   type DefaultSelection,
   snapshotSchema,
@@ -235,25 +236,27 @@ export class LiveBridge {
               ? response.outcome === "rejected" ||
                 pending.command.action === "send" ||
                 pending.command.action === "stop"
-              : response.type === "default-saved"
-                ? pending.command.action === "save-default"
-                : response.type === "tree-page"
-                  ? pending.command.action === "tree-page"
-                  : response.type === "tree"
-                    ? pending.command.action === "tree"
-                    : response.type === "skills"
-                      ? pending.command.action === "skills"
-                      : response.type === "thinking-levels"
-                        ? pending.command.action === "thinking-levels"
-                        : response.type === "thinking-level-changed"
-                          ? pending.command.action === "set-thinking-level"
-                          : response.type === "models"
-                            ? pending.command.action === "models"
-                            : response.type === "model-changed"
-                              ? pending.command.action === "set-model"
-                              : response.type === "compacted"
-                                ? pending.command.action === "compact"
-                                : pending.command.action === "navigate";
+              : response.type === "shutdown-requested"
+                ? pending.command.action === "shutdown"
+                : response.type === "default-saved"
+                  ? pending.command.action === "save-default"
+                  : response.type === "tree-page"
+                    ? pending.command.action === "tree-page"
+                    : response.type === "tree"
+                      ? pending.command.action === "tree"
+                      : response.type === "skills"
+                        ? pending.command.action === "skills"
+                        : response.type === "thinking-levels"
+                          ? pending.command.action === "thinking-levels"
+                          : response.type === "thinking-level-changed"
+                            ? pending.command.action === "set-thinking-level"
+                            : response.type === "models"
+                              ? pending.command.action === "models"
+                              : response.type === "model-changed"
+                                ? pending.command.action === "set-model"
+                                : response.type === "compacted"
+                                  ? pending.command.action === "compact"
+                                  : pending.command.action === "navigate";
           const validTarget =
             response.type === "ack" ||
             (response.target.runtime === pending.command.target.runtime &&
@@ -376,6 +379,15 @@ export class LiveBridge {
       action === "send" ? { action, text: text ?? "", attachments } : { action },
     );
   }
+  async shutdownForRestart(agent: Agent): Promise<void> {
+    const { snapshot } = await this.resolve(agent);
+    const response = await this.request(agent, targetOf(snapshot), { action: "shutdown" });
+    if (response.type === "ack" && response.outcome === "rejected")
+      throw new LiveChatError(409, response.reason ?? "Pi refused to shut down");
+    if (response.type !== "shutdown-requested")
+      throw new LiveChatError(409, "No confirmed shutdown; inspect Pi before trying again");
+  }
+
   async request(
     agent: Agent,
     target: Target,
@@ -387,7 +399,16 @@ export class LiveBridge {
           requestId?: string;
           board?: BoardGrant;
         }
-      | { action: "stop" | "tree" | "skills" | "compact" | "models" | "thinking-levels" }
+      | {
+          action:
+            | "stop"
+            | "tree"
+            | "skills"
+            | "compact"
+            | "models"
+            | "thinking-levels"
+            | "shutdown";
+        }
       | { action: "set-thinking-level"; provider: string; modelId: string; level: ThinkingLevel }
       | { action: "set-model"; provider: string; modelId: string }
       | { action: "save-default"; selection: DefaultSelection }
@@ -424,6 +445,11 @@ export class LiveBridge {
       !peer.snapshot.capabilities?.thinking
     )
       throw new LiveChatError(409, "Run /reload in Pi to enable thinking level selection");
+    if (command.action === "shutdown" && !peer.snapshot.capabilities?.shutdown)
+      throw new LiveChatError(
+        409,
+        "Run /reload manually in Pi to enable safe restart; no terminal input was sent",
+      );
     if (command.action === "tree-page" && !peer.snapshot.capabilities?.treePages)
       throw new LiveChatError(409, "Run /reload in Pi to browse large conversation paths");
     if (command.action === "save-default" && !peer.snapshot.capabilities?.defaults)
@@ -440,6 +466,7 @@ export class LiveBridge {
       throw new LiveChatError(409, "A command is already in flight");
     if (
       (command.action === "send" ||
+        command.action === "shutdown" ||
         command.action === "navigate" ||
         command.action === "set-model" ||
         command.action === "set-thinking-level" ||
@@ -450,7 +477,7 @@ export class LiveBridge {
       throw new LiveChatError(409, "Pi is busy or a previous send is unresolved");
     if (command.action === "send" && command.board && !peer.snapshot.capabilities?.boards)
       throw new LiveChatError(409, "Run /reload in Pi to enable whiteboard tools");
-    if (["send", "stop", "navigate", "compact"].includes(command.action))
+    if (["send", "stop", "navigate", "compact", "shutdown"].includes(command.action))
       this.clearBoardAccess(peer);
     if (command.action === "send" && command.board) peer.boardGrant = command.board;
     const id = command.id;

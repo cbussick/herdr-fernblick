@@ -81,6 +81,7 @@ export const snapshotSchema = z.object({
       thinking: z.literal(true).optional(),
       defaults: z.literal(true).optional(),
       treePages: z.literal(true).optional(),
+      shutdown: z.literal(true).optional(),
     })
     .optional(),
   identity: identitySchema,
@@ -230,7 +231,7 @@ export const commandSchema = z
       type: z.literal("command"),
       id: z.string().uuid(),
       target: targetSchema,
-      action: z.enum(["tree", "skills", "compact", "models", "thinking-levels"]),
+      action: z.enum(["tree", "skills", "compact", "models", "thinking-levels", "shutdown"]),
     }),
     z.object({
       type: z.literal("command"),
@@ -313,8 +314,14 @@ export const compactionResponseSchema = z.object({
   id: z.string().uuid(),
   target: targetSchema,
 });
+export const shutdownResponseSchema = z.object({
+  type: z.literal("shutdown-requested"),
+  id: z.string().uuid(),
+  target: targetSchema,
+});
 export const responseSchema = z.union([
   ackSchema,
+  shutdownResponseSchema,
   treeResponseSchema,
   treePageResponseSchema,
   navigationResponseSchema,

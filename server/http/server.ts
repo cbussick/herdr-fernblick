@@ -328,7 +328,11 @@ async function handleApi(
 
   if (request.method === "POST" && route.action === "restart") {
     requireSameOrigin(request);
-    sendJson(response, 200, { agent: await service.restartPiAgent(route.target) });
+    sendJson(response, 200, {
+      agent: await service.restartPiAgent(route.target, (agent) =>
+        bridge.shutdownForRestart(agent),
+      ),
+    });
     return true;
   }
 

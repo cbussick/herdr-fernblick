@@ -157,6 +157,12 @@ immediately. If a session was opened after the list loaded, Resume selects that
 existing agent instead of starting a duplicate. Resuming does not send a prompt.
 The original project directory must still exist.
 
+**Restart session** uses Pi’s live shutdown API, not a typed terminal command.
+It refuses to restart while Pi is busy or its terminal editor contains an unsent
+draft. Save that text elsewhere and clear the terminal editor before retrying;
+restart never submits or discards it. Existing Pi sessions need a manual `/reload`
+to enable safe restart. The browser composer is separate and remains untouched.
+
 Use a session's **Delete** button and confirm **Delete session** to permanently remove
 its saved session file, associated whiteboards (including embedded assets and saved
 snapshots), and referenced image uploads not shared with another saved session.

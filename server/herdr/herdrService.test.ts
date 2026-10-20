@@ -179,13 +179,11 @@ it("gracefully restarts Pi in the same pane and session", async () => {
   });
   const service = new HerdrService({ request } as unknown as HerdrClient);
 
-  await service.restartPiAgent("fix-auth");
+  const shutdown = vi.fn(async () => {});
+  await service.restartPiAgent("fix-auth", shutdown);
 
-  expect(request).toHaveBeenCalledWith(
-    "pane.send_input",
-    { pane_id: "w1:p2", text: "/quit", keys: ["enter"] },
-    expect.anything(),
-  );
+  expect(shutdown).toHaveBeenCalledWith(restartableAgent);
+  expect(request.mock.calls.some(([method]) => method === "pane.send_input")).toBe(false);
   expect(request).toHaveBeenCalledWith(
     "agent.start",
     expect.objectContaining({

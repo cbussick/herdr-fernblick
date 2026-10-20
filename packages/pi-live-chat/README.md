@@ -186,6 +186,13 @@ review handoff.
   produces `default-saved`; no ACK, automatic retry, session mutation or prompt
   is used. Defaults affect newly launched Pi sessions, including outside
   Fernblick; project/per-model/resume/CLI overrides still apply.
+- Safe restart requires `capabilities.shutdown` and calls public `ctx.shutdown()`
+  through a target-validated `shutdown` command, never terminal input or a prompt.
+  Busy/queued/preparing work and nonempty terminal editor text reject restart.
+  Drafts are neither submitted nor cleared. A typed `shutdown-requested` reply
+  confirms only the request; Fernblick also waits for the old agent to exit before
+  relaunching the same saved session. No retry or terminal fallback is used.
+  Older peers must manually `/reload`; save/clear terminal drafts in Pi first.
 - Stop invokes void `ctx.abort()`. Working/stopped state comes from later Pi
   events, not the ACK or Herdr status. `agent_end` alone is not final settlement.
 - Conversation paths use public `getEntries()/getLeafId()`, with labels and the

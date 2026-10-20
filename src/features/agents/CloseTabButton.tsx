@@ -52,6 +52,7 @@ export function CloseTabButton({
   });
   const restartMutation = useMutation({
     mutationFn: () => restartAgent(agentTarget!),
+    retry: false,
     onSuccess: () => {
       void queryClient.invalidateQueries({ queryKey: ["agents"] });
       void queryClient.invalidateQueries({ queryKey: ["agent-output", agentTarget] });
@@ -152,7 +153,8 @@ export function CloseTabButton({
             <h2>Restart this agent session?</h2>
             <p>
               Pi will close and reopen in the same terminal with this conversation and its branches
-              preserved.
+              preserved. Restart is blocked if Pi has an unsent terminal draft; save or clear that
+              draft in Pi first. Nothing will be submitted automatically.
             </p>
             {restartMutation.isError ? <p role="alert">{restartMutation.error.message}</p> : null}
             <div className={dialogStyles["edit-tab-dialog__actions"]}>

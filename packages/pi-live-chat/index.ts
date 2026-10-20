@@ -76,6 +76,7 @@ export default function liveChat(pi: ExtensionAPI) {
   let sendPending = false;
   let handoffTimer: ReturnType<typeof setTimeout> | undefined;
   let preparing = false;
+  let shuttingDown = false;
   let uiBlocked = false;
   let imageHistory = new ImageHistory();
   let projector = new TranscriptProjector(imageHistory.url);
@@ -200,6 +201,7 @@ export default function liveChat(pi: ExtensionAPI) {
     footerLines = undefined;
     identity = undefined;
     preparing = false;
+    shuttingDown = false;
     compacting = false;
     clearTimeout(retry);
     clearTimeout(publishTimer);
@@ -234,6 +236,7 @@ export default function liveChat(pi: ExtensionAPI) {
           thinking: true,
           defaults: true,
           treePages: true,
+          shutdown: true,
         },
         identity,
         epoch,
@@ -405,6 +408,10 @@ export default function liveChat(pi: ExtensionAPI) {
           return;
         }
         seen.add(command.id);
+        if (shuttingDown) {
+          reject("Pi is shutting down");
+          return;
+        }
         // Stop revokes permission immediately, including during async preparation.
         if (command.action === "stop") {
           inputGeneration++;
@@ -412,6 +419,39 @@ export default function liveChat(pi: ExtensionAPI) {
         }
         if (preparing && command.action !== "stop") {
           reject("A command is already in flight");
+          return;
+        }
+        if (command.action === "shutdown") {
+          try {
+            if (value.busy || sendPending)
+              throw new Error("Pi is busy or a previous send is unresolved");
+            if (
+              typeof context.ui?.getEditorText !== "function" ||
+              typeof context.shutdown !== "function"
+            )
+              throw new Error("Cannot safely inspect or shut down this Pi runtime");
+            if (context.ui.getEditorText().length > 0)
+              throw new Error(
+                "Pi terminal has an unsent draft. Save or clear it in Pi before restarting; nothing was submitted or discarded.",
+              );
+            preparing = shuttingDown = true;
+            // Confirmation means the shutdown was requested, not that Pi exited.
+            // The backend must also observe the old agent disappear before restart.
+            if (
+              !writeFrame(client, {
+                type: "shutdown-requested",
+                id: command.id,
+                target: command.target,
+              })
+            ) {
+              preparing = shuttingDown = false;
+              return;
+            }
+            context.shutdown();
+          } catch (error) {
+            preparing = shuttingDown = false;
+            reject(error instanceof Error ? error.message.slice(0, 512) : "Shutdown unavailable");
+          }
           return;
         }
         if (command.action === "skills") {

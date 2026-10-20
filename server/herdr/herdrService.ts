@@ -98,6 +98,7 @@ const workspaceCreatedResultSchema = z.object({
 
 export class HerdrService {
   private readonly resuming = new Map<string, Promise<Agent>>();
+  private readonly restarting = new Set<string>();
   private readonly deleting = new Map<
     string,
     Promise<{ sessionId: string | null; boardIds: string[] }>
@@ -311,7 +312,7 @@ export class HerdrService {
     await this.client.request("agent.rename", { target, name }, z.unknown());
   }
 
-  async restartPiAgent(target: string) {
+  async restartPiAgent(target: string, requestShutdown: (agent: Agent) => Promise<void>) {
     const { agent } = await this.client.request("agent.get", { target }, agentInfoResultSchema);
     if (agent.agent !== "pi" || agent.agent_session?.kind !== "path") {
       throw new Error("Only Pi agents with a saved session can be restarted");
@@ -323,39 +324,45 @@ export class HerdrService {
       );
     }
 
-    const name =
-      agent.name ?? `pi-${agent.pane_id.replace(/[^a-z0-9_-]/gi, "-").toLowerCase()}`.slice(0, 32);
-    await this.client.request(
-      "pane.send_input",
-      { pane_id: agent.pane_id, text: "/quit", keys: ["enter"] },
-      okResultSchema,
-    );
+    if (this.restarting.has(agent.pane_id))
+      throw new HerdrRequestError("agent_busy", "A restart is already in progress for this pane");
+    this.restarting.add(agent.pane_id);
+    try {
+      const name =
+        agent.name ??
+        `pi-${agent.pane_id.replace(/[^a-z0-9_-]/gi, "-").toLowerCase()}`.slice(0, 32);
+      // Never type into the terminal: an editor draft would become a user prompt.
+      // The live peer validates identity, idle state and editor contents itself.
+      await requestShutdown(agent);
 
-    const deadline = Date.now() + 10_000;
-    let exited = false;
-    while (Date.now() < deadline) {
-      await delay(100);
-      const dashboard = await this.getDashboard();
-      if (!dashboard.agents.some((candidate) => candidate.pane_id === agent.pane_id)) {
-        exited = true;
-        break;
+      const deadline = Date.now() + 10_000;
+      let exited = false;
+      while (Date.now() < deadline) {
+        await delay(100);
+        const dashboard = await this.getDashboard();
+        if (!dashboard.agents.some((candidate) => candidate.pane_id === agent.pane_id)) {
+          exited = true;
+          break;
+        }
       }
-    }
-    if (!exited) throw new HerdrRequestError("restart_timeout", "Pi did not exit in time");
+      if (!exited) throw new HerdrRequestError("restart_timeout", "Pi did not exit in time");
 
-    await delay(150);
-    const restarted = await this.client.request(
-      "agent.start",
-      {
-        name,
-        kind: "pi",
-        pane_id: agent.pane_id,
-        timeout_ms: 30_000,
-        args: ["--session", agent.agent_session.value, ...extensionArgs()],
-      },
-      agentStartedResultSchema,
-    );
-    return restarted.agent;
+      await delay(150);
+      const restarted = await this.client.request(
+        "agent.start",
+        {
+          name,
+          kind: "pi",
+          pane_id: agent.pane_id,
+          timeout_ms: 30_000,
+          args: ["--session", agent.agent_session.value, ...extensionArgs()],
+        },
+        agentStartedResultSchema,
+      );
+      return restarted.agent;
+    } finally {
+      this.restarting.delete(agent.pane_id);
+    }
   }
 
   async renameTab(tabId: string, label: string) {
