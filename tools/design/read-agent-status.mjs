@@ -24,9 +24,11 @@ for (const [engine, browserType] of [
       [834, 1194],
       [1440, 1000],
     ]) {
-      const page = await browser.newPage({ viewport: { width, height } });
+      const page = await browser.newPage({ viewport: { width, height }, serviceWorkers: "block" });
       const errors = [];
       let completion = 12;
+      const completionId = () => completion.toString(16).padStart(64, "0");
+      const readCompletions = new Set();
       let polls = 0;
       page.on("pageerror", (error) => errors.push(error.message));
       await page.addInitScript((identity) => {
@@ -60,7 +62,15 @@ for (const [engine, browserType] of [
       }, identity);
       await page.route("**/api/**", async (route) => {
         const request = route.request();
-        if (new URL(request.url()).pathname !== "/api/agents" || request.method() !== "GET") {
+        const pathname = decodeURIComponent(new URL(request.url()).pathname);
+        if (pathname === "/api/agents/w1:p1/read" && request.method() === "POST") {
+          const id = request.postDataJSON().completionId;
+          if (id !== completionId())
+            return route.fulfill({ status: 409, json: { error: "Answer changed" } });
+          readCompletions.add(id);
+          return route.fulfill({ json: { ok: true } });
+        }
+        if (pathname !== "/api/agents" || request.method() !== "GET") {
           errors.push(`Unexpected request: ${request.method()} ${request.url()}`);
           return route.fulfill({ status: 500, json: { error: "Unexpected request" } });
         }
@@ -78,6 +88,7 @@ for (const [engine, browserType] of [
                 workspace_id: "w1",
                 revision: polls,
                 state_change_seq: completion,
+                completion: { id: completionId(), read: readCompletions.has(completionId()) },
                 tab_label: "Ready answer",
                 agent_session: {
                   agent: "pi",
@@ -100,18 +111,26 @@ for (const [engine, browserType] of [
       await row.click();
       await page.getByText("The work is ready to read.", { exact: true }).waitFor();
       await page.getByRole("button", { name: "Back to overview", exact: true }).click();
-      assert((await row.textContent()).includes("Idle"));
+      await row.getByText("Idle", { exact: true }).waitFor();
       const afterReading = polls;
       await page.waitForResponse((response) => new URL(response.url()).pathname === "/api/agents");
       assert(polls > afterReading);
       assert((await row.textContent()).includes("Idle"), "Polling must not restore the read badge");
       assert((await workspace.locator("summary").textContent()).includes("Idle"));
+      await page.reload();
+      await workspace.waitFor();
+      if (!(await row.isVisible())) await workspace.locator("summary").click();
+      await row.getByText("Idle", { exact: true }).waitFor();
+      assert(
+        (await workspace.locator("summary").textContent()).includes("Idle"),
+        "Reload must restore backend read receipts",
+      );
       completion = 14;
       await row.getByText("New answer", { exact: true }).waitFor();
       assert((await workspace.locator("summary").textContent()).includes("New answer"));
       assert.deepEqual(errors, []);
       console.log(
-        `${engine} ${width}x${height}: read/back stays Idle across polling; next answer unread`,
+        `${engine} ${width}x${height}: read/back stays Idle across polling and reload; next answer unread`,
       );
       await page.close();
     }

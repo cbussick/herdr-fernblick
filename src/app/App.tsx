@@ -28,7 +28,11 @@ export function App() {
     refetchInterval: 2_000,
   });
 
-  const agents = useReadAgentStatuses(
+  const {
+    agents,
+    error: readError,
+    retry: retryRead,
+  } = useReadAgentStatuses(
     agentsQuery.data?.agents ?? [],
     agentsQuery.isSuccess ? selectedPaneId : null,
   );
@@ -66,6 +70,15 @@ export function App() {
       <a href="#main-content" className={appStyles["skip-link"]}>
         Skip to content
       </a>
+
+      {readError && (
+        <div className={appStyles["read-error"]} role="alert">
+          <p>Could not save read status. The answer may appear new after reopening.</p>
+          <button type="button" onClick={retryRead}>
+            Retry
+          </button>
+        </div>
+      )}
 
       {agentsQuery.isPending && agentsQuery.isPaused ? (
         <div className={appStyles["page-state"]} data-testid="page-state" role="status">

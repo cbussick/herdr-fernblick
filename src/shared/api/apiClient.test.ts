@@ -2,6 +2,7 @@ import { randomUUID } from "node:crypto";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
 import {
   chatCommand,
+  markAgentRead,
   compactAgentConversation,
   getAgentSkills,
   getAgentModels,
@@ -47,6 +48,19 @@ it.each([getAgentOutput, getPaneOutput])(
     expect(fetchMock.mock.calls[1][1].signal).toBe(controller.signal);
   },
 );
+
+it("sends only a completion receipt and requires confirmation before displaying read", async () => {
+  const input = { paneId: "w1:p1", completionId: "a".repeat(64) };
+  fetchMock.mockResolvedValueOnce(Response.json({ ok: true }));
+  await markAgentRead(input);
+  expect(fetchMock.mock.calls[0][0]).toBe("/api/agents/w1%3Ap1/read");
+  expect(JSON.parse(fetchMock.mock.calls[0][1].body)).toEqual({ completionId: input.completionId });
+  expect(fetchMock.mock.calls[0][1].keepalive).toBe(true);
+  fetchMock.mockResolvedValueOnce(Response.json({ ok: false }));
+  await expect(markAgentRead(input)).rejects.toThrow();
+  fetchMock.mockResolvedValueOnce(Response.json({ error: "Answer changed" }, { status: 409 }));
+  await expect(markAgentRead(input)).rejects.toMatchObject({ status: 409 });
+});
 
 it("requires confirmed compaction for the current target, not a forwarding ACK", async () => {
   const reply = { type: "compacted", id: randomUUID(), target };

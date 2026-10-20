@@ -23,7 +23,12 @@ const service = new HerdrService(
   new SessionCatalog(),
   new ChatArtifacts(boards, herdrSocket),
 );
-const server = createHttpServer(service, join(projectRoot, "dist"), bridge, boards);
+const server = createHttpServer(service, join(projectRoot, "dist"), bridge, boards, {
+  directory:
+    process.env.FERNBLICK_READ_RECEIPT_DIR ??
+    join(homedir(), ".local/share/fernblick/read-receipts"),
+  herdrSocket,
+});
 server.on("close", () => {
   boards.close();
   void bridge.close();

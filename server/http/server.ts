@@ -4,6 +4,7 @@ import { extname, resolve, sep } from "node:path";
 import { z } from "zod";
 import {
   createAgentRequestSchema,
+  markAgentReadRequestSchema,
   createTabRequestSchema,
   createWorkspaceRequestSchema,
   keyRequestSchema,
@@ -14,6 +15,11 @@ import {
   terminalReadSourceSchema,
 } from "../../src/shared/api/contracts.js";
 import { HerdrRequestError } from "../herdr/HerdrClient.js";
+import {
+  AgentReadStatuses,
+  ReadStatusError,
+  type ReadReceiptOptions,
+} from "../agents/readStatuses.js";
 import {
   mimeTypeForUpload,
   readImageUpload,
@@ -141,7 +147,7 @@ class HttpError extends Error {
 
 function getAgentRoute(pathname: string) {
   const match = pathname.match(
-    /^\/api\/agents\/([^/]+)(?:\/(output|chat|prompt|stop|tree|tree-page|tree-navigation|skills|compact|models|set-model|thinking-levels|set-thinking-level|save-default|keys|restart))?$/,
+    /^\/api\/agents\/([^/]+)(?:\/(output|chat|prompt|stop|tree|tree-page|tree-navigation|skills|compact|models|set-model|thinking-levels|set-thinking-level|save-default|keys|restart|read))?$/,
   );
   if (!match) return null;
 
@@ -172,6 +178,7 @@ async function handleApi(
   response: ServerResponse,
   service: HerdrService,
   bridge: LiveBridge,
+  readStatuses?: AgentReadStatuses,
 ) {
   const url = new URL(request.url ?? "/", `http://${request.headers.host ?? "localhost"}`);
 
@@ -235,7 +242,8 @@ async function handleApi(
   }
 
   if (request.method === "GET" && url.pathname === "/api/agents") {
-    sendJson(response, 200, await service.getDashboard());
+    response.setHeader("Cache-Control", "no-store");
+    sendJson(response, 200, await (readStatuses ?? service).getDashboard());
     return true;
   }
 
@@ -302,6 +310,15 @@ async function handleApi(
 
   const route = getAgentRoute(url.pathname);
   if (!route) return false;
+
+  if (request.method === "POST" && route.action === "read") {
+    requireSameOrigin(request);
+    const body = markAgentReadRequestSchema.parse(await readJson(request));
+    if (!readStatuses) throw new HttpError(503, "Read receipt storage is not configured");
+    await readStatuses.markRead(route.target, body.completionId);
+    sendJson(response, 200, { ok: true });
+    return true;
+  }
 
   if (request.method === "PATCH" && !route.action) {
     requireSameOrigin(request);
@@ -451,7 +468,11 @@ export function createHttpServer(
   publicDir: string,
   bridge: LiveBridge,
   boards?: BoardStore,
+  readReceiptOptions?: ReadReceiptOptions,
 ) {
+  const readStatuses = readReceiptOptions
+    ? new AgentReadStatuses(service, readReceiptOptions)
+    : undefined;
   if (boards) bridge.setBoardStore(boards);
   const handleBoard = boards ? createBoardRoutes(service, bridge, boards) : undefined;
   return createServer(async (request, response) => {
@@ -460,7 +481,7 @@ export function createHttpServer(
     try {
       const handled = request.url?.startsWith("/api/")
         ? (await handleBoard?.(request, response)) ||
-          (await handleApi(request, response, service, bridge))
+          (await handleApi(request, response, service, bridge, readStatuses))
         : serveStatic(request, response, publicDir);
 
       if (!handled) sendJson(response, 404, { error: "Not found" });
@@ -473,7 +494,8 @@ export function createHttpServer(
         error instanceof HttpError ||
         error instanceof LiveChatError ||
         error instanceof BoardError ||
-        error instanceof SavedChatError
+        error instanceof SavedChatError ||
+        error instanceof ReadStatusError
       ) {
         sendJson(response, error.status, {
           error: error.message,
