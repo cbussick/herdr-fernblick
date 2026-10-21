@@ -12,11 +12,13 @@ describe("Markdown image loading", () => {
     vi.unstubAllGlobals();
   });
 
-  it("falls back to a link on failure and tries again for a changed URL", async () => {
-    const src = "https://example.com/missing.png";
+  it.each([
+    ["https://example.com/missing.png", "https://example.com/missing.png"],
+    ["/tmp/missing.png", "/api/local-images?path=%2Ftmp%2Fmissing.png"],
+  ])("shows an unavailable fallback for %s and retries a changed URL", async (destination, src) => {
     await act(async () => {
       renderer = create(
-        <ChatMessageText text={`Before ![Design](${src}) after`} annotationSource="a1" />,
+        <ChatMessageText text={`Before ![Design](${destination}) after`} annotationSource="a1" />,
       );
     });
     await act(async () => renderer!.root.findByType("img").props.onError());

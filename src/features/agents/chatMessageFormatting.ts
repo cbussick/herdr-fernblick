@@ -4,7 +4,8 @@ import { gfmTaskListItemFromMarkdown } from "mdast-util-gfm-task-list-item";
 import { gfmTable } from "micromark-extension-gfm-table";
 import { gfmTaskListItem } from "micromark-extension-gfm-task-list-item";
 import type { Nodes } from "mdast";
-import { splitMessageLinks } from "./chatMessageLinks";
+import { splitMessageLinks } from "./chatMessageLinks.js";
+import { localImageSource } from "../../shared/localImages.js";
 
 type TextPart =
   | { kind: "text"; start: number; end: number }
@@ -268,7 +269,7 @@ export function formatMessageText(text: string): MessagePart[] {
       return [part];
     }
     if (node.type === "image") {
-      const href = webDestination(node.url);
+      const href = webDestination(node.url) ?? localImageSource(node.url);
       if (!href) return [literal(start, end)];
       return [
         {

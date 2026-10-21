@@ -42,9 +42,11 @@ describe("Markdown image previews", () => {
     };
   }
 
-  it("opens the lightbox first, exposes a safe external link, and restores focus on close", async () => {
-    const src = "https://example.com/design.png";
-    await render(`![Design](${src})`);
+  it.each([
+    ["https://example.com/design.png", "https://example.com/design.png"],
+    ["/tmp/design.png", "/api/local-images?path=%2Ftmp%2Fdesign.png"],
+  ])("opens %s in the lightbox and restores focus on close", async (destination, src) => {
+    await render(`![Design](${destination})`);
     expect(renderer.root.findAllByType("dialog")).toHaveLength(0);
     const event = click(src);
     await act(async () => renderer.root.findByType("a").props.onClick(event));

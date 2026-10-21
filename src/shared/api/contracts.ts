@@ -9,7 +9,15 @@ export const imageUploadSchema = z.object({
 
 const agentStatusSchema = z.enum(["idle", "working", "blocked", "done", "unknown"]);
 
+export const markAgentReadResponseSchema = z.object({ ok: z.literal(true) });
+export const markAgentReadRequestSchema = z.object({
+  completionId: z.string().regex(/^[a-f0-9]{64}$/),
+});
+
 export const agentSchema = z.object({
+  // Fernblick presentation only; agent_status remains Herdr's raw state.
+  completion: z.object({ id: z.string().regex(/^[a-f0-9]{64}$/), read: z.boolean() }).optional(),
+  terminal_id: z.string().optional(),
   agent: z.string().nullable().optional(),
   agent_status: agentStatusSchema,
   agent_session: z

@@ -13,11 +13,28 @@ start Pi. Standalone workspace creation still creates only a workspace and shell
 New shell tabs also accept an optional name; leave it blank to use Herdr's next
 tab number.
 
-Opening an agent's **New answer** in a visible browser tab marks that completion
-read and displays **Idle**, including its workspace badge. Polling does not bring
-back the same badge; a later completed answer is unread again. Read receipts are
-local to the current page and do not change Herdr's underlying agent status.
-Answers arriving while the browser tab is hidden remain unread until you return.
+Opening an agent's **New answer** in a visible browser tab saves a Fernblick read
+receipt and displays **Idle**, including its workspace badge. Receipts survive
+page reloads and Fernblick backend restarts and are shared by browsers using the
+same backend storage. Polling does not bring back the same badge; a later answer
+is unread again. Herdr's underlying status, focus, and native UI receipts are
+never changed. Answers arriving in a hidden browser tab remain unread until you
+return. Failed saves keep the answer unread and offer **Retry**.
+
+Receipts are private, immutable marker files in `FERNBLICK_READ_RECEIPT_DIR`
+(default `~/.local/share/fernblick/read-receipts`); use a persistent volume when
+running in a container. The directory must be owned by the backend user, mode
+0700, and not symlinked. Receipts are shared, not per-user (Fernblick has no
+separate reader accounts). Each marker identifies a Herdr socket generation,
+pane/terminal, agent session, and completion sequence. A cold Herdr restart or
+socket replacement establishes a new namespace so reused IDs cannot hide new
+answers. On each successful dashboard refresh, Fernblick removes receipts for
+superseded answers, closed agents, and older generations of that configured
+Herdr socket. Current receipts do not expire with age. Cleanup skips other
+socket namespaces, unrecognized files, and symlinks; it never treats an
+unavailable Herdr as an empty session. When no browser is polling, cleanup waits
+until the next dashboard request. Manually deleting current markers resets
+Fernblick's read history. No conversation text is stored in receipts.
 
 Manrope is licensed under the SIL Open Font License 1.1. Its complete copyright notice and license ship at `/licenses/Manrope-OFL.txt`; see [font provenance](src/styles/fonts/README.md). See [styling and development conventions](docs/development.md) and the [three-viewport screenshot gallery tooling](tools/design/README.md).
 
@@ -140,6 +157,23 @@ active conversation. **Edit and branch** restores the full prompt and available
 images. Existing Pi sessions need `/reload` for paged paths; older peers show a
 reload notice. [Paging and limits](docs/conversation-paths.md). Tree data and navigation use
 the direct Pi bridge, never session-file reads or terminal command injection.
+
+### Local images in chat
+
+Markdown images can refer directly to an absolute path on the VPS:
+`![Logo](/tmp/logo.png)`. For spaces, use `![Logo](</tmp/logo draft.png>)`.
+Fernblick reads the original file through its existing backend and shows it in
+chat with the normal image preview. **It does not copy the file or create an
+attachment.** Each new request reads the current file; moved, deleted or unreadable
+files show as unavailable. Files are not watched for live changes.
+
+Any directory the backend user can read is supported, including symlinks. This
+makes local images accessible to people with access to your private Fernblick
+instance; keep it tailnet-only. Only PNG, JPEG, GIF and WebP content up to 10 MiB
+is served, with no browser caching and cross-origin embedding blocked. SVG, local
+`file:` URLs and relative paths are unsupported. Only Markdown image destinations
+are resolved; plain paths, ordinary links and code examples are not loaded. Paths
+refer to the backend VPS, not your phone or another agent machine.
 
 ### Past sessions
 
@@ -270,19 +304,20 @@ The HTTP API does not expose a shell or arbitrary Herdr method proxy. Access to 
 
 ## Configuration
 
-| Variable                    | Default                                  | Purpose                                                                    |
-| --------------------------- | ---------------------------------------- | -------------------------------------------------------------------------- |
-| `HOST`                      | `127.0.0.1`                              | Address for the HTTP server                                                |
-| `PORT`                      | `8787`                                   | HTTP port                                                                  |
-| `HERDR_SOCKET_PATH`         | `~/.config/herdr/herdr.sock`             | Herdr session socket                                                       |
-| `FERNBLICK_PI_SOCKET`       | `~/.local/share/fernblick/live/pi.sock`  | Private Pi bridge socket (also configure Pi)                               |
-| `FERNBLICK_UPLOAD_DIR`      | `/tmp/fernblick`                         | Shared private upload directory; configure backend and Pi identically      |
-| `FERNBLICK_PI_SESSION_DIR`  | Pi session directory (see Past sessions) | Backend-only saved-chat discovery root; use an absolute path               |
-| `FERNBLICK_PI_GLOBAL`       | unset                                    | Set to `1` to use a globally installed extension for created agents        |
-| `FERNBLICK_BOARD_DIR`       | `~/.local/share/fernblick/boards`        | Private persistent whiteboard scenes and sent snapshots                    |
-| `FERNBLICK_API_TARGET`      | `http://127.0.0.1:8787`                  | Vite development API proxy target                                          |
-| `FERNBLICK_PI_ISOLATED`     | unset                                    | Set to `1` to disable auto-discovered Pi extensions for development agents |
-| `FERNBLICK_HERDR_EXTENSION` | unset                                    | Herdr state extension path to explicitly retain with isolated Pi loading   |
+| Variable                     | Default                                  | Purpose                                                                    |
+| ---------------------------- | ---------------------------------------- | -------------------------------------------------------------------------- |
+| `HOST`                       | `127.0.0.1`                              | Address for the HTTP server                                                |
+| `PORT`                       | `8787`                                   | HTTP port                                                                  |
+| `HERDR_SOCKET_PATH`          | `~/.config/herdr/herdr.sock`             | Herdr session socket                                                       |
+| `FERNBLICK_PI_SOCKET`        | `~/.local/share/fernblick/live/pi.sock`  | Private Pi bridge socket (also configure Pi)                               |
+| `FERNBLICK_UPLOAD_DIR`       | `/tmp/fernblick`                         | Shared private upload directory; configure backend and Pi identically      |
+| `FERNBLICK_PI_SESSION_DIR`   | Pi session directory (see Past sessions) | Backend-only saved-chat discovery root; use an absolute path               |
+| `FERNBLICK_PI_GLOBAL`        | unset                                    | Set to `1` to use a globally installed extension for created agents        |
+| `FERNBLICK_BOARD_DIR`        | `~/.local/share/fernblick/boards`        | Private persistent whiteboard scenes and sent snapshots                    |
+| `FERNBLICK_READ_RECEIPT_DIR` | `~/.local/share/fernblick/read-receipts` | Private persistent read receipts shared by Fernblick browsers              |
+| `FERNBLICK_API_TARGET`       | `http://127.0.0.1:8787`                  | Vite development API proxy target                                          |
+| `FERNBLICK_PI_ISOLATED`      | unset                                    | Set to `1` to disable auto-discovered Pi extensions for development agents |
+| `FERNBLICK_HERDR_EXTENSION`  | unset                                    | Herdr state extension path to explicitly retain with isolated Pi loading   |
 
 ## Checks
 

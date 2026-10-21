@@ -1,5 +1,7 @@
-import { useEffect, useState, useSyncExternalStore } from "react";
+import { useEffect, useRef, useState, useSyncExternalStore } from "react";
+import { useMutation, useQueryClient } from "@tanstack/react-query";
 import type { Agent } from "../shared/api/contracts";
+import { ApiError, markAgentRead } from "../shared/api/apiClient";
 
 function subscribeVisibility(onChange: () => void) {
   if (typeof document === "undefined") return () => {};
@@ -9,31 +11,59 @@ function subscribeVisibility(onChange: () => void) {
 function isVisible() {
   return typeof document === "undefined" || document.visibilityState === "visible";
 }
-function completionId(agent: Agent) {
-  // Revisions also change for unrelated pane updates. Prefer the status sequence
-  // so polling cannot make the same completed answer unread again.
-  return JSON.stringify([agent.agent_session?.value, agent.state_change_seq ?? agent.revision]);
+function staleCompletion(error: unknown) {
+  return error instanceof ApiError && (error.status === 404 || error.status === 409);
 }
 
-/** Browser-local read receipts; never change Herdr's status or the query cache. */
-export function useReadAgentStatuses(agents: Agent[], selectedPaneId: string | null): Agent[] {
+/** Persist Fernblick receipts without changing Herdr's status or the raw query cache. */
+export function useReadAgentStatuses(agents: Agent[], selectedPaneId: string | null) {
   const visible = useSyncExternalStore(subscribeVisibility, isVisible, () => false);
-  const [readCompletions, setReadCompletions] = useState<Record<string, string>>({});
+  const queryClient = useQueryClient();
+  const attempted = useRef(new Set<string>());
+  const [readCompletions, setReadCompletions] = useState<Set<string>>(() => new Set());
+  const mutation = useMutation({
+    mutationFn: markAgentRead,
+    onSuccess: (_, input) => {
+      // Keep successful receipts across polls that were started before the write.
+      setReadCompletions((current) => new Set(current).add(input.completionId));
+    },
+    onError: (error, input) => {
+      // A failed write may be retried when this answer is opened again. Removing
+      // the guard alone does not retrigger the effect on a mutation rerender.
+      attempted.current.delete(input.completionId);
+      if (staleCompletion(error)) void queryClient.invalidateQueries({ queryKey: ["agents"] });
+    },
+  });
   const selected = agents.find((agent) => agent.pane_id === selectedPaneId);
-  const selectedCompletion = selected?.agent_status === "done" ? completionId(selected) : null;
+  const completion = selected?.agent_status === "done" ? selected.completion : undefined;
+  const completionId = completion?.id;
+  const alreadyRead = completion?.read || (completionId && readCompletions.has(completionId));
+  const { mutate } = mutation;
 
   useEffect(() => {
-    if (!visible || !selectedPaneId || selectedCompletion === null) return;
-    setReadCompletions((current) =>
-      current[selectedPaneId] === selectedCompletion
-        ? current
-        : { ...current, [selectedPaneId]: selectedCompletion },
-    );
-  }, [visible, selectedPaneId, selectedCompletion]);
+    if (
+      !visible ||
+      !selectedPaneId ||
+      !completionId ||
+      alreadyRead ||
+      attempted.current.has(completionId)
+    )
+      return;
+    attempted.current.add(completionId);
+    mutate({ paneId: selectedPaneId, completionId });
+  }, [visible, selectedPaneId, completionId, alreadyRead, mutate]);
 
-  return agents.map((agent) =>
-    agent.agent_status === "done" && readCompletions[agent.pane_id] === completionId(agent)
-      ? { ...agent, agent_status: "idle" }
-      : agent,
-  );
+  return {
+    agents: agents.map((agent) =>
+      agent.agent_status === "done" &&
+      agent.completion &&
+      (agent.completion.read || readCompletions.has(agent.completion.id))
+        ? { ...agent, agent_status: "idle" as const }
+        : agent,
+    ),
+    error: mutation.error && !staleCompletion(mutation.error) ? mutation.error : null,
+    retry: () => {
+      if (mutation.variables) mutate(mutation.variables);
+    },
+  };
 }

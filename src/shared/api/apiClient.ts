@@ -1,5 +1,7 @@
 import {
   agentsResponseSchema,
+  markAgentReadRequestSchema,
+  markAgentReadResponseSchema,
   savedChatsResponseSchema,
   deleteChatResponseSchema,
   resumeChatRequestSchema,
@@ -65,6 +67,18 @@ async function request(path: string, init?: RequestInit) {
 
 export async function getAgents() {
   return agentsResponseSchema.parse(await request("/api/agents"));
+}
+
+export async function markAgentRead(input: { paneId: string; completionId: string }) {
+  const body = await request(`/api/agents/${encodeURIComponent(input.paneId)}/read`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(markAgentReadRequestSchema.parse(input)),
+    // Small idempotent receipts can finish even when the user closes the page.
+    keepalive: true,
+    signal: AbortSignal.timeout(10_000),
+  });
+  markAgentReadResponseSchema.parse(body);
 }
 
 export async function getSavedChats() {
