@@ -24,6 +24,45 @@
   transform: none;
 }
 
+.read-error {
+  position: fixed;
+  z-index: 6;
+  right: var(--space-4);
+  bottom: calc(5.5rem + env(safe-area-inset-bottom, 0px));
+  left: var(--space-4);
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  max-width: 32rem;
+  padding: var(--space-3);
+  margin-inline: auto;
+  color: var(--color-danger);
+  background: var(--color-surface);
+  border: 1px solid var(--color-danger);
+  border-radius: var(--radius-md);
+  box-shadow: var(--shadow-menu);
+}
+
+.read-error p {
+  font-size: 0.875rem;
+  line-height: 1.5;
+}
+
+.read-error button {
+  flex: none;
+  min-height: var(--control-height);
+  padding-inline: var(--space-3);
+  color: inherit;
+  background: var(--color-danger-soft);
+  border: 1px solid currentcolor;
+  border-radius: var(--radius-sm);
+}
+
+.read-error button:focus-visible {
+  outline: 2px solid currentcolor;
+  outline-offset: 2px;
+}
+
 .workspace {
   display: grid;
   grid-template-columns: clamp(18rem, 26vw, 22rem) minmax(0, 1fr);
