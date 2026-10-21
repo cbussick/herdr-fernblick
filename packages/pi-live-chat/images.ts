@@ -5,7 +5,7 @@ import { join } from "node:path";
 import { privateDirectory } from "./security.js";
 import { MAX_IMAGE_BYTES, uploadIdSchema } from "./protocol.js";
 
-const imageTypes = {
+export const imageTypes = {
   "image/png": {
     extension: "png",
     matches: (b: Buffer) => b.subarray(0, 8).equals(Buffer.from([137, 80, 78, 71, 13, 10, 26, 10])),
