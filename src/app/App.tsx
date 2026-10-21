@@ -87,8 +87,21 @@ export function App() {
           <p>Connect to your tailnet to load agents. This screen will reconnect automatically.</p>
         </div>
       ) : agentsQuery.isPending ? (
-        <div className={appStyles["page-state"]} data-testid="page-state" aria-busy="true">
-          <StateIcon kind="loading" />
+        <div
+          className={appStyles["page-state"]}
+          data-testid="page-state"
+          data-ui="app-loading"
+          role="status"
+          aria-busy="true"
+        >
+          <img
+            className={appStyles["loading-logo"]}
+            src="/icons/scout-logo.png"
+            width={564}
+            height={594}
+            alt="Fernblick"
+            fetchPriority="high"
+          />
           <p>Loading agents…</p>
         </div>
       ) : agentsQuery.isError ? (

@@ -80,13 +80,22 @@ tailscale serve --bg --https=4445 http://127.0.0.1:8787
 Open the HTTPS URL reported by Serve directly in Chrome on Android, then use
 **Install app** (or **Add to Home screen**) from the browser menu. On iOS/iPadOS,
 open it in Safari and use **Share → Add to Home Screen**. The installed app is
-named **Fernblick** and uses its blue horizon icon. Do not install from an
+named **Fernblick** and uses its Scout sheep-head icon on pale blue. Do not install from an
 embedded browser opened by another app.
 
 The current VPS endpoint is
 `https://hetzner-vps.tail6b5377.ts.net:4445/`; its existing Serve mapping points
 at the already-running backend on `100.71.229.1:8787`. Changing that backend to
 loopback requires changing the proxy target too. Shelf stays on port 4444.
+
+The Scout artwork has transparent head/full-logo masters, solid home-screen
+icons, dedicated favicons and a separately padded maskable icon. The full logo
+with playful lettering appears only while the first dashboard request loads;
+there is no artificial splash delay. System launch screens remain controlled by
+the browser/OS. Existing installations may update their home-screen artwork later
+than the app; a shortcut reinstall may be necessary on some platforms. See
+[branding assets](design/branding/README.md).
+
 Different ports isolate service workers and browser storage, but Android's
 external-link routing can still associate a link with another installed app.
 Verify home-screen launch separately from links opened by other apps.

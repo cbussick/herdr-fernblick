@@ -1,8 +1,24 @@
-# Fernblick app icons
+# Fernblick — Scout icons
 
-The SVG reproduces the existing `src/shared/ui/FernblickMark.tsx` horizon mark
-using the app's `#14669f` accent. The opaque square background lets the OS choose
-its own icon mask; the white artwork fits the central 80% maskable safe circle.
+Generated from the approved Scout Light artwork, with the original playful
+lettering. Source masters, provenance and regeneration instructions live in
+[`design/branding/README.md`](../../design/branding/README.md).
 
-PNG files are rasterizations of `fernblick.svg` at 192×192, 512×512 and 180×180
-(Apple touch icon). Keep the SVG and PNG versions in sync when changing the mark.
+| Asset                    | Size    | Background  | Use                                       |
+| ------------------------ | ------- | ----------- | ----------------------------------------- |
+| `scout-head.png`         | 256×256 | Transparent | Navigation and empty desk                 |
+| `scout-logo.png`         | 564×594 | Transparent | Loading screen; sheep + wordmark          |
+| `scout-favicon-16.png`   | 16×16   | Pale blue   | Small browser favicon                     |
+| `scout-favicon-32.png`   | 32×32   | Pale blue   | Browser favicon                           |
+| `scout-icon-192.png`     | 192×192 | Pale blue   | PWA icon, any-purpose                     |
+| `scout-icon-512.png`     | 512×512 | Pale blue   | PWA icon, any-purpose                     |
+| `scout-maskable-512.png` | 512×512 | Pale blue   | PWA maskable icon with extra safe padding |
+| `scout-apple-touch.png`  | 180×180 | Pale blue   | iOS home-screen icon                      |
+
+Solid backgrounds use `#e7f2fc`. The OS chooses the icon mask; no rounded corners
+are baked into these square assets. The entire maskable sheep lies within the
+central 80%-diameter safe circle. Favicons use the head at the largest practical
+size; the tiny lettering is never included.
+
+All runtime files are precached with the application shell. These are shipped
+branding assets, not generated chat images or user attachments.

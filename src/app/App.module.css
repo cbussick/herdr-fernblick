@@ -81,6 +81,17 @@
   text-align: center;
 }
 
+.page-state[data-ui="app-loading"] {
+  justify-items: center;
+  background: var(--color-navigation);
+}
+
+.loading-logo {
+  display: block;
+  width: min(16rem, 65vw);
+  height: auto;
+}
+
 .page-state p {
   max-width: 32rem;
   line-height: 1.7;

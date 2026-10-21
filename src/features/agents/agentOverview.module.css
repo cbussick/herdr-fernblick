@@ -34,7 +34,7 @@
   gap: var(--space-3);
 }
 
-.overview-brand svg {
+.overview-brand img {
   width: 2.5rem;
   height: 2.5rem;
   color: var(--color-accent);

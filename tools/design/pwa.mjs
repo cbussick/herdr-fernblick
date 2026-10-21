@@ -122,6 +122,12 @@ try {
     return requests.flat().map((request) => new URL(request.url).pathname);
   });
   assert.ok(cached.includes("/index.html"));
+  for (const path of [
+    "/icons/scout-head.png",
+    "/icons/scout-logo.png",
+    ...manifest.icons.map((icon) => icon.src),
+  ])
+    assert.ok(cached.includes(path), `Branding asset must remain available offline: ${path}`);
   assert.ok(cached.every((path) => !path.startsWith("/api/")));
   await page.screenshot({ path: "design-gallery/pwa/offline-phone.png" });
   await context.setOffline(false);

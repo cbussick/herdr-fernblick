@@ -4,7 +4,7 @@ Implemented light-blue design for Fernblick. All application and Storybook style
 
 ## Direction
 
-Fernblick is a remote view onto coding agents, not an analytics dashboard. Its visual anchor is a small horizon/window mark and a pale-blue workspace rail. Keep the conversation quiet and readable; make the agent's status and the next action easy to find.
+Fernblick is a remote view onto coding agents, not an analytics dashboard. Its visual anchor is the Scout sheep-head mark and a pale-blue workspace rail. Keep the conversation quiet and readable; make the agent's status and the next action easy to find.
 
 - Palette: sky/navigation `#e7f2fc`, mist/canvas `#f5f9fd`, white/surface `#ffffff`, navy/text `#17374f`, blue/action `#14669f`, pale blue/selection `#dceefc`. Keep distinct semantic warning, danger and success colors.
 - Type: locally hosted Manrope variable for the interface; the existing monospace stack for terminal output and Pi session metadata. The font's complete SIL OFL 1.1 license is included in `src/styles/fonts/` and distributed at `/licenses/Manrope-OFL.txt` in both app and Storybook builds. See [font provenance](../../src/styles/fonts/README.md).
@@ -14,7 +14,7 @@ Fernblick is a remote view onto coding agents, not an analytics dashboard. Its v
 - Grouping: workspace containers correspond to actual projects, not arbitrary dashboard cards. The flat agent view uses white, bordered row surfaces. Expanded tool results use a white output area inside the same bordered accordion as their blue `read` header, with no gap or separate bubble corners. Distinct chat corners communicate speaker, not decoration.
 - Accessibility: 44px console touch targets, visible focus, improved secondary-text contrast, safe-area padding and existing reduced-motion support. Existing status pulses and startup/send spinners respect reduced motion; no decorative animation.
 
-The plan deliberately avoids metrics tiles, a decorative gradient hero, and dashboard ornament. A subtle blue rail and the horizon mark carry the personality; status color retains its operational meaning.
+The plan deliberately avoids metrics tiles, a decorative gradient hero, and dashboard ornament. A subtle blue rail and Scout carry the personality; status color retains its operational meaning. The full logo uses the approved playful lettering; the interface keeps Manrope. See [branding sources and exports](../../design/branding/README.md). Existing gallery captures predate the Scout update; `branding.mjs` checks the new artwork separately.
 
 ## Captures
 
@@ -81,6 +81,34 @@ API cache exclusion and automatic reconnect. Screenshots are written to ignored
 Physical Android/iOS installation, home-screen branding, external-link routing,
 and real software-keyboard behavior still require device verification. Headless
 installability checks do not establish which Android app handles a tapped link.
+
+## Scout branding checks
+
+After building, run these sequentially (one browser at a time):
+
+```sh
+PLAYWRIGHT_MODULE=/tmp/fernblick-design-tools/node_modules/playwright/index.mjs \
+  node tools/design/branding.mjs
+# Then run pwa.mjs as above for installation, updates and offline caching.
+```
+
+`branding.mjs` serves the actual build on an ephemeral loopback port with a
+synthetic, delayed dashboard. It checks the full loading logo, immediate transition
+to the overview, the transparent navigation head, and no overflow at phone, tablet
+and desktop sizes. Canvas checks verify transparent corners in the UI assets,
+fully opaque installed-app icons, and that no artwork escapes the maskable safe
+circle. It preserves the existing PWA identity. Screenshots are saved under
+`design-gallery/scout/`. Optional `CHROMIUM_EXECUTABLE` selects the browser binary.
+No live agents or sockets are accessed. The PWA check also verifies that the
+Scout head, full logo and manifest icons are in the offline shell cache.
+
+Use a Playwright version matching the installed browser. Scout verification used
+Playwright 1.61.0 with its Chromium 149 / revision 1228. A newer driver paired with
+an older cached browser can misreport `navigator.onLine` after offline navigation;
+do not override app behavior or weaken assertions to hide that mismatch.
+
+On a busy VPS, use `VITEST_MAX_WORKERS=1 npm run check` to bound test concurrency;
+run browser checks only after that command finishes.
 
 ## Skills picker regression
 
