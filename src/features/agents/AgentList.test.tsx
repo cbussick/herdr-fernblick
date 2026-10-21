@@ -45,6 +45,21 @@ const click = (text: string) =>
   });
 const notices = () => renderer.root.findAllByProps({ "data-testid": "snackbar" });
 
+it("pairs Scout with the playful wordmark while preserving one accessible Fernblick heading", () => {
+  const heading = renderer.root.findByType("h1");
+  expect(heading.findByType("span").children).toEqual(["Fernblick"]);
+  expect(heading.findByType("span").props.className).toBeTruthy();
+  expect(heading.findByType("img").props).toMatchObject({
+    src: "/icons/scout-wordmark.png",
+    width: 564,
+    height: 126,
+    alt: "",
+    "aria-hidden": "true",
+  });
+  expect(renderer.root.findAllByProps({ src: "/icons/scout-head.png" })).toHaveLength(1);
+  expect(renderer.root.findAllByType("h1")).toHaveLength(1);
+});
+
 it("uses session terminology in the tab and history search", async () => {
   await click("Past sessions");
   expect(renderer.root.findByType("input").props).toMatchObject({

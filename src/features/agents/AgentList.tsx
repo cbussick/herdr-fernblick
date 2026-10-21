@@ -1,4 +1,5 @@
 import overviewStyles from "./agentOverview.module.css";
+import a11yStyles from "../../styles/accessibility.module.css";
 import { useCallback, useState } from "react";
 import type { Agent, ShellTab, Workspace } from "../../shared/api/contracts";
 import { SearchField, SegmentedTabs, SpeedDial } from "../../shared/ui";
@@ -76,7 +77,17 @@ export function AgentList({
         <div className={overviewStyles["overview-header__title"]}>
           <div className={overviewStyles["overview-brand"]}>
             <FernblickMark />
-            <h1>Fernblick</h1>
+            <h1>
+              <span className={a11yStyles["sr-only"]}>Fernblick</span>
+              <img
+                className={overviewStyles["overview-wordmark"]}
+                src="/icons/scout-wordmark.png"
+                width={564}
+                height={126}
+                alt=""
+                aria-hidden="true"
+              />
+            </h1>
           </div>
           <span className={overviewStyles["connection-state"]}>
             <i />

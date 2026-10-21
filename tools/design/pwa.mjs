@@ -125,6 +125,7 @@ try {
   for (const path of [
     "/icons/scout-head.png",
     "/icons/scout-logo.png",
+    "/icons/scout-wordmark.png",
     ...manifest.icons.map((icon) => icon.src),
   ])
     assert.ok(cached.includes(path), `Branding asset must remain available offline: ${path}`);

@@ -112,6 +112,15 @@ const logo = await sharp(transparent)
   .extract({ left: 160, top: 130, width: 940, height: 990 })
   .png(png)
   .toBuffer();
+const wordmark = await sharp(transparent)
+  .extract({ left: 160, top: 905, width: 940, height: 210 })
+  .png(png)
+  .toBuffer();
+await sharp(wordmark).toFile(path("design/branding/scout-wordmark-master.png"));
+await sharp(wordmark)
+  .resize({ width: 564 })
+  .png(png)
+  .toFile(path("public/icons/scout-wordmark.png"));
 await sharp(head).toFile(path("design/branding/scout-head-master.png"));
 await sharp(logo).toFile(path("design/branding/scout-logo-master.png"));
 await sharp(head).resize(256, 256).png(png).toFile(path("public/icons/scout-head.png"));

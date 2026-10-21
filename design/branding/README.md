@@ -10,6 +10,7 @@ artwork, not Manrope and not an installed font. Manrope remains the interface fo
   the user in the logo exploration; retained unchanged. SHA-256 is recorded below.
 - `scout-head-master.png`: transparent, square 800×800 raster master, no lettering.
 - `scout-logo-master.png`: transparent 940×990 raster master with the playful wordmark.
+- `scout-wordmark-master.png`: transparent 940×210 crop of the approved lettering only.
 - `../../public/icons/`: small runtime exports; see its README for sizes and use.
 
 These are **raster assets**, not vectors. Do not wrap the PNG in SVG and call it a
@@ -43,7 +44,13 @@ It verifies the maskable artwork fits inside the central 80%-diameter safe circl
 
 ## Usage
 
-- Navigation and the empty desk use the transparent head next to ordinary UI text.
+- Navigation pairs the transparent head with the playful wordmark, exported as a
+  transparent 564×126 PNG and displayed at up to 128 CSS pixels wide. A visually
+  hidden “Fernblick” label preserves its level-one heading for assistive technology;
+  both brand images are decorative. The text image scales down in narrow sidebars
+  without squeezing the head or overlapping connection status. It is artwork,
+  not a font substitution: tabs, buttons, chat and other headings keep Manrope.
+- The empty desk uses the transparent head next to ordinary UI text.
 - The first pending dashboard request shows the full logo and “Loading agents…”.
   It disappears when that request finishes: no branding timer or minimum duration.
   Offline/error states retain their existing explanation and recovery controls.

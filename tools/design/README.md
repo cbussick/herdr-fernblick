@@ -14,7 +14,7 @@ Fernblick is a remote view onto coding agents, not an analytics dashboard. Its v
 - Grouping: workspace containers correspond to actual projects, not arbitrary dashboard cards. The flat agent view uses white, bordered row surfaces. Expanded tool results use a white output area inside the same bordered accordion as their blue `read` header, with no gap or separate bubble corners. Distinct chat corners communicate speaker, not decoration.
 - Accessibility: 44px console touch targets, visible focus, improved secondary-text contrast, safe-area padding and existing reduced-motion support. Existing status pulses and startup/send spinners respect reduced motion; no decorative animation.
 
-The plan deliberately avoids metrics tiles, a decorative gradient hero, and dashboard ornament. A subtle blue rail and Scout carry the personality; status color retains its operational meaning. The full logo uses the approved playful lettering; the interface keeps Manrope. See [branding sources and exports](../../design/branding/README.md). Existing gallery captures predate the Scout update; `branding.mjs` checks the new artwork separately.
+The plan deliberately avoids metrics tiles, a decorative gradient hero, and dashboard ornament. A subtle blue rail and Scout carry the personality; status color retains its operational meaning. The full logo and navigation wordmark use the approved playful lettering; the rest of the interface keeps Manrope. See [branding sources and exports](../../design/branding/README.md). Existing gallery captures predate the Scout update; `branding.mjs` checks the new artwork separately.
 
 ## Captures
 
@@ -94,13 +94,14 @@ PLAYWRIGHT_MODULE=/tmp/fernblick-design-tools/node_modules/playwright/index.mjs 
 
 `branding.mjs` serves the actual build on an ephemeral loopback port with a
 synthetic, delayed dashboard. It checks the full loading logo, immediate transition
-to the overview, the transparent navigation head, and no overflow at phone, tablet
-and desktop sizes. Canvas checks verify transparent corners in the UI assets,
+to the overview, the transparent navigation head/wordmark, its accessible heading,
+and no overflow or connection-status overlap at five phone, tablet and desktop
+sizes, including a 320px phone and a narrow desktop sidebar. Canvas checks verify transparent corners in the UI assets,
 fully opaque installed-app icons, and that no artwork escapes the maskable safe
 circle. It preserves the existing PWA identity. Screenshots are saved under
 `design-gallery/scout/`. Optional `CHROMIUM_EXECUTABLE` selects the browser binary.
 No live agents or sockets are accessed. The PWA check also verifies that the
-Scout head, full logo and manifest icons are in the offline shell cache.
+Scout head, full logo, wordmark and manifest icons are in the offline shell cache.
 
 Use a Playwright version matching the installed browser. Scout verification used
 Playwright 1.61.0 with its Chromium 149 / revision 1228. A newer driver paired with

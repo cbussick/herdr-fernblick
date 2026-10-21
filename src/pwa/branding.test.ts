@@ -10,6 +10,7 @@ const icons = [
   ["scout-maskable-512", 512, 512, false],
   ["scout-head", 256, 256, true],
   ["scout-logo", 564, 594, true],
+  ["scout-wordmark", 564, 126, true],
 ] as const;
 
 it.each(icons)(

@@ -20,8 +20,10 @@ try {
     ...(process.env.CHROMIUM_EXECUTABLE ? { executablePath: process.env.CHROMIUM_EXECUTABLE } : {}),
   });
   for (const [name, viewport] of [
+    ["small-phone", { width: 320, height: 568 }],
     ["phone", { width: 390, height: 844 }],
     ["tablet", { width: 834, height: 1194 }],
+    ["narrow-sidebar", { width: 900, height: 800 }],
     ["desktop", { width: 1440, height: 1000 }],
   ]) {
     const context = await browser.newContext({
@@ -51,11 +53,47 @@ try {
       complete(dashboard);
       await page.getByRole("heading", { name: "Fernblick", exact: true }).waitFor();
       assert.equal(await loading.count(), 0, "No extra splash delay after the dashboard arrives");
-      const mark = page.locator('[data-testid="overview-header"] img');
+      const mark = page.locator('[data-testid="overview-header"] img[src="/icons/scout-head.png"]');
       await mark.evaluate((image) => image.decode());
       assert.equal(await mark.getAttribute("src"), "/icons/scout-head.png");
       assert.equal(await mark.getAttribute("alt"), "");
       assert.equal(Math.round((await mark.boundingBox()).width), 40);
+      const heading = page.getByRole("heading", { name: "Fernblick", exact: true });
+      assert.equal(await heading.count(), 1);
+      const wordmark = heading.locator("img");
+      await wordmark.evaluate((image) => image.decode());
+      assert.equal(await wordmark.getAttribute("src"), "/icons/scout-wordmark.png");
+      assert.equal(await wordmark.getAttribute("aria-hidden"), "true");
+      const textBounds = await wordmark.boundingBox();
+      const headBounds = await mark.boundingBox();
+      const statusBounds = await page.getByText("Connected", { exact: true }).boundingBox();
+      const header = page.getByTestId("overview-header");
+      const headerBounds = await header.boundingBox();
+      const rightPadding = await header.evaluate((element) =>
+        parseFloat(getComputedStyle(element).paddingRight),
+      );
+      assert.ok(
+        statusBounds.x + statusBounds.width <=
+          headerBounds.x + headerBounds.width - rightPadding + 1,
+        "Connection status must stay inside the padded header",
+      );
+      assert.ok(textBounds.width >= 90 && textBounds.width <= 128);
+      assert.ok(headBounds.x + headBounds.width <= textBounds.x - 6);
+      assert.ok(
+        textBounds.x + textBounds.width <= statusBounds.x - 6,
+        "Wordmark must not overlap connection status",
+      );
+      assert.ok(
+        Math.abs(textBounds.width / textBounds.height - 564 / 126) < 0.01,
+        "Keep the lettering proportions",
+      );
+      await page.evaluate(() => document.fonts.ready);
+      assert.match(
+        await page
+          .getByRole("tab", { name: "Workspaces", exact: true })
+          .evaluate((element) => getComputedStyle(element).fontFamily),
+        /Manrope/,
+      );
       assert.equal(
         await page.evaluate(() => document.documentElement.scrollWidth > innerWidth),
         false,
@@ -104,7 +142,11 @@ try {
       }
       results.push({ src: asset.src, opaque, withinSafeCircle, width, height });
     }
-    for (const src of ["/icons/scout-head.png", "/icons/scout-logo.png"]) {
+    for (const src of [
+      "/icons/scout-head.png",
+      "/icons/scout-logo.png",
+      "/icons/scout-wordmark.png",
+    ]) {
       const { data, width, height } = await pixels(src);
       const corners = [0, width - 1, (height - 1) * width, width * height - 1];
       results.push({
@@ -126,7 +168,7 @@ try {
   }
   await page.close();
   console.log(
-    "PASS: Scout loading/overview at three viewports; no extra delay; transparent UI artwork; opaque icons; maskable safe circle; unchanged PWA identity.",
+    "PASS: Scout loading/header at five viewports; accessible wordmark without overlap; Manrope UI unchanged; transparent artwork; opaque icons; maskable safe circle; unchanged PWA identity.",
   );
 } finally {
   await browser?.close();
