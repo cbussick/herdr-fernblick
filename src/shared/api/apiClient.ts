@@ -24,7 +24,6 @@ import {
   ackSchema,
   COMPACT_TIMEOUT_MS,
   compactionResponseSchema,
-  treeResponseSchema,
   treePageResponseSchema,
   navigationResponseSchema,
   skillsResponseSchema,
@@ -377,16 +376,6 @@ export async function getAgentTreePage(
   return response.page;
 }
 
-export async function getAgentTree(pane: string, target: Target) {
-  const response = treeResponseSchema.parse(
-    await request(`/api/agents/${encodeURIComponent(pane)}/tree`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ target }),
-    }),
-  );
-  return { ...response.tree, target: response.target };
-}
 export async function navigateAgentTree(pane: string, target: Target, entryId: string) {
   return navigationResponseSchema.parse(
     await request(`/api/agents/${encodeURIComponent(pane)}/tree-navigation`, {

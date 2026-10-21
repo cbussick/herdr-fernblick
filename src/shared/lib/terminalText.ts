@@ -1,4 +1,4 @@
-export type TerminalTextStyle = {
+type TerminalTextStyle = {
   color?: string;
   backgroundColor?: string;
   bold?: boolean;

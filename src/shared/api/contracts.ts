@@ -7,7 +7,7 @@ export const imageUploadSchema = z.object({
   url: z.string(),
 });
 
-export const agentStatusSchema = z.enum(["idle", "working", "blocked", "done", "unknown"]);
+const agentStatusSchema = z.enum(["idle", "working", "blocked", "done", "unknown"]);
 
 export const markAgentReadResponseSchema = z.object({ ok: z.literal(true) });
 export const markAgentReadRequestSchema = z.object({
@@ -159,7 +159,7 @@ export const terminalOutputSchema = z.object({
   workspace_id: z.string(),
 });
 
-export const keyNameSchema = z.enum([
+const keyNameSchema = z.enum([
   "esc",
   "ctrl+c",
   "enter",

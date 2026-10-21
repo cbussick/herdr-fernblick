@@ -334,6 +334,19 @@ The HTTP API does not expose a shell or arbitrary Herdr method proxy. Access to 
 npm run check
 ```
 
+Includes formatting, lint, both Knip modes, typechecking, tests and the production
+build. Run dead-code checks separately with `npm run knip` (including tests and
+tooling) or `npm run knip:production` (runtime reachability without tests/stories).
+
+`knip.jsonc` declares the backend and standalone Pi extension entry points;
+plugins discover the frontend, service worker, tests and Storybook. Test fixtures
+are excluded only in production mode. Helpers called inside their own file are
+not considered dead just because only tests import them. The two intentionally
+Storybook-only components have documented `@internal` exceptions; normal mode
+still checks their usage. Review findings before deleting implementations or
+their tests—an unused export is not necessarily unused code. These checks do not
+prove that deployment artifacts contain no test code.
+
 Read-status regression (Chromium/WebKit at phone, tablet and desktop sizes;
 all API and SSE traffic is synthetic):
 

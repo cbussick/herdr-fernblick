@@ -24,7 +24,7 @@ const getWorkspaceStatus = (agents: Agent[]): AgentStatus =>
     "idle",
   );
 
-export function PaneRow({
+function PaneRow({
   title,
   subtitle,
   kind,

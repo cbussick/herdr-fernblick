@@ -26,10 +26,10 @@ export const imageTypes = {
   },
 } as const;
 export type ImageMimeType = keyof typeof imageTypes;
-export function uploadDirectory() {
+function uploadDirectory() {
   return process.env.FERNBLICK_UPLOAD_DIR ?? "/tmp/fernblick";
 }
-export function imageUploadPath(id: string) {
+function imageUploadPath(id: string) {
   return join(uploadDirectory(), uploadIdSchema.parse(id));
 }
 export function mimeTypeForUpload(id: string): ImageMimeType {

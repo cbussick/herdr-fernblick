@@ -1,0 +1,32 @@
+{
+  "$schema": "https://unpkg.com/knip@6/schema-jsonc.json",
+  // Tests may import helpers that production uses within the same file.
+  // Still report those helpers if their internal callers disappear.
+  "ignoreExportsUsedInFile": true,
+  "workspaces": {
+    ".": {
+      "entry": [
+        // Required in production: `start` points at emitted JS, not this source.
+        // Normal mode also finds dev:api and reports a harmless redundancy hint.
+        "server/index.ts!",
+        // Standalone visual-regression tools, invoked manually (tools/design/README.md).
+        "tools/design/*.mjs",
+      ],
+      // Vite/PWA, Vitest and Storybook plugins discover their own entry points.
+      "project": [
+        "src/**/*.{ts,tsx}!",
+        "server/**/*.ts!",
+        "tools/**/*.{ts,mjs}",
+        ".storybook/**/*.{ts,tsx}",
+        "*.{ts,mjs}",
+        "!src/features/whiteboard/testFixtures.ts!",
+      ],
+    },
+    // Loaded by Pi, not by a static import from the application.
+    "packages/pi-live-chat": {
+      "entry": ["index.ts!"],
+      "project": ["**/*.ts!"],
+      "vitest": true,
+    },
+  },
+}
