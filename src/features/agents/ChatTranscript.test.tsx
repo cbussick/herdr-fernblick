@@ -97,6 +97,60 @@ it("renders all turns, status, tool errors and images with the shared thinking p
   expect(text).toContain("Thinking detail");
   expect(text).toContain("some content is omitted");
 });
+it.each(["chat-transcript", "whiteboard-transcript"])(
+  "shows local timestamps beside both senders in %s with an accessible full date",
+  async (testId) => {
+    const timestamp = Date.parse("2026-10-14T13:45:23Z");
+    props = {
+      ...props,
+      testId,
+      messages: [
+        { id: "u", role: "user", text: "Question", timestamp },
+        { id: "a", role: "assistant", text: "Reply", timestamp: timestamp + 60_000 },
+      ],
+    };
+    await act(async () => renderer.update(<ChatTranscript {...props} />));
+    const articles = renderer.root.findAllByType("article");
+    for (const [index, article] of articles.entries()) {
+      const header = article.findByType("header");
+      expect(header.findByType("span").children).toEqual([index === 0 ? "You" : "Pi"]);
+      const time = header.findByType("time");
+      const date = new Date(timestamp + index * 60_000);
+      const fullDate = date.toLocaleString(undefined, { dateStyle: "full", timeStyle: "long" });
+      expect(time.props.dateTime).toBe(date.toISOString());
+      expect(time.props.title).toBe(fullDate);
+      expect(time.props["aria-label"]).toBe(fullDate);
+      expect(time.children).toEqual([
+        date.toLocaleTimeString(undefined, { hour: "2-digit", minute: "2-digit" }),
+      ]);
+    }
+  },
+);
+it.each([undefined, NaN, Infinity, -Infinity, 8.64e15 + 1])(
+  "omits missing or invalid timestamps (%s) without hiding messages",
+  async (timestamp) => {
+    props = {
+      ...props,
+      messages: [{ id: "a", role: "assistant", text: "Still visible", timestamp }],
+    };
+    await act(async () => renderer.update(<ChatTranscript {...props} />));
+    expect(renderer.root.findAllByType("time")).toHaveLength(0);
+    expect(JSON.stringify(renderer.toJSON())).toContain("Still visible");
+    expect(renderer.root.findByType("header").findByType("span").children).toEqual(["Pi"]);
+  },
+);
+it("preserves the recorded timestamp, including zero, during streaming updates", async () => {
+  props = {
+    ...props,
+    messages: [{ id: "a", role: "assistant", text: "Partial", timestamp: 0 }],
+  };
+  await act(async () => renderer.update(<ChatTranscript {...props} />));
+  const original = renderer.root.findByType("time").props;
+  expect(original.dateTime).toBe("1970-01-01T00:00:00.000Z");
+  props = { ...props, messages: [{ ...props.messages[0], text: "Partial reply completed" }] };
+  await act(async () => renderer.update(<ChatTranscript {...props} />));
+  expect(renderer.root.findByType("time").props).toEqual(original);
+});
 it("starts at the bottom and follows new output and viewport resizing when the reader follows", async () => {
   expect(top).toBe(800);
   viewport.scrollHeight = 1400;

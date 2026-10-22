@@ -53,6 +53,23 @@ function ChatAttachment({ url, onOpen }: { url: string; onOpen: () => void }) {
   );
 }
 
+function ChatTimestamp({ timestamp }: { timestamp?: number }) {
+  if (timestamp === undefined) return null;
+  const date = new Date(timestamp);
+  if (!Number.isFinite(date.getTime())) return null;
+  const fullDate = date.toLocaleString(undefined, { dateStyle: "full", timeStyle: "long" });
+  return (
+    <time
+      className={styles["chat-message__timestamp"]}
+      dateTime={date.toISOString()}
+      title={fullDate}
+      aria-label={fullDate}
+    >
+      {date.toLocaleTimeString(undefined, { hour: "2-digit", minute: "2-digit" })}
+    </time>
+  );
+}
+
 /** The same transcript in chat and whiteboard; its container controls only the layout. */
 export function ChatTranscript({
   messages,
@@ -237,7 +254,10 @@ export function ChatTranscript({
                 data-message-id={message.id}
                 data-role={message.role}
               >
-                <span>{message.role === "user" ? "You" : agentName}</span>
+                <header className={styles["chat-message__meta"]}>
+                  <span>{message.role === "user" ? "You" : agentName}</span>
+                  <ChatTimestamp timestamp={message.timestamp} />
+                </header>
                 {message.text ? (
                   <ChatMessageText
                     text={message.text}
