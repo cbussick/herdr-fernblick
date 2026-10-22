@@ -106,7 +106,7 @@ it("renders all turns, status, tool errors and images with the shared thinking p
   expect(text).toContain("some content is omitted");
 });
 it.each(["chat-transcript", "whiteboard-transcript"])(
-  "shows local timestamps beside both senders in %s with an accessible full date",
+  "shows local 24-hour timestamps beside both senders in %s with an accessible full date",
   async (testId) => {
     const timestamp = Date.parse("2026-10-14T13:45:23Z");
     props = {
@@ -124,16 +124,38 @@ it.each(["chat-transcript", "whiteboard-transcript"])(
       expect(header.findByType("span").children).toEqual([index === 0 ? "You" : "Agent"]);
       const time = header.findByType("time");
       const date = new Date(timestamp + index * 60_000);
-      const fullDate = date.toLocaleString(undefined, { dateStyle: "full", timeStyle: "long" });
+      const fullDate = date.toLocaleString(undefined, {
+        dateStyle: "full",
+        timeStyle: "long",
+        hourCycle: "h23",
+      });
       expect(time.props.dateTime).toBe(date.toISOString());
       expect(time.props.title).toBe(fullDate);
       expect(time.props["aria-label"]).toBe(fullDate);
       expect(time.children).toEqual([
-        date.toLocaleTimeString(undefined, { hour: "2-digit", minute: "2-digit" }),
+        date.toLocaleTimeString(undefined, {
+          hour: "2-digit",
+          minute: "2-digit",
+          hourCycle: "h23",
+        }),
       ]);
     }
   },
 );
+it.each([
+  [0, "00:05"],
+  [12, "12:05"],
+  [13, "13:05"],
+  [23, "23:05"],
+])("formats local hour %s as %s without AM/PM", async (hour, expected) => {
+  const timestamp = new Date(2026, 9, 14, hour, 5).getTime();
+  props = { ...props, messages: [{ id: "a", role: "assistant", text: "Reply", timestamp }] };
+  await act(async () => renderer.update(<ChatTranscript {...props} />));
+  const time = renderer.root.findByType("time");
+  expect(time.children).toEqual([expected]);
+  expect(time.props.title).not.toMatch(/\b[AP]M\b/i);
+  expect(time.props["aria-label"]).not.toMatch(/\b[AP]M\b/i);
+});
 it.each([undefined, NaN, Infinity, -Infinity, 8.64e15 + 1])(
   "omits missing or invalid timestamps (%s) without hiding messages",
   async (timestamp) => {
