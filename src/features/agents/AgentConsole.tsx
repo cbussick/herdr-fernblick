@@ -465,7 +465,6 @@ function PiAgentConsole({ agent, onBack }: AgentConsoleProps) {
             messages={snapshot.messages}
             cwd={snapshot.status.cwd}
             truncated={snapshot.truncated}
-            agentName={getAgentTabLabel(agent)}
             showThinking={showThinking}
             transcriptRef={outputRef}
             annotations={annotations.stale ? [] : annotations.entries}
@@ -767,7 +766,6 @@ function PiAgentConsole({ agent, onBack }: AgentConsoleProps) {
           structured={Boolean(snapshot?.capabilities?.boards)}
           conversation={{
             snapshot,
-            agentName: getAgentTabLabel(agent),
             showThinking,
             draft: prompt,
             sending: composerSending,

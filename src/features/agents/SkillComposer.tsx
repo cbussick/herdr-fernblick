@@ -253,7 +253,7 @@ export function SkillComposer(props: Props) {
         value={prompt}
         disabled={sending}
         onChange={(event) => onChange(event.target.value)}
-        placeholder={`Message ${props.label}…`}
+        placeholder="Message…"
         rows={1}
         maxLength={32000}
       />

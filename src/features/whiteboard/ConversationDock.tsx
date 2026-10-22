@@ -15,7 +15,6 @@ export interface WhiteboardConversation {
   snapshot?: Pick<Snapshot, "messages" | "truncated"> & {
     status?: Pick<Snapshot["status"], "cwd">;
   };
-  agentName: string;
   showThinking: boolean;
   draft: string;
   sending: boolean;
@@ -124,7 +123,6 @@ export function ConversationDock({
         messages={messages}
         cwd={snapshot?.status?.cwd}
         truncated={snapshot?.truncated ?? false}
-        agentName={conversation.agentName}
         showThinking={conversation.showThinking}
         followRequest={conversation.followRequest}
       />

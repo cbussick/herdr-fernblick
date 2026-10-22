@@ -88,7 +88,6 @@ beforeEach(async () => {
     structured: true,
     onClose: vi.fn(),
     conversation: {
-      agentName: "Pi",
       showThinking: false,
       snapshot: { messages: [], truncated: false },
       draft: "",
