@@ -151,6 +151,35 @@ async function enableCompact() {
   mocks.live.snapshot = { ...mocks.live.snapshot!, capabilities: { compact: true } };
   await act(async () => renderer.update(render()));
 }
+it("resolves relative Markdown images using Pi's cwd and updates when the context changes", async () => {
+  const snapshot = mocks.live.snapshot!;
+  mocks.live.snapshot = {
+    ...snapshot,
+    messages: [
+      { id: "u", role: "user", text: "![User](./user.png)" },
+      { id: "a", role: "assistant", text: "![Preview](.worktrees/task/preview.png)" },
+      { id: "t", role: "thinking", text: "![Thinking](./thinking.png)" },
+    ],
+    status: { ...snapshot.status, cwd: "/workspace/project" },
+  };
+  await act(async () => renderer.update(render()));
+  const image = () => renderer.root.findByProps({ alt: "Preview" });
+  expect(image().props.src).toBe(
+    "/api/local-images?path=%2Fworkspace%2Fproject%2F.worktrees%2Ftask%2Fpreview.png",
+  );
+  expect(renderer.root.findByProps({ alt: "User" }).props.src).toBe(
+    "/api/local-images?path=%2Fworkspace%2Fproject%2F.%2Fuser.png",
+  );
+  mocks.live.snapshot = {
+    ...mocks.live.snapshot,
+    status: { ...snapshot.status, cwd: "/workspace/other" },
+  };
+  await act(async () => renderer.update(render()));
+  expect(image().props.src).toBe(
+    "/api/local-images?path=%2Fworkspace%2Fother%2F.worktrees%2Ftask%2Fpreview.png",
+  );
+});
+
 it("cancels compact confirmation with Cancel or Escape without invoking Pi or changing the draft", async () => {
   await enableCompact();
   await act(async () =>

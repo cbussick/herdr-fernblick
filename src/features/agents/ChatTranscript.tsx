@@ -21,6 +21,7 @@ export interface ChatTranscriptProps {
   truncated: boolean;
   agentName: string;
   showThinking: boolean;
+  cwd?: string;
   id?: string;
   testId?: string;
   before?: ReactNode;
@@ -59,6 +60,7 @@ export function ChatTranscript({
   truncated,
   agentName,
   showThinking,
+  cwd,
   id,
   testId = "chat-transcript",
   before,
@@ -211,7 +213,7 @@ export function ChatTranscript({
               >
                 <LightbulbIcon />
                 <span className={a11yStyles["sr-only"]}>Thinking: </span>
-                <ChatMessageText text={message.text} />
+                <ChatMessageText text={message.text} cwd={cwd} />
               </div>
             ) : message.role === "tool" ? (
               <details
@@ -241,6 +243,7 @@ export function ChatTranscript({
                 {message.text ? (
                   <ChatMessageText
                     text={message.text}
+                    cwd={cwd}
                     annotationSource={message.role === "assistant" ? message.id : undefined}
                     annotationFeedback={message.role === "user"}
                     highlights={annotationHighlights(message, annotations)}

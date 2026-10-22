@@ -14,7 +14,9 @@ Ordinary user, assistant and thinking messages share `ChatMessageText`. Messages
 - GFM task lists with disabled checked/unchecked checkboxes. They reflect the message, not editable task state.
 - Paragraphs, original soft line breaks and explicit hard breaks.
 
-Raw HTML, Markdown images, reference-style links, vault-note wikilinks, strikethrough and horizontal-rule syntax remain literal. Image attachments retain their separate existing presentation. Generated annotation-feedback prompts intentionally preserve original quoted passages and comments literally, formatting only their comment labels.
+Markdown images show inline previews with the shared image viewer. HTTP/HTTPS destinations are supported, along with absolute VPS paths and paths relative to the Pi session's reported working directory (see [local images](../README.md#local-images-in-chat)). Missing working-directory context leaves relative images literal.
+
+Raw HTML, reference-style links, vault-note wikilinks, strikethrough and horizontal-rule syntax remain literal. Image attachments retain their separate existing presentation. Generated annotation-feedback prompts intentionally preserve original quoted passages and comments literally, formatting only their comment labels.
 
 ## Copying and safety
 
@@ -22,7 +24,7 @@ Each code block has a keyboard-accessible copy button. It copies the parser's co
 
 The Clipboard API is preferred. An HTTP-compatible textarea/`execCommand` fallback handles deployments on non-secure tailnet URLs and restores the prior focus/selection. Browser policy may still prevent copying; the UI does not claim success on failure. Physical iPadOS clipboard behavior requires device testing.
 
-Raw HTML is never injected. Only HTTP/HTTPS destinations become links, opened with `noopener noreferrer`. Code and unresolved/unsafe link syntax do not become navigable links. No external Markdown images are fetched.
+Raw HTML is never injected. Only HTTP/HTTPS destinations become ordinary links, opened with `noopener noreferrer`. Code and unresolved/unsafe link syntax do not become navigable links. Markdown images can fetch HTTP/HTTPS sources without sending a referrer; local images use the existing same-origin backend endpoint after resolution to an absolute path. Relative paths require a valid absolute Pi working directory; URL schemes, network paths and tilde expansion are never treated as relative local paths. Local file access retains the backend's raster-content validation, size limit and private-instance trust boundary.
 
 ## Annotation source mapping
 

@@ -36,12 +36,14 @@ function annotationLabels(value: string) {
 
 export function ChatMessageText({
   text,
+  cwd,
   annotationSource,
   annotationFeedback = false,
   highlights = [],
   onAnnotationEdit,
 }: {
   text: string;
+  cwd?: string;
   annotationSource?: string;
   annotationFeedback?: boolean;
   highlights?: TextHighlight[];
@@ -54,7 +56,7 @@ export function ChatMessageText({
       text.startsWith(`${intro}\n\n`),
     );
   const parts = useMemo<MessagePart[]>(() => {
-    if (!emphasizeLabels) return formatMessageText(text);
+    if (!emphasizeLabels) return formatMessageText(text, cwd);
     // Generated annotation prompts keep their original quotes literal.
     let offset = 0;
     return splitMessageLinks(text).map((part) => {
@@ -65,7 +67,7 @@ export function ChatMessageText({
         ? content
         : { ...content, kind: "link", href: part.href, children: [content] };
     });
-  }, [text, emphasizeLabels]);
+  }, [text, cwd, emphasizeLabels]);
 
   function highlighted(start: number, end: number) {
     const boundaries = [

@@ -169,8 +169,18 @@ the direct Pi bridge, never session-file reads or terminal command injection.
 
 ### Local images in chat
 
-Markdown images can refer directly to an absolute path on the VPS:
-`![Logo](/tmp/logo.png)`. For spaces, use `![Logo](</tmp/logo draft.png>)`.
+Markdown images can refer to an absolute path on the VPS:
+`![Logo](/tmp/logo.png)`, or a path relative to the Pi session's working directory:
+`![Preview](./design/preview.png)`, `![Preview](design/preview.png)` or
+`![Preview](../preview.png)`. For spaces, use `![Logo](<./logo draft.png>)`.
+
+Chat and whiteboard resolve relative paths against the working directory reported
+by Pi, never the browser URL or the Fernblick server's working directory. If that
+directory is unavailable, relative image syntax stays literal; absolute paths still
+work. Resolution uses the current session directory, not a per-message historical
+directory, so changing that context can change what an older relative path shows.
+Use absolute paths for unambiguous references across directory changes.
+
 Fernblick reads the original file through its existing backend and shows it in
 chat with the normal image preview. **It does not copy the file or create an
 attachment.** Each new request reads the current file; moved, deleted or unreadable
@@ -180,8 +190,9 @@ Any directory the backend user can read is supported, including symlinks. This
 makes local images accessible to people with access to your private Fernblick
 instance; keep it tailnet-only. Only PNG, JPEG, GIF and WebP content up to 10 MiB
 is served, with no browser caching and cross-origin embedding blocked. SVG, local
-`file:` URLs and relative paths are unsupported. Only Markdown image destinations
-are resolved; plain paths, ordinary links and code examples are not loaded. Paths
+`file:` URLs, network paths (`//host/...`) and tilde expansion (`~/...`) are
+unsupported. Only Markdown image destinations are resolved; plain paths, ordinary
+links and code examples are not loaded. Paths
 refer to the backend VPS, not your phone or another agent machine.
 
 ### Past sessions

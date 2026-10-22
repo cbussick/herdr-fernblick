@@ -57,7 +57,7 @@ function webDestination(value: string) {
 // Every leaf covers an original source range, including non-visible syntax.
 // Capture container prefixes from the parser rather than guessing with regexes:
 // nested quotes/lists, lazy continuation lines and tabs all retain raw offsets.
-export function formatMessageText(text: string): MessagePart[] {
+export function formatMessageText(text: string, cwd?: string): MessagePart[] {
   const prefixes: { start: number; end: number }[] = [];
   const fences: { start: number; end: number }[] = [];
   const tree = fromMarkdown(text, {
@@ -269,7 +269,7 @@ export function formatMessageText(text: string): MessagePart[] {
       return [part];
     }
     if (node.type === "image") {
-      const href = webDestination(node.url) ?? localImageSource(node.url);
+      const href = webDestination(node.url) ?? localImageSource(node.url, cwd);
       if (!href) return [literal(start, end)];
       return [
         {

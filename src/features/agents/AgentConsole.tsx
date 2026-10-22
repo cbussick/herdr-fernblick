@@ -463,6 +463,7 @@ function PiAgentConsole({ agent, onBack }: AgentConsoleProps) {
           <ChatTranscript
             key={JSON.stringify(targetOf(snapshot))}
             messages={snapshot.messages}
+            cwd={snapshot.status.cwd}
             truncated={snapshot.truncated}
             agentName={getAgentTabLabel(agent)}
             showThinking={showThinking}

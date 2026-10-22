@@ -106,6 +106,20 @@ afterEach(async () => {
   await act(async () => renderer.unmount());
   vi.unstubAllGlobals();
 });
+it("resolves dock images against the retained Pi cwd while live chat reconnects", async () => {
+  props.conversation.snapshot = {
+    messages: [{ id: "a", role: "assistant", text: "![Preview](./preview.png)" }],
+    truncated: false,
+    status: { cwd: "/workspace/board" },
+  };
+  await act(async () => renderer.update(<Whiteboard {...props} />));
+  const src = "/api/local-images?path=%2Fworkspace%2Fboard%2F.%2Fpreview.png";
+  expect(renderer.root.findByProps({ alt: "Preview" }).props.src).toBe(src);
+  props.conversation.snapshot = undefined;
+  await act(async () => renderer.update(<Whiteboard {...props} />));
+  expect(renderer.root.findByProps({ alt: "Preview" }).props.src).toBe(src);
+});
+
 it("retains a failed image instruction and never automatically retries", async () => {
   await openSheet();
   await act(async () =>

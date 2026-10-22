@@ -46,6 +46,34 @@ describe("ChatMessageText formatting", () => {
     expect(html).not.toContain("/api/local-images");
   });
 
+  it("renders relative image previews without changing raw annotation source ranges", () => {
+    const text = "Before ![Preview](<./design/Logo #1.png>) **after**.";
+    const src = "/api/local-images?path=%2Fworkspace%2Fproject%2F.%2Fdesign%2FLogo%20%231.png";
+    const html = renderToStaticMarkup(<ChatMessageText text={text} cwd="/workspace/project" />);
+    expect(html).toContain(`src="${src}"`);
+    expect(html).toContain(`href="${src}"`);
+    for (let end = 0; end <= text.length; end++) {
+      const partial = text.slice(0, end);
+      const annotated = renderToStaticMarkup(
+        <ChatMessageText text={partial} cwd="/workspace/project" annotationSource="a1" />,
+      );
+      expect(annotated.replace(/<[^>]+>/g, "")).toBe(renderToStaticMarkup(<>{partial}</>));
+    }
+  });
+
+  it("resolves only image destinations, not links, code, escaped images or unsafe schemes even with a cwd", () => {
+    const html = renderToStaticMarkup(
+      <ChatMessageText
+        cwd="/workspace/project"
+        text={
+          "./a.png [file](./a.png) `![code](./a.png)` \\![escaped](./a.png)\n\n```md\n![code](./a.png)\n```\n\n![file](file:///tmp/a.png) ![network](//host/a.png) ![data](data:image/png;base64,AA) ![scheme](javascript%3Aalert%281%29)"
+        }
+      />,
+    );
+    expect(html).not.toContain("<img");
+    expect(html).not.toContain("/api/local-images");
+  });
+
   it("decodes URL-encoded local names once", () => {
     const html = renderToStaticMarkup(<ChatMessageText text="![Logo](/tmp/logo%20%2520%3F.png)" />);
     expect(html).toContain('src="/api/local-images?path=%2Ftmp%2Flogo%20%2520%3F.png"');

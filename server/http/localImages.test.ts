@@ -72,6 +72,17 @@ it("serves an actual Markdown image from its original file, without creating an 
   expect(await readdir(directory)).toEqual([]);
 });
 
+it("serves relative Markdown images against the session directory, never the server cwd", async () => {
+  const path = join(directory, "Preview #1.png");
+  await writeFile(path, png);
+  const src = imageSource(formatMessageText("![Preview](<./Preview #1.png>)", directory));
+  expect(src).toBe(`/api/local-images?path=${encodeURIComponent(directory + "/./Preview #1.png")}`);
+  const response = await fetch(base + src);
+  expect(response.status).toBe(200);
+  expect(Buffer.from(await response.arrayBuffer())).toEqual(png);
+  expect(await readdir(directory)).toEqual(["Preview #1.png"]);
+});
+
 it.each([
   ["image/png", png],
   ["image/jpeg", Buffer.from([255, 216, 0, 255, 217])],
