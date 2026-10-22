@@ -44,7 +44,6 @@ beforeEach(async () => {
   viewport.scrollHeight = 1000;
   viewport.clientHeight = 200;
   props = {
-    agentName: "Pi",
     showThinking: false,
     truncated: false,
     messages: [
@@ -79,6 +78,15 @@ async function readerScrollTo(value: number) {
     output().props.onScroll();
   });
 }
+it("labels replies Agent and user messages You", () => {
+  const messages = renderer.root.findAllByType("article");
+  expect(messages.map((message) => message.findAllByType("span")[0].children.join(""))).toEqual([
+    "You",
+    "Agent",
+    "You",
+  ]);
+});
+
 it("renders all turns, status, tool errors and images with the shared thinking preference", async () => {
   let text = JSON.stringify(renderer.toJSON());
   for (const value of [

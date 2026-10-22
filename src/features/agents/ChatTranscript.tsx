@@ -19,7 +19,6 @@ import a11yStyles from "../../styles/accessibility.module.css";
 export interface ChatTranscriptProps {
   messages: ChatMessage[];
   truncated: boolean;
-  agentName: string;
   showThinking: boolean;
   id?: string;
   testId?: string;
@@ -57,7 +56,6 @@ function ChatAttachment({ url, onOpen }: { url: string; onOpen: () => void }) {
 export function ChatTranscript({
   messages,
   truncated,
-  agentName,
   showThinking,
   id,
   testId = "chat-transcript",
@@ -237,7 +235,7 @@ export function ChatTranscript({
                 data-message-id={message.id}
                 data-role={message.role}
               >
-                <span>{message.role === "user" ? "You" : agentName}</span>
+                <span>{message.role === "user" ? "You" : "Agent"}</span>
                 {message.text ? (
                   <ChatMessageText
                     text={message.text}

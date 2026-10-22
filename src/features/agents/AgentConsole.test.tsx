@@ -147,6 +147,18 @@ it.each([
   }
 });
 
+it("keeps the tab title in the header and labels replies Agent", async () => {
+  const title = "I think yesterday or today there were new Node security advisories published for";
+  mocks.live.snapshot = {
+    ...mocks.live.snapshot!,
+    messages: [{ id: "reply", role: "assistant", text: "All done." }],
+  };
+  await act(async () => renderer.update(render({ ...agent, tab_label: title })));
+  expect(renderer.root.findByType("h2").children.join("")).toBe(title);
+  const message = renderer.root.findByProps({ "data-message-id": "reply" });
+  expect(message.findAllByType("span")[0].children.join("")).toBe("Agent");
+});
+
 async function openActions() {
   await act(async () =>
     renderer.root.findByProps({ "data-ui": "conversation-actions-button" }).props.onClick(),
