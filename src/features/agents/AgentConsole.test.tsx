@@ -131,6 +131,22 @@ afterEach(async () => {
   client.clear();
   vi.unstubAllGlobals();
 });
+it.each([
+  "Short title",
+  "I think yesterday or today there were new Node security advisories published for",
+])("keeps the composer placeholder short for tab %s, idle or working", async (title) => {
+  const currentAgent = { ...agent, tab_label: title };
+  for (const busy of [false, true]) {
+    mocks.live.snapshot = { ...mocks.live.snapshot!, busy };
+    await act(async () => renderer.update(render(currentAgent)));
+    const textarea = renderer.root.findByType("textarea");
+    expect(textarea.props.placeholder).toBe("Message…");
+    expect(textarea.props.value).toBe("");
+    expect(textarea.props.rows).toBe(1);
+    expect(renderer.root.findByType("label").children.join("")).toBe(`Message ${title}`);
+  }
+});
+
 async function openActions() {
   await act(async () =>
     renderer.root.findByProps({ "data-ui": "conversation-actions-button" }).props.onClick(),
