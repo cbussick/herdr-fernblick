@@ -30,7 +30,6 @@ beforeEach(async () => {
   activity.warning = false;
   activity.working = false;
   conversation = {
-    agentName: "Pi",
     showThinking: false,
     draft: "",
     sending: false,
@@ -57,6 +56,13 @@ afterEach(async () => {
   await act(async () => renderer.unmount());
   vi.unstubAllGlobals();
 });
+it("uses Agent and You labels in the shared whiteboard transcript", () => {
+  const labels = renderer.root
+    .findAllByType("article")
+    .map((message) => message.findAllByType("span")[0].children.join(""));
+  expect(labels).toEqual(["You", "Agent", "You", "Agent", "Agent"]);
+});
+
 it("streams the same response and retains it over a missing live snapshot", async () => {
   conversation.snapshot = {
     truncated: false,

@@ -131,6 +131,34 @@ afterEach(async () => {
   client.clear();
   vi.unstubAllGlobals();
 });
+it.each([
+  "Short title",
+  "I think yesterday or today there were new Node security advisories published for",
+])("keeps the composer placeholder short for tab %s, idle or working", async (title) => {
+  const currentAgent = { ...agent, tab_label: title };
+  for (const busy of [false, true]) {
+    mocks.live.snapshot = { ...mocks.live.snapshot!, busy };
+    await act(async () => renderer.update(render(currentAgent)));
+    const textarea = renderer.root.findByType("textarea");
+    expect(textarea.props.placeholder).toBe("Message…");
+    expect(textarea.props.value).toBe("");
+    expect(textarea.props.rows).toBe(1);
+    expect(renderer.root.findByType("label").children.join("")).toBe(`Message ${title}`);
+  }
+});
+
+it("keeps the tab title in the header and labels replies Agent", async () => {
+  const title = "I think yesterday or today there were new Node security advisories published for";
+  mocks.live.snapshot = {
+    ...mocks.live.snapshot!,
+    messages: [{ id: "reply", role: "assistant", text: "All done." }],
+  };
+  await act(async () => renderer.update(render({ ...agent, tab_label: title })));
+  expect(renderer.root.findByType("h2").children.join("")).toBe(title);
+  const message = renderer.root.findByProps({ "data-message-id": "reply" });
+  expect(message.findAllByType("span")[0].children.join("")).toBe("Agent");
+});
+
 async function openActions() {
   await act(async () =>
     renderer.root.findByProps({ "data-ui": "conversation-actions-button" }).props.onClick(),

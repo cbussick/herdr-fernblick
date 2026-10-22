@@ -13,7 +13,6 @@ export interface BoardPromptContext {
 }
 export interface WhiteboardConversation {
   snapshot?: Pick<Snapshot, "messages" | "truncated">;
-  agentName: string;
   showThinking: boolean;
   draft: string;
   sending: boolean;
@@ -121,7 +120,6 @@ export function ConversationDock({
         testId="whiteboard-replies"
         messages={messages}
         truncated={snapshot?.truncated ?? false}
-        agentName={conversation.agentName}
         showThinking={conversation.showThinking}
         followRequest={conversation.followRequest}
       />

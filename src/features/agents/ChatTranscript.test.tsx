@@ -44,7 +44,6 @@ beforeEach(async () => {
   viewport.scrollHeight = 1000;
   viewport.clientHeight = 200;
   props = {
-    agentName: "Pi",
     showThinking: false,
     truncated: false,
     messages: [
@@ -79,6 +78,15 @@ async function readerScrollTo(value: number) {
     output().props.onScroll();
   });
 }
+it("labels replies Agent and user messages You", () => {
+  const messages = renderer.root.findAllByType("article");
+  expect(messages.map((message) => message.findAllByType("span")[0].children.join(""))).toEqual([
+    "You",
+    "Agent",
+    "You",
+  ]);
+});
+
 it("renders all turns, status, tool errors and images with the shared thinking preference", async () => {
   let text = JSON.stringify(renderer.toJSON());
   for (const value of [
@@ -113,7 +121,7 @@ it.each(["chat-transcript", "whiteboard-transcript"])(
     const articles = renderer.root.findAllByType("article");
     for (const [index, article] of articles.entries()) {
       const header = article.findByType("header");
-      expect(header.findByType("span").children).toEqual([index === 0 ? "You" : "Pi"]);
+      expect(header.findByType("span").children).toEqual([index === 0 ? "You" : "Agent"]);
       const time = header.findByType("time");
       const date = new Date(timestamp + index * 60_000);
       const fullDate = date.toLocaleString(undefined, { dateStyle: "full", timeStyle: "long" });
@@ -136,7 +144,7 @@ it.each([undefined, NaN, Infinity, -Infinity, 8.64e15 + 1])(
     await act(async () => renderer.update(<ChatTranscript {...props} />));
     expect(renderer.root.findAllByType("time")).toHaveLength(0);
     expect(JSON.stringify(renderer.toJSON())).toContain("Still visible");
-    expect(renderer.root.findByType("header").findByType("span").children).toEqual(["Pi"]);
+    expect(renderer.root.findByType("header").findByType("span").children).toEqual(["Agent"]);
   },
 );
 it("preserves the recorded timestamp, including zero, during streaming updates", async () => {

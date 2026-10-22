@@ -19,7 +19,6 @@ import a11yStyles from "../../styles/accessibility.module.css";
 export interface ChatTranscriptProps {
   messages: ChatMessage[];
   truncated: boolean;
-  agentName: string;
   showThinking: boolean;
   id?: string;
   testId?: string;
@@ -74,7 +73,6 @@ function ChatTimestamp({ timestamp }: { timestamp?: number }) {
 export function ChatTranscript({
   messages,
   truncated,
-  agentName,
   showThinking,
   id,
   testId = "chat-transcript",
@@ -255,7 +253,7 @@ export function ChatTranscript({
                 data-role={message.role}
               >
                 <header className={styles["chat-message__meta"]}>
-                  <span>{message.role === "user" ? "You" : agentName}</span>
+                  <span>{message.role === "user" ? "You" : "Agent"}</span>
                   <ChatTimestamp timestamp={message.timestamp} />
                 </header>
                 {message.text ? (
