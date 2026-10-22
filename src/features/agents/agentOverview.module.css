@@ -238,7 +238,7 @@
 }
 
 .flat-agent-list__label {
-  padding: var(--space-4) 0 var(--space-2);
+  padding: 0 0 var(--space-2);
   color: var(--color-text-tertiary);
   font-size: 0.75rem;
   font-weight: 600;
