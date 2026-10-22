@@ -57,7 +57,11 @@ function ChatTimestamp({ timestamp }: { timestamp?: number }) {
   if (timestamp === undefined) return null;
   const date = new Date(timestamp);
   if (!Number.isFinite(date.getTime())) return null;
-  const fullDate = date.toLocaleString(undefined, { dateStyle: "full", timeStyle: "long" });
+  const fullDate = date.toLocaleString(undefined, {
+    dateStyle: "full",
+    timeStyle: "long",
+    hourCycle: "h23",
+  });
   return (
     <time
       className={styles["chat-message__timestamp"]}
@@ -65,7 +69,11 @@ function ChatTimestamp({ timestamp }: { timestamp?: number }) {
       title={fullDate}
       aria-label={fullDate}
     >
-      {date.toLocaleTimeString(undefined, { hour: "2-digit", minute: "2-digit" })}
+      {date.toLocaleTimeString(undefined, {
+        hour: "2-digit",
+        minute: "2-digit",
+        hourCycle: "h23",
+      })}
     </time>
   );
 }
