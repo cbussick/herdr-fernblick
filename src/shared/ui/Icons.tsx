@@ -106,6 +106,24 @@ export function LoaderIcon(props: IconProps) {
   );
 }
 
+export function PlugIcon(props: IconProps) {
+  return (
+    <IconBase {...props}>
+      <path d="M9 8V2m6 6V2M12 17v5" />
+      <path d="M7 8h10a1 1 0 0 1 1 1v4a4 4 0 0 1-4 4h-4a4 4 0 0 1-4-4V9a1 1 0 0 1 1-1Z" />
+    </IconBase>
+  );
+}
+
+export function UnplugIcon(props: IconProps) {
+  return (
+    <IconBase {...props}>
+      <path d="m19 5 3-3M2 22l3-3m2.5-5.5L10 11m.5 5.5L13 14" />
+      <path d="m12 6 2.3-2.3a2.4 2.4 0 0 1 3.4 0l2.6 2.6a2.4 2.4 0 0 1 0 3.4L18 12Zm0 12-2.3 2.3a2.4 2.4 0 0 1-3.4 0l-2.6-2.6a2.4 2.4 0 0 1 0-3.4L6 12Z" />
+    </IconBase>
+  );
+}
+
 export function PlugOffIcon(props: IconProps) {
   return (
     <IconBase {...props}>

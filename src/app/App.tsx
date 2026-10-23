@@ -104,7 +104,7 @@ export function App() {
           />
           <p>Loading agents…</p>
         </div>
-      ) : agentsQuery.isError ? (
+      ) : agentsQuery.isError && !agentsQuery.data ? (
         <div className={appStyles["page-state"]} data-testid="page-state" role="alert">
           <StateIcon kind="unavailable" />
           <h1>Cannot reach Herdr</h1>
@@ -117,6 +117,7 @@ export function App() {
         <div className={appStyles["workspace"]}>
           <AgentList
             agents={agents}
+            connected={!agentsQuery.isError && !agentsQuery.isPaused}
             tabs={tabs}
             onCreate={(workspaceId) => setCreateDialog({ workspaceId })}
             onCreateTab={() => setTabDialogOpen(true)}
