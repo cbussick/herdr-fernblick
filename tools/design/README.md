@@ -72,12 +72,13 @@ PLAYWRIGHT_MODULE=/tmp/fernblick-design-tools/node_modules/playwright/index.mjs 
 
 Checks Chromium and WebKit at small-phone (320px), phone, tablet
 portrait/landscape and desktop sizes. Synthetic fixtures cover multiple
-workspaces, same-tab agents, compact single-pane rows (including unnamed agents),
-unboxed split-tab headings, mixed agent/shell tabs, pane-specific shell
-navigation, search, collapse state across polling/search, and agent renaming
-without changing the tab title. Shell-only workspace screenshots verify the
-compact list rather than repeated nested tab cards. All API/SSE traffic is
-intercepted; no live agents are controlled.
+workspaces, same-tab agents, named/unnamed single-pane agents, and matching
+unboxed headings/indentation for single- and multi-pane tabs. Single-pane tabs
+have no collapse control, tint, inner border or tab count. Also covers mixed
+agent/shell tabs, pane-specific shell navigation, search, collapse state across
+polling/search, and agent renaming without changing the tab title. Shell-only
+workspace screenshots verify the same quiet structure without nested tab cards.
+All API/SSE traffic is intercepted; no live agents are controlled.
 Screenshots are saved to ignored `design-gallery/workspace-tabs/`.
 
 ## PWA regression

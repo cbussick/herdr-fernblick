@@ -130,20 +130,15 @@ function WorkspaceTab({
         <strong>{tab.label}</strong>
       </span>
       <small>Tab</small>
-      <ChevronIcon />
+      {multiple && <ChevronIcon />}
     </>
   );
   const panes = (
-    <div className={multiple ? overviewStyles["tab-group__panes"] : undefined}>
+    <div className={overviewStyles["tab-group__panes"]}>
       {agents.map((agent) => (
         <PaneRow
           key={agent.pane_id}
-          title={multiple ? getAgentLabel(agent) : tab.label}
-          subtitle={
-            !multiple && agent.name?.trim() !== tab.label
-              ? agent.name?.trim() || undefined
-              : undefined
-          }
+          title={getAgentLabel(agent)}
           tabLabel={tab.label}
           kind="agent"
           tabId={agent.tab_id}
@@ -157,13 +152,7 @@ function WorkspaceTab({
       {shells.map((shell) => (
         <PaneRow
           key={shell.pane_id}
-          title={
-            !multiple
-              ? tab.label
-              : tab.shells.length > 1
-                ? `Shell ${shell.pane_id}`
-                : "Shell terminal"
-          }
+          title={tab.shells.length > 1 ? `Shell ${shell.pane_id}` : "Shell terminal"}
           tabLabel={tab.label}
           kind="shell"
           tabId={shell.tab_id}
@@ -175,9 +164,15 @@ function WorkspaceTab({
   );
   if (!multiple)
     return (
-      <div data-testid="tab-group" data-split={false}>
+      <section
+        className={overviewStyles["tab-group"]}
+        data-testid="tab-group"
+        data-split={false}
+        aria-label={tab.label}
+      >
+        <div className={overviewStyles["tab-group__header"]}>{header}</div>
         {panes}
-      </div>
+      </section>
     );
   return (
     <details

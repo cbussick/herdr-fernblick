@@ -134,17 +134,33 @@ for (const [engine, browserType] of Object.entries({ chromium, webkit })) {
       assert.equal(await orchestrator.getByTestId("pane-row").count(), 5);
       const single = groups.filter({ has: page.locator("strong", { hasText: "API cleanup" }) });
       assert.equal(await single.locator("summary").count(), 0);
-      assert.equal(await single.locator("small").count(), 0);
+      assert.equal(await single.locator("small").textContent(), "Tab");
       assert.equal(await single.getAttribute("data-split"), "false");
-      assert.equal(await single.locator("strong").count(), 1);
+      assert.equal(await single.locator("strong").count(), 2);
+      assert.equal(await single.locator(":scope > div").first().locator("svg").count(), 0);
       assert.equal(
         await single.getByTestId("pane-row").locator("strong").textContent(),
-        "API cleanup",
+        "Agent w1:p5",
       );
+      const groupStyle = (group) => {
+        const header = group.querySelector("small").parentElement;
+        const panes = group.querySelector('[data-testid="pane-row"]').parentElement.parentElement;
+        return {
+          border: getComputedStyle(group).borderTopWidth,
+          background: getComputedStyle(header).backgroundColor,
+          headerHeight: header.getBoundingClientRect().height,
+          indentation: getComputedStyle(panes).paddingLeft,
+        };
+      };
+      assert.deepEqual(await single.evaluate(groupStyle), await orchestrator.evaluate(groupStyle));
       assert.equal(await cards.nth(1).getByTestId("tab-group").count(), 2);
       assert.equal(await cards.nth(1).locator("summary").count(), 1);
       assert.deepEqual(
-        await cards.nth(1).getByTestId("pane-row").locator("strong").allTextContents(),
+        await cards
+          .nth(1)
+          .getByTestId("tab-group")
+          .locator(":scope > div > span > strong")
+          .allTextContents(),
         ["anatomy skill", "Oculus Quest 3 Anatomy Skill"],
       );
       assert.equal(await cards.nth(1).getByTestId("pane-row").count(), 2);
@@ -153,7 +169,7 @@ for (const [engine, browserType] of Object.entries({ chromium, webkit })) {
         card.parentElement.parentElement.scrollTop = 0;
       });
       await page.screenshot({ path: `${out}/${engine}-${width}.png`, fullPage: true });
-      // A shell-only workspace must stay a compact list, with no nested tab headers.
+      // Shell-only tabs share the same quiet headings, without nested cards or collapse controls.
       await workspaceHeader(0).click();
       await cards.first().evaluate((card) => {
         card.parentElement.parentElement.scrollTop = 0;
@@ -201,8 +217,9 @@ for (const [engine, browserType] of Object.entries({ chromium, webkit })) {
       await page.getByRole("button", { name: "Back to overview", exact: true }).click();
       const shellRow = cards
         .nth(1)
-        .getByTestId("pane-row")
-        .filter({ hasText: "Oculus Quest 3 Anatomy Skill" });
+        .getByTestId("tab-group")
+        .filter({ hasText: "Oculus Quest 3 Anatomy Skill" })
+        .getByTestId("pane-row");
       if ((await cards.nth(1).getAttribute("open")) === null) await workspaceHeader(1).click();
       await shellRow.click();
       await page.getByText("Synthetic terminal w2:p2", { exact: true }).waitFor();
