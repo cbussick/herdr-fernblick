@@ -10,7 +10,12 @@ import {
   targetOf,
   type Target,
 } from "../../../packages/pi-live-chat/protocol";
-import { getAgentTabLabel, getAgentTarget, getStatusLabel } from "./agentPresentation";
+import {
+  getAgentLabel,
+  getAgentTabLabel,
+  getAgentTarget,
+  getStatusLabel,
+} from "./agentPresentation";
 import { getAgentOutput, sendAgentKey, chatCommand, uploadImage } from "../../shared/api/apiClient";
 import { useLiveChat } from "./useLiveChat";
 import { ChatTranscript } from "./ChatTranscript";
@@ -371,7 +376,9 @@ function PiAgentConsole({ agent, onBack }: AgentConsoleProps) {
         </IconButton>
         <TabKindIcon kind="agent" />
         <div className={consoleStyles["console-header__copy"]}>
-          <p>{agent.workspace_label ?? agent.workspace_id}</p>
+          <p>
+            {agent.workspace_label ?? agent.workspace_id} · {getAgentLabel(agent)}
+          </p>
           <div className={consoleStyles["console-header__title"]}>
             <h2>{getAgentTabLabel(agent)}</h2>
           </div>

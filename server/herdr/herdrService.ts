@@ -231,22 +231,25 @@ export class HerdrService {
         workspace_label: workspaceLabels.get(agent.workspace_id),
       })),
       workspaces: result.snapshot.workspaces,
-      tabs: result.snapshot.tabs.flatMap((tab) => {
-        if (result.snapshot.agents.some((agent) => agent.tab_id === tab.tab_id)) return [];
-        const pane = result.snapshot.panes.find((candidate) => candidate.tab_id === tab.tab_id);
-        return pane
-          ? [
-              shellTabSchema.parse({
-                label: tab.label,
-                pane_id: pane.pane_id,
-                revision: pane.revision,
-                tab_id: tab.tab_id,
-                workspace_id: tab.workspace_id,
-                workspace_label: workspaceLabels.get(tab.workspace_id),
-              }),
-            ]
-          : [];
-      }),
+      // Include every shell pane, including splits beside agents in the same tab.
+      tabs: result.snapshot.tabs.flatMap((tab) =>
+        result.snapshot.panes
+          .filter(
+            (pane) =>
+              pane.tab_id === tab.tab_id &&
+              !result.snapshot.agents.some((agent) => agent.pane_id === pane.pane_id),
+          )
+          .map((pane) =>
+            shellTabSchema.parse({
+              label: tab.label,
+              pane_id: pane.pane_id,
+              revision: pane.revision,
+              tab_id: tab.tab_id,
+              workspace_id: tab.workspace_id,
+              workspace_label: workspaceLabels.get(tab.workspace_id),
+            }),
+          ),
+      ),
     };
   }
 

@@ -474,9 +474,16 @@ for (const size of sizes)
         "offline",
       ].includes(id);
       if (detail) {
-        if (id.startsWith("shell") || id === "edit-shell")
-          await page.getByRole("button", { name: /Development server Shell terminal/ }).click();
-        else {
+        if (id.startsWith("shell") || id === "edit-shell") {
+          if (phase === "before")
+            await page.getByRole("button", { name: /Development server Shell terminal/ }).click();
+          else
+            await page
+              .getByTestId("tab-group")
+              .filter({ hasText: "Development server" })
+              .getByTestId("pane-row")
+              .click();
+        } else {
           await page.getByRole("tab", { name: "Agents", exact: true }).click();
           await page
             .getByRole("button", {

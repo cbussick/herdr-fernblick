@@ -61,6 +61,22 @@ node tools/design/verify.mjs http://100.71.229.1:5197 http://127.0.0.1:5198
 
 The gallery server exposes only static synthetic artifacts and binds to the Tailnet interface, not a public interface. A separate loopback listener can serve the same directory with `python3 -m http.server 5197 --bind 127.0.0.1 --directory design-gallery`; this supports standard localhost forwarding. Restrict access in the Tailnet policy if needed. After editing `gallery.html`, copy it to `design-gallery/index.html` or recapture.
 
+## Workspace/tab grouping regression
+
+After `npm run check`, serve this worktree's `dist/` on an unused loopback port:
+
+```sh
+PLAYWRIGHT_MODULE=/tmp/fernblick-design-tools/node_modules/playwright/index.mjs \
+  node tools/design/workspace-tabs.mjs http://127.0.0.1:<frontend-port>
+```
+
+Checks Chromium and WebKit at phone, tablet portrait/landscape and desktop sizes.
+Synthetic fixtures cover multiple workspaces, same-tab agents, unnamed-agent
+fallbacks, single-pane headers, mixed agent/shell tabs, split shell navigation,
+search, collapse state across polling/search, and agent renaming without changing
+the tab title. All API/SSE traffic is intercepted; no live agents are controlled.
+Screenshots are saved to ignored `design-gallery/workspace-tabs/`.
+
 ## PWA regression
 
 After `npm run check`, run:

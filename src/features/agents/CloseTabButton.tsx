@@ -121,11 +121,7 @@ export function CloseTabButton({
               <TrashIcon />
             </div>
             <h2>Close “{label}”?</h2>
-            <p>
-              {agentRunning
-                ? "The running agent and its terminal session will end."
-                : "The terminal session in this tab will end."}
-            </p>
+            <p>Every pane in this tab will close, including all running agents and terminals.</p>
             {closeMutation.isError ? <p role="alert">{closeMutation.error.message}</p> : null}
             <div className={dialogStyles["edit-tab-dialog__actions"]}>
               <button type="button" onClick={() => setConfirmation(null)}>

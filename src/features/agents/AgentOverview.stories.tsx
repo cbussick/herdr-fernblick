@@ -21,15 +21,24 @@ const makeAgent = (
   focused: false,
   pane_id,
   revision: 1,
-  tab_id: `${workspace_id}:t1`,
+  name: `agent-${pane_id.split(":").at(-1)}`,
+  tab_id: pane_id.replace(":p", ":t"),
   tab_label,
   workspace_id,
   workspace_label,
 });
 const agents: Agent[] = [
-  makeAgent("w1:p1", "Deployment", "w1", "PHOGET", "blocked"),
-  makeAgent("w1:p2", "API research", "w1", "PHOGET", "done"),
-  makeAgent("w1:p3", "Performance audit", "w1", "PHOGET", "working"),
+  { ...makeAgent("w1:p1", "Deployment", "w1", "PHOGET", "blocked"), name: "planner" },
+  {
+    ...makeAgent("w1:p2", "Deployment", "w1", "PHOGET", "done"),
+    name: "backend",
+    tab_id: "w1:t1",
+  },
+  {
+    ...makeAgent("w1:p3", "Deployment", "w1", "PHOGET", "working"),
+    name: "test-reviewer",
+    tab_id: "w1:t1",
+  },
   makeAgent("w2:p1", "Ideate UI", "w2", "FERNBLICK", "idle"),
   makeAgent("w3:p1", "GitHub Actions and CI", "w3", "FEBOP-JOB-SHEET", "done"),
 ];

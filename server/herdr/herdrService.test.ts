@@ -53,6 +53,38 @@ it("adds workspace and tab labels to agents from the session snapshot", async ()
   expect(request).toHaveBeenCalledWith("session.snapshot", {}, expect.anything());
 });
 
+it("includes every split shell pane, even in a tab with agents", async () => {
+  const panes = [
+    { pane_id: "w1:p2", revision: 1, tab_id: "w1:t2", workspace_id: "w1" },
+    { pane_id: "w1:p3", revision: 2, tab_id: "w1:t2", workspace_id: "w1" },
+    { pane_id: "w1:p4", revision: 3, tab_id: "w1:t3", workspace_id: "w1" },
+    { pane_id: "w1:p5", revision: 4, tab_id: "w1:t3", workspace_id: "w1" },
+  ];
+  const request = vi.fn(async <T>(_method: string, _params: unknown, schema: z.ZodType<T>) =>
+    schema.parse({
+      type: "session_snapshot",
+      snapshot: {
+        agents: [agent],
+        panes,
+        tabs: [
+          { label: "Authentication", tab_id: "w1:t2", workspace_id: "w1" },
+          { label: "Shells", tab_id: "w1:t3", workspace_id: "w1" },
+        ],
+        workspaces: [{ label: "Web app", workspace_id: "w1" }],
+      },
+    }),
+  );
+  const dashboard = await new HerdrService({ request } as unknown as HerdrClient).getDashboard();
+  expect(dashboard.agents).toHaveLength(1);
+  expect(dashboard.tabs).toEqual(
+    panes.slice(1).map((pane) => ({
+      ...pane,
+      label: pane.tab_id === "w1:t2" ? "Authentication" : "Shells",
+      workspace_label: "Web app",
+    })),
+  );
+});
+
 it("creates a tab before starting Pi in its root pane", async () => {
   const request = vi.fn(async <T>(method: string, _params: unknown, schema: z.ZodType<T>) => {
     if (method === "tab.create") {
