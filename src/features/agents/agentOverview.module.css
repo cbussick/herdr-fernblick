@@ -150,6 +150,7 @@
 
 .workspace-disclosure__create {
   display: grid;
+  grid-column: 3;
   width: 2.75rem;
   height: 2.75rem;
   padding: 0;

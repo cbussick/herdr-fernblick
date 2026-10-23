@@ -102,7 +102,7 @@ function WorkspaceSummary({
           {shellCount ? ` / ${shellCount} ${shellCount === 1 ? "shell" : "shells"}` : ""}
         </small>
       </span>
-      <StatusIndicator status={status} label={getStatusLabel(status)} />
+      {agentCount > 0 && <StatusIndicator status={status} label={getStatusLabel(status)} />}
       <button
         type="button"
         className={overviewStyles["workspace-disclosure__create"]}
