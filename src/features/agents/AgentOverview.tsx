@@ -130,7 +130,7 @@ function WorkspaceTab({
         <strong>{tab.label}</strong>
       </span>
       <small>Tab</small>
-      {multiple && <ChevronIcon />}
+      <ChevronIcon />
     </>
   );
   const panes = (
@@ -162,23 +162,11 @@ function WorkspaceTab({
       ))}
     </div>
   );
-  if (!multiple)
-    return (
-      <section
-        className={overviewStyles["tab-group"]}
-        data-testid="tab-group"
-        data-split={false}
-        aria-label={tab.label}
-      >
-        <div className={overviewStyles["tab-group__header"]}>{header}</div>
-        {panes}
-      </section>
-    );
   return (
     <details
       className={overviewStyles["tab-group"]}
       data-testid="tab-group"
-      data-split
+      data-split={multiple}
       aria-label={tab.label}
       open={!!query || expanded}
       onToggle={(event) => {

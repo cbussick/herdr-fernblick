@@ -73,8 +73,9 @@ PLAYWRIGHT_MODULE=/tmp/fernblick-design-tools/node_modules/playwright/index.mjs 
 Checks Chromium and WebKit at small-phone (320px), phone, tablet
 portrait/landscape and desktop sizes. Synthetic fixtures cover multiple
 workspaces, same-tab agents, named/unnamed single-pane agents, and matching
-unboxed headings/indentation for single- and multi-pane tabs. Single-pane tabs
-have no collapse control, tint, inner border or tab count. Also covers mixed
+unboxed headings/indentation for single- and multi-pane tabs. Every tab supports
+pointer and keyboard collapse, including single-agent and single-shell tabs;
+collapsed state survives polling. There is no tint, inner border or tab count. Also covers mixed
 agent/shell tabs, pane-specific shell navigation, search, collapse state across
 polling/search, and agent renaming without changing the tab title. Shell-only
 workspace screenshots verify the same quiet structure without nested tab cards.

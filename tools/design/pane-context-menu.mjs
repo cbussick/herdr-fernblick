@@ -70,7 +70,7 @@ for (const [name, engine] of Object.entries({ chromium, webkit })) {
       );
       await page.goto(app);
       await page.evaluate(() => document.fonts.ready);
-      await page.getByTestId("workspace-disclosure").locator("summary").click();
+      await page.getByTestId("workspace-disclosure").locator(":scope > summary").click();
       for (const grouped of [true, false]) {
         if (!grouped) await page.getByRole("tab", { name: "Agents", exact: true }).click();
         const row = page.getByTestId("pane-row").last();

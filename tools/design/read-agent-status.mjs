@@ -105,7 +105,8 @@ for (const [engine, browserType] of [
       });
       await page.goto(base);
       const workspace = page.getByTestId("workspace-disclosure");
-      await workspace.locator("summary").click();
+      const workspaceSummary = workspace.locator(":scope > summary");
+      await workspaceSummary.click();
       const row = page.getByTestId("pane-row");
       assert((await row.textContent()).includes("New answer"));
       await row.click();
@@ -116,18 +117,18 @@ for (const [engine, browserType] of [
       await page.waitForResponse((response) => new URL(response.url()).pathname === "/api/agents");
       assert(polls > afterReading);
       assert((await row.textContent()).includes("Idle"), "Polling must not restore the read badge");
-      assert((await workspace.locator("summary").textContent()).includes("Idle"));
+      assert((await workspaceSummary.textContent()).includes("Idle"));
       await page.reload();
       await workspace.waitFor();
-      if (!(await row.isVisible())) await workspace.locator("summary").click();
+      if ((await workspace.getAttribute("open")) === null) await workspaceSummary.click();
       await row.getByText("Idle", { exact: true }).waitFor();
       assert(
-        (await workspace.locator("summary").textContent()).includes("Idle"),
+        (await workspaceSummary.textContent()).includes("Idle"),
         "Reload must restore backend read receipts",
       );
       completion = 14;
       await row.getByText("New answer", { exact: true }).waitFor();
-      assert((await workspace.locator("summary").textContent()).includes("New answer"));
+      assert((await workspaceSummary.textContent()).includes("New answer"));
       assert.deepEqual(errors, []);
       console.log(
         `${engine} ${width}x${height}: read/back stays Idle across polling and reload; next answer unread`,

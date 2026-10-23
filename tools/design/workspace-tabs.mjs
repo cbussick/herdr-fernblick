@@ -133,11 +133,11 @@ for (const [engine, browserType] of Object.entries({ chromium, webkit })) {
       );
       assert.equal(await orchestrator.getByTestId("pane-row").count(), 5);
       const single = groups.filter({ has: page.locator("strong", { hasText: "API cleanup" }) });
-      assert.equal(await single.locator("summary").count(), 0);
+      assert.equal(await single.locator("summary").count(), 1);
       assert.equal(await single.locator("small").textContent(), "Tab");
       assert.equal(await single.getAttribute("data-split"), "false");
       assert.equal(await single.locator("strong").count(), 2);
-      assert.equal(await single.locator(":scope > div").first().locator("svg").count(), 0);
+      assert.equal(await single.locator(":scope > summary > svg").count(), 1);
       assert.equal(
         await single.getByTestId("pane-row").locator("strong").textContent(),
         "Agent w1:p5",
@@ -154,12 +154,12 @@ for (const [engine, browserType] of Object.entries({ chromium, webkit })) {
       };
       assert.deepEqual(await single.evaluate(groupStyle), await orchestrator.evaluate(groupStyle));
       assert.equal(await cards.nth(1).getByTestId("tab-group").count(), 2);
-      assert.equal(await cards.nth(1).locator("summary").count(), 1);
+      assert.equal(await cards.nth(1).locator("summary").count(), 3);
       assert.deepEqual(
         await cards
           .nth(1)
           .getByTestId("tab-group")
-          .locator(":scope > div > span > strong")
+          .locator(":scope > summary > span > strong")
           .allTextContents(),
         ["anatomy skill", "Oculus Quest 3 Anatomy Skill"],
       );
@@ -169,13 +169,29 @@ for (const [engine, browserType] of Object.entries({ chromium, webkit })) {
         card.parentElement.parentElement.scrollTop = 0;
       });
       await page.screenshot({ path: `${out}/${engine}-${width}.png`, fullPage: true });
-      // Shell-only tabs share the same quiet headings, without nested cards or collapse controls.
+      // Shell-only tabs share the same quiet, collapsible headings without nested cards.
       await workspaceHeader(0).click();
       await cards.first().evaluate((card) => {
         card.parentElement.parentElement.scrollTop = 0;
       });
       await page.screenshot({ path: `${out}/${engine}-${width}-shells.png`, fullPage: true });
       await workspaceHeader(0).click();
+      // Single-agent and single-shell tabs support keyboard collapse and retain it on polling.
+      const singleShell = cards
+        .nth(1)
+        .getByTestId("tab-group")
+        .filter({ hasText: "Oculus Quest 3 Anatomy Skill" });
+      for (const group of [single, singleShell]) {
+        await group.locator(":scope > summary").focus();
+        await page.keyboard.press("Enter");
+        assert.equal(await group.getAttribute("open"), null);
+      }
+      await page.waitForResponse((response) => new URL(response.url()).pathname === "/api/agents");
+      for (const group of [single, singleShell]) {
+        assert.equal(await group.getAttribute("open"), null);
+        await group.locator(":scope > summary").click();
+        assert.notEqual(await group.getAttribute("open"), null);
+      }
       // Closing the nested tab must not close its workspace, or reopen on polling.
       await orchestrator.locator(":scope > summary").click();
       assert.equal(await orchestrator.getAttribute("open"), null);

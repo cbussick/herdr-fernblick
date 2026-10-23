@@ -15,8 +15,8 @@ tab number.
 
 Every tab in the workspace overview has the same quiet, unboxed heading marked
 **Tab**, with indented panes below. Agents show their Herdr names (or stable
-`Agent <pane ID>` fallbacks). Single-pane tabs show one row with no collapse
-control; only tabs with multiple panes can collapse. Workspace summaries count agents and shells, not tabs. Split
+`Agent <pane ID>` fallbacks). Every tab can expand/collapse, including tabs with
+just one agent or shell. Workspace summaries count agents and shells, not tabs. Split
 shells appear too, including beside agents in the same tab. Search matches
 workspace names, tab titles and agent names. The flat **Agents** view keeps
 workspace/tab context below each agent's name. Long-press or right-click a row

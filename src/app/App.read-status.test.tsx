@@ -110,7 +110,8 @@ it("clears New answer after opening an agent and going back without replying", a
   });
   expect(status()).toBe("Idle");
   const workspaceStatus = renderer.root
-    .findByType("summary")
+    .findByProps({ "data-testid": "workspace-disclosure" })
+    .findAllByType("summary")[0]!
     .findByProps({ "data-ui": "status-indicator" });
   expect(workspaceStatus.children).toContain("Idle");
   expect(client.getQueryData<ReturnType<typeof response>>(["agents"])!.agents[0].agent_status).toBe(

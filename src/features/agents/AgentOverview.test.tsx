@@ -169,29 +169,29 @@ it("shows one tab heading and distinct agent names, with pane-specific navigatio
   expect(summary().findByType("small").children.join("")).toBe("2 agents");
 });
 
-it("gives a single-agent tab the same heading and pane identity, without collapse controls", async () => {
+it("gives a single-agent tab the same heading, identity and collapse control", async () => {
   await updateWorkspace([namedAgents[0]!], []);
-  expect(tabGroups()[0]!.type).toBe("section");
+  expect(tabGroups()[0]!.type).toBe("details");
   expect(tabGroups()[0]!.props["data-split"]).toBe(false);
   expect(tabGroups()[0]!.props["aria-label"]).toBe("Orchestrator overhaul");
-  expect(tabGroups()[0]!.findAllByType("summary")).toHaveLength(0);
+  expect(tabGroups()[0]!.findAllByType("summary")).toHaveLength(1);
   expect(
     tabGroups()[0]!
       .findAllByType("strong")
       .map((node) => node.children.join("")),
   ).toEqual(["Orchestrator overhaul", "planner"]);
   expect(tabGroups()[0]!.findByType("small").children).toEqual(["Tab"]);
-  expect(tabGroups()[0]!.findByType("small").parent!.findAllByType("svg")).toHaveLength(0);
+  expect(tabGroups()[0]!.findByType("summary").findAllByType("svg")).toHaveLength(1);
   expect(paneRows()[0]!.findAllByType("small")).toHaveLength(0);
   paneRows()[0]!.props.onClick();
   expect(onSelectAgent).toHaveBeenCalledExactlyOnceWith(namedAgents[0]);
 });
 
-it("gives a single shell the same tab heading and an indented terminal row", async () => {
+it("gives a single shell the same collapsible heading and an indented terminal row", async () => {
   await updateWorkspace([], [shell]);
-  expect(tabGroups()[0]!.type).toBe("section");
+  expect(tabGroups()[0]!.type).toBe("details");
   expect(tabGroups()[0]!.props["data-split"]).toBe(false);
-  expect(tabGroups()[0]!.findAllByType("summary")).toHaveLength(0);
+  expect(tabGroups()[0]!.findAllByType("summary")).toHaveLength(1);
   expect(
     tabGroups()[0]!
       .findAllByType("strong")
@@ -202,6 +202,25 @@ it("gives a single shell the same tab heading and an indented terminal row", asy
   paneRows()[0]!.props.onClick();
   expect(onSelectTab).toHaveBeenCalledExactlyOnceWith(shell);
 });
+
+it.each(["agent", "shell"])(
+  "keeps a single-%s tab collapsed across polling and temporary search",
+  async (kind) => {
+    const agents = kind === "agent" ? [namedAgents[0]!] : [];
+    const shells = kind === "shell" ? [shell] : [];
+    await updateWorkspace(agents, shells);
+    expect(tabGroups()[0]!.props.open).toBe(true);
+    await act(async () => tabGroups()[0]!.props.onToggle({ currentTarget: { open: false } }));
+    await updateWorkspace(agents, shells);
+    expect(tabGroups()[0]!.props.open).toBe(false);
+    await act(async () => renderer.update(workspaceList(agents, shells, "Empty workspace")));
+    expect(tabGroups()[0]!.props.open).toBe(true);
+    await updateWorkspace(agents, shells);
+    expect(tabGroups()[0]!.props.open).toBe(false);
+    await act(async () => tabGroups()[0]!.props.onToggle({ currentTarget: { open: true } }));
+    expect(tabGroups()[0]!.props.open).toBe(true);
+  },
+);
 
 it.each([
   [null, "Agent w2:p2"],
