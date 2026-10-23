@@ -18,6 +18,7 @@ beforeEach(async () => {
     renderer = create(
       <AgentList
         agents={[]}
+        connected
         tabs={[]}
         workspaces={[]}
         selectedPaneId={null}
@@ -72,7 +73,7 @@ it("shows a removal snackbar across overview tabs and supports manual dismissal"
   expect(notices()).toHaveLength(0);
   await click("Past sessions");
   await click("Remove fixture session");
-  expect(renderer.root.findByProps({ role: "status" }).children).toEqual(["Session removed"]);
+  expect(notices()[0].findByProps({ role: "status" }).children).toEqual(["Session removed"]);
   await click("Workspaces");
   expect(notices()).toHaveLength(1);
   await act(async () =>

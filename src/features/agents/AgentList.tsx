@@ -7,9 +7,11 @@ import { FlatAgentList, WorkspaceList } from "./AgentOverview";
 import { FernblickMark } from "../../shared/ui/FernblickMark";
 import { PastChats } from "./PastChats";
 import { Snackbar } from "../../shared/ui/Snackbar";
+import { ConnectionStatus } from "../../shared/ui/ConnectionStatus";
 
 interface AgentListProps {
   agents: Agent[];
+  connected: boolean;
   onCreate: (workspaceId?: string) => void;
   onCreateTab: () => void;
   onCreateWorkspace: () => void;
@@ -29,6 +31,7 @@ const options = [
 
 export function AgentList({
   agents,
+  connected,
   onCreate,
   onCreateTab,
   onCreateWorkspace,
@@ -89,10 +92,7 @@ export function AgentList({
               />
             </h1>
           </div>
-          <span className={overviewStyles["connection-state"]}>
-            <i />
-            Connected
-          </span>
+          <ConnectionStatus connected={connected} />
         </div>
         <SegmentedTabs
           label="Overview"

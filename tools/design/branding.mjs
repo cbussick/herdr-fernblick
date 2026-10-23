@@ -10,7 +10,17 @@ const output = resolve("design-gallery/scout");
 await mkdir(output, { recursive: true });
 const dashboard = { agents: [], tabs: [], workspaces: [] };
 let pending = Promise.resolve(dashboard);
-const server = createHttpServer({ getDashboard: () => pending }, resolve("dist"), {});
+let unavailable = false;
+const server = createHttpServer(
+  {
+    getDashboard: () => {
+      if (unavailable) throw new Error("Synthetic connection failure");
+      return pending;
+    },
+  },
+  resolve("dist"),
+  {},
+);
 let browser;
 try {
   await new Promise((done) => server.listen(0, "127.0.0.1", done));
@@ -99,6 +109,45 @@ try {
         false,
       );
       await page.screenshot({ path: `${output}/${name}-overview.png` });
+      const connection = page.getByTestId("connection-status");
+      assert.equal(await connection.getAttribute("role"), "status");
+      assert.equal(await connection.locator("svg").getAttribute("aria-hidden"), "true");
+      assert.equal(await connection.locator("i").count(), 0);
+      const connectedShape = await connection.locator("svg").innerHTML();
+      const connectedColor = await connection.evaluate(
+        (element) => getComputedStyle(element).color,
+      );
+
+      await context.setOffline(true);
+      await page.getByText("Disconnected", { exact: true }).waitFor();
+      assert.notEqual(await connection.locator("svg").innerHTML(), connectedShape);
+      assert.notEqual(
+        await connection.evaluate((element) => getComputedStyle(element).color),
+        connectedColor,
+      );
+      const disconnectedBounds = await connection.boundingBox();
+      const disconnectedWordmark = await wordmark.boundingBox();
+      assert.ok(disconnectedWordmark.x + disconnectedWordmark.width <= disconnectedBounds.x - 6);
+      assert.ok(
+        disconnectedBounds.x + disconnectedBounds.width <=
+          headerBounds.x + headerBounds.width - rightPadding + 1,
+        "Disconnected status must stay inside the padded header",
+      );
+      assert.equal(await page.getByTestId("agent-list").count(), 1);
+      assert.equal(
+        await page.evaluate(() => document.documentElement.scrollWidth > innerWidth),
+        false,
+      );
+      await page.screenshot({ path: `${output}/${name}-disconnected.png` });
+      await context.setOffline(false);
+      await page.getByText("Connected", { exact: true }).waitFor();
+
+      unavailable = true;
+      await page.getByText("Disconnected", { exact: true }).waitFor();
+      assert.equal(await page.getByTestId("agent-list").count(), 1);
+      assert.equal(await page.getByTestId("page-state").count(), 0);
+      unavailable = false;
+      await page.getByText("Connected", { exact: true }).waitFor();
       assert.deepEqual(errors, []);
     } finally {
       await context.close();
@@ -168,7 +217,7 @@ try {
   }
   await page.close();
   console.log(
-    "PASS: Scout loading/header at five viewports; accessible wordmark without overlap; Manrope UI unchanged; transparent artwork; opaque icons; maskable safe circle; unchanged PWA identity.",
+    "PASS: Scout loading/header and plug/unplug connection states at five viewports; offline and failed-poll recovery; accessible wordmark without overlap; Manrope UI unchanged; transparent artwork; opaque icons; maskable safe circle; unchanged PWA identity.",
   );
 } finally {
   await browser?.close();
