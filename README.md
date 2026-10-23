@@ -13,15 +13,16 @@ start Pi. Standalone workspace creation still creates only a workspace and shell
 New shell tabs also accept an optional name; leave it blank to use Herdr's next
 tab number.
 
-The workspace overview follows **workspace → tab → pane**. Each tab has a tinted
-header with an explicit **Tab** label, and each agent shows its own Herdr name
-(or a stable `Agent <pane ID>` fallback), not the shared tab title. Tabs with
-multiple panes can collapse; single-pane tabs retain their heading without an
-extra collapse control or count. Split shells appear too, including beside
-agents in the same tab. Search matches workspace names, tab titles and agent
-names. The flat **Agents** view keeps workspace/tab context below each agent's
-name. Long-press or right-click a row to edit its agent name or the shared tab
-name; **Close tab** ends every pane in that tab, not just the selected agent.
+The workspace overview shows single-pane tabs as one row with the tab's useful
+title. A distinct agent name appears as a small subtitle when available. Only
+split tabs get a quiet, unboxed heading marked **Tab**, with indented panes below;
+agents show their Herdr names (or stable `Agent <pane ID>` fallbacks). Split tabs
+can collapse. Workspace summaries count agents and shells, not tabs. Split
+shells appear too, including beside agents in the same tab. Search matches
+workspace names, tab titles and agent names. The flat **Agents** view keeps
+workspace/tab context below each agent's name. Long-press or right-click a row
+to edit its agent name or the shared tab name; **Close tab** ends every pane in
+that tab, not just the selected agent.
 
 Opening an agent's **New answer** in a visible browser tab saves a Fernblick read
 receipt and displays **Idle**, including its workspace badge. Receipts survive

@@ -87,7 +87,7 @@ it.each([
   await updateWorkspace([], tabs);
   expect(summary().findAllByProps({ "data-ui": "status-indicator" })).toHaveLength(0);
   expect(summary().findByType("small").children.join("")).toBe(
-    tabs.length ? "1 tab · 1 shell" : "0 tabs · 0 agents",
+    tabs.length ? "1 shell" : "0 agents",
   );
 });
 
@@ -157,7 +157,7 @@ it("shows one tab heading and distinct agent names, with pane-specific navigatio
   expect(tabGroups()[0]!.findByType("summary").findByType("strong").children).toEqual([
     "Orchestrator overhaul",
   ]);
-  expect(tabGroups()[0]!.findByType("small").children.join("")).toBe("Tab · 2 agents");
+  expect(tabGroups()[0]!.findByType("small").children.join("")).toBe("Tab");
   expect(paneRows().map((row) => row.findByType("strong").children.join(""))).toEqual([
     "planner",
     "backend",
@@ -166,15 +166,53 @@ it("shows one tab heading and distinct agent names, with pane-specific navigatio
   expect(paneRows()[1]!.props["aria-current"]).toBe("page");
   paneRows()[1]!.props.onClick();
   expect(onSelectAgent).toHaveBeenCalledExactlyOnceWith(namedAgents[1]);
-  expect(summary().findByType("small").children.join("")).toBe("1 tab · 2 agents");
+  expect(summary().findByType("small").children.join("")).toBe("2 agents");
 });
 
-it("keeps the tab heading for a single agent without a collapse control or count", async () => {
+it("renders a single-agent tab as one row with its useful title and optional agent name", async () => {
   await updateWorkspace([namedAgents[0]!], []);
-  expect(tabGroups()[0]!.type).toBe("section");
+  expect(tabGroups()[0]!.type).toBe("div");
+  expect(tabGroups()[0]!.props["data-split"]).toBe(false);
   expect(tabGroups()[0]!.findAllByType("summary")).toHaveLength(0);
-  expect(tabGroups()[0]!.findByType("small").children.join("")).toBe("Tab");
-  expect(paneRows()[0]!.findByType("strong").children).toEqual(["planner"]);
+  expect(tabGroups()[0]!.findAllByType("strong")).toHaveLength(1);
+  expect(paneRows()[0]!.findByType("strong").children).toEqual(["Orchestrator overhaul"]);
+  expect(paneRows()[0]!.findByType("small").children).toEqual(["planner"]);
+  paneRows()[0]!.props.onClick();
+  expect(onSelectAgent).toHaveBeenCalledExactlyOnceWith(namedAgents[0]);
+});
+
+it("renders a single shell as just its tab title, without a Tab or Shell terminal heading", async () => {
+  await updateWorkspace([], [shell]);
+  expect(tabGroups()[0]!.props["data-split"]).toBe(false);
+  expect(tabGroups()[0]!.findAllByType("summary")).toHaveLength(0);
+  expect(tabGroups()[0]!.findAllByType("strong")).toHaveLength(1);
+  expect(paneRows()[0]!.findByType("strong").children).toEqual(["Terminal"]);
+  expect(paneRows()[0]!.findAllByType("small")).toHaveLength(0);
+  paneRows()[0]!.props.onClick();
+  expect(onSelectTab).toHaveBeenCalledExactlyOnceWith(shell);
+});
+
+it.each([null, "Orchestrator overhaul"])(
+  "does not add a redundant subtitle when a single agent name is %s",
+  async (name) => {
+    await updateWorkspace([{ ...namedAgents[0]!, name }], []);
+    expect(paneRows()[0]!.findAllByType("small")).toHaveLength(0);
+    expect(paneRows()[0]!.findByType("strong").children).toEqual(["Orchestrator overhaul"]);
+  },
+);
+
+it("adds grouping only while multiple panes share the tab, including during search", async () => {
+  await updateWorkspace([namedAgents[0]!], []);
+  expect(tabGroups()[0]!.props["data-split"]).toBe(false);
+  await updateWorkspace(namedAgents, []);
+  expect(tabGroups()[0]!.props["data-split"]).toBe(true);
+  expect(tabGroups()[0]!.findAllByType("summary")).toHaveLength(1);
+  await act(async () => renderer.update(workspaceList(namedAgents, [], "backend")));
+  expect(paneRows()).toHaveLength(1);
+  expect(tabGroups()[0]!.props["data-split"]).toBe(true);
+  await updateWorkspace([namedAgents[1]!], []);
+  expect(tabGroups()[0]!.props["data-split"]).toBe(false);
+  expect(paneRows()[0]!.findByType("strong").children).toEqual(["Orchestrator overhaul"]);
 });
 
 it("keeps agent rename targets separate from tab labels", async () => {
@@ -193,7 +231,7 @@ it("groups mixed panes by tab and preserves every split shell's navigation", asy
   const splitShell = { ...mixedShell, pane_id: "w2:p4" };
   await updateWorkspace(namedAgents, [mixedShell, splitShell]);
   expect(tabGroups()).toHaveLength(1);
-  expect(tabGroups()[0]!.findByType("small").children.join("")).toBe("Tab · 2 agents · 2 shells");
+  expect(tabGroups()[0]!.findByType("small").children.join("")).toBe("Tab");
   expect(paneRows()).toHaveLength(4);
   expect(paneRows()[2]!.findByType("strong").children).toEqual(["Shell w2:p1"]);
   expect(paneRows()[3]!.findByType("strong").children).toEqual(["Shell w2:p4"]);

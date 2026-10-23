@@ -8,7 +8,7 @@ const out = "design-gallery/workspace-tabs";
 await mkdir(out, { recursive: true });
 const workspaces = [
   { workspace_id: "w1", label: "FeBOp-monorepo" },
-  { workspace_id: "w2", label: "EXR_Lehrauftrag" },
+  { workspace_id: "w2", label: "Private" },
   { workspace_id: "w3", label: "fernblick" },
 ];
 const agent = (pane, name, tab = "w1:t1", tabLabel = "orchestrator overhaul") => ({
@@ -34,6 +34,7 @@ for (const [engine, browserType] of Object.entries({ chromium, webkit })) {
   const browser = await browserType.launch();
   try {
     for (const [width, height] of [
+      [320, 740],
       [390, 844],
       [834, 1194],
       [1194, 834],
@@ -57,8 +58,8 @@ for (const [engine, browserType] of Object.entries({ chromium, webkit })) {
       ];
       const tabs = [
         shell("w1:p6", "w1:t1", "orchestrator overhaul"),
-        shell("w2:p1", "w2:t1", "Teaching tools"),
-        shell("w2:p2", "w2:t1", "Teaching tools"),
+        shell("w2:p1", "w2:t1", "anatomy skill"),
+        shell("w2:p2", "w2:t2", "Oculus Quest 3 Anatomy Skill"),
       ];
       page.on("pageerror", (error) => errors.push(error.message));
       await page.addInitScript(() => {
@@ -119,27 +120,46 @@ for (const [engine, browserType] of Object.entries({ chromium, webkit })) {
         has: page.locator("strong", { hasText: "orchestrator overhaul" }),
       });
       assert.equal(await orchestrator.count(), 1);
-      assert((await workspaceHeader(0).textContent()).includes("2 tabs · 5 agents · 1 shell"));
-      assert(
-        (await orchestrator.locator(":scope > summary").textContent()).includes(
-          "Tab · 4 agents · 1 shell",
-        ),
+      assert((await workspaceHeader(0).textContent()).includes("5 agents · 1 shell"));
+      assert(!(await workspaceHeader(0).textContent()).includes("tabs"));
+      assert.equal(await orchestrator.locator(":scope > summary small").textContent(), "Tab");
+      assert.equal(await orchestrator.getAttribute("data-split"), "true");
+      assert.deepEqual(
+        await orchestrator.evaluate((group) => ({
+          border: getComputedStyle(group).borderTopWidth,
+          background: getComputedStyle(group.querySelector("summary")).backgroundColor,
+        })),
+        { border: "0px", background: "rgba(0, 0, 0, 0)" },
       );
       assert.equal(await orchestrator.getByTestId("pane-row").count(), 5);
       const single = groups.filter({ has: page.locator("strong", { hasText: "API cleanup" }) });
       assert.equal(await single.locator("summary").count(), 0);
-      assert.equal(await single.locator("small").textContent(), "Tab");
+      assert.equal(await single.locator("small").count(), 0);
+      assert.equal(await single.getAttribute("data-split"), "false");
+      assert.equal(await single.locator("strong").count(), 1);
       assert.equal(
         await single.getByTestId("pane-row").locator("strong").textContent(),
-        "Agent w1:p5",
+        "API cleanup",
       );
-      assert.equal(await cards.nth(1).getByTestId("tab-group").count(), 1);
+      assert.equal(await cards.nth(1).getByTestId("tab-group").count(), 2);
+      assert.equal(await cards.nth(1).locator("summary").count(), 1);
+      assert.deepEqual(
+        await cards.nth(1).getByTestId("pane-row").locator("strong").allTextContents(),
+        ["anatomy skill", "Oculus Quest 3 Anatomy Skill"],
+      );
       assert.equal(await cards.nth(1).getByTestId("pane-row").count(), 2);
       assert.equal(await cards.nth(2).getAttribute("open"), null);
       await cards.first().evaluate((card) => {
         card.parentElement.parentElement.scrollTop = 0;
       });
       await page.screenshot({ path: `${out}/${engine}-${width}.png`, fullPage: true });
+      // A shell-only workspace must stay a compact list, with no nested tab headers.
+      await workspaceHeader(0).click();
+      await cards.first().evaluate((card) => {
+        card.parentElement.parentElement.scrollTop = 0;
+      });
+      await page.screenshot({ path: `${out}/${engine}-${width}-shells.png`, fullPage: true });
+      await workspaceHeader(0).click();
       // Closing the nested tab must not close its workspace, or reopen on polling.
       await orchestrator.locator(":scope > summary").click();
       assert.equal(await orchestrator.getAttribute("open"), null);
@@ -179,7 +199,10 @@ for (const [engine, browserType] of Object.entries({ chromium, webkit })) {
         .getByText(/backend-updated/)
         .waitFor();
       await page.getByRole("button", { name: "Back to overview", exact: true }).click();
-      const shellRow = cards.nth(1).getByTestId("pane-row").filter({ hasText: "Shell w2:p2" });
+      const shellRow = cards
+        .nth(1)
+        .getByTestId("pane-row")
+        .filter({ hasText: "Oculus Quest 3 Anatomy Skill" });
       if ((await cards.nth(1).getAttribute("open")) === null) await workspaceHeader(1).click();
       await shellRow.click();
       await page.getByText("Synthetic terminal w2:p2", { exact: true }).waitFor();

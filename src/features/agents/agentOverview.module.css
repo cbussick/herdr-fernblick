@@ -157,27 +157,23 @@
 
 .workspace-disclosure__content {
   display: grid;
-  gap: var(--space-3);
+  gap: var(--space-2);
   margin: 0 var(--space-2) var(--space-2);
-  padding-top: var(--space-3);
+  padding-top: var(--space-2);
   border-top: 1px solid var(--color-border);
 }
 
 .tab-group {
   min-width: 0;
-  overflow: hidden;
-  border: 1px solid var(--color-border);
-  border-radius: var(--radius-sm);
 }
 
 .tab-group__header {
   display: flex;
-  min-height: 3.25rem;
+  min-height: 2.75rem;
   align-items: center;
   justify-content: space-between;
   gap: var(--space-2);
-  padding: var(--space-2) var(--space-3);
-  background: var(--color-canvas);
+  padding: var(--space-2);
   list-style: none;
 }
 
@@ -187,21 +183,18 @@ summary.tab-group__header {
 
 .tab-group__copy {
   min-width: 0;
-}
-
-.tab-group__copy strong,
-.tab-group__copy small {
-  display: block;
+  flex: 1;
 }
 
 .tab-group__copy strong {
+  display: block;
   font-size: 0.8125rem;
   font-weight: 700;
   overflow-wrap: anywhere;
 }
 
-.tab-group__copy small {
-  margin-top: 0.2rem;
+.tab-group__header > small {
+  flex: none;
   color: var(--color-text-secondary);
   font-size: 0.6875rem;
 }
@@ -219,12 +212,16 @@ summary.tab-group__header {
 }
 
 .tab-group__panes {
-  padding-left: var(--space-2);
-  border-top: 1px solid var(--color-border);
+  padding-left: var(--space-4);
 }
 
-.tab-group__panes .pane-row {
+.workspace-disclosure__content .pane-row {
   min-height: 3.75rem;
+}
+
+.workspace-disclosure__content .pane-row__copy strong {
+  overflow-wrap: anywhere;
+  white-space: normal;
 }
 
 .pane-row {

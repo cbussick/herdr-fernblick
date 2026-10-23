@@ -128,19 +128,22 @@ function WorkspaceTab({
     <>
       <span className={overviewStyles["tab-group__copy"]}>
         <strong>{tab.label}</strong>
-        <small>
-          Tab{multiple ? ` · ${paneCountLabel(tab.agents.length, tab.shells.length)}` : ""}
-        </small>
       </span>
-      {multiple && <ChevronIcon />}
+      <small>Tab</small>
+      <ChevronIcon />
     </>
   );
   const panes = (
-    <div className={overviewStyles["tab-group__panes"]}>
+    <div className={multiple ? overviewStyles["tab-group__panes"] : undefined}>
       {agents.map((agent) => (
         <PaneRow
           key={agent.pane_id}
-          title={getAgentLabel(agent)}
+          title={multiple ? getAgentLabel(agent) : tab.label}
+          subtitle={
+            !multiple && agent.name?.trim() !== tab.label
+              ? agent.name?.trim() || undefined
+              : undefined
+          }
           tabLabel={tab.label}
           kind="agent"
           tabId={agent.tab_id}
@@ -154,7 +157,13 @@ function WorkspaceTab({
       {shells.map((shell) => (
         <PaneRow
           key={shell.pane_id}
-          title={tab.shells.length > 1 ? `Shell ${shell.pane_id}` : "Shell terminal"}
+          title={
+            !multiple
+              ? tab.label
+              : tab.shells.length > 1
+                ? `Shell ${shell.pane_id}`
+                : "Shell terminal"
+          }
           tabLabel={tab.label}
           kind="shell"
           tabId={shell.tab_id}
@@ -166,19 +175,15 @@ function WorkspaceTab({
   );
   if (!multiple)
     return (
-      <section
-        className={overviewStyles["tab-group"]}
-        data-testid="tab-group"
-        aria-label={tab.label}
-      >
-        <div className={overviewStyles["tab-group__header"]}>{header}</div>
+      <div data-testid="tab-group" data-split={false}>
         {panes}
-      </section>
+      </div>
     );
   return (
     <details
       className={overviewStyles["tab-group"]}
       data-testid="tab-group"
+      data-split
       aria-label={tab.label}
       open={!!query || expanded}
       onToggle={(event) => {
@@ -193,14 +198,12 @@ function WorkspaceTab({
 
 function WorkspaceSummary({
   label,
-  tabCount,
   agentCount,
   shellCount,
   status,
   onCreateAgent,
 }: {
   label: string;
-  tabCount: number;
   agentCount: number;
   shellCount: number;
   status: AgentStatus;
@@ -210,10 +213,7 @@ function WorkspaceSummary({
     <summary>
       <span className={overviewStyles["workspace-disclosure__copy"]}>
         <strong>{label}</strong>
-        <small>
-          {tabCount} {tabCount === 1 ? "tab" : "tabs"}
-          {` · ${paneCountLabel(agentCount, shellCount) || "0 agents"}`}
-        </small>
+        <small>{paneCountLabel(agentCount, shellCount) || "0 agents"}</small>
       </span>
       {agentCount > 0 && <StatusIndicator status={status} label={getStatusLabel(status)} />}
       <button
@@ -281,7 +281,7 @@ export function WorkspaceList({
           tab.agents.some((agent) => agentMatches(agent, normalized)) ||
           tab.shells.some((shell) => shell.pane_id.toLowerCase().includes(normalized)),
       );
-      return { ...group, tabGroups, visibleTabs, workspaceMatches };
+      return { ...group, visibleTabs, workspaceMatches };
     })
     .filter((group) => group.workspaceMatches || group.visibleTabs.length > 0);
   if (groups.length === 0)
@@ -300,7 +300,6 @@ export function WorkspaceList({
         <WorkspaceDisclosure key={group.workspace_id} forceOpen={!!normalized}>
           <WorkspaceSummary
             label={group.label}
-            tabCount={group.tabGroups.length}
             agentCount={group.agents.length}
             shellCount={group.tabs.length}
             status={getWorkspaceStatus(group.agents)}
