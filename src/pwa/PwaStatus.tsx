@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 import { watchForAppUpdates } from "./appUpdates";
 import styles from "./PwaStatus.module.css";
 
@@ -37,8 +38,9 @@ export function PwaStatus() {
   }
 
   if (online && !available) return null;
-  return (
-    <aside className={styles.notice} aria-label="App status">
+  // Keep global update actions outside the app root, which whiteboard makes inert.
+  return createPortal(
+    <aside className={styles.notice} aria-label="App status" data-ui="app-status">
       <p role="status">
         {!online
           ? "You’re offline. Reconnect to use Fernblick."
@@ -55,6 +57,7 @@ export function PwaStatus() {
           </button>
         </div>
       )}
-    </aside>
+    </aside>,
+    document.body,
   );
 }

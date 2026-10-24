@@ -99,6 +99,22 @@ updates across two windows with an unsent workspace draft, Later, offline relaun
 API cache exclusion and automatic reconnect. Screenshots are written to ignored
 `design-gallery/pwa/`. Optional `CHROMIUM_EXECUTABLE` selects a browser binary.
 
+For update actions while whiteboard is open, also run:
+
+```sh
+PLAYWRIGHT_MODULE=/tmp/fernblick-design-tools/node_modules/playwright/index.mjs \
+  node tools/design/pwa-whiteboard.mjs
+```
+
+This uses its own loopback production server with synthetic API/SSE and
+service-worker fixtures in Chromium and WebKit. It checks updates arriving before
+and after opening whiteboard, touch hit-testing for both actions, keyboard focus
+and Tab wrapping, draft preservation and background inert restoration in a
+keyboard-sized viewport. The `data-ui="app-status"` body portal is deliberately
+excluded from whiteboard's inert background and included in its focus scope;
+nested editor/image dialogs retain their own focus scope. No live agents or
+service workers are controlled.
+
 Physical Android/iOS installation, home-screen branding, external-link routing,
 and real software-keyboard behavior still require device verification. Headless
 installability checks do not establish which Android app handles a tapped link.

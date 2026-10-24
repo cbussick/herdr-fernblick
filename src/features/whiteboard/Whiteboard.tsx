@@ -112,6 +112,7 @@ function WhiteboardSession({
           (element): element is HTMLElement =>
             element instanceof HTMLElement &&
             element !== modal &&
+            !element.matches('[data-ui="app-status"]') &&
             !element.classList.contains("excalidraw"),
         )
       : [];
@@ -124,37 +125,48 @@ function WhiteboardSession({
       const nativeDialog = document.querySelector<HTMLElement>(
         "[class~=excalidraw-modal-container] [role=dialog], dialog[data-ui=chat-image-preview][open]",
       );
-      if (event.key === "Escape" && !nativeDialog) {
+      const appStatus = document.querySelector<HTMLElement>('[data-ui="app-status"]');
+      if (
+        event.key === "Escape" &&
+        !nativeDialog &&
+        !(event.target instanceof Node && appStatus?.contains(event.target))
+      ) {
         event.preventDefault();
         dismiss.current();
       }
       if (event.key !== "Tab") return;
       const scope = nativeDialog ?? modal;
-      const controls = Array.from(
-        scope.querySelectorAll<HTMLElement>(
-          "button, a[href], input, textarea, select, [tabindex]:not([tabindex='-1'])",
-        ),
-      ).filter(
-        (element) =>
-          !element.matches(":disabled") &&
-          !element.closest("[inert]") &&
-          element.getClientRects().length > 0,
+      // The global notice is a sibling body portal so it stays actionable while
+      // the app root is inert. Include it in this modal's normal Tab order, but
+      // keep nested Excalidraw/image dialogs in control of their own focus.
+      const scopes = (!nativeDialog && appStatus ? [modal, appStatus] : [scope]).sort(
+        (left, right) =>
+          left.compareDocumentPosition(right) & Node.DOCUMENT_POSITION_FOLLOWING ? -1 : 1,
       );
+      const containsFocus = scopes.some((element) => element.contains(document.activeElement));
+      const controls = scopes
+        .flatMap((element) =>
+          Array.from(
+            element.querySelectorAll<HTMLElement>(
+              "button, a[href], input, textarea, select, [tabindex]:not([tabindex='-1'])",
+            ),
+          ),
+        )
+        .filter(
+          (element) =>
+            !element.matches(":disabled") &&
+            !element.closest("[inert]") &&
+            element.getClientRects().length > 0,
+        );
       const first = controls[0];
       const last = controls.at(-1);
       if (!first) {
         event.preventDefault();
         scope.focus();
-      } else if (
-        event.shiftKey &&
-        (document.activeElement === first || !scope.contains(document.activeElement))
-      ) {
+      } else if (event.shiftKey && (document.activeElement === first || !containsFocus)) {
         event.preventDefault();
         last?.focus();
-      } else if (
-        !event.shiftKey &&
-        (document.activeElement === last || !scope.contains(document.activeElement))
-      ) {
+      } else if (!event.shiftKey && (document.activeElement === last || !containsFocus)) {
         event.preventDefault();
         first.focus();
       }
