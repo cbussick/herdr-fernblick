@@ -76,6 +76,29 @@ HOST="$(tailscale ip -4)" npm start
 
 Then open `http://<vps-magicdns-name>:8787` from a device on the same tailnet. Restrict TCP port 8787 to your user or phone in the tailnet policy. Do not expose this port to the public internet.
 
+### About, build versions and updates
+
+Open the gear beside the Fernblick logo in the overview, then **About & Updates**.
+**Running build** is embedded in the frontend loaded on that device; **Latest
+available build** is fetched from the server only when you choose **Check for
+updates**. Both show the Git revision and build time, so even rebuilds of one
+commit are distinguishable. Uncommitted builds have a `-dirty` suffix.
+
+Manual checks report up to date, update ready, or a failure (including failed
+worker downloads/storage). They never reload the app automatically. **Refresh
+app** is a separate explicit action; finish drafts in all open windows first.
+**Later** hides the banner without removing the update from Settings.
+
+**Copy diagnostics** includes build identifiers, update status, browser/app mode,
+service-worker control, viewport and top safe-area inset. It excludes conversation
+content, agent paths, images and page URLs. If clipboard access fails, expand
+**View diagnostics** and copy the text manually.
+
+Production builds emit `version.json` alongside the shell. Deploy it together
+with the matching assets and service worker. This metadata is deliberately not
+precached; checks use a network-only request with a timeout and validate its
+shape. No new backend endpoint, agent action, or storage reset is involved.
+
 ### Install as an app (PWA)
 
 Use HTTPS for installation and service-worker support. For a new deployment,

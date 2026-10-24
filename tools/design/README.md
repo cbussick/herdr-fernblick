@@ -93,6 +93,16 @@ All API/SSE traffic is synthetic; no live agents are controlled. The simulation
 checks layout, not iPadOS's status-bar blur; confirm that separately on a physical
 iPad after accepting the PWA update.
 
+## Settings / build diagnostics regression
+
+After `npm run build`, run `node tools/design/settings.mjs`. The script uses
+an isolated loopback server, synthetic empty dashboard and real Chromium/WebKit
+service workers. It verifies embedded versus network build identity, network-only
+metadata (including malformed responses), manual updates and refresh, Later and
+rechecks, clipboard success/failure, diagnostics fields, Escape/focus restoration
+and touch-safe phone/iPad/desktop layouts. Screenshots are saved under ignored
+`design-gallery/settings/`. No Herdr/Pi sockets or real agent data are used.
+
 ## PWA regression
 
 After `npm run check`, run:

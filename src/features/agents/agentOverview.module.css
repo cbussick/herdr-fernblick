@@ -30,9 +30,17 @@
   gap: var(--space-3);
 }
 
+.overview-actions {
+  display: flex;
+  flex: none;
+  align-items: center;
+  gap: var(--space-2);
+}
+
 .overview-brand {
   display: flex;
   min-width: 0;
+  flex: 1;
   align-items: center;
   gap: var(--space-3);
 }
@@ -46,6 +54,7 @@
 .overview-header h1 {
   width: 8rem;
   min-width: 0;
+  flex: 0 1 8rem;
 }
 
 .overview-wordmark {

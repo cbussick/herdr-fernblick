@@ -32,7 +32,8 @@ export function watchForAppUpdates(onAvailable: () => void) {
   window.addEventListener("online", check);
   const interval = setInterval(check, 60_000);
 
-  void serviceWorker
+  let registrationError: unknown;
+  const ready = serviceWorker
     .register("/sw.js", { scope: "/", updateViaCache: "none" })
     .then((value) => {
       if (disposed) return;
@@ -55,11 +56,50 @@ export function watchForAppUpdates(onAvailable: () => void) {
       watchInstalling();
       check();
     })
-    .catch(() => {
-      // Installation is an enhancement; blocked storage must not break the app.
+    .catch((error: unknown) => {
+      // Keep the app usable, but surface failures to a manual update check.
+      registrationError = error;
     });
 
   return {
+    async checkNow() {
+      await ready;
+      if (disposed) throw new Error("Update checking was stopped. Try again.");
+      if (!registration)
+        throw new Error(
+          registrationError instanceof Error
+            ? registrationError.message
+            : "App update storage is unavailable.",
+        );
+      await registration.update();
+      const worker = registration.installing;
+      if (worker && worker.state !== "installed" && worker.state !== "activated") {
+        await new Promise<void>((resolve, reject) => {
+          const finish = () => {
+            clearTimeout(timer);
+            worker.removeEventListener("statechange", changed);
+          };
+          const changed = () => {
+            if (worker.state === "installed" || worker.state === "activated") {
+              finish();
+              resolve();
+            } else if (worker.state === "redundant") {
+              finish();
+              reject(new Error("The update could not be downloaded. Try again."));
+            }
+          };
+          const timer = setTimeout(() => {
+            finish();
+            reject(new Error("The update download timed out. Try again."));
+          }, 15_000);
+          worker.addEventListener("statechange", changed);
+          changed();
+        });
+      }
+      const available = Boolean(registration.waiting || controllerChanged);
+      if (available) onAvailable();
+      return available;
+    },
     async apply() {
       if (!navigator.onLine) throw new Error("Reconnect before refreshing.");
       if (controllerChanged) {

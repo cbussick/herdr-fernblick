@@ -145,3 +145,58 @@ it("cleans up listeners and ignores registration completing after unmount", asyn
   expect(onAvailable).not.toHaveBeenCalled();
   expect(registration.update).not.toHaveBeenCalled();
 });
+
+it("manual checks rediscover a waiting worker even after a banner is dismissed", async () => {
+  await start();
+  onAvailable.mockClear();
+  registration.waiting = { postMessage: vi.fn() };
+  expect(await updater.checkNow()).toBe(true);
+  expect(onAvailable).toHaveBeenCalledOnce();
+  expect(registration.waiting.postMessage).not.toHaveBeenCalled();
+});
+
+it("manual checks surface worker registration and update failures", async () => {
+  serviceWorker.register.mockRejectedValue(new Error("Storage blocked"));
+  await start();
+  await expect(updater.checkNow()).rejects.toThrow("Storage blocked");
+  updater.dispose();
+  serviceWorker.register.mockResolvedValue(registration);
+  await start();
+  registration.update.mockRejectedValue(new Error("Server unavailable"));
+  await expect(updater.checkNow()).rejects.toThrow("Server unavailable");
+});
+
+it("waits for a downloading worker before declaring the update ready", async () => {
+  await start();
+  const worker = Object.assign(new EventTarget(), { state: "installing" });
+  registration.installing = worker;
+  let completed = false;
+  const checked = updater.checkNow().then((value) => {
+    completed = true;
+    return value;
+  });
+  await Promise.resolve();
+  await Promise.resolve();
+  expect(completed).toBe(false);
+  registration.waiting = { postMessage: vi.fn() };
+  worker.state = "installed";
+  worker.dispatchEvent(new Event("statechange"));
+  expect(await checked).toBe(true);
+  expect(windowEvents.location.reload).not.toHaveBeenCalled();
+});
+
+it("reports download failure and timeouts instead of returning up to date", async () => {
+  await start();
+  const worker = Object.assign(new EventTarget(), { state: "installing" });
+  registration.installing = worker;
+  const failed = expect(updater.checkNow()).rejects.toThrow("could not be downloaded");
+  await Promise.resolve();
+  await Promise.resolve();
+  worker.state = "redundant";
+  worker.dispatchEvent(new Event("statechange"));
+  await failed;
+  worker.state = "installing";
+  const timedOut = expect(updater.checkNow()).rejects.toThrow("timed out");
+  await vi.advanceTimersByTimeAsync(15_000);
+  await timedOut;
+});

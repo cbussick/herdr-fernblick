@@ -1,6 +1,7 @@
 import { StrictMode } from "react";
 import { onlineManager } from "@tanstack/react-query";
 import { PwaStatus } from "./pwa/PwaStatus";
+import { AppUpdatesProvider } from "./pwa/AppUpdatesProvider";
 import { createRoot } from "react-dom/client";
 import tokenStyles from "./styles/tokens.module.css";
 import baseStyles from "./styles/base.module.css";
@@ -20,8 +21,10 @@ if (!rootElement) {
 createRoot(rootElement).render(
   <StrictMode>
     <AppProviders>
-      <App />
-      <PwaStatus />
+      <AppUpdatesProvider>
+        <App />
+        <PwaStatus />
+      </AppUpdatesProvider>
     </AppProviders>
   </StrictMode>,
 );

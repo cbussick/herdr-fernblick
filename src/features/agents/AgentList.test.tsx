@@ -11,13 +11,16 @@ vi.mock("./PastChats", () => ({
   ),
 }));
 let renderer: ReactTestRenderer;
+const openSettings = vi.fn();
 beforeEach(async () => {
+  openSettings.mockClear();
   vi.stubGlobal("IS_REACT_ACT_ENVIRONMENT", true);
   vi.useFakeTimers();
   await act(async () => {
     renderer = create(
       <AgentList
         agents={[]}
+        onOpenSettings={openSettings}
         connected
         tabs={[]}
         workspaces={[]}
@@ -59,6 +62,15 @@ it("pairs Scout with the playful wordmark while preserving one accessible Fernbl
   });
   expect(renderer.root.findAllByProps({ src: "/icons/scout-head.png" })).toHaveLength(1);
   expect(renderer.root.findAllByType("h1")).toHaveLength(1);
+});
+
+it("opens app settings from the overview gear without changing the selected overview tab", async () => {
+  await click("Past sessions");
+  const gear = renderer.root.findByProps({ "aria-label": "Open settings" });
+  expect(gear.props["aria-haspopup"]).toBe("dialog");
+  await act(async () => gear.props.onClick());
+  expect(openSettings).toHaveBeenCalledOnce();
+  expect(renderer.root.findByType("input").props["aria-label"]).toBe("Search past sessions");
 });
 
 it("uses session terminology in the tab and history search", async () => {

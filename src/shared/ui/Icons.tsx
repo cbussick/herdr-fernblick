@@ -19,6 +19,18 @@ function IconBase({ children, ...props }: IconProps) {
   );
 }
 
+export function SettingsIcon(props: IconProps) {
+  return (
+    <IconBase {...props}>
+      <path
+        d="m9 3-.6 2.3-2 .9-2.1-.6-2 3.4 1.6 1.7v2.6L2.3 15l2 3.4 2.1-.6 2 .9L9 21h4l.6-2.3 2-.9 2.1.6 2-3.4-1.6-1.7v-2.6l1.6-1.7-2-3.4-2.1.6-2-.9L13 3Z"
+        transform="translate(1 0)"
+      />
+      <circle cx="12" cy="12" r="3" />
+    </IconBase>
+  );
+}
+
 export function PlusIcon(props: IconProps) {
   return (
     <IconBase {...props}>

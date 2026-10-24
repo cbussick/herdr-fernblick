@@ -2,7 +2,8 @@ import overviewStyles from "./agentOverview.module.css";
 import a11yStyles from "../../styles/accessibility.module.css";
 import { useCallback, useState } from "react";
 import type { Agent, ShellTab, Workspace } from "../../shared/api/contracts";
-import { SearchField, SegmentedTabs, SpeedDial } from "../../shared/ui";
+import { IconButton, SearchField, SegmentedTabs, SpeedDial } from "../../shared/ui";
+import { SettingsIcon } from "../../shared/ui/Icons";
 import { FlatAgentList, WorkspaceList } from "./AgentOverview";
 import { FernblickMark } from "../../shared/ui/FernblickMark";
 import { PastChats } from "./PastChats";
@@ -12,6 +13,7 @@ import { ConnectionStatus } from "../../shared/ui/ConnectionStatus";
 interface AgentListProps {
   agents: Agent[];
   connected: boolean;
+  onOpenSettings: () => void;
   onCreate: (workspaceId?: string) => void;
   onCreateTab: () => void;
   onCreateWorkspace: () => void;
@@ -32,6 +34,7 @@ const options = [
 export function AgentList({
   agents,
   connected,
+  onOpenSettings,
   onCreate,
   onCreateTab,
   onCreateWorkspace,
@@ -92,7 +95,17 @@ export function AgentList({
               />
             </h1>
           </div>
-          <ConnectionStatus connected={connected} />
+          <div className={overviewStyles["overview-actions"]}>
+            <ConnectionStatus connected={connected} />
+            <IconButton
+              type="button"
+              label="Open settings"
+              aria-haspopup="dialog"
+              onClick={onOpenSettings}
+            >
+              <SettingsIcon />
+            </IconButton>
+          </div>
         </div>
         <SegmentedTabs
           label="Overview"

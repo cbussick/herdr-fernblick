@@ -14,6 +14,7 @@ import { StateIcon } from "../shared/ui/StateFeedback";
 import { useSinglePaneLayout } from "./useSinglePaneLayout";
 import { useReadAgentStatuses } from "./useReadAgentStatuses";
 import { usePaneNavigation } from "./usePaneNavigation";
+import { SettingsDialog } from "./SettingsDialog";
 
 export function App() {
   const singlePane = useSinglePaneLayout();
@@ -21,6 +22,7 @@ export function App() {
   const [selectedPaneId, setSelectedPaneId] = usePaneNavigation();
   const [createDialog, setCreateDialog] = useState<{ workspaceId?: string } | null>(null);
   const [workspaceDialogOpen, setWorkspaceDialogOpen] = useState(false);
+  const [settingsOpen, setSettingsOpen] = useState(false);
   const [tabDialogOpen, setTabDialogOpen] = useState(false);
   const agentsQuery = useQuery({
     queryKey: ["agents"],
@@ -120,6 +122,7 @@ export function App() {
       ) : (
         <div className={appStyles["workspace"]}>
           <AgentList
+            onOpenSettings={() => setSettingsOpen(true)}
             agents={agents}
             connected={!agentsQuery.isError && !agentsQuery.isPaused}
             tabs={tabs}
@@ -167,6 +170,7 @@ export function App() {
         </div>
       )}
 
+      {settingsOpen && <SettingsDialog onClose={() => setSettingsOpen(false)} />}
       {createDialog && (
         <NewAgentDialog
           open
