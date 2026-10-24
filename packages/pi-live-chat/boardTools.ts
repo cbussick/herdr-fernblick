@@ -93,7 +93,12 @@ export class BoardTools {
           if (!parsed.success) throw new Error("Invalid board_read offset/limit");
           return this.execute(
             "read",
-            { offset: 0, limit: 50, ...parsed.data },
+            {
+              offset: 0,
+              limit: 50,
+              ...parsed.data,
+              includeImage: parsed.data.includeImage ?? (parsed.data.offset ?? 0) === 0,
+            },
             signal,
             ctx,
             authorizedScope,
@@ -153,7 +158,10 @@ export class BoardTools {
     }
   }
 
-  input(event: { source: string; text: string }) {
+  input(event: { source: string; text: string; streamingBehavior?: "steer" | "followUp" }) {
+    // Pi queues these inside the running request without before_agent_start.
+    // Keep its scope (or its revoked state); never stage an unactivatable replacement.
+    if (event.streamingBehavior) return;
     const scope = this.scope;
     if (
       !scope ||
@@ -183,7 +191,7 @@ export class BoardTools {
   }
 
   async beforeAgentStart(
-    prompt: string,
+    _prompt: string,
     ctx: ExtensionContext,
     event: Pick<BeforeAgentStartEvent, "systemPrompt" | "images"> = {
       systemPrompt: "",
@@ -191,11 +199,7 @@ export class BoardTools {
   ): Promise<BeforeAgentStartEventResult | undefined> {
     const scope = this.scope;
     if (!scope) return;
-    if (
-      scope.phase !== "start" ||
-      (!scope.runId && prompt !== scope.text) ||
-      !this.valid(scope, ctx)
-    ) {
+    if (scope.phase !== "start" || !this.valid(scope, ctx)) {
       this.revoke("Board request did not match this turn");
       return this.notice(
         "Whiteboard access was not activated: this turn did not match the authorized request.",

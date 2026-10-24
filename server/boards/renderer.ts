@@ -1,6 +1,7 @@
 import { chromium, type Browser, type Request } from "playwright";
 import type { BoardScene } from "../../packages/pi-live-chat/boardProtocol.js";
 import { validateScene } from "./scene.js";
+import { validateRasterBudget } from "./rasterBudget.js";
 
 const MAX_PNG_BYTES = 2 * 1024 * 1024;
 const MAX_SIDE = 2048;
@@ -79,6 +80,7 @@ export class BoardRenderer {
     let snapshot: BoardScene;
     try {
       snapshot = validateScene(scene);
+      validateRasterBudget(snapshot);
     } catch (error) {
       return Promise.reject(error);
     }

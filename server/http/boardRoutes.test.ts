@@ -42,6 +42,7 @@ let base: string;
 let snapshot: Snapshot;
 let frames: Record<string, unknown>[];
 let acceptSend: boolean;
+let autoAcknowledge: boolean;
 let foreground: boolean;
 const png = Buffer.from(
   "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVQIHWP4z8DwHwAFgAI/ScLbtAAAAABJRU5ErkJggg==",
@@ -52,6 +53,7 @@ beforeEach(async () => {
   vi.stubEnv("FERNBLICK_UPLOAD_DIR", join(directory, "uploads"));
   frames = [];
   acceptSend = true;
+  autoAcknowledge = true;
   foreground = true;
   bridge = new LiveBridge(join(directory, "pi.sock"), "/herdr.sock", async () => ({
     start: "456",
@@ -97,7 +99,7 @@ beforeEach(async () => {
   receiveFrames(socket, (raw) => {
     const frame = raw as Record<string, unknown>;
     frames.push(frame);
-    if (frame.type === "command")
+    if (frame.type === "command" && autoAcknowledge)
       writeFrame(socket, {
         type: "ack",
         id: frame.id,
@@ -170,6 +172,7 @@ async function rpc(
     grantId: grant.grantId,
     boardId: grant.boardId,
     action,
+    ...(action === "read" ? { includeImage: true } : {}),
     ...extra,
   });
   await vi.waitFor(() =>
@@ -185,6 +188,76 @@ async function control(action: "begin" | "grant" | "end" | "open", runId: string
   );
   return frames.find((f) => f.type === "board-reply" && f.id === id)!;
 }
+
+it("does not let a late rejected web send revoke a newer native request", async () => {
+  autoAcknowledge = false;
+  const pending = bridge.request(agent, targetOf(snapshot), {
+    action: "send",
+    text: "Old web message",
+    attachments: [],
+  });
+  await vi.waitFor(() => expect(frames.some((f) => f.type === "command")).toBe(true));
+  const command = frames.find((f) => f.type === "command")!;
+  const run = randomUUID();
+  expect(await control("begin", run)).toMatchObject({ ok: true });
+  writeFrame(socket, {
+    type: "ack",
+    id: command.id,
+    outcome: "rejected",
+    reason: "Late rejection",
+  });
+  expect(await pending).toMatchObject({ outcome: "rejected" });
+  expect(await control("grant", run)).toMatchObject({ ok: true });
+});
+
+it("legacy reads without an image flag stay summary-only after backend upgrades", async () => {
+  const run = randomUUID();
+  await control("begin", run);
+  const result = await control("grant", run);
+  const grant = (result.data as { grant: BoardGrant }).grant;
+  const render = vi.fn(async () => png);
+  bridge.setBoardRenderer(render);
+  const reply = await rpc(grant, "read", { includeImage: undefined });
+  expect(reply).toMatchObject({ ok: true, data: { revision: 0 } });
+  expect(reply.data).not.toHaveProperty("image");
+  expect(render).not.toHaveBeenCalled();
+});
+
+it("slow rendering does not block opening or saving, and returns its captured revision", async () => {
+  const run = randomUUID();
+  await control("begin", run);
+  const granted = await control("grant", run);
+  const grant = (granted.data as { grant: BoardGrant }).grant;
+  let finish!: (value: Buffer) => void;
+  const render = vi.fn(
+    () =>
+      new Promise<Buffer>((resolve) => {
+        finish = resolve;
+      }),
+  );
+  bridge.setBoardRenderer(render);
+  const reading = rpc(grant, "read");
+  await vi.waitFor(() => expect(render).toHaveBeenCalled());
+  let savingFinished = false;
+  const state = await boards.read(grant.boardId);
+  const saving = boards
+    .save(state.id, state.revision, { ...state.scene, background: "#123456" })
+    .then(() => {
+      savingFinished = true;
+    });
+  try {
+    await vi.waitFor(() => expect(savingFinished).toBe(true), { timeout: 1000 });
+    expect(await open()).toMatchObject({ revision: 1, scene: { background: "#123456" } });
+  } finally {
+    finish(png);
+    await saving;
+  }
+  expect(await reading).toMatchObject({
+    ok: true,
+    data: { revision: 0, image: { mimeType: "image/png" } },
+  });
+  expect(render).toHaveBeenCalledWith(state.scene);
+});
 
 it("denies native board access when Herdr's saved session disagrees with the extension", async () => {
   bridge.setBoardAgentResolver(async () => ({
@@ -280,6 +353,39 @@ it("revocation before first tool use cannot regrant the same request but next in
   expect(await control("grant", next)).toMatchObject({ ok: true });
   expect(await control("end", next)).toMatchObject({ ok: true });
   expect(await control("grant", next)).toMatchObject({ ok: false });
+});
+
+it("a failed visual read does not authorize edits to unseen targets", async () => {
+  const run = randomUUID();
+  await control("begin", run);
+  const granted = await control("grant", run);
+  const grant = (granted.data as { grant: BoardGrant }).grant;
+  expect(
+    await rpc(grant, "apply", {
+      baseRevision: 0,
+      operationId: randomUUID(),
+      operations: [
+        { op: "create", id: "box", kind: "rectangle", x: 0, y: 0, width: 50, height: 50 },
+      ],
+    }),
+  ).toMatchObject({ ok: true, data: { revision: 1 } });
+  bridge.setBoardRenderer(async () => {
+    throw new Error("Render failed");
+  });
+  expect(await rpc(grant, "read")).toMatchObject({ ok: false });
+  expect(
+    await rpc(grant, "apply", {
+      baseRevision: 1,
+      operationId: randomUUID(),
+      operations: [{ op: "update", id: "box", x: 20 }],
+    }),
+  ).toMatchObject({
+    ok: true,
+    data: {
+      applied: [],
+      skipped: [{ id: "box", reason: "target_or_dependency_not_read_at_base_revision" }],
+    },
+  });
 });
 
 it("revalidates grants after asynchronous rendering and fails explicitly on bad/oversized PNGs", async () => {

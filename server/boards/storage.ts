@@ -510,7 +510,15 @@ export class BoardStore {
       this.revoke(request.grantId);
       return { revoked: true };
     }
-    return this.serial(request.boardId, async () => {
+    let reading:
+      | {
+          summary: ReturnType<typeof summarize>;
+          scene?: BoardScene;
+          liveIds: Set<string>;
+          observations: [string, string][];
+        }
+      | undefined;
+    const result = await this.serial(request.boardId, async () => {
       check();
       if (request.action === "apply") {
         requireBoard(
@@ -621,32 +629,49 @@ export class BoardStore {
         };
       }
       const summary = summarize(state.scene, state.revision, request.offset, request.limit);
-      let image: { mimeType: "image/png"; data: string } | undefined;
-      if (request.includeImage ?? (request.offset ?? 0) === 0) {
+      // Explicit opt-in preserves summary-only reads from already-running older
+      // extensions. New tools choose their first-page image default at the caller.
+      if (request.includeImage)
         requireBoard(render, 503, "Whiteboard renderer unavailable; cannot read current image");
-        const png = await render(structuredClone(state.scene));
-        check();
-        validatePng(png);
-        requireBoard(png.length <= MAX_BOARD_PNG_BYTES, 413, "Rendered board PNG exceeds 2 MiB");
-        image = { mimeType: "image/png", data: png.toString("base64") };
-      }
       const live = new Map(
         state.scene.elements
           .filter((element) => !element.isDeleted)
           .map((element) => [element.id, element]),
       );
-      // Prune observations of absent/deleted shapes before recording this page.
-      // Pagination authorizes comparisons only for elements actually returned.
-      for (const id of record.observed.keys()) if (!live.has(id)) record.observed.delete(id);
-      for (const element of summary.elements) {
-        const id = element.id as string;
-        record.observed.set(id, {
-          revision: state.revision,
-          fingerprint: elementFingerprint(live.get(id)!),
-        });
-      }
-      return image ? { ...summary, image } : summary;
+      reading = {
+        summary,
+        scene: request.includeImage ? structuredClone(state.scene) : undefined,
+        liveIds: new Set(live.keys()),
+        observations: summary.elements.map((element) => {
+          const id = element.id as string;
+          return [id, elementFingerprint(live.get(id)!)];
+        }),
+      };
+      return summary;
     });
+    if (!reading) return result;
+    const captured = reading;
+    let image: { mimeType: "image/png"; data: string } | undefined;
+    if (captured.scene) {
+      // Render an immutable revision outside the serialized save/commit lane.
+      // Opening/saving the board must not wait for a headless browser.
+      const png = await render!(captured.scene);
+      check();
+      validatePng(png);
+      requireBoard(png.length <= MAX_BOARD_PNG_BYTES, 413, "Rendered board PNG exceeds 2 MiB");
+      image = { mimeType: "image/png", data: png.toString("base64") };
+    }
+    await this.serial(request.boardId, async () => {
+      check();
+      // Only a successful read may authorize later comparisons. Failed renders
+      // must not record observations the model never received.
+      for (const id of record.observed.keys())
+        if (!captured.liveIds.has(id)) record.observed.delete(id);
+      for (const [id, fingerprint] of captured.observations)
+        record.observed.set(id, { revision: captured.summary.revision, fingerprint });
+    });
+    check();
+    return image ? { ...captured.summary, image } : captured.summary;
   }
 
   revoke(grantId: string): void {

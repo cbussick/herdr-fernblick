@@ -73,6 +73,27 @@ describe("BoardRenderer", () => {
     expect(launch).not.toHaveBeenCalled();
   });
 
+  it("rejects compressed oversized raster headers before launching or decoding", async () => {
+    const scene = emptyScene();
+    scene.elements.push({
+      id: "image",
+      type: "image",
+      x: 0,
+      y: 0,
+      width: 10,
+      height: 10,
+      fileId: "asset",
+    });
+    scene.files.asset = {
+      id: "asset",
+      mimeType: "image/png",
+      created: 0,
+      dataURL: "data:image/png;base64," + png(8000, 8000).toString("base64"),
+    };
+    await expect(renderer().render(scene)).rejects.toThrow("pre-decode");
+    expect(launch).not.toHaveBeenCalled();
+  });
+
   it("returns a bounded PNG, detaches input, and closes its browser", async () => {
     const { browser, page, context } = fakeBrowser();
     const value = renderer();

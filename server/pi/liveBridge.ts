@@ -434,7 +434,8 @@ export class LiveBridge {
             response.type === "ack" &&
             response.outcome === "rejected" &&
             pending.command.action === "send" &&
-            pending.command.board?.grantId === peer.boardGrant?.grantId
+            pending.command.board &&
+            pending.command.board.grantId === peer.boardGrant?.grantId
           )
             this.clearBoardAccess(peer);
           clearTimeout(pending.timer);

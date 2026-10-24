@@ -143,6 +143,28 @@ it.each(["interactive", "extension"])(
   },
 );
 
+it.each(["steer", "followUp"] as const)(
+  "preserves the active scope for queued terminal %s input without a second start hook",
+  async (streamingBehavior) => {
+    const t = setup();
+    await available(t);
+    const before = [...t.frames];
+    t.tools.input({ source: "interactive", text: "Now edit the board", streamingBehavior });
+    expect(t.frames).toEqual(before);
+    expect(t.pi.getActiveTools()).toContain("board_read");
+    const reading = t.run("board_read", { offset: 1 });
+    t.reply(undefined, { grant: t.grant });
+    await Promise.resolve();
+    await Promise.resolve();
+    expect(t.frames.at(-1)).toMatchObject({ action: "read", includeImage: false });
+    t.reply(undefined, { revision: 2, elements: [] });
+    await reading;
+    t.tools.revoke();
+    t.tools.input({ source: "interactive", text: "Still queued", streamingBehavior });
+    expect(t.pi.getActiveTools()).not.toContain("board_read");
+  },
+);
+
 it("does not mislabel ordinary native image attachments as board snapshots", async () => {
   const t = setup();
   t.input("Describe this photograph", "interactive");
@@ -261,14 +283,16 @@ it("registers hidden/default-inactive tools and a hook without new input cannot 
   expect(t.frames).toEqual([]);
 });
 
-it("rejects a mismatched legacy prompt without regranting the same run", async () => {
+it("preserves board tools when the matched dock input is expanded by a skill/template", async () => {
   const t = setup();
   t.stage();
   t.input();
-  await t.tools.beforeAgentStart("Transformed legacy prompt", t.ctx);
-  await t.tools.beforeAgentStart("Draw a box", t.ctx);
-  expect(t.frames.map((r) => r.action)).toEqual(["revoke"]);
-  await expect(t.run("board_read")).rejects.toThrow("No active");
+  const starting = t.tools.beforeAgentStart("Expanded skill contents", t.ctx);
+  t.reply();
+  await starting;
+  expect(t.frames.map((r) => r.action)).toEqual(["activate"]);
+  expect(t.pi.getActiveTools()).toContain("board_read");
+  t.tools.revoke();
 });
 
 it("requires input before before_agent_start and expires unconsumed or matched staged grants", async () => {
