@@ -250,6 +250,8 @@ export function SkillComposer(props: Props) {
       <textarea
         ref={textarea}
         id="agent-prompt"
+        // Chrome’s spelling popup can dismiss Gboard when moving the caret (shelf f9eb91b).
+        spellCheck={false}
         value={prompt}
         disabled={sending}
         onChange={(event) => onChange(event.target.value)}

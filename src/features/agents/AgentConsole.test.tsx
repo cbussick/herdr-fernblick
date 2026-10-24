@@ -147,6 +147,11 @@ it.each([
   }
 });
 
+// Guards the workaround, not Android’s native keyboard/popup behavior.
+it("opts out of browser spellcheck in the message composer", () => {
+  expect(renderer.root.findByType("textarea").props.spellCheck).toBe(false);
+});
+
 it("keeps the tab title in the header and labels replies Agent", async () => {
   const title = "I think yesterday or today there were new Node security advisories published for";
   mocks.live.snapshot = {
