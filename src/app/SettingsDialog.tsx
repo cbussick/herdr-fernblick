@@ -150,7 +150,6 @@ export function SettingsDialog({ onClose }: { onClose: () => void }) {
         </section>
         <section className={styles.section} aria-labelledby="diagnostics-heading">
           <h3 id="diagnostics-heading">Diagnostics</h3>
-          <p>Build and device details only. No conversations, prompts, images or agent paths.</p>
           <div className={styles.actions}>
             <button
               type="button"
