@@ -42,6 +42,9 @@ export default defineConfig({
       },
     }),
   ],
+  build: {
+    rolldownOptions: { input: { app: "index.html", whiteboardRender: "whiteboard-render.html" } },
+  },
   optimizeDeps: { rolldownOptions: { plugins: [localExcalidrawFonts()] } },
   server: {
     strictPort: true,
