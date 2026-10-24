@@ -99,6 +99,7 @@
 }
 
 .delete {
+  margin-right: auto;
   color: var(--color-danger);
 }
 
@@ -240,8 +241,10 @@
 .popover {
   position: fixed;
   z-index: 50;
-  width: min(23rem, calc(100vw - 1.5rem));
-  padding: var(--space-3);
+  display: grid;
+  width: min(26rem, calc(100vw - 1.5rem));
+  gap: var(--space-3);
+  padding: var(--space-4);
   overflow: auto;
   overscroll-behavior: contain;
   background: var(--color-surface);
@@ -254,15 +257,30 @@
   display: flex;
   align-items: center;
   justify-content: space-between;
-  margin-top: -0.4rem;
-  color: var(--annotation-ink);
-  font-size: 0.8125rem;
+  gap: var(--space-2);
+  color: var(--color-text);
+  font-size: 0.875rem;
+  line-height: 1.5;
+}
+
+.popover-header button {
+  flex: none;
+  margin: -0.375rem -0.375rem -0.375rem 0;
+}
+
+.popover blockquote {
+  margin: 0;
+}
+
+.popover .warning {
+  padding: 0;
 }
 
 .popover textarea {
   display: block;
   width: 100%;
-  min-height: 5.5rem;
+  min-width: 0;
+  min-height: 6rem;
   max-height: 10rem;
   padding: var(--space-3);
   resize: vertical;
@@ -277,15 +295,37 @@
 .popover-footer {
   display: flex;
   align-items: center;
-  justify-content: space-between;
-  gap: var(--space-2);
-  margin-top: var(--space-3);
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: var(--space-3);
 }
 
-.popover-footer > span {
+.keyboard-hint {
+  min-width: 0;
+  flex: 1;
   color: var(--color-text-secondary);
   font-size: 0.6875rem;
   line-height: 1.5;
+}
+
+@media (hover: none) and (pointer: coarse) {
+  .keyboard-hint {
+    display: none;
+  }
+}
+
+@media (width <= 480px) {
+  .popover-footer .send {
+    flex: 1;
+  }
+
+  .delete {
+    padding-inline: 0;
+  }
+
+  .keyboard-hint {
+    flex-basis: 100%;
+  }
 }
 
 .actions button:hover,

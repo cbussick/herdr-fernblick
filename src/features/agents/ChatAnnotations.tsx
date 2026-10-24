@@ -229,11 +229,7 @@ export function AnnotationPopover({ annotations }: { annotations: ChatAnnotation
           <CloseIcon />
         </button>
       </div>
-      {editor.source ? (
-        <blockquote>{editor.source.quote}</blockquote>
-      ) : (
-        <p className={styles.footnote}>Not tied to a passage.</p>
-      )}
+      {editor.source ? <blockquote>{editor.source.quote}</blockquote> : null}
       <label htmlFor="annotation-comment" className={a11yStyles["sr-only"]}>
         Your comment
       </label>
@@ -278,10 +274,8 @@ export function AnnotationPopover({ annotations }: { annotations: ChatAnnotation
             <TrashIcon /> Delete comment
           </button>
         ) : (
-          <span>
-            Enter to save
-            <br />
-            Shift + Enter for a new line
+          <span className={styles["keyboard-hint"]}>
+            Enter to save · Shift + Enter for a new line
           </span>
         )}
         <button

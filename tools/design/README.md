@@ -152,6 +152,25 @@ no implicit sends, errors and reconnect.
 Screenshots are in ignored `design-gallery/skills/`. These simulate keyboard
 geometry; keyboard/IME behavior still needs physical-device confirmation.
 
+## Comment editor layout regression
+
+After building, serve this worktree’s `dist/` on an unused loopback port, then run:
+
+```sh
+PLAYWRIGHT_MODULE=/tmp/fernblick-design-tools/node_modules/playwright/index.mjs \
+  node tools/design/comment-editor.mjs http://127.0.0.1:<static-port>
+```
+
+Chromium/WebKit cover passage and general comments, adding, editing, saving,
+deleting and Escape dismissal at 320px, phone, tablet and desktop widths. Checks
+require consistent field/action spacing, 44px action targets, full-width phone
+save buttons, no redundant general-comment banner and keyboard hints only for
+fine-pointer devices. The short-phone case shrinks the viewport while the editor
+is open to simulate keyboard height, then restores it for background navigation.
+All API/SSE traffic is synthetic; no real agents are controlled. Screenshots are
+saved to ignored `design-gallery/comment-editor/`. Physical keyboard/IME behavior
+still needs device verification.
+
 ## Keyboard layout regression
 
 ```sh
