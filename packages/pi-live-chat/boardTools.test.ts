@@ -7,20 +7,31 @@ import type {
 } from "@earendil-works/pi-coding-agent";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
 import { BoardTools, type BoardConnection } from "./boardTools.js";
-import { type BoardGrant, type BoardRequest, boardRequestSchema } from "./boardProtocol.js";
+import {
+  type BoardGrant,
+  type BoardRequest,
+  type BoardControl,
+  boardControlSchema,
+  boardRequestSchema,
+} from "./boardProtocol.js";
 
 beforeEach(() => vi.useFakeTimers());
 afterEach(() => vi.useRealTimers());
 
 function setup(mode: BoardGrant["mode"] = "edit") {
-  const frames: BoardRequest[] = [];
+  const frames: (BoardRequest | BoardControl)[] = [];
   const client = {
     destroyed: false,
     connecting: false,
     writable: true,
     writableLength: 0,
     write: vi.fn((frame: string) => {
-      frames.push(boardRequestSchema.parse(JSON.parse(frame)));
+      const raw = JSON.parse(frame);
+      frames.push(
+        raw.type === "board-control"
+          ? boardControlSchema.parse(raw)
+          : boardRequestSchema.parse(raw),
+      );
       return true;
     }),
     destroy: vi.fn(),
@@ -93,6 +104,133 @@ function setup(mode: BoardGrant["mode"] = "edit") {
     },
   };
 }
+async function available(t: ReturnType<typeof setup>, source = "interactive") {
+  t.input("Any ordinary prompt", source);
+  const before = t.tools.beforeAgentStart("Expanded prompt without board keywords", t.ctx);
+  expect(t.frames.at(-1)).toMatchObject({ type: "board-control", action: "begin" });
+  t.reply(undefined, { expiresAt: Date.now() + 60_000 });
+  await before;
+  t.tools.agentStart(t.ctx);
+}
+
+it.each(["interactive", "extension"])(
+  "makes tools available on first %s prompt without opening or rendering a board",
+  async (source) => {
+    const t = setup();
+    const hidden = t.definitions.get("board_read")!;
+    await available(t, source);
+    expect(t.pi.getActiveTools()).toContain("board_read");
+    expect(t.frames.map((r) => r.action)).toEqual(["begin"]);
+    await expect(hidden.execute("old", {}, undefined, undefined, t.ctx)).rejects.toThrow(
+      "No active",
+    );
+    const reading = t.run("board_read");
+    expect(t.frames.at(-1)?.action).toBe("grant");
+    t.reply(undefined, { grant: t.grant });
+    await Promise.resolve();
+    await Promise.resolve();
+    expect(t.frames.at(-1)?.action).toBe("read");
+    const png = Buffer.from([137, 80, 78, 71, 13, 10, 26, 10]).toString("base64");
+    t.reply(undefined, { revision: 3, elements: [], image: { mimeType: "image/png", data: png } });
+    expect(await reading).toEqual({
+      details: undefined,
+      content: [
+        { type: "text", text: JSON.stringify({ revision: 3, elements: [] }) },
+        { type: "image", mimeType: "image/png", data: png },
+      ],
+    });
+    t.tools.revoke();
+  },
+);
+
+it("does not mislabel ordinary native image attachments as board snapshots", async () => {
+  const t = setup();
+  t.input("Describe this photograph", "interactive");
+  const before = t.tools.beforeAgentStart("Describe this photograph", t.ctx, {
+    systemPrompt: "Base",
+    images: [{ type: "image", data: "image", mimeType: "image/png" }],
+  });
+  t.reply(undefined, { expiresAt: Date.now() + 60_000 });
+  expect((await before)?.systemPrompt).not.toContain("attached image shows the board");
+  expect(t.frames.map((r) => r.action)).toEqual(["begin"]);
+  t.tools.revoke();
+});
+
+it("revokes old run on input, never regrants after stop, and starts fresh only on next input", async () => {
+  const t = setup();
+  await available(t);
+  const retained = t.definitions.get("board_read")!;
+  const first = t.frames.at(-1)!;
+  t.tools.consume(
+    { type: "board-run-revoke", runId: "runId" in first ? first.runId : "" },
+    t.client,
+  );
+  expect(await t.tools.beforeAgentStart("same run continuation", t.ctx)).toBeUndefined();
+  await expect(t.run("board_read")).rejects.toThrow("No active");
+  expect(t.frames.map((r) => r.action)).toEqual(["begin"]);
+  await available(t, "extension");
+  await expect(retained.execute("old", {}, undefined, undefined, t.ctx)).rejects.toThrow(
+    "No active",
+  );
+  const second = t.frames.at(-1)!;
+  expect(second).not.toEqual(first);
+  t.input("A new input", "interactive");
+  expect(t.pi.getActiveTools()).not.toContain("board_read");
+  expect(t.frames.at(-1)?.action).toBe("end");
+  t.tools.revoke();
+});
+
+it.each(["session", "epoch", "runtime", "disconnect"])(
+  "fails closed on %s before lazy grant",
+  async (boundary) => {
+    const t = setup();
+    await available(t);
+    const old = t.connection()!;
+    if (boundary === "disconnect") t.changeConnection(undefined);
+    else
+      t.changeConnection({
+        ...old,
+        target: { ...old.target, [boundary === "session" ? "sessionId" : boundary]: randomUUID() },
+      });
+    await expect(t.run("board_read")).rejects.toThrow("stale");
+    expect(t.frames.some((r) => r.action === "grant")).toBe(false);
+  },
+);
+
+it("never reacquires after revocation while a lazy grant is pending", async () => {
+  const t = setup();
+  await available(t);
+  const read = t.run("board_read");
+  const denied = expect(read).rejects.toThrow("stopped");
+  t.tools.revoke("stopped");
+  await denied;
+  t.reply(undefined, { grant: t.grant });
+  await expect(t.run("board_read")).rejects.toThrow("No active");
+  expect(t.frames.filter((r) => r.action === "grant")).toHaveLength(1);
+});
+
+it("opens the conversation URL without input, changing tools or disturbing an active run", async () => {
+  const t = setup();
+  await available(t);
+  const old = t.definitions.get("board_read");
+  const opening = t.tools.open(t.ctx);
+  expect(t.frames.at(-1)).toMatchObject({ type: "board-control", action: "open" });
+  t.reply(undefined, { url: "https://remote.test/?pane=p&session=s&whiteboard=1" });
+  expect(await opening).toBe("https://remote.test/?pane=p&session=s&whiteboard=1");
+  expect(t.definitions.get("board_read")).toBe(old);
+  expect(t.frames.map((r) => r.action)).toEqual(["begin", "open"]);
+  t.tools.revoke();
+});
+
+it("rejects a delayed open reply after a conversation boundary", async () => {
+  const t = setup();
+  const opening = t.tools.open(t.ctx);
+  const rejected = expect(opening).rejects.toThrow("changed");
+  t.changeConnection({ ...t.connection()!, target: { ...t.target, sessionId: "other" } });
+  t.reply(undefined, { url: "https://remote.test/" });
+  await rejected;
+});
+
 const apply = () => ({
   baseRevision: 2,
   operationId: randomUUID(),
@@ -109,7 +247,7 @@ const apply = () => ({
   ],
 });
 
-it("registers hidden/default-inactive tools and prompt text alone cannot grant access", async () => {
+it("registers hidden/default-inactive tools and a hook without new input cannot grant access", async () => {
   const t = setup();
   expect(t.pi.registerTool).toHaveBeenCalledTimes(2);
   for (const tool of t.definitions.values()) {
@@ -117,24 +255,17 @@ it("registers hidden/default-inactive tools and prompt text alone cannot grant a
     expect(JSON.stringify(tool)).not.toContain(t.grant.grantId);
   }
   expect(t.pi.getActiveTools()).toEqual(["read", "bash", "unrelated"]);
-  t.input();
   expect(await t.tools.beforeAgentStart("Draw a box", t.ctx)).toBeUndefined();
   await expect(t.run("board_read")).rejects.toThrow("No active");
   await expect(t.run("board_apply", apply())).rejects.toThrow("No active");
   expect(t.frames).toEqual([]);
 });
 
-it.each([
-  ["Draw a box", "interactive", "Draw a box"],
-  ["Draw a box", "rpc", "Draw a box"],
-  ["Other input", "extension", "Draw a box"],
-  ["Draw a box", "extension", "Transformed prompt"],
-])("rejects mismatched input/prompt (%s, %s, %s) permanently", async (text, source, prompt) => {
+it("rejects a mismatched legacy prompt without regranting the same run", async () => {
   const t = setup();
   t.stage();
-  t.input(text, source);
-  await t.tools.beforeAgentStart(prompt, t.ctx);
   t.input();
+  await t.tools.beforeAgentStart("Transformed legacy prompt", t.ctx);
   await t.tools.beforeAgentStart("Draw a box", t.ctx);
   expect(t.frames.map((r) => r.action)).toEqual(["revoke"]);
   await expect(t.run("board_read")).rejects.toThrow("No active");
@@ -150,7 +281,6 @@ it("requires input before before_agent_start and expires unconsumed or matched s
     t.stage();
     if (matched) t.input();
     await vi.advanceTimersByTimeAsync(15_000);
-    t.input();
     await t.tools.beforeAgentStart("Draw a box", t.ctx);
   }
   expect(t.frames.map((r) => r.action)).toEqual(["revoke", "revoke", "revoke"]);
@@ -333,7 +463,7 @@ it.each([
   expect(t.pi.getActiveTools()).not.toContain("board_read");
 });
 
-it("activation failure returns an informational message and cannot grant the next turn", async () => {
+it("activation failure returns an informational message and cannot regrant without new input", async () => {
   const t = setup();
   t.stage();
   t.input();
@@ -350,7 +480,6 @@ it("activation failure returns an informational message and cannot grant the nex
   const result = await activation;
   expect(result?.message?.content).toContain("unavailable");
   expect(JSON.stringify(result)).not.toContain(t.grant.grantId);
-  t.input();
   await t.tools.beforeAgentStart("Draw a box", t.ctx);
   expect(t.frames.map((r) => r.action)).toEqual(["activate", "revoke"]);
 });

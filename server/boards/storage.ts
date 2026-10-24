@@ -2,6 +2,7 @@ import { createHash, randomUUID } from "node:crypto";
 import { z } from "zod";
 import {
   MAX_BOARD_BYTES,
+  MAX_BOARD_PNG_BYTES,
   boardIdSchema,
   boardRequestSchema,
   boardStateSchema,
@@ -191,14 +192,18 @@ export class BoardStore {
     }
   }
 
-  async open(sessionKey: string): Promise<BoardState> {
+  async open(sessionKey: string, authorize?: () => void): Promise<BoardState> {
+    const check = this.guard(authorize);
+    check();
     const id = BoardStore.idFor(sessionKey);
     return this.serial(id, async () => {
+      check();
       const existing = await this.load(id);
+      check();
       if (existing) {
         if (!existing.sessionKey) {
           existing.sessionKey = sessionKey;
-          await this.persist(existing, this.guard());
+          await this.persist(existing, check);
         }
         return this.publicState(existing);
       }
@@ -212,7 +217,7 @@ export class BoardStore {
         snapshots: [],
         access: null,
       };
-      await this.persist(state, this.guard());
+      await this.persist(state, check);
       return this.publicState(state);
     });
   }
@@ -464,7 +469,11 @@ export class BoardStore {
     return record;
   }
 
-  async handle(input: BoardRequest, validate: () => void): Promise<unknown> {
+  async handle(
+    input: BoardRequest,
+    validate: () => void,
+    render?: (scene: BoardScene) => Promise<Buffer>,
+  ): Promise<unknown> {
     const checkTarget = this.guard(validate);
     checkTarget();
     let encoded: string;
@@ -612,6 +621,15 @@ export class BoardStore {
         };
       }
       const summary = summarize(state.scene, state.revision, request.offset, request.limit);
+      let image: { mimeType: "image/png"; data: string } | undefined;
+      if (request.includeImage ?? (request.offset ?? 0) === 0) {
+        requireBoard(render, 503, "Whiteboard renderer unavailable; cannot read current image");
+        const png = await render(structuredClone(state.scene));
+        check();
+        validatePng(png);
+        requireBoard(png.length <= MAX_BOARD_PNG_BYTES, 413, "Rendered board PNG exceeds 2 MiB");
+        image = { mimeType: "image/png", data: png.toString("base64") };
+      }
       const live = new Map(
         state.scene.elements
           .filter((element) => !element.isDeleted)
@@ -627,7 +645,7 @@ export class BoardStore {
           fingerprint: elementFingerprint(live.get(id)!),
         });
       }
-      return summary;
+      return image ? { ...summary, image } : summary;
     });
   }
 

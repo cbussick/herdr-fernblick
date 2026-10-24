@@ -72,6 +72,9 @@ const sendSchema = ownedSchema.extend({
 });
 
 export function createBoardRoutes(service: HerdrService, bridge: LiveBridge, boards: BoardStore) {
+  // Native terminal requests must use the same authoritative saved-session
+  // association as browser routes, not just a self-reported socket snapshot.
+  bridge.setBoardAgentResolver((pane) => service.getAgent(pane));
   const sending = new Set<string>();
   const streams = new Set<ServerResponse>();
   async function context(pane: string, target: Target) {
@@ -141,7 +144,7 @@ export function createBoardRoutes(service: HerdrService, bridge: LiveBridge, boa
       if (streams.size >= 64) throw new BoardError(503, "Too many whiteboard streams");
       const target = targetSchema.parse(Object.fromEntries(url.searchParams));
       const ctx = await context(pane, target);
-      await boards.open(ctx.key);
+      await boards.open(ctx.key, ctx.validate);
       ctx.validate();
       response.writeHead(200, {
         "Content-Type": "text/event-stream",
@@ -220,7 +223,7 @@ export function createBoardRoutes(service: HerdrService, bridge: LiveBridge, boa
     const input = openSchema.parse(raw);
     const ctx = await context(pane, input.target);
     if (!action) {
-      const state = await boards.open(ctx.key);
+      const state = await boards.open(ctx.key, ctx.validate);
       ctx.validate();
       json(response, state);
       return true;
@@ -265,11 +268,6 @@ export function createBoardRoutes(service: HerdrService, bridge: LiveBridge, boa
           throw new BoardError(
             409,
             "Board changed before sending. Review it before sending again.",
-          );
-        if (!value.uploadId && state.scene.elements.some((element) => !element.isDeleted))
-          throw new BoardError(
-            400,
-            "A current board image is required. Refresh the whiteboard and send again.",
           );
         grant = boards.grant(ctx.id, input.target, "edit", value.revision);
         const reply = await bridge.request(ctx.agent, input.target, {

@@ -1669,6 +1669,60 @@ it("cleans up shutdown, prevents duplicate package connections and uses only fre
   expect(t.connections).toHaveLength(2);
 });
 
+it.each(["interactive", "extension"])(
+  "exposes whiteboard from the first %s turn without a UI-specific prompt or image",
+  async (source) => {
+    const t = await setup();
+    expect(t.tools.get("board_read")?.exposure).toBe("hidden");
+    t.emit("input", { text: "An ordinary message", source });
+    const before = Promise.all(
+      t.emit("before_agent_start", {
+        prompt: "An expanded ordinary message",
+        systemPrompt: "Base",
+      }),
+    );
+    const controls = () =>
+      t.frames.filter(
+        (frame) =>
+          !!frame && typeof frame === "object" && "type" in frame && frame.type === "board-control",
+      ) as { id: string; action: string; runId: string }[];
+    await vi.waitFor(() => expect(controls().at(-1)?.action).toBe("begin"));
+    writeFrame(t.connections.at(-1)!, {
+      type: "board-reply",
+      id: controls().at(-1)!.id,
+      ok: true,
+      data: { expiresAt: Date.now() + 60_000 },
+    });
+    await before;
+    expect(t.pi.getActiveTools()).toEqual(["read", "bash", "board_read", "board_apply"]);
+    expect(boardRequests(t)).toEqual([]);
+    expect(t.pi.sendUserMessage).not.toHaveBeenCalled();
+    t.emit("agent_start");
+    const reading = t.tools
+      .get("board_read")!
+      .execute("read", {}, undefined, undefined, t.ctx as ExtensionToolContext);
+    await vi.waitFor(() => expect(controls().at(-1)?.action).toBe("grant"));
+    const grant = { boardId: "a".repeat(64), grantId: randomUUID(), mode: "edit", revision: 0 };
+    writeFrame(t.connections.at(-1)!, {
+      type: "board-reply",
+      id: controls().at(-1)!.id,
+      ok: true,
+      data: { grant },
+    });
+    await vi.waitFor(() => expect(boardRequests(t).at(-1)?.action).toBe("read"));
+    const data = Buffer.from([137, 80, 78, 71, 13, 10, 26, 10]).toString("base64");
+    writeFrame(t.connections.at(-1)!, {
+      type: "board-reply",
+      id: boardRequests(t).at(-1)!.id,
+      ok: true,
+      data: { revision: 0, elements: [], image: { mimeType: "image/png", data } },
+    });
+    expect(await reading).toMatchObject({
+      content: [{ type: "text" }, { type: "image", mimeType: "image/png", data }],
+    });
+  },
+);
+
 async function stageBoard(
   t: Awaited<ReturnType<typeof setup>>,
   mode: BoardGrant["mode"] = "edit",

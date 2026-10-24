@@ -26,6 +26,9 @@ import {
 import { receiveFrames, writeFrame } from "../../packages/pi-live-chat/transport.js";
 import {
   boardRequestSchema,
+  boardControlSchema,
+  type BoardControl,
+  type BoardScene,
   type BoardGrant,
   type BoardRequest,
 } from "../../packages/pi-live-chat/boardProtocol.js";
@@ -50,6 +53,7 @@ interface Peer {
   snapshot?: Snapshot;
   boardGrant?: BoardGrant;
   boardRequests: number;
+  boardRun?: { id: string; revoked: boolean; expiresAt: number };
 }
 interface Pending {
   peer: Peer;
@@ -100,7 +104,20 @@ export class LiveBridge {
   setBoardStore(boards: BoardStore) {
     this.boards = boards;
   }
+  private boardAgent?: (pane: string) => Promise<Agent>;
+  setBoardAgentResolver(resolveAgent: (pane: string) => Promise<Agent>) {
+    this.boardAgent = resolveAgent;
+  }
+  private boardRenderer?: (scene: BoardScene) => Promise<Buffer>;
+  setBoardRenderer(render: (scene: BoardScene) => Promise<Buffer>) {
+    this.boardRenderer = render;
+  }
   private clearBoardAccess(peer: Peer) {
+    if (peer.boardRun && !peer.boardRun.revoked) {
+      peer.boardRun.revoked = true;
+      if (!peer.socket.destroyed)
+        writeFrame(peer.socket, { type: "board-run-revoke", runId: peer.boardRun.id });
+    }
     const grant = peer.boardGrant;
     peer.boardGrant = undefined;
     if (!grant) return;
@@ -113,6 +130,140 @@ export class LiveBridge {
       if (peer.snapshot && matchesTarget(peer.snapshot, target)) this.clearBoardAccess(peer);
     }
     this.boards?.revokeTarget(target);
+  }
+  private async validateBoardPeer(peer: Peer, target: Target, check: () => void) {
+    const snapshot = peer.snapshot;
+    const validate = () => {
+      check();
+      if (
+        !snapshot ||
+        !this.boards ||
+        !this.peers.has(peer) ||
+        peer.socket.destroyed ||
+        !peer.snapshot ||
+        !matchesTarget(peer.snapshot, target) ||
+        [...this.peers].filter((p) => p.snapshot?.identity.pane === snapshot.identity.pane)
+          .length !== 1 ||
+        resolve(snapshot.identity.herdrSocket) !== resolve(this.herdrSocket)
+      )
+        throw new LiveChatError(403, "Board connection is not current");
+    };
+    validate();
+    const info = await this.inspectProcess(snapshot!.identity.pid);
+    validate();
+    if (
+      !info.alive ||
+      !info.foreground ||
+      info.start !== snapshot!.identity.processStart ||
+      info.pane !== snapshot!.identity.pane ||
+      !info.herdrSocket ||
+      resolve(info.herdrSocket) !== resolve(this.herdrSocket)
+    )
+      throw new LiveChatError(403, "Board agent process is no longer current");
+    if (!this.boardAgent) throw new LiveChatError(503, "Board session validation unavailable");
+    const agent = await this.boardAgent(snapshot!.identity.pane);
+    validate();
+    if (this.current(agent) !== peer)
+      throw new LiveChatError(403, "Herdr and Pi board sessions do not match");
+    return validate;
+  }
+  private async boardControl(peer: Peer, request: BoardControl) {
+    if (++peer.boardRequests > 4) {
+      peer.socket.destroy();
+      return;
+    }
+    // Record the boundary synchronously, before asynchronous identity/storage work.
+    // A revoked run remains a tombstone: grant retries cannot silently reauthorize it.
+    if (
+      request.action === "begin" &&
+      peer.snapshot &&
+      matchesTarget(peer.snapshot, request.target) &&
+      peer.boardRun?.id !== request.runId
+    ) {
+      this.clearBoardAccess(peer);
+      peer.boardRun = { id: request.runId, revoked: false, expiresAt: Date.now() + 15 * 60_000 };
+    }
+    if (request.action === "end" && peer.boardRun?.id === request.runId)
+      this.clearBoardAccess(peer);
+    const run = peer.boardRun;
+    const checkRun = () => {
+      if (request.action === "open" || request.action === "end") return;
+      if (
+        !run ||
+        peer.boardRun !== run ||
+        run.id !== request.runId ||
+        run.revoked ||
+        run.expiresAt <= Date.now()
+      )
+        throw new LiveChatError(403, "Whiteboard request ended or was revoked; send a new request");
+    };
+    try {
+      const validate = await this.validateBoardPeer(peer, request.target, () => {
+        checkRun();
+        if (peer.snapshot?.version !== 2 || !peer.snapshot.capabilities?.boards)
+          throw new LiveChatError(403, "Whiteboard extension capability unavailable");
+      });
+      let data: unknown;
+      if (request.action === "begin") data = { expiresAt: run!.expiresAt };
+      else if (request.action === "end") data = { revoked: true };
+      else {
+        let url: URL | undefined;
+        if (request.action === "open") {
+          const base = process.env.FERNBLICK_PUBLIC_URL;
+          if (!base)
+            throw new LiveChatError(
+              503,
+              "Set FERNBLICK_PUBLIC_URL on the backend to a browser-reachable URL, then retry /whiteboard (especially over SSH).",
+            );
+          url = new URL(base);
+          if (!["http:", "https:"].includes(url.protocol) || url.username || url.password)
+            throw new LiveChatError(
+              503,
+              "FERNBLICK_PUBLIC_URL must be an HTTP(S) URL without credentials",
+            );
+          url.search = new URLSearchParams({
+            pane: peer.snapshot!.identity.pane,
+            session: request.target.sessionId,
+            whiteboard: "1",
+          }).toString();
+          url.hash = "";
+        }
+        const state = await this.boards!.open(boardSessionKey(peer.snapshot!), validate);
+        validate();
+        if (url) data = { url: url.toString() };
+        else {
+          // Concurrent tool calls share one lease and its idempotence ledger.
+          if (!peer.boardGrant) {
+            peer.boardGrant = this.boards!.grant(state.id, request.target, "edit", state.revision);
+            await this.boards!.handle(
+              {
+                type: "board-request",
+                id: randomUUID(),
+                target: request.target,
+                ...peer.boardGrant,
+                action: "activate",
+              },
+              validate,
+            );
+            validate();
+          }
+          data = { grant: peer.boardGrant, expiresAt: run!.expiresAt };
+        }
+      }
+      validate();
+      writeFrame(peer.socket, { type: "board-reply", id: request.id, ok: true, data });
+    } catch (error) {
+      if ((request.action === "begin" || request.action === "grant") && peer.boardRun === run)
+        this.clearBoardAccess(peer);
+      writeFrame(peer.socket, {
+        type: "board-reply",
+        id: request.id,
+        ok: false,
+        error: error instanceof Error ? error.message.slice(0, 1024) : "Board request failed",
+      });
+    } finally {
+      peer.boardRequests--;
+    }
   }
   private async boardRequest(peer: Peer, request: BoardRequest) {
     if (++peer.boardRequests > 4) {
@@ -127,25 +278,17 @@ export class LiveBridge {
         !peer.snapshot ||
         !matchesTarget(peer.snapshot, request.target) ||
         peer.boardGrant?.grantId !== request.grantId ||
+        (peer.boardRun && (peer.boardRun.revoked || peer.boardRun.expiresAt <= Date.now())) ||
         BoardStore.idFor(boardSessionKey(peer.snapshot)) !== request.boardId
       )
         throw new LiveChatError(403, "Board access is not authorized for this request");
     };
     try {
       validate();
-      const identity = peer.snapshot!.identity;
-      const info = await this.inspectProcess(identity.pid);
-      validate();
-      if (
-        !info.alive ||
-        !info.foreground ||
-        info.start !== identity.processStart ||
-        info.pane !== identity.pane ||
-        !info.herdrSocket ||
-        resolve(info.herdrSocket) !== resolve(this.herdrSocket)
-      )
-        throw new LiveChatError(403, "Board agent process is no longer current");
-      const data = await this.boards!.handle(request, validate);
+      const check = await this.validateBoardPeer(peer, request.target, validate);
+      const data = await this.boards!.handle(request, check, this.boardRenderer);
+      await this.validateBoardPeer(peer, request.target, check);
+      check();
       writeFrame(peer.socket, { type: "board-reply", id: request.id, ok: true, data });
       if (request.action === "revoke") this.clearBoardAccess(peer);
     } catch (error) {
@@ -221,6 +364,11 @@ export class LiveBridge {
       this.notify(peer.snapshot?.identity.pane);
     });
     receiveFrames(socket, (raw) => {
+      const control = boardControlSchema.safeParse(raw);
+      if (control.success) {
+        void this.boardControl(peer, control.data);
+        return;
+      }
       const boardRequest = boardRequestSchema.safeParse(raw);
       if (boardRequest.success) {
         void this.boardRequest(peer, boardRequest.data);
@@ -479,7 +627,10 @@ export class LiveBridge {
       throw new LiveChatError(409, "Run /reload in Pi to enable whiteboard tools");
     if (["send", "stop", "navigate", "compact", "shutdown"].includes(command.action))
       this.clearBoardAccess(peer);
-    if (command.action === "send" && command.board) peer.boardGrant = command.board;
+    if (command.action === "send" && command.board) {
+      peer.boardRun = undefined; // Legacy explicit grant has its own bounded lease.
+      peer.boardGrant = command.board;
+    }
     const id = command.id;
     return new Promise<BridgeResponse>((done, reject) => {
       const timer = setTimeout(

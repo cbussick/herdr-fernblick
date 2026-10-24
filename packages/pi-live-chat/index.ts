@@ -24,6 +24,7 @@ import { readTreePage } from "./treePage.js";
 import { processIdentity, socketPath, validateSocket } from "./security.js";
 import { receiveFrames, writeFrame } from "./transport.js";
 import { BoardTools, type BoardConnection } from "./boardTools.js";
+import { openWhiteboardCommand } from "./whiteboardCommand.js";
 
 const singleton = Symbol.for("fernblick.pi-live-chat.owner.v1");
 const owners = globalThis as typeof globalThis & { [singleton]?: object };
@@ -101,6 +102,19 @@ export default function liveChat(pi: ExtensionAPI) {
     if (event.text.startsWith("/fernblick-bridge")) return { action: "handled" };
   });
   pi.on("before_agent_start", (event, ctx) => boards?.beforeAgentStart(event.prompt, ctx, event));
+  pi.registerCommand("whiteboard", {
+    description: "Open this conversation's Fernblick whiteboard without sending a prompt",
+    handler: async (_args, ctx) => {
+      if (owners[singleton] !== owner) return;
+      await openWhiteboardCommand(ctx, () => {
+        if (!boards)
+          throw new Error(
+            "Whiteboard backend unavailable. Configure Fernblick and its Pi socket first.",
+          );
+        return boards.open(ctx);
+      });
+    },
+  });
   pi.registerCommand(privateCommand, {
     description: "Private one-use Fernblick navigation gateway",
     handler: async (args, ctx) => {

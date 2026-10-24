@@ -55,6 +55,7 @@ function request(
     grantId: grant.grantId,
     boardId,
     action,
+    includeImage: false,
     ...fields,
   };
 }

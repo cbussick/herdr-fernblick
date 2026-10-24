@@ -7,7 +7,7 @@ import { afterEach, beforeEach, expect, it, vi } from "vitest";
 import type { Server } from "node:http";
 import type { Agent } from "../../src/shared/api/contracts.js";
 import type { HerdrService } from "../herdr/herdrService.js";
-import { LiveBridge } from "../pi/liveBridge.js";
+import { boardSessionKey, LiveBridge } from "../pi/liveBridge.js";
 import { BoardStore } from "../boards/storage.js";
 import { createHttpServer } from "./server.js";
 import { targetOf, type Snapshot } from "../../packages/pi-live-chat/protocol.js";
@@ -42,6 +42,7 @@ let base: string;
 let snapshot: Snapshot;
 let frames: Record<string, unknown>[];
 let acceptSend: boolean;
+let foreground: boolean;
 const png = Buffer.from(
   "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVQIHWP4z8DwHwAFgAI/ScLbtAAAAABJRU5ErkJggg==",
   "base64",
@@ -51,14 +52,16 @@ beforeEach(async () => {
   vi.stubEnv("FERNBLICK_UPLOAD_DIR", join(directory, "uploads"));
   frames = [];
   acceptSend = true;
+  foreground = true;
   bridge = new LiveBridge(join(directory, "pi.sock"), "/herdr.sock", async () => ({
     start: "456",
-    foreground: true,
+    foreground,
     alive: true,
     pane: agent.pane_id,
     herdrSocket: "/herdr.sock",
   }));
   boards = new BoardStore(join(directory, "boards"));
+  bridge.setBoardRenderer(async () => png);
   await bridge.start();
   server = createHttpServer(
     { getAgent: vi.fn(async () => agent) } as unknown as HerdrService,
@@ -174,6 +177,190 @@ async function rpc(
   );
   return frames.find((f) => f.type === "board-reply" && f.id === id)!;
 }
+async function control(action: "begin" | "grant" | "end" | "open", runId: string) {
+  const id = randomUUID();
+  writeFrame(socket, { type: "board-control", id, target: targetOf(snapshot), runId, action });
+  await vi.waitFor(() =>
+    expect(frames.some((f) => f.type === "board-reply" && f.id === id)).toBe(true),
+  );
+  return frames.find((f) => f.type === "board-reply" && f.id === id)!;
+}
+
+it("denies native board access when Herdr's saved session disagrees with the extension", async () => {
+  bridge.setBoardAgentResolver(async () => ({
+    ...agent,
+    agent_session: { agent: "pi", kind: "path", source: "pi", value: "/different-session.jsonl" },
+  }));
+  const runId = randomUUID();
+  expect(await control("begin", runId)).toMatchObject({
+    ok: false,
+    error: expect.stringContaining("session identities do not match"),
+  });
+  expect(await readdir(join(directory, "boards")).catch(() => [])).toEqual([]);
+  bridge.setBoardAgentResolver(async () => agent);
+  expect(await control("grant", runId)).toMatchObject({ ok: false });
+});
+
+it("invalidates native request authority at an epoch boundary", async () => {
+  const runId = randomUUID();
+  await control("begin", runId);
+  const result = await control("grant", runId);
+  const grant = (result.data as { grant: BoardGrant }).grant;
+  const next = { ...snapshot, seq: 2, epoch: randomUUID() };
+  writeFrame(socket, next);
+  await vi.waitFor(() => expect(bridge.current(agent).snapshot.seq).toBe(2));
+  expect(await rpc(grant, "read")).toMatchObject({ ok: false });
+  expect(await control("grant", runId)).toMatchObject({ ok: false });
+  snapshot = next;
+  expect(await control("begin", randomUUID())).toMatchObject({ ok: true });
+});
+
+it("requires validated foreground identity before native create, and again after rendering", async () => {
+  const rejected = randomUUID();
+  foreground = false;
+  expect(await control("begin", rejected)).toMatchObject({ ok: false });
+  foreground = true;
+  expect(await control("grant", rejected)).toMatchObject({ ok: false });
+  expect(await readdir(join(directory, "boards")).catch(() => [])).toEqual([]);
+  const runId = randomUUID();
+  expect(await control("begin", runId)).toMatchObject({ ok: true });
+  const result = await control("grant", runId);
+  const grant = (result.data as { grant: BoardGrant }).grant;
+  bridge.setBoardRenderer(async () => {
+    foreground = false;
+    return png;
+  });
+  expect(await rpc(grant, "read")).toMatchObject({
+    ok: false,
+    error: expect.stringContaining("no longer current"),
+  });
+});
+
+it("grants native requests lazily with no browser, returns fresh on-demand PNG and never snapshots", async () => {
+  const runId = randomUUID();
+  expect(await control("begin", runId)).toMatchObject({ ok: true });
+  expect(await readdir(join(directory, "boards")).catch(() => [])).toEqual([]);
+  const result = await control("grant", runId);
+  expect(result.ok).toBe(true);
+  const grant = (result.data as { grant: BoardGrant }).grant;
+  expect(await control("grant", runId)).toMatchObject({ data: { grant } });
+  const render = vi.fn(async (_scene: BoardState["scene"]) => png);
+  bridge.setBoardRenderer(render);
+  expect(await rpc(grant, "read")).toMatchObject({
+    ok: true,
+    data: {
+      revision: 0,
+      elements: [],
+      image: { mimeType: "image/png", data: png.toString("base64") },
+    },
+  });
+  const state = await boards.read(grant.boardId);
+  await boards.save(state.id, state.revision, { ...state.scene, background: "#123456" });
+  expect(await rpc(grant, "read")).toMatchObject({ ok: true, data: { revision: 1 } });
+  expect(render.mock.calls.at(-1)).toEqual([{ ...state.scene, background: "#123456" }]);
+  expect(await rpc(grant, "read", { includeImage: false })).toMatchObject({ ok: true });
+  expect(render).toHaveBeenCalledTimes(2);
+  expect((await boards.read(state.id)).snapshots).toEqual([]);
+  expect((await readdir(join(directory, "boards"))).some((name) => name.includes("snapshot"))).toBe(
+    false,
+  );
+});
+
+it("revocation before first tool use cannot regrant the same request but next input can", async () => {
+  const runId = randomUUID();
+  expect(await control("begin", runId)).toMatchObject({ ok: true });
+  expect(await bridge.command(agent, targetOf(snapshot), "stop")).toMatchObject({
+    outcome: "invoked",
+  });
+  expect(await control("grant", runId)).toMatchObject({ ok: false });
+  expect(await control("begin", runId)).toMatchObject({ ok: false });
+  expect(await readdir(join(directory, "boards")).catch(() => [])).toEqual([]);
+  const next = randomUUID();
+  expect(await control("begin", next)).toMatchObject({ ok: true });
+  expect(await control("grant", next)).toMatchObject({ ok: true });
+  expect(await control("end", next)).toMatchObject({ ok: true });
+  expect(await control("grant", next)).toMatchObject({ ok: false });
+});
+
+it("revalidates grants after asynchronous rendering and fails explicitly on bad/oversized PNGs", async () => {
+  const runId = randomUUID();
+  await control("begin", runId);
+  const granted = await control("grant", runId);
+  const grant = (granted.data as { grant: BoardGrant }).grant;
+  for (const image of [
+    Buffer.from("not PNG"),
+    Buffer.concat([png, Buffer.alloc(2 * 1024 * 1024)]),
+  ]) {
+    bridge.setBoardRenderer(async () => image);
+    expect(await rpc(grant, "read")).toMatchObject({ ok: false });
+  }
+  let finish!: (png: Buffer) => void;
+  const render = vi.fn(
+    () =>
+      new Promise<Buffer>((resolve) => {
+        finish = resolve;
+      }),
+  );
+  bridge.setBoardRenderer(render);
+  const read = rpc(grant, "read");
+  await vi.waitFor(() => expect(render).toHaveBeenCalled());
+  bridge.revokeBoardAccess(targetOf(snapshot));
+  finish(png);
+  expect(await read).toMatchObject({ ok: false });
+  expect(await control("grant", runId)).toMatchObject({ ok: false });
+});
+
+it("creates a conversation URL only with configured remote base, without granting model access", async () => {
+  vi.stubEnv("FERNBLICK_PUBLIC_URL", "");
+  const runId = randomUUID();
+  expect(await control("open", runId)).toMatchObject({
+    ok: false,
+    error: expect.stringContaining("FERNBLICK_PUBLIC_URL"),
+  });
+  expect(await readdir(join(directory, "boards")).catch(() => [])).toEqual([]);
+  vi.stubEnv("FERNBLICK_PUBLIC_URL", "https://remote.example.test/?old=1#old");
+  expect(await control("open", runId)).toMatchObject({
+    ok: true,
+    data: {
+      url: "https://remote.example.test/?pane=w1%3Ap1&session=session&whiteboard=1",
+    },
+  });
+  expect(await control("grant", runId)).toMatchObject({ ok: false });
+  expect((await boards.read(BoardStore.idFor(boardSessionKey(snapshot)))).access).toBeNull();
+});
+
+it("allows a nonempty-board prompt without automatic browser PNG", async () => {
+  const state = await open();
+  await boards.save(state.id, 0, {
+    ...state.scene,
+    elements: [
+      {
+        id: "ink",
+        type: "freedraw",
+        x: 0,
+        y: 0,
+        width: 30,
+        height: 20,
+        points: [
+          [0, 0],
+          [30, 20],
+        ],
+      },
+    ],
+  });
+  const response = await post("prompt", {
+    boardId: state.id,
+    revision: 1,
+    text: "Read it on demand",
+    requestId: randomUUID(),
+  });
+  expect(response.status).toBe(200);
+  expect(frames.find((f) => f.type === "command")).toMatchObject({
+    action: "send",
+    attachments: [],
+  });
+});
+
 it("persists a conversation board and denies foreign origins, boards and stale targets", async () => {
   const state = await open();
   expect((await open()).id).toBe(state.id);
@@ -274,7 +461,7 @@ it("forwards a board PNG together with editing access, without creating a saved 
   });
   expect((await open()).snapshots).toHaveLength(0);
 });
-it.each(["missing", "non-PNG", "unknown", "corrupt"])(
+it.each(["non-PNG", "unknown", "corrupt"])(
   "rejects %s visual context without forwarding or granting",
   async (kind) => {
     const initial = await open();
