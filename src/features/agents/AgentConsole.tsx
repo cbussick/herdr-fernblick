@@ -32,6 +32,7 @@ import { SkillComposer } from "./SkillComposer";
 import { ConversationCompaction } from "./ConversationCompaction";
 import { useConversationCompaction } from "./useConversationCompaction";
 import { Whiteboard } from "../whiteboard/Whiteboard";
+import { consumeWhiteboardLink, readWhiteboardLink } from "../whiteboard/boardLink";
 import { boardApi } from "../whiteboard/boardApi";
 import type { BoardPromptContext } from "../whiteboard/ConversationDock";
 import { BackIcon, CloseIcon } from "../../shared/ui/Icons";
@@ -113,6 +114,10 @@ function PiAgentConsole({ agent, onBack }: AgentConsoleProps) {
   const [attachmentError, setAttachmentError] = useState("");
   const [treeTarget, setTreeTarget] = useState<Target | null>(null);
   const [boardTarget, setBoardTarget] = useState<Target | null>(null);
+  const [boardLink, setBoardLink] = useState(() =>
+    typeof window === "undefined" ? null : readWhiteboardLink(window.location?.search ?? ""),
+  );
+  const [boardLinkError, setBoardLinkError] = useState("");
   const [chatImageOpen, setChatImageOpen] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const uploadedIds = useRef(new Map<File, string>());
@@ -122,6 +127,18 @@ function PiAgentConsole({ agent, onBack }: AgentConsoleProps) {
   const outputRef = useRef<HTMLElement>(null);
   const live = useLiveChat(agent.pane_id, view === "chat", agent.agent_session?.value);
   const snapshot = live.snapshot;
+  useEffect(() => {
+    if (!boardLink || boardLink.pane !== agent.pane_id || !snapshot) return;
+    // A terminal URL is only a viewing hint: never open a reused pane's new board.
+    // oxlint-disable-next-line react/set-state-in-effect
+    setBoardLink(null);
+    consumeWhiteboardLink();
+    if (boardLink.session !== snapshot.identity.sessionId) {
+      setBoardLinkError("This whiteboard link belongs to a different Pi conversation.");
+      return;
+    }
+    setBoardTarget(targetOf(snapshot));
+  }, [agent.pane_id, boardLink, snapshot]);
   const compact = useConversationCompaction(
     agent.pane_id,
     snapshot,
@@ -377,7 +394,8 @@ function PiAgentConsole({ agent, onBack }: AgentConsoleProps) {
       !board.text.trim()
     )
       return;
-    // Only the board's prepared PNG may accompany the grant, never queued chat images.
+    // Board sends flush manual drawing first; tools read visual context on demand.
+    // Queued ordinary-chat attachments stay with their composer.
     sendDraft({ text: board.text, attachments: [], target: expected, board });
   }
   return (
@@ -816,10 +834,20 @@ function PiAgentConsole({ agent, onBack }: AgentConsoleProps) {
           }}
         />
       ) : null}
+      {boardLinkError ? (
+        <Snackbar message={boardLinkError} onDismiss={() => setBoardLinkError("")} />
+      ) : null}
       {boardTarget ? (
         <Whiteboard
           key={boardTarget.sessionId}
           pane={agent.pane_id}
+          agentName={getAgentLabel(agent)}
+          agentContext={[
+            agent.workspace_label ?? agent.workspace_id,
+            getAgentTabLabel(agent) !== getAgentLabel(agent) ? getAgentTabLabel(agent) : null,
+          ]
+            .filter(Boolean)
+            .join(" · ")}
           target={boardTarget}
           agentState={
             !snapshot || live.error

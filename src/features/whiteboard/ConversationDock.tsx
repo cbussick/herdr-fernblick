@@ -35,7 +35,6 @@ interface ConversationDockProps {
     action?: ReactNode;
   };
   recovery?: ReactNode;
-  history?: ReactNode;
 }
 export function ConversationDock({
   conversation,
@@ -43,7 +42,6 @@ export function ConversationDock({
   inert,
   activity,
   recovery,
-  history,
 }: ConversationDockProps) {
   const [expanded, setExpanded] = useState(false);
   // An unavailable chat frame is not a new conversation. The enclosing board
@@ -95,13 +93,12 @@ export function ConversationDock({
         <div className={styles["activity__text"]} role={activity.warning ? "alert" : "status"}>
           <p>
             {activity.working && !activity.warning ? (
-              <StatusIndicator status="working" label="Agent is working" />
+              <StatusIndicator status="working" label="Working" />
             ) : (
               activity.message || (hasReply ? "Reply ready" : "Conversation")
             )}
           </p>
           {activity.detail}
-          <p>Prompts send the drawing and allow edits.</p>
         </div>
         {activity.action}
         <button
@@ -116,7 +113,6 @@ export function ConversationDock({
         </button>
       </header>
       {recovery}
-      {history ? <div className={styles.history}>{history}</div> : null}
       <ChatTranscript
         id="whiteboard-conversation-messages"
         testId="whiteboard-replies"
@@ -137,7 +133,7 @@ export function ConversationDock({
       >
         <textarea
           aria-label="Message the agent"
-          placeholder="Ask the agent to edit this board…"
+          placeholder="Message…"
           value={conversation.draft}
           readOnly={conversation.sending}
           rows={1}

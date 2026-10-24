@@ -1450,3 +1450,36 @@ it("shows startup and failure states while keeping send disabled", async () => {
   ]);
   expect(renderer.root.findByProps({ "aria-label": "Send message" }).props.disabled).toBe(true);
 });
+
+it.each([true, false])(
+  "opens a terminal whiteboard link only for the matching live conversation (%s)",
+  async (matching) => {
+    await act(async () => renderer.unmount());
+    const browser = new EventTarget();
+    const search = "?pane=w1%3Ap1&session=" + (matching ? "s" : "old-session") + "&whiteboard=1";
+    const replaceState = vi.fn();
+    Object.assign(browser, {
+      location: { search, href: "https://fernblick.example/" + search },
+      history: { state: { fernblickPaneId: "w1:p1" }, replaceState },
+      localStorage: { getItem: () => null },
+    });
+    vi.stubGlobal("window", browser);
+    await act(async () => {
+      renderer = create(render());
+    });
+    await flush();
+    expect(renderer.root.findAllByType(Whiteboard)).toHaveLength(matching ? 1 : 0);
+    expect(replaceState).toHaveBeenCalled();
+    expect(mocks.command).not.toHaveBeenCalled();
+    expect(mocks.boardPrompt).not.toHaveBeenCalled();
+    if (matching) {
+      const board = renderer.root.findByType(Whiteboard);
+      expect(board.props.agentName).toBe("test");
+      expect(board.props.target.sessionId).toBe("s");
+      await act(async () => board.props.onClose());
+      expect(renderer.root.findAllByType(Whiteboard)).toHaveLength(0);
+    } else {
+      expect(JSON.stringify(renderer.toJSON())).toContain("different Pi conversation");
+    }
+  },
+);

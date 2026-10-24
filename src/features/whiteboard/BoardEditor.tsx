@@ -2,10 +2,8 @@ import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import {
   CaptureUpdateAction,
   Excalidraw,
-  FONT_FAMILY,
   MainMenu,
   WelcomeScreen,
-  exportToBlob,
   restoreElements,
 } from "@excalidraw/excalidraw";
 import type { BinaryFiles, ExcalidrawImperativeAPI } from "@excalidraw/excalidraw/types";
@@ -21,7 +19,7 @@ import { editorChanges } from "./mergeScene";
 import styles from "./Whiteboard.module.css";
 
 export interface EditorHandle {
-  exportPNG: () => Promise<Blob>;
+  fit: () => void;
 }
 export interface BoardEditorProps {
   scene: BoardScene;
@@ -112,43 +110,12 @@ export default function BoardEditor({
   useEffect(() => {
     if (!api) return;
     current.current.onReady({
-      exportPNG: async () => {
-        const elements = api.getSceneElements().filter((element) => !element.isDeleted);
-        if (!elements.length) throw new Error("Draw something before sending.");
-        // Off-screen text must also have its fonts loaded before rasterization.
-        await Promise.all(
-          elements
-            .filter((element) => element.type === "text")
-            .map((element) => {
-              const family = Object.entries(FONT_FAMILY).find(
-                ([, id]) => id === element.fontFamily,
-              )?.[0];
-              return family
-                ? document.fonts.load(`${element.fontSize}px "${family}"`, element.text)
-                : Promise.resolve([]);
-            }),
-        );
-        await document.fonts.ready;
-        const blob = await exportToBlob({
-          elements,
-          files: api.getFiles(),
-          mimeType: "image/png",
-          maxWidthOrHeight: 2400,
-          appState: {
-            ...api.getAppState(),
-            viewBackgroundColor: "#ffffff",
-            exportBackground: true,
-            exportEmbedScene: false,
-            exportWithDarkMode: false,
-            frameRendering: { enabled: false, clip: false, name: false, outline: false },
-          },
-        });
-        if (!blob.size || blob.size >= 10 * 1024 * 1024)
-          throw new Error(
-            "The PNG must be smaller than 10 MiB. Simplify the drawing before sending.",
-          );
-        return blob;
-      },
+      fit: () =>
+        api.scrollToContent(undefined, {
+          fitToViewport: true,
+          viewportZoomFactor: 0.85,
+          animate: false,
+        }),
     });
     return () => current.current.onReady(null);
   }, [api]);

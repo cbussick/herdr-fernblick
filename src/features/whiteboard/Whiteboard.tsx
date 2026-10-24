@@ -11,10 +11,8 @@ import {
 } from "react";
 import { createPortal } from "react-dom";
 import type { BoardTarget } from "../../../packages/pi-live-chat/boardProtocol";
-import { uploadImage } from "../../shared/api/apiClient";
 import { BoardController } from "./BoardController";
-import { boardApi, requestId } from "./boardApi";
-import { downloadScene, sceneFingerprint } from "./scene";
+import { downloadScene } from "./scene";
 import type { EditorHandle } from "./BoardEditor";
 import { ConversationDock, type WhiteboardConversation } from "./ConversationDock";
 import styles from "./Whiteboard.module.css";
@@ -43,6 +41,8 @@ class EditorBoundary extends Component<{ children: ReactNode }, { error: boolean
 }
 export interface WhiteboardProps {
   pane: string;
+  agentName: string;
+  agentContext?: string;
   target: BoardTarget;
   agentState: "ready" | "waiting" | "working" | "disconnected" | "unsupported";
   structured: boolean;
@@ -65,7 +65,8 @@ export function Whiteboard(props: WhiteboardProps) {
   ) : null;
 }
 function WhiteboardSession({
-  pane,
+  agentName,
+  agentContext,
   target,
   agentState,
   structured,
@@ -78,7 +79,6 @@ function WhiteboardSession({
   const dialog = useRef<HTMLDialogElement>(null);
   const editor = useRef<EditorHandle | null>(null);
   const active = useRef(false);
-  const [sheet, setSheet] = useState(false);
   const [working, setWorking] = useState(false);
   const [error, setError] = useState("");
   const [editorError, setEditorError] = useState("");
@@ -89,16 +89,8 @@ function WhiteboardSession({
   const [leave, setLeave] = useState(false);
   const [revoking, setRevoking] = useState(false);
   const [ready, setReady] = useState(false);
-  const [preview, setPreview] = useState<{
-    blob: Blob;
-    url: string;
-    revision: number;
-    fingerprint: string;
-  } | null>(null);
-  const sendAbort = useRef<AbortController | null>(null);
   const operation = useRef(false);
   const backButton = useRef<HTMLButtonElement>(null);
-  const instructionInput = useRef<HTMLTextAreaElement>(null);
   const dismiss = useRef<() => void>(() => {});
 
   useEffect(() => {
@@ -174,7 +166,6 @@ function WhiteboardSession({
     if (modal) document.addEventListener("keydown", keydown);
     return () => {
       active.current = false;
-      sendAbort.current?.abort();
       if (modal) document.removeEventListener("keydown", keydown);
       previous.forEach(([element, inert]) => {
         element.inert = inert;
@@ -182,16 +173,9 @@ function WhiteboardSession({
       if (focused instanceof HTMLElement) focused.focus();
     };
   }, [controller]);
-  useEffect(
-    () => () => {
-      if (preview) URL.revokeObjectURL(preview.url);
-    },
-    [preview],
-  );
   useEffect(() => {
-    if (sheet) instructionInput.current?.focus();
-    else backButton.current?.focus();
-  }, [sheet, working]);
+    backButton.current?.focus();
+  }, []);
 
   useEffect(() => {
     const viewport = window.visualViewport;
@@ -226,22 +210,6 @@ function WhiteboardSession({
     if (!controller.state.connected || controller.state.conflict)
       throw new Error("Whiteboard is disconnected or has a save conflict.");
   }
-  const empty = !state.scene?.elements.some((element) => !element.isDeleted);
-  const disabled =
-    !available ||
-    !state.connected ||
-    state.conflict ||
-    empty ||
-    !ready ||
-    working ||
-    Boolean(editorError);
-  const previewStale = Boolean(
-    preview &&
-    (state.dirty ||
-      preview.revision !== state.board?.revision ||
-      (state.scene && preview.fingerprint !== sceneFingerprint(state.scene))),
-  );
-
   const access = state.board?.access;
   const disconnected = agentState === "disconnected" || (Boolean(state.board) && !state.connected);
   const activity =
@@ -254,7 +222,7 @@ function WhiteboardSession({
           : agentState === "waiting"
             ? "Waiting for agent…"
             : agentState === "working"
-              ? "Agent is working"
+              ? "Working"
               : "";
   const problem = conversation.error || error || editorError || state.error;
   const status = problem || activity;
@@ -288,91 +256,6 @@ function WhiteboardSession({
       if (active.current) setWorking(false);
     }
   }
-  async function prepare() {
-    if (disabled || operation.current) return;
-    operation.current = true;
-    setSheet(true);
-    setPreview(null);
-    setError("");
-    setWorking(true);
-    try {
-      assertTarget();
-      await controller.flush();
-      const fingerprint = sceneFingerprint(controller.state.scene!);
-      const blob = await editor.current!.exportPNG();
-      assertTarget();
-      if (fingerprint !== sceneFingerprint(controller.state.scene!))
-        throw new Error(
-          "The drawing changed while preparing the preview. Close this sheet and prepare it again.",
-        );
-      await controller.flush();
-      assertTarget();
-      setPreview({
-        blob,
-        url: URL.createObjectURL(blob),
-        revision: controller.state.board!.revision,
-        fingerprint,
-      });
-    } catch (reason) {
-      if (active.current)
-        setError(reason instanceof Error ? reason.message : "Could not prepare the image");
-    } finally {
-      operation.current = false;
-      if (active.current) setWorking(false);
-    }
-  }
-  async function submit() {
-    if (disabled || !preview || operation.current) return;
-    operation.current = true;
-    setWorking(true);
-    setError("");
-    const abort = new AbortController();
-    sendAbort.current = abort;
-    function validatePreview() {
-      assertTarget();
-      if (
-        controller.state.dirty ||
-        controller.state.board!.revision !== preview!.revision ||
-        sceneFingerprint(controller.state.scene!) !== preview!.fingerprint
-      )
-        throw new Error(
-          "The board changed. Close this sheet and preview the latest drawing before sending.",
-        );
-    }
-    try {
-      validatePreview();
-      const upload = await uploadImage(
-        new File([preview.blob], "whiteboard.png", { type: "image/png" }),
-      );
-      validatePreview(); // Revalidate runtime/epoch, access and revision after upload.
-      await boardApi.send(
-        pane,
-        {
-          target: controller.target,
-          boardId: controller.state.board!.id,
-          revision: preview.revision,
-          uploadId: upload.id,
-          mode: "image",
-          text: controller.state.instruction,
-          requestId: requestId(),
-        },
-        AbortSignal.any([abort.signal, AbortSignal.timeout(15000)]),
-      );
-      if (!active.current) return;
-      controller.instruct("");
-      setSheet(false);
-      setPreview(null);
-      await controller.refresh();
-    } catch (reason) {
-      if (active.current)
-        setError(
-          `${reason instanceof Error ? reason.message : "Send failed"} Drawing and instruction retained. No automatic retry.`,
-        );
-    } finally {
-      operation.current = false;
-      if (active.current) setWorking(false);
-    }
-  }
   async function promptBoard() {
     if (
       operation.current ||
@@ -380,7 +263,6 @@ function WhiteboardSession({
       !structured ||
       !ready ||
       Boolean(editorError) ||
-      sheet ||
       conversation.sending ||
       !conversation.draft.trim()
     )
@@ -396,46 +278,12 @@ function WhiteboardSession({
       assertTarget();
       if (!current.current.structured)
         throw new Error("Run /reload in Pi to enable board editing.");
+      if (current.current.editorError) throw new Error(current.current.editorError);
       const board = controller.state.board;
-      const scene = controller.state.scene;
-      if (!board || !scene) throw new Error("Board is not ready.");
-      const fingerprint = sceneFingerprint(scene);
-      const validate = () => {
-        assertTarget();
-        if (!current.current.structured)
-          throw new Error("Run /reload in Pi to enable board editing.");
-        if (current.current.editorError) throw new Error(current.current.editorError);
-        if (
-          controller.state.dirty ||
-          controller.state.board?.revision !== board.revision ||
-          !controller.state.scene ||
-          sceneFingerprint(controller.state.scene) !== fingerprint
-        )
-          throw new Error(
-            "The board changed while preparing the image. Review it before sending again.",
-          );
-      };
-      let uploadId: string | undefined;
-      if (scene.elements.some((element) => !element.isDeleted)) {
-        const blob = await editor.current!.exportPNG();
-        validate();
-        const abort = new AbortController();
-        sendAbort.current = abort;
-        const upload = await uploadImage(
-          new File([blob], "whiteboard.png", { type: "image/png" }),
-          AbortSignal.any([abort.signal, AbortSignal.timeout(15000)]),
-        );
-        uploadId = upload.id;
-      }
-      // Never forward text/grant alone when a nonempty board export/upload fails,
-      // or send an image of an older revision after an asynchronous boundary.
-      validate();
-      send({
-        boardId: board.id,
-        revision: board.revision,
-        text,
-        ...(uploadId ? { uploadId } : {}),
-      });
+      if (!board) throw new Error("Board is not ready.");
+      // Flush manual drawing first. The agent reads the latest scene/image on
+      // demand through the same tools as terminal and ordinary chat requests.
+      send({ boardId: board.id, revision: board.revision, text });
     } catch (reason) {
       if (active.current)
         setError(
@@ -462,10 +310,7 @@ function WhiteboardSession({
   useLayoutEffect(() => {
     dismiss.current = () => {
       if (working) return;
-      if (sheet) {
-        setSheet(false);
-        setPreview(null);
-      } else void back();
+      void back();
     };
   });
   return createPortal(
@@ -484,34 +329,30 @@ function WhiteboardSession({
       }}
     >
       <div className={styles.layout}>
-        <header className={styles.header} inert={sheet || undefined}>
+        <header className={styles.header}>
           <button ref={backButton} type="button" onClick={() => void back()} disabled={working}>
             ← Back
           </button>
-          <div>
+          <div className={styles.identity}>
             <h2 id="whiteboard-title">Whiteboard</h2>
-            <span>
-              {state.saving ? "Saving…" : state.dirty ? "Unsynced drawing" : "Saved drawing"}
+            <span title={[agentName, agentContext].filter(Boolean).join(" · ")}>
+              <strong>{agentName}</strong>
+              {agentContext ? ` · ${agentContext}` : ""}
             </span>
           </div>
-          <button
-            type="button"
-            className={styles.primary}
-            disabled={disabled}
-            onClick={() => void prepare()}
-          >
-            Share drawing
-          </button>
+          <span className={styles["save-status"]} role="status">
+            {state.saving ? "Saving…" : state.dirty ? "Unsynced" : "Saved"}
+          </span>
         </header>
         <div className={styles.workspace} data-testid="whiteboard-workspace">
-          <div className={styles.canvas} inert={sheet || working || undefined}>
+          <div className={styles.canvas} inert={working || undefined}>
             {state.scene ? (
               <EditorBoundary>
                 <Suspense fallback={<p className={styles.notice}>Loading drawing tools…</p>}>
                   <Editor
                     scene={state.scene}
                     generation={state.generation}
-                    locked={sheet || working}
+                    locked={working}
                     onChange={(scene) => controller.change(scene)}
                     onError={setEditorError}
                     onInteraction={controller.interaction}
@@ -525,6 +366,14 @@ function WhiteboardSession({
             ) : (
               <p className={styles.notice}>Opening saved whiteboard…</p>
             )}
+            <button
+              className={styles.fit}
+              type="button"
+              disabled={!ready || working}
+              onClick={() => editor.current?.fit()}
+            >
+              Fit drawing
+            </button>
           </div>
           <ConversationDock
             conversation={{
@@ -541,7 +390,7 @@ function WhiteboardSession({
               state.conflict ||
               Boolean(editorError)
             }
-            inert={sheet}
+            inert={false}
             activity={{
               message: status,
               warning,
@@ -549,15 +398,7 @@ function WhiteboardSession({
               detail: (
                 <>
                   {!structured ? <p>Run /reload in Pi to enable board editing.</p> : null}
-                  {access ? (
-                    <p>
-                      {disconnected
-                        ? `${access.mode === "edit" ? "Editing" : "Inspection"} permission may still be active.`
-                        : access.state === "active"
-                          ? `Agent can ${access.mode === "edit" ? "edit" : "inspect"} this board`
-                          : null}
-                    </p>
-                  ) : null}
+                  {access && disconnected ? <p>Board access may still be active.</p> : null}
                   {state.storageError ? <p>{state.storageError}</p> : null}
                 </>
               ),
@@ -567,7 +408,7 @@ function WhiteboardSession({
                   disabled={revoking || !state.connected}
                   onClick={() => void revoke()}
                 >
-                  {revoking ? "Stopping…" : access.mode === "edit" ? "Stop editing" : "Stop access"}
+                  {revoking ? "Stopping…" : "Stop access"}
                 </button>
               ) : null,
             }}
@@ -579,7 +420,7 @@ function WhiteboardSession({
                   </button>
                 ) : null}
                 {state.conflict || leave ? (
-                  <div className={styles.recovery} inert={sheet || undefined}>
+                  <div className={styles.recovery}>
                     {state.scene ? (
                       <button type="button" onClick={() => downloadScene(state.scene!)}>
                         Download my drawing
@@ -631,7 +472,7 @@ function WhiteboardSession({
                   </div>
                 ) : null}
                 {!state.connected && !state.conflict ? (
-                  <div className={styles.recovery} inert={sheet || undefined}>
+                  <div className={styles.recovery}>
                     <button type="button" onClick={() => void controller.refresh()}>
                       Reconnect board
                     </button>
@@ -639,104 +480,8 @@ function WhiteboardSession({
                 ) : null}
               </>
             }
-            history={
-              state.board?.snapshots.length ? (
-                <details className={styles.history} inert={sheet || undefined}>
-                  <summary>Saved snapshots ({state.board.snapshots.length})</summary>
-                  <p className={styles.notice}>
-                    Captured before forwarding; a saved snapshot does not confirm delivery.
-                  </p>
-                  <ul>
-                    {state.board.snapshots.map((snapshot) => {
-                      const base = `/api/boards/${state.board!.id}/snapshots/${snapshot.id}`;
-                      return (
-                        <li key={snapshot.id}>
-                          <a href={`${base}.png`} target="_blank" rel="noreferrer">
-                            <img
-                              src={`${base}.png`}
-                              alt={`Captured drawing, revision ${snapshot.revision}`}
-                              loading="lazy"
-                            />
-                            <span>{new Date(snapshot.createdAt).toLocaleString()}</span>
-                          </a>
-                          <a href={`${base}.json`} download>
-                            Scene JSON
-                          </a>
-                        </li>
-                      );
-                    })}
-                  </ul>
-                </details>
-              ) : null
-            }
           />
         </div>
-        {sheet ? (
-          <div className={styles.scrim}>
-            <section
-              className={styles.sheet}
-              role="region"
-              aria-labelledby="whiteboard-send-title"
-              aria-busy={working}
-              tabIndex={-1}
-            >
-              <header>
-                <h3 id="whiteboard-send-title">Send this drawing</h3>
-                <button
-                  type="button"
-                  disabled={working}
-                  onClick={() => {
-                    setSheet(false);
-                    setPreview(null);
-                  }}
-                >
-                  Cancel
-                </button>
-              </header>
-              {preview ? (
-                <img
-                  className={styles.preview}
-                  src={preview.url}
-                  alt="Full drawing preview to send"
-                />
-              ) : (
-                <p>
-                  {working
-                    ? "Preparing PNG and loading fonts…"
-                    : "Preview unavailable. Close this sheet to try again."}
-                </p>
-              )}
-              <label className={styles.instruction}>
-                Instruction <span>(optional)</span>
-                <textarea
-                  ref={instructionInput}
-                  value={state.instruction}
-                  maxLength={29000}
-                  rows={3}
-                  disabled={working}
-                  onChange={(event) => controller.instruct(event.target.value)}
-                  placeholder="What should the agent do with this drawing?"
-                />
-              </label>
-              <p>Image only. Sharing does not grant live board access.</p>
-              <p>PNG of the full drawing · white background · no embedded scene</p>
-              {error ? <p role="alert">{error}</p> : null}
-              {previewStale ? (
-                <p role="alert">
-                  The board changed. Cancel and preview the latest drawing before sending.
-                </p>
-              ) : null}
-              <button
-                type="button"
-                className={styles.primary}
-                disabled={disabled || !preview || previewStale}
-                onClick={() => void submit()}
-              >
-                {working ? "Preparing / sending…" : "Send drawing"}
-              </button>
-            </section>
-          </div>
-        ) : null}
       </div>
     </dialog>,
     document.body,

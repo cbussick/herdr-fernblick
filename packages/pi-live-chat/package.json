@@ -9,6 +9,7 @@
     "index.ts",
     "boardTools.ts",
     "boardProtocol.ts",
+    "whiteboardCommand.ts",
     "images.ts",
     "imageHistory.ts",
     "tree.ts",

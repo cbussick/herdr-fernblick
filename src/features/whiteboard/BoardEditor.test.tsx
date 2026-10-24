@@ -3,7 +3,7 @@ import { create, type ReactTestRenderer } from "react-test-renderer";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
 import type { ExcalidrawProps } from "@excalidraw/excalidraw/types";
 import BoardEditor from "./BoardEditor";
-import { deferred, scene } from "./testFixtures";
+import { scene } from "./testFixtures";
 
 const mocks = vi.hoisted(() => ({
   props: {} as ExcalidrawProps,
@@ -14,6 +14,7 @@ const mocks = vi.hoisted(() => ({
     getSceneElements: vi.fn(),
     getFiles: vi.fn(),
     getAppState: vi.fn(),
+    scrollToContent: vi.fn(),
   },
   exportToBlob: vi.fn(),
 }));
@@ -75,17 +76,7 @@ it("ignores normalized/programmatic callbacks but saves human element-version ch
   mocks.props.onLinkOpen!({} as never, { preventDefault } as never);
   expect(preventDefault).toHaveBeenCalledOnce();
 });
-it("waits for fonts and exports the full nondeleted scene as a bounded white PNG without embedded data", async () => {
-  const fonts = deferred<void>();
-  vi.stubGlobal("document", { fonts: { ready: fonts.promise, load: vi.fn() } });
-  mocks.api.getSceneElements.mockReturnValue([
-    ...scene().elements,
-    { ...scene(2).elements[0], id: "offscreen" },
-    { ...scene(3).elements[0], id: "deleted", isDeleted: true },
-  ]);
-  mocks.api.getFiles.mockReturnValue({});
-  mocks.api.getAppState.mockReturnValue({ selectedElementIds: { box: true } });
-  mocks.exportToBlob.mockResolvedValue(new Blob(["PNG"], { type: "image/png" }));
+it("fits the current scene on request without exporting an image", async () => {
   const onReady = vi.fn();
   await act(async () => {
     renderer = create(
@@ -99,25 +90,14 @@ it("waits for fonts and exports the full nondeleted scene as a bounded white PNG
       />,
     );
   });
-  const exporting = onReady.mock.calls[0][0].exportPNG();
-  await Promise.resolve();
+  expect(mocks.api.scrollToContent).not.toHaveBeenCalled();
+  onReady.mock.calls[0][0].fit();
+  expect(mocks.api.scrollToContent).toHaveBeenCalledWith(undefined, {
+    fitToViewport: true,
+    viewportZoomFactor: 0.85,
+    animate: false,
+  });
   expect(mocks.exportToBlob).not.toHaveBeenCalled();
-  fonts.resolve();
-  await exporting;
-  expect(mocks.exportToBlob).toHaveBeenCalledWith(
-    expect.objectContaining({
-      maxWidthOrHeight: 2400,
-      mimeType: "image/png",
-      appState: expect.objectContaining({
-        viewBackgroundColor: "#ffffff",
-        exportBackground: true,
-        exportEmbedScene: false,
-      }),
-    }),
-  );
-  expect(
-    mocks.exportToBlob.mock.calls[0][0].elements.map((element: { id: string }) => element.id),
-  ).toEqual(["box", "offscreen"]);
 });
 
 it("normalizes native optional fields before validating and saving a drawing", async () => {

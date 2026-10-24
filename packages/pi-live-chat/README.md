@@ -71,6 +71,25 @@ must be regular, private, single-link files owned by that user. Only validated
 UUID upload IDs—not arbitrary paths—are accepted. Missing temporary files remain
 unavailable; no automatic retry or send occurs.
 
+## Conversation whiteboards
+
+The extension registers `board_read`, `board_apply` and the `/whiteboard` command.
+For a supported connected conversation, tool access follows each request whether
+input comes from Herdr's terminal or Fernblick. Browser layout does not grant or
+revoke access. The backend derives the board from the validated Pi conversation;
+new conversations/forks never inherit another conversation's board authority.
+Boards are created lazily. Reads fetch current structured elements and, on demand,
+a backend-rendered PNG; ordinary prompts do not automatically attach screenshots.
+
+`/whiteboard` prints the current conversation's browser URL and, on a local
+Linux graphical desktop only, asks the system browser to open it. SSH sessions
+only print the URL. It does not send a prompt or change the terminal draft.
+Set `FERNBLICK_PUBLIC_URL` on the backend to the browser-reachable app base URL.
+A browser is unnecessary for agent edits; the backend and Pi connection must be
+available. Install/reload the updated extension in directly Herdr-created Pi
+sessions as well as Fernblick-created sessions. See the repository's
+`docs/whiteboard.md` and `docs/whiteboard-rendering.md` for the full contract.
+
 ## Custom footer mirror
 
 When the optional cb-dotfiles `status-footer.ts` publisher is installed, chat uses

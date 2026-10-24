@@ -279,7 +279,7 @@ after an explicit delete confirmation; browsing never rewrites them.
 
 ### Whiteboard
 
-Open **Whiteboard** from live Chat for a fullscreen, persistent Excalidraw canvas. Its chat panel uses the same transcript as main chat: side-by-side on landscape tablet/desktop, compact and expandable below the canvas on smaller screens. Type there to send a current board image with read/edit access for that request (empty boards skip the image). Share drawing sends an immutable image-only PNG snapshot. Agent tools are hidden by default and backend-authorized; editing access ends on completion, revocation, disconnect, or expiry. Native scenes remain editable after sending. [Permission, persistence, conflicts, and limits](docs/whiteboard.md).
+Open **Whiteboard** from live Chat for a fullscreen, persistent Excalidraw canvas identified by agent and workspace. One lazy board belongs to each Pi conversation: the same agent can read/edit it from ordinary Fernblick chat, the board's expandable conversation panel, or Herdr terminal, without a special sending mode. Tools fetch fresh structure and image on demand; prompts do not automatically send screenshots. Back changes view, not access. The Pi extension's `/whiteboard` command opens a conversation-specific browser link (`FERNBLICK_PUBLIC_URL` on the backend); SSH receives a printable URL. Request-scoped authorization, revocation and conversation isolation remain backend-enforced. [Behavior, persistence, conflicts and limits](docs/whiteboard.md); [headless renderer setup](docs/whiteboard-rendering.md).
 
 ### Skills
 
@@ -343,7 +343,9 @@ The HTTP API does not expose a shell or arbitrary Herdr method proxy. Access to 
 | `FERNBLICK_UPLOAD_DIR`       | `/tmp/fernblick`                         | Shared private upload directory; configure backend and Pi identically      |
 | `FERNBLICK_PI_SESSION_DIR`   | Pi session directory (see Past sessions) | Backend-only saved-chat discovery root; use an absolute path               |
 | `FERNBLICK_PI_GLOBAL`        | unset                                    | Set to `1` to use a globally installed extension for created agents        |
-| `FERNBLICK_BOARD_DIR`        | `~/.local/share/fernblick/boards`        | Private persistent whiteboard scenes and sent snapshots                    |
+| `FERNBLICK_BOARD_DIR`        | `~/.local/share/fernblick/boards`        | Private persistent whiteboard scenes and legacy snapshots                  |
+| `FERNBLICK_PUBLIC_URL`       | unset                                    | Browser-reachable app base URL for terminal `/whiteboard` links            |
+| `FERNBLICK_RENDER_ORIGIN`    | backend HTTP origin                      | Built production asset origin for headless board rendering                 |
 | `FERNBLICK_READ_RECEIPT_DIR` | `~/.local/share/fernblick/read-receipts` | Private persistent read receipts shared by Fernblick browsers              |
 | `FERNBLICK_API_TARGET`       | `http://127.0.0.1:8787`                  | Vite development API proxy target                                          |
 | `FERNBLICK_PI_ISOLATED`      | unset                                    | Set to `1` to disable auto-discovered Pi extensions for development agents |

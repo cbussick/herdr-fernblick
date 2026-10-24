@@ -4,7 +4,7 @@
   flex-direction: column;
   min-width: 0;
   min-height: 0;
-  max-height: 65%;
+  max-height: 45%;
   border-top: 1px solid var(--color-border-strong);
   background: var(--color-surface);
   font-size: 0.875rem;
@@ -28,8 +28,8 @@
   flex: 0 0 auto;
   align-items: center;
   gap: 0.5rem;
-  min-height: 3.5rem;
-  padding: 0.375rem 1rem;
+  min-height: 2.75rem;
+  padding: 0.125rem 1rem;
   background: var(--color-surface-subtle);
   font-size: 0.8125rem;
   line-height: 1.5;
@@ -68,17 +68,6 @@
 
 .dock[data-expanded="true"] > [data-ui="chat-transcript"] {
   height: 0;
-}
-
-.history {
-  display: none;
-  flex: 0 1 auto;
-  max-height: 30%;
-  overflow: auto;
-}
-
-.dock[data-expanded="true"] .history {
-  display: block;
 }
 
 .activity__text p + p {
@@ -127,10 +116,6 @@
 
   .dock > [data-ui="chat-transcript"] {
     height: 0;
-  }
-
-  .history {
-    display: block;
   }
 }
 

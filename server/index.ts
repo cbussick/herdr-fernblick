@@ -5,6 +5,7 @@ import { HerdrService } from "./herdr/herdrService.js";
 import { createHttpServer } from "./http/server.js";
 import { LiveBridge } from "./pi/liveBridge.js";
 import { BoardStore } from "./boards/storage.js";
+import { BoardRenderer } from "./boards/renderer.js";
 import { SessionCatalog } from "./pi/sessionCatalog.js";
 import { ChatArtifacts } from "./pi/chatArtifacts.js";
 import { socketPath } from "../packages/pi-live-chat/security.js";
@@ -29,17 +30,27 @@ const server = createHttpServer(service, join(projectRoot, "dist"), bridge, boar
     join(homedir(), ".local/share/fernblick/read-receipts"),
   herdrSocket,
 });
+let renderer: BoardRenderer | undefined;
 server.on("close", () => {
   boards.close();
   void bridge.close();
+  void renderer?.close();
 });
 for (const signal of ["SIGTERM", "SIGINT"] as const)
   process.once(signal, () => {
     boards.close();
     server.close();
     server.closeAllConnections();
-    void bridge.close().finally(() => process.exit(0));
+    void Promise.allSettled([bridge.close(), renderer?.close()]).finally(() => process.exit(0));
   });
 server.listen(port, host, () => {
+  const address = server.address();
+  const renderHost = host === "0.0.0.0" || host === "::" ? "127.0.0.1" : host;
+  const hostname = renderHost.includes(":") ? `[${renderHost}]` : renderHost;
+  renderer = new BoardRenderer(
+    process.env.FERNBLICK_RENDER_ORIGIN ??
+      `http://${hostname}:${typeof address === "object" && address ? address.port : port}`,
+  );
+  bridge.setBoardRenderer((scene) => renderer!.render(scene));
   process.stdout.write(`Fernblick listening on http://${host}:${port}\n`);
 });

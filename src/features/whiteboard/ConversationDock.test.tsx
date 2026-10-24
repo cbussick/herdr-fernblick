@@ -13,11 +13,6 @@ function render(disabled = false, inert = false) {
       activity={activity}
       disabled={disabled}
       inert={inert}
-      history={
-        <details>
-          <summary>Saved snapshots (1)</summary>
-        </details>
-      }
     />
   );
 }

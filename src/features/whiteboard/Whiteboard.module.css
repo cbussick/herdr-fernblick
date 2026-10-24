@@ -41,11 +41,12 @@
   background: var(--color-navigation);
 }
 
-.header > div {
+.identity {
   display: flex;
   flex: 1;
-  align-items: baseline;
-  gap: 0.5rem;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 0.125rem;
   min-width: 0;
 }
 
@@ -63,13 +64,14 @@
 }
 
 .header span {
+  max-width: 100%;
   color: var(--color-text-secondary);
   font-size: 0.75rem;
 }
 
 .header button,
 .recovery button,
-.sheet button {
+.fit {
   min-height: 44px;
   padding: 0.5rem 0.875rem;
   border: 1px solid var(--color-border-strong);
@@ -79,11 +81,16 @@
   font-weight: 650;
 }
 
-.header .primary,
-.sheet .primary {
-  border-color: var(--color-accent);
-  color: var(--color-on-accent);
-  background: var(--color-accent);
+.save-status {
+  flex: 0 0 auto;
+}
+
+.fit {
+  position: absolute;
+  right: 0.75rem;
+  bottom: 4rem;
+  z-index: 2;
+  box-shadow: var(--shadow-menu);
 }
 
 .workspace {
@@ -119,6 +126,7 @@
 }
 
 .canvas {
+  position: relative;
   flex: 1 1 0;
   min-width: 0;
   min-height: 0;
@@ -173,132 +181,13 @@
   font-size: 0.8125rem;
 }
 
-.history {
-  flex: 0 0 auto;
-  border-top: 1px solid var(--color-border);
-  font-size: 0.8125rem;
-}
-
-.history summary {
-  min-height: 44px;
-  padding: 0.75rem 1rem;
-  cursor: pointer;
-}
-
-.history ul {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 1rem;
-  margin: 0;
-  padding: 0 1rem 0.75rem;
-  list-style: none;
-}
-
-.history li {
-  flex: 0 0 10rem;
-}
-
-.history a {
-  display: flex;
-  flex-direction: column;
-  justify-content: center;
-  min-height: 44px;
-  color: var(--color-accent);
-}
-
-.history img {
-  width: 10rem;
-  height: 5rem;
-  object-fit: contain;
-  border: 1px solid var(--color-border);
-  background: #fff;
-}
-
-.scrim {
-  position: absolute;
-  z-index: 10;
-  inset: 0;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  padding: 1rem;
-  background: var(--color-overlay);
-}
-
-.sheet {
-  display: flex;
-  flex-direction: column;
-  gap: 1rem;
-  width: min(100%, 32rem);
-  max-height: 100%;
-  padding: 1.25rem;
-  overflow: auto;
-  overscroll-behavior: contain;
-  border: 1px solid var(--color-border);
-  border-radius: var(--radius-md);
-  background: var(--color-surface);
-  box-shadow: var(--shadow-menu);
-}
-
-.sheet header {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 1rem;
-}
-
-.sheet h3 {
-  font-size: 1.125rem;
-}
-
-.sheet p {
-  color: var(--color-text-secondary);
-  font-size: 0.8125rem;
-  line-height: 1.5;
-}
-
-.preview {
-  display: block;
-  width: 100%;
-  min-height: 5rem;
-  max-height: 25dvh;
-  object-fit: contain;
-  border: 1px solid var(--color-border);
-  border-radius: var(--radius-sm);
-  background: #fff;
-}
-
-.instruction {
-  display: block;
-  font-size: 0.875rem;
-  font-weight: 650;
-}
-
-.instruction span {
-  color: var(--color-text-secondary);
-  font-weight: 400;
-}
-
-.instruction textarea {
-  display: block;
-  width: 100%;
-  min-height: 5rem;
-  margin-top: 0.5rem;
-  padding: 0.75rem;
-  resize: vertical;
-  border: 1px solid var(--color-border-strong);
-  border-radius: var(--radius-sm);
-  color: var(--color-text);
-  background: var(--color-surface);
-}
-
 @media (width <= 480px) {
   .header {
     gap: 0.5rem;
     padding-inline: 0.5rem;
   }
 
-  .header > div {
+  .identity {
     flex-direction: column;
     align-items: flex-start;
     gap: 0;
@@ -307,15 +196,5 @@
   .header button {
     padding-inline: 0.625rem;
     font-size: 0.8125rem;
-  }
-
-  .scrim {
-    align-items: flex-end;
-    padding: env(safe-area-inset-top) 0 0;
-  }
-
-  .sheet {
-    padding-bottom: max(1rem, env(safe-area-inset-bottom));
-    border-radius: var(--radius-md) var(--radius-md) 0 0;
   }
 }
