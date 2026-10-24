@@ -19,7 +19,7 @@
   display: grid;
   grid-template-columns: minmax(0, 1fr);
   gap: var(--space-3);
-  padding: max(var(--space-6), env(safe-area-inset-top)) var(--space-5) var(--space-5);
+  padding: calc(env(safe-area-inset-top, 0px) + var(--space-6)) var(--space-5) var(--space-5);
   background: var(--color-navigation);
 }
 

@@ -82,6 +82,17 @@ workspace screenshots verify the same quiet structure without nested tab cards.
 All API/SSE traffic is intercepted; no live agents are controlled.
 Screenshots are saved to ignored `design-gallery/workspace-tabs/`.
 
+## Header safe-area regression
+
+After `npm run build`, run `node tools/design/safe-area.mjs`. This starts its own
+loopback fixture server and checks the real built CSS in Chromium and WebKit with
+simulated 24px and zero top insets. Overview and console headers retain their
+normal spacing below the inset, keep opaque backgrounds to the viewport top, and
+avoid horizontal overflow across iPad portrait, landscape and desktop sizes.
+All API/SSE traffic is synthetic; no live agents are controlled. The simulation
+checks layout, not iPadOS's status-bar blur; confirm that separately on a physical
+iPad after accepting the PWA update.
+
 ## PWA regression
 
 After `npm run check`, run:
