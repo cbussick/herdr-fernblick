@@ -66,6 +66,42 @@ for (const [name, engine] of [
       await page.keyboard.press("Enter");
       await modal.waitFor();
       assert.equal(
+        await modal
+          .getByText(
+            "The running build identifies the app loaded on this device, even when it is cached.",
+            { exact: true },
+          )
+          .count(),
+        0,
+      );
+      assert.equal(
+        await modal
+          .getByText("Check which build is available from the server.", { exact: true })
+          .count(),
+        0,
+      );
+      const copy = modal.getByRole("button", { name: "Copy diagnostics", exact: true });
+      const view = modal.getByRole("button", { name: "View diagnostics", exact: true });
+      const copyBounds = await copy.boundingBox();
+      const viewBounds = await view.boundingBox();
+      assert.ok(Math.abs(copyBounds.y - viewBounds.y) < 1, "Copy and View must share one row");
+      assert.ok(viewBounds.x >= copyBounds.x + copyBounds.width, "View follows Copy");
+      assert.ok(viewBounds.width >= 44 && viewBounds.height >= 44, "View stays touch-sized");
+      const diagnosticText = modal.locator('pre[aria-label="Diagnostics"]');
+      assert.equal(await view.getAttribute("aria-expanded"), "false");
+      assert.equal(await diagnosticText.isVisible(), false);
+      assert.equal(
+        await view.getAttribute("aria-controls"),
+        await diagnosticText.getAttribute("id"),
+      );
+      await view.focus();
+      await page.keyboard.press("Enter");
+      assert.equal(await view.getAttribute("aria-expanded"), "true");
+      assert.equal(await diagnosticText.isVisible(), true);
+      await page.keyboard.press("Space");
+      assert.equal(await view.getAttribute("aria-expanded"), "false");
+      assert.equal(await diagnosticText.isVisible(), false);
+      assert.equal(
         await modal.getByTestId("running-build").locator("code").getAttribute("title"),
         running.revision,
       );
@@ -121,11 +157,11 @@ for (const [name, engine] of [
     });
     await modal.getByRole("button", { name: "Copy diagnostics", exact: true }).click();
     await modal.getByText(/Copy failed/).waitFor();
-    await modal.getByText("View diagnostics", { exact: true }).click();
+    await modal.getByRole("button", { name: "View diagnostics", exact: true }).click();
     assert.ok(
       (await modal.locator('pre[aria-label="Diagnostics"]').innerText()).includes(running.revision),
     );
-    await modal.getByText("View diagnostics", { exact: true }).click();
+    await modal.getByRole("button", { name: "View diagnostics", exact: true }).click();
 
     await writeFile(join(directory, "version.json"), "not valid JSON");
     await modal.getByRole("button", { name: "Check for updates", exact: true }).click();

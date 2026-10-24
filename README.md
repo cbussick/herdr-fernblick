@@ -91,8 +91,9 @@ app** is a separate explicit action; finish drafts in all open windows first.
 
 **Copy diagnostics** includes build identifiers, update status, browser/app mode,
 service-worker control, viewport and top safe-area inset. It excludes conversation
-content, agent paths, images and page URLs. If clipboard access fails, expand
-**View diagnostics** and copy the text manually.
+content, agent paths, images and page URLs. **Copy diagnostics** and **View** share
+one row; choose **View** to expand the details or copy the text manually if clipboard
+access fails.
 
 Production builds emit `version.json` alongside the shell. Deploy it together
 with the matching assets and service worker. This metadata is deliberately not

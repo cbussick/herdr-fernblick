@@ -1,8 +1,8 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useId, useRef, useState } from "react";
 import { runningBuild, type BuildInfo } from "../pwa/buildInfo";
 import { useAppUpdates } from "../pwa/useAppUpdates";
 import { IconButton } from "../shared/ui";
-import { CloseIcon } from "../shared/ui/Icons";
+import { ChevronIcon, CloseIcon } from "../shared/ui/Icons";
 import styles from "./SettingsDialog.module.css";
 
 function BuildDetails({ build }: { build: BuildInfo | null }) {
@@ -28,6 +28,8 @@ export function SettingsDialog({ onClose }: { onClose: () => void }) {
   const updates = useAppUpdates();
   const [copyResult, setCopyResult] = useState<"copied" | "failed" | null>(null);
   const [safeAreaTop, setSafeAreaTop] = useState<string | null>(null);
+  const [diagnosticsOpen, setDiagnosticsOpen] = useState(false);
+  const diagnosticsId = useId();
   useEffect(() => {
     const dialog = dialogRef.current;
     if (!dialog) return;
@@ -82,7 +84,7 @@ export function SettingsDialog({ onClose }: { onClose: () => void }) {
           ? "Update ready."
           : updates.result === "up-to-date"
             ? "Up to date."
-            : "Check which build is available from the server.";
+            : null;
 
   return (
     <dialog
@@ -106,7 +108,6 @@ export function SettingsDialog({ onClose }: { onClose: () => void }) {
         </header>
         <section className={styles.section} aria-labelledby="about-updates-heading">
           <h3 id="about-updates-heading">About &amp; Updates</h3>
-          <p>The running build identifies the app loaded on this device, even when it is cached.</p>
           <dl className={styles.builds}>
             <div>
               <dt>Running build</dt>
@@ -121,7 +122,7 @@ export function SettingsDialog({ onClose }: { onClose: () => void }) {
               </dd>
             </div>
           </dl>
-          <p role="status" aria-live="polite">
+          <p role="status" aria-live="polite" hidden={!status}>
             {status}
           </p>
           <div className={styles.actions}>
@@ -169,29 +170,34 @@ export function SettingsDialog({ onClose }: { onClose: () => void }) {
             >
               Copy diagnostics
             </button>
+            <button
+              type="button"
+              className={styles.view}
+              aria-label="View diagnostics"
+              aria-expanded={diagnosticsOpen}
+              aria-controls={diagnosticsId}
+              onClick={() => {
+                setDiagnosticsOpen((open) => !open);
+                setCopyResult(null);
+                setSafeAreaTop(
+                  probeRef.current ? getComputedStyle(probeRef.current).paddingTop : null,
+                );
+              }}
+            >
+              <ChevronIcon />
+              View
+            </button>
           </div>
           {copyResult && (
             <p role="status">
               {copyResult === "copied"
                 ? "Diagnostics copied."
-                : "Copy failed. Open View diagnostics and select the text to copy manually."}
+                : "Copy failed. Choose View and select the text to copy manually."}
             </p>
           )}
-          <details
-            onToggle={(event) => {
-              if (event.currentTarget.open) {
-                setCopyResult(null);
-                setSafeAreaTop(
-                  probeRef.current ? getComputedStyle(probeRef.current).paddingTop : null,
-                );
-              }
-            }}
-          >
-            <summary>View diagnostics</summary>
-            <pre tabIndex={0} aria-label="Diagnostics">
-              {diagnostics()}
-            </pre>
-          </details>
+          <pre id={diagnosticsId} tabIndex={0} aria-label="Diagnostics" hidden={!diagnosticsOpen}>
+            {diagnostics()}
+          </pre>
           <span ref={probeRef} className={styles.probe} aria-hidden="true" />
         </section>
       </div>

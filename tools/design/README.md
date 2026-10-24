@@ -99,7 +99,8 @@ After `npm run build`, run `node tools/design/settings.mjs`. The script uses
 an isolated loopback server, synthetic empty dashboard and real Chromium/WebKit
 service workers. It verifies embedded versus network build identity, network-only
 metadata (including malformed responses), manual updates and refresh, Later and
-rechecks, clipboard success/failure, diagnostics fields, Escape/focus restoration
+rechecks, clipboard success/failure, diagnostics fields, Escape/focus restoration,
+inline Copy/View actions with keyboard disclosure, absence of idle helper copy,
 and touch-safe phone/iPad/desktop layouts. Screenshots are saved under ignored
 `design-gallery/settings/`. No Herdr/Pi sockets or real agent data are used.
 
