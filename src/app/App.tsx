@@ -32,6 +32,7 @@ export function App() {
     agents,
     error: readError,
     retry: retryRead,
+    dismissError: dismissReadError,
   } = useReadAgentStatuses(
     agentsQuery.data?.agents ?? [],
     agentsQuery.isSuccess ? selectedPaneId : null,
@@ -76,6 +77,9 @@ export function App() {
           <p>Could not save read status. The answer may appear new after reopening.</p>
           <button type="button" onClick={retryRead}>
             Retry
+          </button>
+          <button type="button" onClick={dismissReadError}>
+            Dismiss
           </button>
         </div>
       )}

@@ -62,6 +62,8 @@ export function useReadAgentStatuses(agents: Agent[], selectedPaneId: string | n
         : agent,
     ),
     error: mutation.error && !staleCompletion(mutation.error) ? mutation.error : null,
+    // Clear only the warning; the receipt remains unread and can be retried on reopening.
+    dismissError: mutation.reset,
     retry: () => {
       if (mutation.variables) mutate(mutation.variables);
     },

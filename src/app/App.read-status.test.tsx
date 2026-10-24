@@ -163,6 +163,67 @@ it("keeps a failed receipt unread and lets the user retry saving it", async () =
   expect(status()).toBe("Idle");
 });
 
+it("dismisses a failed receipt without marking it read or retrying, including across polls", async () => {
+  vi.mocked(markAgentRead).mockRejectedValueOnce(new Error("Offline"));
+  await openAndBack();
+  expect(renderer.root.findAllByProps({ role: "alert" })).toHaveLength(1);
+  await act(async () => {
+    renderer.root
+      .findAllByType("button")
+      .find((node) => node.children.includes("Dismiss"))!
+      .props.onClick();
+    await new Promise((resolve) => setTimeout(resolve, 20));
+  });
+  expect(renderer.root.findAllByProps({ role: "alert" })).toHaveLength(0);
+  expect(status()).toBe("New answer");
+  expect(markAgentRead).toHaveBeenCalledTimes(1);
+  await update([{ ...agent, revision: 8 }]);
+  expect(renderer.root.findAllByProps({ role: "alert" })).toHaveLength(0);
+  expect(status()).toBe("New answer");
+  expect(markAgentRead).toHaveBeenCalledTimes(1);
+
+  // Reopening still retries the receipt, and a later failure is not suppressed.
+  vi.mocked(markAgentRead).mockRejectedValueOnce(new Error("Still offline"));
+  await openAndBack();
+  expect(markAgentRead).toHaveBeenCalledTimes(2);
+  expect(renderer.root.findAllByProps({ role: "alert" })).toHaveLength(1);
+  expect(status()).toBe("New answer");
+  await act(async () =>
+    renderer.root
+      .findAllByType("button")
+      .find((node) => node.children.includes("Retry"))!
+      .props.onClick(),
+  );
+  expect(status()).toBe("Idle");
+  expect(renderer.root.findAllByProps({ role: "alert" })).toHaveLength(0);
+});
+
+it("keeps a dismissed warning hidden in the open conversation but reports a new failed answer", async () => {
+  vi.mocked(markAgentRead).mockRejectedValueOnce(new Error("Offline"));
+  await act(async () => row().props.onClick());
+  await act(async () => {
+    await new Promise((resolve) => setTimeout(resolve, 20));
+  });
+  expect(renderer.root.findAllByProps({ role: "alert" })).toHaveLength(1);
+  await act(async () => {
+    renderer.root
+      .findAllByType("button")
+      .find((node) => node.children.includes("Dismiss"))!
+      .props.onClick();
+    await new Promise((resolve) => setTimeout(resolve, 20));
+  });
+  await update([{ ...agent, revision: 8 }]);
+  expect(renderer.root.findAllByProps({ role: "alert" })).toHaveLength(0);
+  expect(markAgentRead).toHaveBeenCalledTimes(1);
+  expect(status()).toBe("New answer");
+
+  vi.mocked(markAgentRead).mockRejectedValueOnce(new Error("Still offline"));
+  await update([{ ...agent, state_change_seq: 14, revision: 9 }]);
+  expect(renderer.root.findAllByProps({ role: "alert" })).toHaveLength(1);
+  expect(markAgentRead).toHaveBeenCalledTimes(2);
+  expect(status()).toBe("New answer");
+});
+
 it("can retry a failed answer by reopening it after reading a different agent", async () => {
   await update([agent, { ...agent, pane_id: "w1:p2" }]);
   vi.mocked(markAgentRead).mockRejectedValueOnce(new Error("Offline"));
