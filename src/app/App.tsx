@@ -15,8 +15,10 @@ import { useSinglePaneLayout } from "./useSinglePaneLayout";
 import { useReadAgentStatuses } from "./useReadAgentStatuses";
 import { usePaneNavigation } from "./usePaneNavigation";
 import { SettingsDialog } from "./SettingsDialog";
+import { useVisualViewport } from "./useVisualViewport";
 
 export function App() {
+  const viewportRef = useVisualViewport();
   const singlePane = useSinglePaneLayout();
   const queryClient = useQueryClient();
   const [selectedPaneId, setSelectedPaneId] = usePaneNavigation();
@@ -66,6 +68,7 @@ export function App() {
 
   return (
     <div
+      ref={viewportRef}
       className={appStyles["app-shell"]}
       data-detail-open={detailOpen ? true : undefined}
       data-single-pane={singlePane ? true : undefined}

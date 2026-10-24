@@ -213,6 +213,18 @@ still needs device verification.
 
 ## Keyboard layout regression
 
+After `npm run build`, also run `node tools/design/visual-viewport.mjs` for
+the app-shell visual-viewport regression. It starts its own loopback server with
+synthetic API/SSE data and checks Chromium/WebKit at the screenshot's 810px
+portrait width. Separate cases model visual-only keyboard resize and layout
+resize followed by focus panning. Header/editor/footer bounds must stay inside
+the visible rectangle without a gap above the keyboard; later pan events, blur,
+keyboard dismissal and draft preservation are checked too. The app shell follows
+the visible rectangle without programmatic document scrolling or input refocus.
+Hook tests cover rotation, cleanup, missing APIs, transient empty geometry and
+preserving layout while pinch-zoomed. These are geometry simulations, not a
+physical iPadOS keyboard; the reported device behavior still needs confirmation.
+
 ```sh
 PLAYWRIGHT_MODULE=/tmp/fernblick-design-tools/node_modules/playwright/index.mjs \
   node tools/design/keyboard-layout.mjs http://<dev-host>:<vite-port>
