@@ -769,7 +769,7 @@ it.each(["", "keep me"])("retains text %j and images when forwarding fails", asy
   expect(renderer.root.findByType("textarea").props.disabled).toBe(false);
   expect(renderer.root.findByProps({ "aria-label": "Attach images" }).props.disabled).toBe(false);
   expect(renderer.root.findAllByProps({ "data-testid": "send-spinner" })).toHaveLength(0);
-  expect(JSON.stringify(renderer.toJSON())).toContain("Connection lost");
+  expect(JSON.stringify(renderer.toJSON())).toContain("Couldn’t confirm your message was sent.");
   expect(mocks.command).toHaveBeenCalledOnce();
 });
 it("does not erase a newer draft when Pi sends more chat updates", async () => {
@@ -1269,6 +1269,81 @@ it("shows visible feedback while a text message is being forwarded", async () =>
   expect(renderer.root.findAllByProps({ "data-testid": "chat-activity" })).toHaveLength(0);
 });
 
+it("shows uncertain sends in a dismissible snackbar with a terminal action, not a retry", async () => {
+  mocks.command.mockRejectedValueOnce(new TypeError("Failed to fetch"));
+  const file = new File(["image"], "image.png", { type: "image/png" });
+  await act(async () => {
+    renderer.root.findByType("textarea").props.onChange({ target: { value: "keep this draft" } });
+    renderer.root.findByProps({ type: "file" }).props.onChange({ target: { files: [file] } });
+  });
+  await act(async () => renderer.root.findByType("form").props.onSubmit({ preventDefault() {} }));
+  await flush();
+  expect(renderer.root.findByProps({ "data-testid": "snackbar" })).toBeDefined();
+  expect(JSON.stringify(renderer.toJSON())).toContain("Couldn’t confirm your message was sent.");
+  expect(JSON.stringify(renderer.toJSON())).not.toContain("Failed to fetch");
+  expect(renderer.root.findByType("form").findAllByProps({ role: "alert" })).toHaveLength(0);
+  expect(renderer.root.findAllByType("button").some((b) => b.children.includes("Try again"))).toBe(
+    false,
+  );
+  const open = renderer.root
+    .findAllByType("button")
+    .find((b) => b.children.includes("Open terminal"))!;
+  await act(async () => open.props.onClick());
+  await flush();
+  expect(renderer.root.findByProps({ "aria-label": "Switch to Chat view" })).toBeDefined();
+  await act(async () =>
+    renderer.root.findByProps({ "aria-label": "Switch to Chat view" }).props.onClick(),
+  );
+  expect(renderer.root.findByType("textarea").props.value).toBe("keep this draft");
+  expect(renderer.root.findAllByProps({ "aria-label": "Image attachments" })).toHaveLength(1);
+  expect(renderer.root.findAllByProps({ "data-testid": "snackbar" })).toHaveLength(0);
+  expect(mocks.command).toHaveBeenCalledOnce();
+});
+
+it("dismisses the snackbar without clearing the draft or inventing handoff progress", async () => {
+  mocks.command.mockRejectedValueOnce(new Error("Delivery uncertain"));
+  await act(async () =>
+    renderer.root.findByType("textarea").props.onChange({ target: { value: "keep me" } }),
+  );
+  await act(async () => renderer.root.findByType("form").props.onSubmit({ preventDefault() {} }));
+  await flush();
+  mocks.live.snapshot = { ...mocks.live.snapshot!, sendPending: true };
+  await act(async () => renderer.update(render()));
+  await act(async () =>
+    renderer.root.findByProps({ "aria-label": "Dismiss notification" }).props.onClick(),
+  );
+  expect(renderer.root.findAllByProps({ "data-testid": "snackbar" })).toHaveLength(0);
+  expect(renderer.root.findByType("textarea").props.value).toBe("keep me");
+  expect(JSON.stringify(renderer.toJSON())).not.toContain("Waiting for agent activity…");
+  expect(mocks.command).toHaveBeenCalledOnce();
+});
+
+it.each(["disconnect", "busy", "replacement", "handoff"])(
+  "does not retry a failed upload against %s state",
+  async (mode) => {
+    mocks.upload.mockRejectedValueOnce(new TypeError("Failed to fetch"));
+    const file = new File(["image"], "image.png", { type: "image/png" });
+    await act(async () =>
+      renderer.root.findByProps({ type: "file" }).props.onChange({ target: { files: [file] } }),
+    );
+    await act(async () => renderer.root.findByType("form").props.onSubmit({ preventDefault() {} }));
+    await flush();
+    if (mode === "disconnect") mocks.live.error = "Reconnecting";
+    if (mode === "busy") mocks.live.snapshot = { ...mocks.live.snapshot!, busy: true };
+    if (mode === "replacement")
+      mocks.live.snapshot = { ...mocks.live.snapshot!, epoch: randomUUID() };
+    if (mode === "handoff") mocks.live.snapshot = { ...mocks.live.snapshot!, sendPending: true };
+    await act(async () => renderer.update(render()));
+    const retry = renderer.root
+      .findAllByType("button")
+      .find((b) => b.children.includes("Try again"))!;
+    expect(retry.props.disabled).toBe(true);
+    await act(async () => retry.props.onClick());
+    expect(mocks.upload).toHaveBeenCalledOnce();
+    expect(mocks.command).not.toHaveBeenCalled();
+  },
+);
+
 it("updates multi-image progress and retains attachments after upload failure for manual retry", async () => {
   let finishFirst!: (value: { id: string }) => void;
   let failSecond!: (error: Error) => void;
@@ -1303,13 +1378,20 @@ it("updates multi-image progress and retains attachments after upload failure fo
   await flush();
   expect(JSON.stringify(renderer.toJSON())).not.toContain("Uploading image");
   expect(JSON.stringify(renderer.toJSON())).not.toContain("Sending message…");
-  expect(JSON.stringify(renderer.toJSON())).toContain("Upload failed");
+  expect(JSON.stringify(renderer.toJSON())).toContain(
+    "Image upload failed. Your message wasn’t sent.",
+  );
+  expect(JSON.stringify(renderer.toJSON())).toContain("Your draft and images are still here.");
   expect(renderer.root.findByType("textarea").props.value).toBe("compare these");
   expect(renderer.root.findByType("textarea").props.disabled).toBe(false);
   expect(renderer.root.findAllByProps({ "aria-label": "Image attachments" })).toHaveLength(1);
   expect(mocks.command).not.toHaveBeenCalled();
   // Retrying is explicit and reuses the first upload, rather than starting over.
-  await act(async () => renderer.root.findByType("form").props.onSubmit({ preventDefault() {} }));
+  const retry = renderer.root
+    .findAllByType("button")
+    .find((b) => b.children.includes("Try again"))!;
+  expect(retry.props.disabled).toBe(false);
+  await act(async () => retry.props.onClick());
   await flush();
   expect(mocks.upload).toHaveBeenCalledTimes(3);
   expect(mocks.command).toHaveBeenCalledOnce();
@@ -1348,7 +1430,7 @@ it("does not show handoff progress after an uncertain send or during reconnect",
   await flush();
   expect(JSON.stringify(renderer.toJSON())).not.toContain("Sending message…");
   expect(JSON.stringify(renderer.toJSON())).not.toContain("Waiting for agent activity…");
-  expect(JSON.stringify(renderer.toJSON())).toContain("Delivery uncertain");
+  expect(JSON.stringify(renderer.toJSON())).toContain("Couldn’t confirm your message was sent.");
   expect(renderer.root.findByType("textarea").props.value).toBe("keep this");
   expect(mocks.command).toHaveBeenCalledOnce();
 });

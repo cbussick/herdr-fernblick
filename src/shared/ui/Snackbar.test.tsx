@@ -67,6 +67,35 @@ it("allows manual dismissal", async () => {
   expect(dismiss).toHaveBeenCalledOnce();
 });
 
+it("keeps actionable errors visible until dismissed without taking focus", async () => {
+  const action = vi.fn();
+  await act(async () =>
+    renderer.update(
+      <Snackbar
+        message="Couldn’t confirm your message was sent."
+        description="Your draft is still here. Check the terminal before sending again."
+        role="alert"
+        duration={null}
+        placement="anchored"
+        action={{ label: "Open terminal", onClick: action }}
+        onDismiss={dismiss}
+      />,
+    ),
+  );
+  expect(snackbar().findByProps({ role: "alert" }).props["aria-live"]).toBe("assertive");
+  expect(snackbar().props["data-placement"]).toBe("anchored");
+  expect(JSON.stringify(renderer.toJSON())).toContain("Your draft is still here.");
+  await advance(60_000);
+  expect(dismiss).not.toHaveBeenCalled();
+  const button = renderer.root
+    .findAllByType("button")
+    .find((b) => b.children.includes("Open terminal"))!;
+  expect(button.props.autoFocus).toBeUndefined();
+  await act(async () => button.props.onClick());
+  expect(action).toHaveBeenCalledOnce();
+  expect(dismiss).not.toHaveBeenCalled();
+});
+
 it("clears its timer when unmounted", async () => {
   await act(async () => renderer.unmount());
   await advance(10_000);

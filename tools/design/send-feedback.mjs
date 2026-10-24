@@ -202,16 +202,82 @@ for (const [engine, browserType] of [
       await publish({ ...snapshot, seq: 4 });
       await status.waitFor({ state: "detached" });
       await checkComposer();
-      await prompt.fill("A text-only message");
+      const draft =
+        'I think the "connected" indicator is a bit too indistinguishable from the agent state indicators. What about making it look more like this? Or something else representing "connection"?';
+      await prompt.fill(draft);
       composerBox = await composer.boundingBox();
       await send.click();
       await waitForCount(commands, 2);
       await checkStatus("Sending message…");
       await commands[1].fulfill({ status: 503, json: { error: "Delivery uncertain" } });
-      await page.getByRole("alert").filter({ hasText: "Delivery uncertain" }).waitFor();
+      const snackbar = page.getByTestId("snackbar");
+      await snackbar
+        .getByRole("alert")
+        .filter({ hasText: "Couldn’t confirm your message was sent." })
+        .waitFor();
+      await checkComposer();
+      const checkSnackbar = async () => {
+        const box = await snackbar.boundingBox();
+        const formBox = await composer.boundingBox();
+        assert.ok(box.x >= 0 && box.x + box.width <= width);
+        assert.ok(
+          box.y >= 0 && box.y + box.height <= formBox.y + 1,
+          "snackbar stays above the composer",
+        );
+        assert.equal(await snackbar.evaluate((el) => el.scrollWidth <= el.clientWidth), true);
+        for (const button of await snackbar.getByRole("button").all())
+          assert.ok((await button.boundingBox()).height >= 44);
+        assert.equal(
+          await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth),
+          true,
+        );
+      };
+      await checkSnackbar();
+      assert.equal(
+        await snackbar.getByRole("button", { name: "Try again", exact: true }).count(),
+        0,
+      );
+      await page.screenshot({ path: `${output}/${engine}-${name}-uncertain.png` });
       assert.equal(await status.count(), 0);
-      assert.equal(await prompt.inputValue(), "A text-only message");
+      assert.equal(await prompt.inputValue(), draft);
       assert.equal(commands.length, 2, "uncertain sends are not automatically replayed");
+      await snackbar.getByRole("button", { name: "Dismiss notification" }).click();
+      await snackbar.waitFor({ state: "detached" });
+      assert.equal(await prompt.inputValue(), draft);
+      await page
+        .locator('input[type="file"]')
+        .setInputFiles([{ name: "retry.png", mimeType: "image/png", buffer: png }]);
+      composerBox = await composer.boundingBox();
+      await send.click();
+      await waitForCount(uploads, 3);
+      await uploads[2].abort("failed");
+      await snackbar
+        .getByRole("alert")
+        .filter({ hasText: "Image upload failed. Your message wasn’t sent." })
+        .waitFor();
+      await checkComposer();
+      await checkSnackbar();
+      assert.equal(commands.length, 2, "failed uploads never send a prompt");
+      await page.screenshot({ path: `${output}/${engine}-${name}-upload-failed.png` });
+      await snackbar.getByRole("button", { name: "Try again", exact: true }).click();
+      await waitForCount(uploads, 4);
+      await uploads[3].fulfill({
+        json: {
+          id: "b0000000-0000-4000-8000-000000000003.png",
+          path: "/fixture/retry.png",
+          url: "/api/uploads/retry.png",
+        },
+      });
+      await waitForCount(commands, 3);
+      await commands[2].fulfill({
+        json: {
+          type: "ack",
+          id: commands[2].request().postDataJSON().requestId,
+          outcome: "invoked",
+        },
+      });
+      await snackbar.waitFor({ state: "detached" });
+      await page.waitForFunction(() => document.querySelector("#agent-prompt").value === "");
       assert.deepEqual(errors, []);
       await page.close();
       console.log(`${engine} ${name}: send feedback passed`);

@@ -510,6 +510,14 @@
   border-radius: var(--radius-sm);
 }
 
+.composer-dock {
+  position: relative;
+  display: flex;
+  width: 100%;
+  min-height: 0;
+  flex-direction: column;
+}
+
 .prompt-composer {
   width: 100%;
   max-width: 50rem;

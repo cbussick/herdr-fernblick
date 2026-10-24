@@ -79,8 +79,15 @@ during a send, in the same place as `Working` (never beneath the composer):
 while awaiting the forwarding ACK (including extension-side image preparation).
 After forwarding, a live `sendPending` guard shows `Waiting for agent activity…`
 until Pi starts or the guard clears. This is not proof of receipt or a delivery
-queue. Errors replace local progress, preserve the draft/images, and require an
-explicit retry. Reconnect hides the handoff notice; no activity is inferred from
+queue. Errors replace local progress and preserve the draft/images. Ordinary composer send
+errors appear in a persistent, dismissible snackbar above the composer without
+shifting it. An uncertain send says “Couldn’t confirm your message was sent” and
+provides **Open terminal**, never a retry action. An image upload failure happens
+before any prompt request: it says the message wasn’t sent and offers an explicit
+**Try again**, gated by current send eligibility and the original session identity.
+Dismissing the snackbar does not clear the draft or imply forwarding succeeded.
+Annotation and board sends retain their own contextual feedback.
+Reconnect hides the handoff notice; no activity is inferred from
 elapsed time and no artificial percentage is shown. Uploading, sending and
 handoff update this one row without shifting the composer; a live busy event takes
 precedence and changes it to `Working` or `Compacting…`. Stop appears only while

@@ -4,10 +4,10 @@
   right: var(--space-4);
   bottom: calc(5.5rem + env(safe-area-inset-bottom, 0px));
   left: var(--space-4);
-  display: flex;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
   align-items: center;
-  justify-content: space-between;
-  gap: var(--space-4);
+  gap: var(--space-2) var(--space-4);
   width: min(26rem, calc(100% - 2 * var(--space-4)));
   min-height: 3.5rem;
   padding: var(--space-2) var(--space-3) var(--space-2) var(--space-5);
@@ -17,6 +17,12 @@
   border: 1px solid var(--color-text-secondary);
   border-radius: var(--radius-md);
   box-shadow: var(--shadow-menu);
+}
+
+.snackbar[data-placement="anchored"] {
+  position: absolute;
+  bottom: 100%;
+  width: min(32rem, calc(100% - 2 * var(--space-4)));
 }
 
 .snackbar p {
@@ -40,13 +46,41 @@
   border-radius: var(--radius-sm);
 }
 
-.snackbar button:hover {
-  background: rgb(255 255 255 / 12%);
+.snackbar .dismiss {
+  grid-column: 2;
+  grid-row: 1;
+  align-self: start;
+}
+
+.description {
+  display: block;
+  margin-top: var(--space-1);
+  font-weight: 400;
+}
+
+.snackbar .action {
+  grid-column: 1 / -1;
+  grid-row: 2;
+  justify-self: start;
+  width: auto;
+  padding: var(--space-2) var(--space-3);
+  font-size: 0.875rem;
+  font-weight: 700;
+  border-color: currentcolor;
+}
+
+.snackbar button:disabled {
+  cursor: not-allowed;
+  opacity: 0.5;
 }
 
 .snackbar button:focus-visible {
   outline: 2px solid currentcolor;
   outline-offset: -2px;
+}
+
+.snackbar button:hover:not(:disabled) {
+  background: rgb(255 255 255 / 12%);
 }
 
 .snackbar svg {

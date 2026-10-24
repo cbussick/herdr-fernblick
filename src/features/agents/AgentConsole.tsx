@@ -37,6 +37,7 @@ import type { BoardPromptContext } from "../whiteboard/ConversationDock";
 import { BackIcon, CloseIcon } from "../../shared/ui/Icons";
 import { IconButton, StatusIndicator, TabKindIcon } from "../../shared/ui";
 import { StateIcon, StateNotice } from "../../shared/ui/StateFeedback";
+import { Snackbar } from "../../shared/ui/Snackbar";
 
 interface AgentConsoleProps {
   agent: Agent;
@@ -52,6 +53,9 @@ type OutgoingDraft = {
   board?: BoardPromptContext;
   annotationIds?: string[];
 };
+// An upload failure happens before any prompt request, so an explicit retry is safe.
+class ImageUploadError extends Error {}
+
 function submissionId() {
   // getRandomValues also works on the dashboard's non-HTTPS private IP origin.
   const bytes = crypto.getRandomValues(new Uint8Array(16));
@@ -125,6 +129,7 @@ function PiAgentConsole({ agent, onBack }: AgentConsoleProps) {
   );
   const sendLock = useRef(false);
   const [sendProgress, setSendProgress] = useState<SendProgress | null>(null);
+  const [sendErrorDismissed, setSendErrorDismissed] = useState(false);
   const [followRequest, setFollowRequest] = useState(0);
   const liveContext = useRef({
     snapshot,
@@ -188,7 +193,13 @@ function PiAgentConsole({ agent, onBack }: AgentConsoleProps) {
               image: index + 1,
               total: draft.attachments.length,
             });
-            id = (await uploadImage(attachment.file)).id;
+            try {
+              id = (await uploadImage(attachment.file)).id;
+            } catch (cause) {
+              throw new ImageUploadError("Image upload failed. Your message wasn’t sent.", {
+                cause,
+              });
+            }
             uploadedIds.current.set(attachment.file, id);
           }
           ids.push(id);
@@ -342,6 +353,7 @@ function PiAgentConsole({ agent, onBack }: AgentConsoleProps) {
     // React's pending state may not have rendered before a second tap/shortcut.
     if (sendLock.current || compact.locked()) return;
     sendLock.current = true;
+    setSendErrorDismissed(false);
     setFollowRequest((request) => request + 1);
     setSendProgress({ kind: "sending" });
     send.mutate(draft);
@@ -575,144 +587,194 @@ function PiAgentConsole({ agent, onBack }: AgentConsoleProps) {
           ) : null}
         </div>
       ) : (
-        <form className={consoleStyles["prompt-composer"]} onSubmit={submit}>
-          <div
-            className={consoleStyles["prompt-composer__surface"]}
-            data-ui="prompt-composer-surface"
-            aria-busy={composerSending}
-          >
-            {attachments.length ? (
-              <div className={consoleStyles["prompt-attachments"]} aria-label="Image attachments">
-                {attachments.map((attachment, i) => (
-                  <div className={consoleStyles["prompt-attachment"]} key={attachment.previewUrl}>
-                    <button
-                      type="button"
-                      className={consoleStyles["prompt-attachment__preview"]}
-                      aria-label={`Preview image ${i + 1}`}
-                      disabled={composerSending}
-                      onClick={() => setAttachmentPreview(attachment.previewUrl)}
-                    >
-                      <img
-                        src={attachment.previewUrl}
-                        alt={attachment.file?.name ?? "Restored image attachment"}
-                      />
-                    </button>
-                    <button
-                      type="button"
-                      className={consoleStyles["prompt-attachment__remove"]}
-                      disabled={composerSending}
-                      aria-label={`Remove image ${i + 1}`}
-                      onClick={() => {
-                        if (send.isError) {
-                          send.reset();
-                        }
-                        if (attachmentPreview === attachment.previewUrl) setAttachmentPreview(null);
-                        if (previews.current.delete(attachment.previewUrl))
-                          URL.revokeObjectURL(attachment.previewUrl);
-                        setAttachments((current) =>
-                          current.filter((value) => value !== attachment),
-                        );
-                      }}
-                    >
-                      <CloseIcon />
-                    </button>
-                  </div>
-                ))}
-              </div>
-            ) : null}
-            <input
-              ref={fileInputRef}
-              className={a11yStyles["sr-only"]}
-              type="file"
-              accept="image/png,image/jpeg,image/gif,image/webp"
-              multiple
-              disabled={composerSending}
-              onChange={(event) => selectImages(event.target.files)}
-            />
-            <ConversationCompaction
-              settings={{
-                pane: agent.pane_id,
-                target: snapshot ? targetOf(snapshot) : undefined,
-                connected: Boolean(snapshot && !live.error),
-                enabled: canForward && !stop.isPending && !annotations.editor && !compact.pending,
-                modelsSupported: Boolean(snapshot?.capabilities?.models),
-                thinkingSupported: Boolean(snapshot?.capabilities?.thinking),
-                defaultsSupported: Boolean(snapshot?.capabilities?.defaults),
-                model: snapshot?.status.model,
-                provider: snapshot?.status.provider,
-                thinkingLevel: snapshot?.status.thinkingLevel,
-              }}
-              canOpenTree={Boolean(
-                snapshot && !live.error && !annotations.editor && !compact.pending,
-              )}
-              onOpenTree={() => snapshot && setTreeTarget(targetOf(snapshot))}
-              target={snapshot ? targetOf(snapshot) : undefined}
-              connected={Boolean(snapshot && !live.error)}
-              locked={composerSending}
-              supported={!snapshot || Boolean(snapshot.capabilities?.compact)}
-              enabled={
-                canForward &&
-                Boolean(snapshot?.capabilities?.compact) &&
-                !stop.isPending &&
-                !treeTarget &&
-                !boardTarget &&
-                !annotations.editor
-              }
-              pending={compact.pending}
-              notice={compact.notice}
-              onCompact={(expected) => {
-                if (
+        <div className={consoleStyles["composer-dock"]}>
+          <form className={consoleStyles["prompt-composer"]} onSubmit={submit}>
+            <div
+              className={consoleStyles["prompt-composer__surface"]}
+              data-ui="prompt-composer-surface"
+              aria-busy={composerSending}
+            >
+              {attachments.length ? (
+                <div className={consoleStyles["prompt-attachments"]} aria-label="Image attachments">
+                  {attachments.map((attachment, i) => (
+                    <div className={consoleStyles["prompt-attachment"]} key={attachment.previewUrl}>
+                      <button
+                        type="button"
+                        className={consoleStyles["prompt-attachment__preview"]}
+                        aria-label={`Preview image ${i + 1}`}
+                        disabled={composerSending}
+                        onClick={() => setAttachmentPreview(attachment.previewUrl)}
+                      >
+                        <img
+                          src={attachment.previewUrl}
+                          alt={attachment.file?.name ?? "Restored image attachment"}
+                        />
+                      </button>
+                      <button
+                        type="button"
+                        className={consoleStyles["prompt-attachment__remove"]}
+                        disabled={composerSending}
+                        aria-label={`Remove image ${i + 1}`}
+                        onClick={() => {
+                          if (send.isError) {
+                            send.reset();
+                          }
+                          if (attachmentPreview === attachment.previewUrl)
+                            setAttachmentPreview(null);
+                          if (previews.current.delete(attachment.previewUrl))
+                            URL.revokeObjectURL(attachment.previewUrl);
+                          setAttachments((current) =>
+                            current.filter((value) => value !== attachment),
+                          );
+                        }}
+                      >
+                        <CloseIcon />
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              ) : null}
+              <input
+                ref={fileInputRef}
+                className={a11yStyles["sr-only"]}
+                type="file"
+                accept="image/png,image/jpeg,image/gif,image/webp"
+                multiple
+                disabled={composerSending}
+                onChange={(event) => selectImages(event.target.files)}
+              />
+              <ConversationCompaction
+                settings={{
+                  pane: agent.pane_id,
+                  target: snapshot ? targetOf(snapshot) : undefined,
+                  connected: Boolean(snapshot && !live.error),
+                  enabled: canForward && !stop.isPending && !annotations.editor && !compact.pending,
+                  modelsSupported: Boolean(snapshot?.capabilities?.models),
+                  thinkingSupported: Boolean(snapshot?.capabilities?.thinking),
+                  defaultsSupported: Boolean(snapshot?.capabilities?.defaults),
+                  model: snapshot?.status.model,
+                  provider: snapshot?.status.provider,
+                  thinkingLevel: snapshot?.status.thinkingLevel,
+                }}
+                canOpenTree={Boolean(
+                  snapshot && !live.error && !annotations.editor && !compact.pending,
+                )}
+                onOpenTree={() => snapshot && setTreeTarget(targetOf(snapshot))}
+                target={snapshot ? targetOf(snapshot) : undefined}
+                connected={Boolean(snapshot && !live.error)}
+                locked={composerSending}
+                supported={!snapshot || Boolean(snapshot.capabilities?.compact)}
+                enabled={
                   canForward &&
-                  !sendLock.current &&
+                  Boolean(snapshot?.capabilities?.compact) &&
                   !stop.isPending &&
                   !treeTarget &&
                   !boardTarget &&
                   !annotations.editor
-                )
-                  void compact.start(expected);
-              }}
-            >
-              {(action) => (
-                <SkillComposer
-                  pane={agent.pane_id}
-                  target={snapshot ? targetOf(snapshot) : undefined}
-                  available={Boolean(snapshot?.capabilities?.skills)}
-                  connected={Boolean(snapshot && !live.error)}
-                  prompt={prompt}
-                  onChange={changePrompt}
-                  label={getAgentTabLabel(agent)}
-                  sending={composerSending}
-                  canSend={canSend}
-                  canAttach={attachments.length < MAX_IMAGES}
-                  onAttach={() => fileInputRef.current?.click()}
-                  canOpenBoard={Boolean(
-                    snapshot?.version === 2 &&
-                    !live.error &&
-                    !annotations.editor &&
-                    !compact.pending,
-                  )}
-                  onOpenBoard={() => snapshot && setBoardTarget(targetOf(snapshot))}
-                  conversationAction={action}
-                />
-              )}
-            </ConversationCompaction>
-          </div>
-          {attachmentError ? (
-            <StateNotice kind="info" role="alert">
-              {attachmentError}
-            </StateNotice>
+                }
+                pending={compact.pending}
+                notice={compact.notice}
+                onCompact={(expected) => {
+                  if (
+                    canForward &&
+                    !sendLock.current &&
+                    !stop.isPending &&
+                    !treeTarget &&
+                    !boardTarget &&
+                    !annotations.editor
+                  )
+                    void compact.start(expected);
+                }}
+              >
+                {(action) => (
+                  <SkillComposer
+                    pane={agent.pane_id}
+                    target={snapshot ? targetOf(snapshot) : undefined}
+                    available={Boolean(snapshot?.capabilities?.skills)}
+                    connected={Boolean(snapshot && !live.error)}
+                    prompt={prompt}
+                    onChange={changePrompt}
+                    label={getAgentTabLabel(agent)}
+                    sending={composerSending}
+                    canSend={canSend}
+                    canAttach={attachments.length < MAX_IMAGES}
+                    onAttach={() => fileInputRef.current?.click()}
+                    canOpenBoard={Boolean(
+                      snapshot?.version === 2 &&
+                      !live.error &&
+                      !annotations.editor &&
+                      !compact.pending,
+                    )}
+                    onOpenBoard={() => snapshot && setBoardTarget(targetOf(snapshot))}
+                    conversationAction={action}
+                  />
+                )}
+              </ConversationCompaction>
+            </div>
+            {attachmentError ? (
+              <StateNotice kind="info" role="alert">
+                {attachmentError}
+              </StateNotice>
+            ) : null}
+            {stop.isError ? (
+              <StateNotice kind="unavailable" role="alert">
+                {stop.error.message}
+              </StateNotice>
+            ) : null}
+          </form>
+          {send.isError &&
+          !sendErrorDismissed &&
+          !send.variables?.annotationIds &&
+          !send.variables?.board ? (
+            <Snackbar
+              message={
+                send.error instanceof ImageUploadError
+                  ? send.error.message
+                  : "Couldn’t confirm your message was sent."
+              }
+              description={
+                send.error instanceof ImageUploadError
+                  ? "Your draft and images are still here."
+                  : "Your draft is still here. Check the terminal before sending again."
+              }
+              role="alert"
+              duration={null}
+              placement="anchored"
+              onDismiss={() => setSendErrorDismissed(true)}
+              action={
+                send.error instanceof ImageUploadError
+                  ? {
+                      label: "Try again",
+                      disabled:
+                        !canSend ||
+                        !snapshot ||
+                        !send.variables ||
+                        !matchesTarget(snapshot, send.variables.target),
+                      onClick: () => {
+                        if (
+                          canSend &&
+                          snapshot &&
+                          send.variables &&
+                          matchesTarget(snapshot, send.variables.target)
+                        )
+                          sendDraft({
+                            text: prompt,
+                            attachments: [...attachments],
+                            target: targetOf(snapshot),
+                          });
+                      },
+                    }
+                  : {
+                      label: "Open terminal",
+                      onClick: () => {
+                        setSendErrorDismissed(true);
+                        setView("terminal");
+                      },
+                    }
+              }
+            />
           ) : null}
-          {send.isError && !send.variables?.annotationIds ? (
-            <StateNotice kind="unavailable" role="alert">
-              {send.error.message} Draft retained; check Pi before retrying.
-            </StateNotice>
-          ) : null}
-          {stop.isError ? (
-            <StateNotice kind="unavailable" role="alert">
-              {stop.error.message}
-            </StateNotice>
-          ) : null}
-        </form>
+        </div>
       )}
       {view === "chat" && snapshot && !live.error ? (
         <PiSessionStatus status={snapshot.status} />
