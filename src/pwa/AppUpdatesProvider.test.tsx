@@ -51,7 +51,9 @@ afterEach(async () => {
 
 it("only reports up to date after metadata and worker checks both succeed", async () => {
   expect(current.latest).toBeNull();
-  await act(async () => current.check());
+  await act(async () => {
+    expect(await current.check()).toBe("up-to-date");
+  });
   expect(current.result).toBe("up-to-date");
   expect(current.latest).toEqual(runningBuild);
   expect(worker.checkNow).toHaveBeenCalledOnce();
@@ -123,7 +125,7 @@ it("coalesces repeat checks and never applies without a separate user action", a
       finish = resolve;
     }),
   );
-  let pending!: Promise<void>;
+  let pending!: ReturnType<typeof current.check>;
   await act(async () => {
     pending = current.check();
   });

@@ -50,12 +50,15 @@ export function AppUpdatesProvider({ children }: { children: ReactNode }) {
         setAvailable(true);
         setNoticeVisible(true);
         setResult("update-ready");
+        return "update-ready" as const;
       } else {
         setResult("up-to-date");
+        return "up-to-date" as const;
       }
     } catch (cause) {
       setResult("failed");
       setError(cause instanceof Error ? cause.message : "Could not check for updates.");
+      return "failed" as const;
     } finally {
       checkLock.current = false;
       setChecking(false);

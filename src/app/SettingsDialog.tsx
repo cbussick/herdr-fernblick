@@ -1,7 +1,8 @@
-import { useEffect, useId, useRef, useState } from "react";
+import { useCallback, useEffect, useId, useRef, useState } from "react";
 import { runningBuild, type BuildInfo } from "../pwa/buildInfo";
 import { useAppUpdates } from "../pwa/useAppUpdates";
 import { IconButton } from "../shared/ui";
+import { Snackbar } from "../shared/ui/Snackbar";
 import { ChevronIcon, CloseIcon } from "../shared/ui/Icons";
 import styles from "./SettingsDialog.module.css";
 
@@ -26,7 +27,15 @@ export function SettingsDialog({ onClose }: { onClose: () => void }) {
   const dialogRef = useRef<HTMLDialogElement>(null);
   const probeRef = useRef<HTMLSpanElement>(null);
   const updates = useAppUpdates();
-  const [copyResult, setCopyResult] = useState<"copied" | "failed" | null>(null);
+  const [notice, setNotice] = useState<{
+    id: number;
+    kind: "current" | "copied" | "copy-failed";
+  } | null>(null);
+  const noticeSequence = useRef(0);
+  const dismissNotice = useCallback(() => setNotice(null), []);
+  function showNotice(kind: NonNullable<typeof notice>["kind"]) {
+    setNotice({ id: ++noticeSequence.current, kind });
+  }
   const [safeAreaTop, setSafeAreaTop] = useState<string | null>(null);
   const [diagnosticsOpen, setDiagnosticsOpen] = useState(false);
   const diagnosticsId = useId();
@@ -76,15 +85,11 @@ export function SettingsDialog({ onClose }: { onClose: () => void }) {
 
   const status = !updates
     ? "Update checks are unavailable in this preview."
-    : updates.checking
-      ? "Checking for updates…"
-      : updates.error
-        ? (updates.result === "failed" ? "Check failed. " : "Refresh failed. ") + updates.error
-        : updates.available || updates.result === "update-ready"
-          ? "Update ready."
-          : updates.result === "up-to-date"
-            ? "Up to date."
-            : null;
+    : updates.error
+      ? (updates.result === "failed" ? "Check failed. " : "Refresh failed. ") + updates.error
+      : updates.available || updates.result === "update-ready"
+        ? "Update ready."
+        : null;
 
   return (
     <dialog
@@ -129,7 +134,10 @@ export function SettingsDialog({ onClose }: { onClose: () => void }) {
             <button
               type="button"
               disabled={!updates || updates.checking || updates.applying}
-              onClick={() => void updates?.check()}
+              onClick={async () => {
+                dismissNotice();
+                if ((await updates?.check()) === "up-to-date") showNotice("current");
+              }}
             >
               {updates?.checking ? "Checking…" : "Check for updates"}
             </button>
@@ -162,9 +170,9 @@ export function SettingsDialog({ onClose }: { onClose: () => void }) {
                     : null;
                   setSafeAreaTop(inset);
                   await navigator.clipboard.writeText(diagnostics(inset));
-                  setCopyResult("copied");
+                  showNotice("copied");
                 } catch {
-                  setCopyResult("failed");
+                  showNotice("copy-failed");
                 }
               }}
             >
@@ -178,7 +186,7 @@ export function SettingsDialog({ onClose }: { onClose: () => void }) {
               aria-controls={diagnosticsId}
               onClick={() => {
                 setDiagnosticsOpen((open) => !open);
-                setCopyResult(null);
+                dismissNotice();
                 setSafeAreaTop(
                   probeRef.current ? getComputedStyle(probeRef.current).paddingTop : null,
                 );
@@ -188,19 +196,28 @@ export function SettingsDialog({ onClose }: { onClose: () => void }) {
               View
             </button>
           </div>
-          {copyResult && (
-            <p role="status">
-              {copyResult === "copied"
-                ? "Diagnostics copied."
-                : "Copy failed. Choose View and select the text to copy manually."}
-            </p>
-          )}
           <pre id={diagnosticsId} tabIndex={0} aria-label="Diagnostics" hidden={!diagnosticsOpen}>
             {diagnostics()}
           </pre>
           <span ref={probeRef} className={styles.probe} aria-hidden="true" />
         </section>
       </div>
+      {notice && (
+        <Snackbar
+          key={notice.id}
+          placement="dialog"
+          message={
+            notice.kind === "current"
+              ? "Up to date."
+              : notice.kind === "copied"
+                ? "Diagnostics copied."
+                : "Copy failed. Choose View and select the text to copy manually."
+          }
+          role={notice.kind === "copy-failed" ? "alert" : "status"}
+          duration={notice.kind === "copy-failed" ? null : 6_000}
+          onDismiss={dismissNotice}
+        />
+      )}
     </dialog>
   );
 }

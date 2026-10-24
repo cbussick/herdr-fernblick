@@ -16,7 +16,7 @@ export function Snackbar({
   description?: string;
   action?: { label: string; onClick: () => void; disabled?: boolean };
   duration?: number | null;
-  placement?: "floating" | "anchored";
+  placement?: "floating" | "anchored" | "dialog";
   role?: "status" | "alert";
   onDismiss: () => void;
 }) {

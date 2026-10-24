@@ -11,7 +11,7 @@ type AppUpdates = {
   latest: BuildInfo | null;
   result: CheckResult;
   error: string;
-  check: () => Promise<void>;
+  check: () => Promise<CheckResult | undefined>;
   apply: () => Promise<void>;
   dismiss: () => void;
 };

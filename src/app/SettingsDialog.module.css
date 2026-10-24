@@ -46,6 +46,8 @@
 }
 
 .builds {
+  display: grid;
+  grid-auto-rows: 1fr;
   margin: var(--space-4) 0;
 }
 

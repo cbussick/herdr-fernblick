@@ -87,7 +87,9 @@ commit are distinguishable. Uncommitted builds have a `-dirty` suffix.
 Manual checks report up to date, update ready, or a failure (including failed
 worker downloads/storage). They never reload the app automatically. **Refresh
 app** is a separate explicit action; finish drafts in all open windows first.
-**Later** hides the banner without removing the update from Settings.
+**Later** hides the banner without removing the update from Settings. “Up to date”
+and “Diagnostics copied” appear in temporary snackbars rather than changing the
+dialog layout; copy failures remain dismissible until addressed.
 
 **Copy diagnostics** includes build identifiers, update status, browser/app mode,
 service-worker control, viewport and top safe-area inset. It excludes conversation

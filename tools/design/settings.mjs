@@ -114,11 +114,62 @@ for (const [name, engine] of [
         false,
       );
       assert.equal(await modal.evaluate((node) => node.scrollWidth > node.clientWidth), false);
+      await page.evaluate(() => document.fonts.ready);
+      const beforeCheck = await modal.boundingBox();
+      const beforeCopy = await copy.boundingBox();
+      let releaseCheck;
+      const checkGate = new Promise((resolve) => {
+        releaseCheck = resolve;
+      });
+      const delayMetadata = async (route) => {
+        await checkGate;
+        await route.continue();
+      };
+      await page.route("**/version.json", delayMetadata);
       await modal.getByRole("button", { name: "Check for updates", exact: true }).click();
+      await modal.getByRole("button", { name: "Checking…", exact: true }).waitFor();
+      const whileChecking = await modal.boundingBox();
+      assert.ok(
+        Math.abs(beforeCheck.y - whileChecking.y) < 1 &&
+          Math.abs(beforeCheck.height - whileChecking.height) < 1,
+        "Checking progress must not shift the dialog",
+      );
+      releaseCheck();
       await modal.getByText("Up to date.", { exact: true }).waitFor();
+      await page.unroute("**/version.json", delayMetadata);
+      const afterCheck = await modal.boundingBox();
+      assert.ok(
+        Math.abs(beforeCheck.y - afterCheck.y) < 1 &&
+          Math.abs(beforeCheck.height - afterCheck.height) < 1,
+        "Checking and its confirmation must not shift the dialog",
+      );
+      assert.ok(
+        Math.abs(beforeCopy.y - (await copy.boundingBox()).y) < 1,
+        "Update feedback must not move diagnostics actions",
+      );
+      const snackbar = modal.getByTestId("snackbar");
+      await snackbar.getByRole("status").getByText("Up to date.", { exact: true }).waitFor();
+      assert.equal(await snackbar.evaluate((node) => node.contains(document.activeElement)), false);
+      const dismiss = snackbar.getByRole("button", { name: "Dismiss notification", exact: true });
+      assert.ok(
+        await dismiss.evaluate((node) => {
+          const r = node.getBoundingClientRect();
+          return node.contains(document.elementFromPoint(r.x + r.width / 2, r.y + r.height / 2));
+        }),
+        "Snackbar must be clickable above the native dialog backdrop",
+      );
+      await dismiss.click();
+      assert.equal(await snackbar.count(), 0);
+      assert.ok(
+        Math.abs(beforeCheck.y - (await modal.boundingBox()).y) < 1,
+        "Dismissing confirmation must not shift the dialog",
+      );
       assert.equal(
         await modal.getByTestId("latest-build").locator("code").getAttribute("title"),
         running.revision,
+      );
+      await page.evaluate(
+        () => new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve))),
       );
       await page.screenshot({ path: `design-gallery/settings/${name}-${label}.png` });
       await page.keyboard.press("Escape");
@@ -126,8 +177,17 @@ for (const [name, engine] of [
       assert.equal(await gear.evaluate((node) => node === document.activeElement), true);
     }
     await gear.click();
+    const beforeCopied = await modal.boundingBox();
     await modal.getByRole("button", { name: "Copy diagnostics", exact: true }).click();
     await modal.getByText("Diagnostics copied.", { exact: true }).waitFor();
+    const afterCopied = await modal.boundingBox();
+    await page.screenshot({ path: `design-gallery/settings/${name}-copied-snackbar.png` });
+    assert.ok(
+      Math.abs(beforeCopied.y - afterCopied.y) < 1 &&
+        Math.abs(beforeCopied.height - afterCopied.height) < 1,
+      "Copy confirmation must not shift the dialog",
+    );
+    await modal.getByTestId("snackbar").getByText("Diagnostics copied.", { exact: true }).waitFor();
     const copied = await page.evaluate(() => JSON.parse(window.copiedDiagnostics));
     assert.deepEqual(copied.runningBuild, running);
     assert.deepEqual(copied.latestAvailableBuild, running);
