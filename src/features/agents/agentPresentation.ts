@@ -1,4 +1,5 @@
 import type { Agent, AgentStatus, ShellTab, Workspace } from "../../shared/api/contracts";
+import { getDefaultPiAgentName } from "../../shared/agentNaming";
 
 const statusLabels: Record<AgentStatus, string> = {
   blocked: "Needs input",
@@ -18,7 +19,9 @@ export function getAgentTabLabel(agent: Agent) {
 
 export function getAgentLabel(agent: Agent) {
   // Pane IDs are stable across polling, reordering and changes to the tab title.
-  return agent.name?.trim() || `Agent ${agent.pane_id}`;
+  const name = agent.name?.trim();
+  const isGeneratedName = agent.agent === "pi" && name === getDefaultPiAgentName(agent.pane_id);
+  return name && !isGeneratedName ? name : `Agent ${agent.pane_id}`;
 }
 
 export function groupPanesByTab(agents: Agent[], shells: ShellTab[]) {

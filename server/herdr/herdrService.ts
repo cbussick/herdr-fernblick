@@ -15,6 +15,7 @@ import {
   type KeyName,
   type TerminalReadSource,
 } from "../../src/shared/api/contracts.js";
+import { getDefaultPiAgentName } from "../../src/shared/agentNaming.js";
 import { HerdrClient, HerdrRequestError } from "./HerdrClient.js";
 
 const extensionJsPath = fileURLToPath(
@@ -269,9 +270,7 @@ export class HerdrService {
       },
       tabCreatedResultSchema,
     );
-    const agentName =
-      name ??
-      `pi-${createdTab.root_pane.pane_id.replace(/[^a-z0-9_-]/gi, "-").toLowerCase()}`.slice(0, 32);
+    const agentName = name ?? getDefaultPiAgentName(createdTab.root_pane.pane_id);
     const startedAgent = await this.client.request(
       "agent.start",
       {
@@ -331,9 +330,7 @@ export class HerdrService {
       throw new HerdrRequestError("agent_busy", "A restart is already in progress for this pane");
     this.restarting.add(agent.pane_id);
     try {
-      const name =
-        agent.name ??
-        `pi-${agent.pane_id.replace(/[^a-z0-9_-]/gi, "-").toLowerCase()}`.slice(0, 32);
+      const name = agent.name ?? getDefaultPiAgentName(agent.pane_id);
       // Never type into the terminal: an editor draft would become a user prompt.
       // The live peer validates identity, idle state and editor contents itself.
       await requestShutdown(agent);

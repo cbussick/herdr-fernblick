@@ -224,6 +224,7 @@ it.each(["agent", "shell"])(
 
 it.each([
   [null, "Agent w2:p2"],
+  ["pi-w2-p2", "Agent w2:p2"],
   ["Orchestrator overhaul", "Orchestrator overhaul"],
 ])(
   "keeps the pane identity separate from the tab when the agent name is %s",

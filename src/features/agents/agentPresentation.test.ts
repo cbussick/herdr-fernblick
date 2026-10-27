@@ -3,6 +3,7 @@ import type { Agent, ShellTab } from "../../shared/api/contracts";
 import { getAgentLabel, groupAgentsByWorkspace, groupPanesByTab } from "./agentPresentation";
 
 const agent: Agent = {
+  agent: "pi",
   name: "planner",
   pane_id: "w1:p1",
   tab_id: "w1:t1",
@@ -33,6 +34,18 @@ it("keeps unnamed agent identities distinct and stable when titles change", () =
     "Agent w1:p1",
   );
   expect(getAgentLabel({ ...unnamed, name: " ", pane_id: "w1:p2" })).toBe("Agent w1:p2");
+});
+
+it("shows the same default label for unnamed and automatically named Pi agents", () => {
+  expect(getAgentLabel({ ...agent, name: null })).toBe("Agent w1:p1");
+  expect(getAgentLabel({ ...agent, name: "pi-w1-p1" })).toBe("Agent w1:p1");
+  expect(getAgentLabel({ ...agent, name: "pi-w3c-p2", pane_id: "w3C:p2" })).toBe("Agent w3C:p2");
+});
+
+it("preserves explicit names, including Pi names that do not match the pane default", () => {
+  expect(getAgentLabel({ ...agent, name: "pi-planner" })).toBe("pi-planner");
+  expect(getAgentLabel({ ...agent, name: "pi-w1-p2" })).toBe("pi-w1-p2");
+  expect(getAgentLabel({ ...agent, name: "pi-w1-p1", agent: "claude" })).toBe("pi-w1-p1");
 });
 
 it("groups by tab identity, not equal labels, and includes mixed and shell-only splits", () => {
