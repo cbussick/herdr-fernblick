@@ -16,9 +16,11 @@ import { useReadAgentStatuses } from "./useReadAgentStatuses";
 import { usePaneNavigation } from "./usePaneNavigation";
 import { SettingsDialog } from "./SettingsDialog";
 import { useVisualViewport } from "./useVisualViewport";
+import { useHeaderDiagnostics } from "./useHeaderDiagnostics";
 
 export function App() {
   const viewportRef = useVisualViewport();
+  useHeaderDiagnostics();
   const singlePane = useSinglePaneLayout();
   const queryClient = useQueryClient();
   const [selectedPaneId, setSelectedPaneId] = usePaneNavigation();

@@ -113,6 +113,9 @@ it("starts a fresh snackbar interval for repeated checks with the same result", 
 it("confirms diagnostic copies without inserting text into the diagnostics section", async () => {
   await click("Copy diagnostics");
   expect(writeText).toHaveBeenCalledOnce();
+  expect(JSON.parse(writeText.mock.calls[0][0])).toMatchObject({
+    headerLayout: { version: 1 },
+  });
   expect(snackbars()[0].props.message).toBe("Diagnostics copied.");
   const section = renderer.root.findByProps({ "aria-labelledby": "diagnostics-heading" });
   expect(section.findAllByType("p")).toHaveLength(0);

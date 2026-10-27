@@ -13,6 +13,7 @@ vi.mock("../shared/api/apiClient", async (importOriginal) => ({
   markAgentRead: vi.fn(),
 }));
 vi.mock("./useSinglePaneLayout", () => ({ useSinglePaneLayout: () => true }));
+vi.mock("./useHeaderDiagnostics", () => ({ useHeaderDiagnostics: () => {} }));
 vi.mock("../features/agents/AgentConsole", () => ({
   AgentConsole: ({ onBack }: { onBack: () => void }) => (
     <main>
