@@ -10,6 +10,7 @@ import { NewWorkspaceDialog } from "../features/agents/NewWorkspaceDialog";
 import { NewTabDialog } from "../features/agents/NewTabDialog";
 import { ShellConsole } from "../features/agents/ShellConsole";
 import { FernblickMark } from "../shared/ui/FernblickMark";
+import { LoadingBrand } from "../shared/ui/LoadingBrand";
 import { StateIcon } from "../shared/ui/StateFeedback";
 import { useSinglePaneLayout } from "./useSinglePaneLayout";
 import { useReadAgentStatuses } from "./useReadAgentStatuses";
@@ -103,15 +104,7 @@ export function App() {
           role="status"
           aria-busy="true"
         >
-          <img
-            className={appStyles["loading-logo"]}
-            src="/icons/scout-logo.png"
-            width={564}
-            height={594}
-            alt="Fernblick"
-            fetchPriority="high"
-          />
-          <p>Loading agents…</p>
+          <LoadingBrand />
         </div>
       ) : agentsQuery.isError && !agentsQuery.data ? (
         <div className={appStyles["page-state"]} data-testid="page-state" role="alert">

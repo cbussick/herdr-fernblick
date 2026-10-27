@@ -126,6 +126,9 @@ try {
     "/icons/scout-head.png",
     "/icons/scout-logo.png",
     "/icons/scout-wordmark.png",
+    "/icons/scout-head.svg",
+    "/icons/scout-logo.svg",
+    "/icons/scout-wordmark.svg",
     ...manifest.icons.map((icon) => icon.src),
   ])
     assert.ok(cached.includes(path), `Branding asset must remain available offline: ${path}`);

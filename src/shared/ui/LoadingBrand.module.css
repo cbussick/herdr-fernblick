@@ -1,0 +1,26 @@
+.logo {
+  width: min(16rem, 65vw);
+}
+
+.label {
+  line-height: 1.7;
+  animation: loading-breathe 3.2s cubic-bezier(0.77, 0, 0.175, 1) infinite;
+}
+
+@keyframes loading-breathe {
+  0%,
+  100% {
+    opacity: 1;
+  }
+
+  50% {
+    opacity: 0.6;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .label {
+    animation: none;
+    opacity: 1;
+  }
+}

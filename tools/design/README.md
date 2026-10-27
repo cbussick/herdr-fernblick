@@ -12,7 +12,7 @@ Fernblick is a remote view onto coding agents, not an analytics dashboard. Its v
 - iPad: single-pane/mobile navigation in portrait, persistent workspace rail in landscape. Below 1200px, portrait touch-screen dimensions keep the layout single-pane even if the software keyboard makes the viewport landscape. Desktop windows still use viewport orientation. A rail is shown at widths of at least 768px in landscape, or at least 1200px regardless of orientation. Rotation keeps the selected agent and draft.
 - Desktop: rail plus a bounded conversation column, a one-row console header from 1152px, and a bounded composer instead of a viewport-wide input.
 - Grouping: workspace containers correspond to actual projects, not arbitrary dashboard cards. The flat agent view uses white, bordered row surfaces. Expanded tool results use a white output area inside the same bordered accordion as their blue `read` header, with no gap or separate bubble corners. Distinct chat corners communicate speaker, not decoration.
-- Accessibility: 44px console touch targets, visible focus, improved secondary-text contrast, safe-area padding and existing reduced-motion support. Existing status pulses and startup/send spinners respect reduced motion; no decorative animation.
+- Accessibility: 44px console touch targets, visible focus, improved secondary-text contrast, safe-area padding and existing reduced-motion support. Existing status pulses and startup/send spinners respect reduced motion. The initial loading screen has a slow sideways pupil glance and whole-label opacity pulse; reduced motion keeps both static. Header branding stays static.
 
 The plan deliberately avoids metrics tiles, a decorative gradient hero, and dashboard ornament. A subtle blue rail and Scout carry the personality; status color retains its operational meaning. The full logo and navigation wordmark use the approved playful lettering; the rest of the interface keeps Manrope. See [branding sources and exports](../../design/branding/README.md). Existing gallery captures predate the Scout update; `branding.mjs` checks the new artwork separately.
 
@@ -154,8 +154,9 @@ PLAYWRIGHT_MODULE=/tmp/fernblick-design-tools/node_modules/playwright/index.mjs 
 ```
 
 `branding.mjs` serves the actual build on an ephemeral loopback port with a
-synthetic, delayed dashboard. It checks the full loading logo, immediate transition
-to the overview, the transparent navigation head/wordmark, its accessible heading,
+synthetic, delayed dashboard. It checks the inline vector loading logo, right/left/right gaze holds, whole-label
+opacity pulse, static reduced-motion fallback, immediate transition to the overview,
+the transparent SVG navigation head/wordmark, its accessible heading,
 and no overflow or connection-status overlap at five phone, tablet and desktop
 sizes, including a 320px phone and a narrow desktop sidebar. Canvas checks verify transparent corners in the UI assets,
 fully opaque installed-app icons, and that no artwork escapes the maskable safe

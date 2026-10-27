@@ -3,7 +3,7 @@ export function FernblickMark({ className = "" }: { className?: string }) {
   return (
     <img
       className={className}
-      src="/icons/scout-head.png"
+      src="/icons/scout-head.svg"
       width={40}
       height={40}
       alt=""
