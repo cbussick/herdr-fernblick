@@ -92,7 +92,13 @@ and “Diagnostics copied” appear in temporary snackbars rather than changing 
 dialog layout; copy failures remain dismissible until addressed.
 
 **Copy diagnostics** includes build identifiers, update status, browser/app mode,
-service-worker control, viewport and top safe-area inset. It excludes conversation
+service-worker control, viewport and top safe-area inset. Temporary `headerLayout`
+measurements include the last visible console/overview header bounds, context/title
+bounds, ancestor styles, and visual viewport offsets at capture time. These are
+kept only in memory until reload; nothing is sent automatically. To investigate
+iPad header blur, visit the affected conversation, return to the overview, then
+open Settings and copy diagnostics. The capture does not detect native iPadOS blur
+itself; compare it with an on-device screenshot. It excludes conversation
 content, agent paths, images and page URLs. **Copy diagnostics** and **View** share
 one row; choose **View** to expand the details or copy the text manually if clipboard
 access fails.

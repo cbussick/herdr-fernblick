@@ -89,6 +89,10 @@ loopback fixture server and checks the real built CSS in Chromium and WebKit wit
 simulated 24px and zero top insets. Overview and console headers retain their
 normal spacing below the inset, keep opaque backgrounds to the viewport top, and
 avoid horizontal overflow across iPad portrait, landscape and desktop sizes.
+The script also visits a conversation at 810×1048, returns to Settings, and
+verifies that temporary `headerLayout` diagnostics retain its geometry and visual
+viewport independently of the overview (including a zero safe-area inset). Only
+geometry/styles are captured, never header text or conversation content.
 All API/SSE traffic is synthetic; no live agents are controlled. The simulation
 checks layout, not iPadOS's status-bar blur; confirm that separately on a physical
 iPad after accepting the PWA update.
