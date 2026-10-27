@@ -82,6 +82,16 @@ workspace screenshots verify the same quiet structure without nested tab cards.
 All API/SSE traffic is intercepted; no live agents are controlled.
 Screenshots are saved to ignored `design-gallery/workspace-tabs/`.
 
+## Workspace reordering regression
+
+Run `node tools/design/workspace-reorder.mjs http://127.0.0.1:<frontend-port>`
+against this worktree's static build or Vite server. Chromium/WebKit desktop and
+Chromium touch fixtures cover handle dragging, insertion markers, keyboard
+reordering/cancellation, the click-only destination picker, focus restoration,
+expanded state, failed-save rollback, and disabled reordering during search.
+All API traffic is synthetic; no Herdr/Pi socket is used. Captures go to ignored
+`design-gallery/workspace-reorder/`.
+
 ## Header safe-area regression
 
 After `npm run build`, run `node tools/design/safe-area.mjs`. This starts its own

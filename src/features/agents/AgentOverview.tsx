@@ -12,6 +12,7 @@ import {
   groupPanesByTab,
 } from "./agentPresentation";
 import { PaneContextActions } from "./PaneContextActions";
+import { WorkspaceReorder } from "./WorkspaceReorder";
 
 const priority: Record<AgentStatus, number> = {
   blocked: 5,
@@ -180,12 +181,14 @@ function WorkspaceTab({
 }
 
 function WorkspaceSummary({
+  dragHandle,
   label,
   agentCount,
   shellCount,
   status,
   onCreateAgent,
 }: {
+  dragHandle: ReactNode;
   label: string;
   agentCount: number;
   shellCount: number;
@@ -193,7 +196,8 @@ function WorkspaceSummary({
   onCreateAgent: () => void;
 }) {
   return (
-    <summary>
+    <summary data-reorderable={!!dragHandle || undefined}>
+      {dragHandle}
       <span className={overviewStyles["workspace-disclosure__copy"]}>
         <strong>{label}</strong>
         <small>{paneCountLabel(agentCount, shellCount) || "0 agents"}</small>
@@ -279,30 +283,33 @@ export function WorkspaceList({
     );
   return (
     <div className={overviewStyles["workspace-list"]}>
-      {groups.map((group) => (
-        <WorkspaceDisclosure key={group.workspace_id} forceOpen={!!normalized}>
-          <WorkspaceSummary
-            label={group.label}
-            agentCount={group.agents.length}
-            shellCount={group.tabs.length}
-            status={getWorkspaceStatus(group.agents)}
-            onCreateAgent={() => onCreateAgent(group.workspace_id)}
-          />
-          <div className={overviewStyles["workspace-disclosure__content"]}>
-            {group.visibleTabs.map((tab) => (
-              <WorkspaceTab
-                key={tab.tab_id}
-                tab={tab}
-                query={normalized}
-                workspaceMatches={group.workspaceMatches}
-                selectedPaneId={selectedPaneId}
-                onSelectAgent={onSelectAgent}
-                onSelectTab={onSelectTab}
-              />
-            ))}
-          </div>
-        </WorkspaceDisclosure>
-      ))}
+      <WorkspaceReorder workspaces={groups} disabled={!!normalized}>
+        {(group, handle) => (
+          <WorkspaceDisclosure forceOpen={!!normalized}>
+            <WorkspaceSummary
+              dragHandle={handle}
+              label={group.label}
+              agentCount={group.agents.length}
+              shellCount={group.tabs.length}
+              status={getWorkspaceStatus(group.agents)}
+              onCreateAgent={() => onCreateAgent(group.workspace_id)}
+            />
+            <div className={overviewStyles["workspace-disclosure__content"]}>
+              {group.visibleTabs.map((tab) => (
+                <WorkspaceTab
+                  key={tab.tab_id}
+                  tab={tab}
+                  query={normalized}
+                  workspaceMatches={group.workspaceMatches}
+                  selectedPaneId={selectedPaneId}
+                  onSelectAgent={onSelectAgent}
+                  onSelectTab={onSelectTab}
+                />
+              ))}
+            </div>
+          </WorkspaceDisclosure>
+        )}
+      </WorkspaceReorder>
     </div>
   );
 }

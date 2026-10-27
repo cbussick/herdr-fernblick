@@ -23,6 +23,15 @@ workspace/tab context below each agent's name. Long-press or right-click a row
 to edit its agent name or the shared tab name; **Close tab** ends every pane in
 that tab, not just the selected agent.
 
+Drag a workspace's six-dot handle to reorder it. Handles appear on hover/focus
+on desktop and stay visible on touch screens; the rest of the header still
+expands/collapses. Click or tap the handle to choose **Move before** or **End of
+list** without dragging. Keyboard users can also pick up/drop with Space, move
+with arrow keys, and cancel with Escape. Moves save through Herdr's
+`workspace.move_block` API, so the terminal UI and other browsers share the order.
+Reordering is unavailable while searching. Failed saves show an error and
+reconcile with Herdr instead of keeping a browser-only order.
+
 Opening an agent's **New answer** in a visible browser tab saves a Fernblick read
 receipt and displays **Idle**, including its workspace badge. Receipts survive
 page reloads and Fernblick backend restarts and are shared by browsers using the

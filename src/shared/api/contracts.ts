@@ -117,6 +117,17 @@ export const createWorkspaceRequestSchema = z.object({
   label: z.string().trim().min(1).max(80),
 });
 
+export const moveWorkspaceRequestSchema = z
+  .object({
+    workspaceId: createAgentRequestSchema.shape.workspaceId,
+    beforeWorkspaceId: createAgentRequestSchema.shape.workspaceId.nullable(),
+  })
+  .refine((value) => value.workspaceId !== value.beforeWorkspaceId, {
+    message: "A workspace cannot be moved before itself",
+  });
+
+export const moveWorkspaceResponseSchema = z.object({ ok: z.literal(true) });
+
 export const createWorkspaceResponseSchema = z.object({ workspace: workspaceSchema });
 
 export const createTabRequestSchema = z.object({

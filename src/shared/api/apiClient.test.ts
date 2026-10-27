@@ -3,6 +3,7 @@ import { afterEach, beforeEach, expect, it, vi } from "vitest";
 import {
   chatCommand,
   markAgentRead,
+  moveWorkspace,
   compactAgentConversation,
   getAgentSkills,
   getAgentModels,
@@ -14,6 +15,19 @@ import {
   getPaneOutput,
   ApiError,
 } from "./apiClient";
+it("posts a validated relative workspace move and preserves API failures", async () => {
+  const input = { workspaceId: "w3", beforeWorkspaceId: "w1" };
+  fetchMock.mockResolvedValueOnce(Response.json({ ok: true }));
+  await moveWorkspace(input);
+  expect(fetchMock.mock.calls[0][0]).toBe("/api/workspaces/move");
+  expect(JSON.parse(fetchMock.mock.calls[0][1].body)).toEqual(input);
+  expect(fetchMock.mock.calls[0][1].signal).toBe(controller.signal);
+  fetchMock.mockResolvedValueOnce(Response.json({ error: "Missing workspace" }, { status: 502 }));
+  await expect(moveWorkspace(input)).rejects.toThrow("Missing workspace");
+  await expect(moveWorkspace({ workspaceId: "w1", beforeWorkspaceId: "w1" })).rejects.toThrow();
+  expect(fetchMock).toHaveBeenCalledTimes(2);
+});
+
 const target = { runtime: randomUUID(), epoch: randomUUID(), sessionId: "s" };
 const fetchMock = vi.fn();
 let controller: AbortController;

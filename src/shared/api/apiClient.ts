@@ -9,6 +9,8 @@ import {
   createAgentRequestSchema,
   createAgentResponseSchema,
   createWorkspaceRequestSchema,
+  moveWorkspaceRequestSchema,
+  moveWorkspaceResponseSchema,
   createWorkspaceResponseSchema,
   createTabRequestSchema,
   createTabResponseSchema,
@@ -116,6 +118,19 @@ export async function createWorkspace(input: CreateWorkspaceRequest) {
     body: JSON.stringify(createWorkspaceRequestSchema.parse(input)),
   });
   return createWorkspaceResponseSchema.parse(body).workspace;
+}
+
+export async function moveWorkspace(input: {
+  workspaceId: string;
+  beforeWorkspaceId: string | null;
+}) {
+  const body = await request("/api/workspaces/move", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(moveWorkspaceRequestSchema.parse(input)),
+    signal: AbortSignal.timeout(10_000),
+  });
+  moveWorkspaceResponseSchema.parse(body);
 }
 
 export async function createTab(input: CreateTabRequest) {

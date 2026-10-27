@@ -101,6 +101,16 @@
   list-style: none;
 }
 
+.workspace-disclosure > summary[data-reorderable] {
+  padding-left: var(--space-2);
+  grid-template-columns: 2.75rem minmax(0, 1fr) auto auto 1.25rem;
+  column-gap: var(--space-2);
+}
+
+.workspace-disclosure > summary[data-reorderable] > button:last-of-type {
+  grid-column: 4;
+}
+
 .workspace-disclosure > summary::-webkit-details-marker,
 .tab-group__header::-webkit-details-marker {
   display: none;
