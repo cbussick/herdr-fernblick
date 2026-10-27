@@ -121,6 +121,24 @@ try {
             "Safe-area spacing must not introduce horizontal overflow",
           );
         }
+        await page.setViewportSize({ width: 810, height: 1048 });
+        await checkHeader("console-header", 12);
+        await page.getByRole("button", { name: "Back to overview", exact: true }).click();
+        await page.getByRole("button", { name: "Open settings", exact: true }).click();
+        await page.getByRole("button", { name: "View diagnostics", exact: true }).click();
+        const diagnostics = JSON.parse(
+          await page.locator('pre[aria-label="Diagnostics"]').textContent(),
+        );
+        assert.equal(diagnostics.headerLayout.version, 1);
+        const consoleCapture = diagnostics.headerLayout.console;
+        assert.ok(consoleCapture, "Retain conversation geometry after navigating to Settings");
+        assert.equal(consoleCapture.header.paddingTop, `${inset + 12}px`);
+        assert.equal(consoleCapture.viewport.layout.width, 810);
+        assert.equal(consoleCapture.viewport.visual.offsetTop, 0);
+        assert.ok(consoleCapture.contextLine.bounds.height > 0);
+        assert.ok(consoleCapture.ancestors.length > 0);
+        assert.ok(diagnostics.headerLayout.overview);
+        assert.ok(!JSON.stringify(diagnostics.headerLayout).includes(agent.name));
         assert.deepEqual(errors, []);
         console.log(
           `${name}: inset ${inset}px, overview and portrait/landscape/desktop headers PASS`,

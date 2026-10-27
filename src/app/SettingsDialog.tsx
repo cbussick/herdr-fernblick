@@ -5,6 +5,7 @@ import { IconButton } from "../shared/ui";
 import { Snackbar } from "../shared/ui/Snackbar";
 import { ChevronIcon, CloseIcon } from "../shared/ui/Icons";
 import styles from "./SettingsDialog.module.css";
+import { getHeaderDiagnostics } from "./useHeaderDiagnostics";
 
 function BuildDetails({ build }: { build: BuildInfo | null }) {
   if (!build) return <span>Not checked</span>;
@@ -76,6 +77,7 @@ export function SettingsDialog({ onClose }: { onClose: () => void }) {
           pixelRatio: window.devicePixelRatio,
         },
         safeAreaTop: inset,
+        headerLayout: getHeaderDiagnostics(),
         userAgent: navigator.userAgent,
       },
       null,
