@@ -146,7 +146,6 @@ export function ThinkingLevelPicker({
           <CloseIcon />
         </button>
       </header>
-      <p className={styles.current}>Current: {current ? labels[current] : "Unknown"}</p>
       <p className={styles.notice}>
         Choose how much reasoning this agent uses. Available levels depend on its model.
       </p>

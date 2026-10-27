@@ -120,10 +120,6 @@ export function ModelPicker({
           <CloseIcon />
         </button>
       </header>
-      <p className={styles.current}>
-        Current: {provider ? `${provider} / ` : ""}
-        {model ?? "Unknown model"}
-      </p>
       {!supported ? (
         <p className={styles.notice}>Run /reload in Pi to enable model selection.</p>
       ) : (

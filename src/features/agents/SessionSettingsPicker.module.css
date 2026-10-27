@@ -35,7 +35,6 @@
   border: 0;
 }
 
-.dialog .current,
 .dialog .notice {
   padding: var(--space-2) var(--space-4);
   margin: 0;
