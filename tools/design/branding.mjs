@@ -53,8 +53,49 @@ try {
       const loading = page.locator('[data-ui="app-loading"]');
       await loading.waitFor();
       assert.equal(await loading.getAttribute("aria-busy"), "true");
-      await loading.locator("img").evaluate((image) => image.decode());
-      assert.equal(await loading.locator("img").getAttribute("src"), "/icons/scout-logo.png");
+      const logo = loading.getByRole("img", { name: "Fernblick", exact: true });
+      assert.equal(await logo.getAttribute("data-animated"), "true");
+      assert.equal(await loading.locator("img, image").count(), 0, "Loading logo is fully vector");
+      assert.equal(
+        await loading.evaluate((element) => element.getAnimations({ subtree: true }).length),
+        0,
+      );
+      await page.emulateMedia({ reducedMotion: "no-preference" });
+      const motion = await loading.evaluate((element) => {
+        const animations = element.getAnimations({ subtree: true });
+        const eyes = animations.find(
+          (animation) => animation.effect.target.getAttribute("data-part") === "pupils",
+        );
+        const label = animations.find((animation) => animation.effect.target.tagName === "P");
+        if (!eyes || !label) throw new Error("Loading animations missing");
+        eyes.pause();
+        label.pause();
+        const poses = [0, 3200, 4400, 5200, 6400, 7999].map((time) => {
+          eyes.currentTime = time;
+          return new DOMMatrix(getComputedStyle(eyes.effect.target).transform).m41;
+        });
+        label.currentTime = 1600;
+        const dimmed = Number(getComputedStyle(label.effect.target).opacity);
+        label.currentTime = 0;
+        return {
+          poses,
+          dimmed,
+          bright: Number(getComputedStyle(label.effect.target).opacity),
+          eyeDuration: eyes.effect.getTiming().duration,
+        };
+      });
+      assert.equal(motion.eyeDuration, 8000);
+      assert.deepEqual(
+        motion.poses.map((x) => Math.round(x)),
+        [0, 0, -133, -133, 0, 0],
+      );
+      assert.ok(Math.abs(motion.dimmed - 0.6) < 0.01);
+      assert.equal(motion.bright, 1);
+      await page.emulateMedia({ reducedMotion: "reduce" });
+      assert.equal(
+        await loading.evaluate((element) => element.getAnimations({ subtree: true }).length),
+        0,
+      );
       assert.equal(
         await page.evaluate(() => document.documentElement.scrollWidth > innerWidth),
         false,
@@ -62,17 +103,18 @@ try {
       await page.screenshot({ path: `${output}/${name}-loading.png` });
       complete(dashboard);
       await page.getByRole("heading", { name: "Fernblick", exact: true }).waitFor();
+      await page.evaluate(() => document.fonts.ready);
       assert.equal(await loading.count(), 0, "No extra splash delay after the dashboard arrives");
-      const mark = page.locator('[data-testid="overview-header"] img[src="/icons/scout-head.png"]');
+      const mark = page.locator('[data-testid="overview-header"] img[src="/icons/scout-head.svg"]');
       await mark.evaluate((image) => image.decode());
-      assert.equal(await mark.getAttribute("src"), "/icons/scout-head.png");
+      assert.equal(await mark.getAttribute("src"), "/icons/scout-head.svg");
       assert.equal(await mark.getAttribute("alt"), "");
       assert.equal(Math.round((await mark.boundingBox()).width), 40);
       const heading = page.getByRole("heading", { name: "Fernblick", exact: true });
       assert.equal(await heading.count(), 1);
       const wordmark = heading.locator("img");
       await wordmark.evaluate((image) => image.decode());
-      assert.equal(await wordmark.getAttribute("src"), "/icons/scout-wordmark.png");
+      assert.equal(await wordmark.getAttribute("src"), "/icons/scout-wordmark.svg");
       assert.equal(await wordmark.getAttribute("aria-hidden"), "true");
       const textBounds = await wordmark.boundingBox();
       const headBounds = await mark.boundingBox();
@@ -87,7 +129,20 @@ try {
           headerBounds.x + headerBounds.width - rightPadding + 1,
         "Connection status must stay inside the padded header",
       );
-      assert.ok(textBounds.width >= 90 && textBounds.width <= 128);
+      // The settings button leaves 80px at 320px and 48px in the 288px sidebar.
+      // Verify the SVG preserves the PNG layout rather than changing the header.
+      const rasterWidth = await wordmark.evaluate(async (image) => {
+        const vectorSrc = image.src;
+        image.src = "/icons/scout-wordmark.png";
+        await image.decode();
+        const width = image.getBoundingClientRect().width;
+        image.src = vectorSrc;
+        await image.decode();
+        return width;
+      });
+      assert.equal(textBounds.width, rasterWidth, "Vector wordmark preserves raster layout");
+      const minimumWidth = name === "narrow-sidebar" ? 48 : 80;
+      assert.ok(textBounds.width >= minimumWidth && textBounds.width <= 128);
       assert.ok(headBounds.x + headBounds.width <= textBounds.x - 6);
       assert.ok(
         textBounds.x + textBounds.width <= statusBounds.x - 6,
@@ -192,9 +247,9 @@ try {
       results.push({ src: asset.src, opaque, withinSafeCircle, width, height });
     }
     for (const src of [
-      "/icons/scout-head.png",
-      "/icons/scout-logo.png",
-      "/icons/scout-wordmark.png",
+      "/icons/scout-head.svg",
+      "/icons/scout-logo.svg",
+      "/icons/scout-wordmark.svg",
     ]) {
       const { data, width, height } = await pixels(src);
       const corners = [0, width - 1, (height - 1) * width, width * height - 1];

@@ -286,6 +286,18 @@ export class HerdrService {
     return { ...startedAgent.agent, agent: "pi", tab_label: createdTab.tab.label };
   }
 
+  async moveWorkspace(workspaceId: string, beforeWorkspaceId: string | null) {
+    // Relative placement avoids racing a changing numeric workspace index.
+    await this.client.request(
+      "workspace.move_block",
+      {
+        workspace_ids: [workspaceId],
+        before_workspace_id: beforeWorkspaceId,
+      },
+      z.unknown(),
+    );
+  }
+
   async createWorkspace(label: string, cwd: string) {
     const result = await this.client.request(
       "workspace.create",

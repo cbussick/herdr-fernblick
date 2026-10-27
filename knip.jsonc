@@ -13,6 +13,8 @@
         "tools/design/*.mjs",
         // Manual artwork export; setup is documented in design/branding/README.md.
         "tools/branding/export-scout.mjs",
+        "tools/branding/vectorize-scout.mjs",
+        "tools/branding/verify-scout.mjs",
       ],
       // Vite/PWA, Vitest and Storybook plugins discover their own entry points.
       "project": [

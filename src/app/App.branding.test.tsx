@@ -3,6 +3,7 @@ import { create, type ReactTestRenderer } from "react-test-renderer";
 import { onlineManager, QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
 import { App } from "./App";
+import { ScoutLogo } from "../shared/ui/ScoutLogo";
 import { getAgents } from "../shared/api/apiClient";
 
 vi.mock("../shared/api/apiClient", async (original) => ({
@@ -37,7 +38,7 @@ async function render() {
     );
   });
 }
-const logo = () => renderer.root.findAllByProps({ src: "/icons/scout-logo.png" });
+const logo = () => renderer.root.findAllByType(ScoutLogo);
 const settle = () => new Promise<void>((resolve) => setTimeout(resolve, 20));
 
 it("shows the full playful logo only while the first dashboard request is pending", async () => {
@@ -49,7 +50,9 @@ it("shows the full playful logo only while the first dashboard request is pendin
   );
   await render();
   expect(logo()).toHaveLength(1);
-  expect(logo()[0].props.alt).toBe("Fernblick");
+  expect(logo()[0].props.animated).toBe(true);
+  expect(logo()[0].findByType("title").children).toEqual(["Fernblick"]);
+  expect(renderer.root.findByType("p").children).toEqual(["Loading agents…"]);
   expect(renderer.root.findByProps({ "data-ui": "app-loading" }).props["aria-busy"]).toBe("true");
   await act(async () => {
     complete(dashboard);
@@ -57,7 +60,7 @@ it("shows the full playful logo only while the first dashboard request is pendin
   });
   expect(logo()).toHaveLength(0);
   expect(renderer.root.findByType("nav").children).toEqual(["Agents"]);
-  const head = renderer.root.findByProps({ src: "/icons/scout-head.png" });
+  const head = renderer.root.findByProps({ src: "/icons/scout-head.svg" });
   expect(head.props.alt).toBe("");
   expect(head.props["aria-hidden"]).toBe("true");
 });

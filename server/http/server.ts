@@ -7,6 +7,7 @@ import {
   markAgentReadRequestSchema,
   createTabRequestSchema,
   createWorkspaceRequestSchema,
+  moveWorkspaceRequestSchema,
   keyRequestSchema,
   paneInputRequestSchema,
   renameAgentRequestSchema,
@@ -275,6 +276,14 @@ async function handleApi(
     const body = createWorkspaceRequestSchema.parse(await readJson(request));
     const workspace = await service.createWorkspace(body.label, body.cwd);
     sendJson(response, 201, { workspace });
+    return true;
+  }
+
+  if (request.method === "POST" && url.pathname === "/api/workspaces/move") {
+    requireSameOrigin(request);
+    const body = moveWorkspaceRequestSchema.parse(await readJson(request));
+    await service.moveWorkspace(body.workspaceId, body.beforeWorkspaceId);
+    sendJson(response, 200, { ok: true });
     return true;
   }
 

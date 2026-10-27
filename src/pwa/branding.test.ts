@@ -33,6 +33,18 @@ it.each(icons)(
   },
 );
 
+it.each([
+  ["scout-logo", "0 0 940 990"],
+  ["scout-head", "70 -10 800 800"],
+  ["scout-wordmark", "0 775 940 210"],
+])("ships genuine static vector artwork for %s", (name, viewBox) => {
+  const svg = readFileSync(`public/icons/${name}.svg`, "utf8");
+  expect(svg).toContain(`viewBox="${viewBox}"`);
+  expect(svg).toContain("<path");
+  expect(svg).not.toMatch(/<image|data:image|<script|<style|<animate/i);
+  expect(svg.length).toBeLessThan(100_000);
+});
+
 it("links the new favicons and Apple icon instead of the retired horizon artwork", () => {
   const html = readFileSync("index.html", "utf8");
   expect(html).toContain('href="/icons/scout-favicon-16.png"');

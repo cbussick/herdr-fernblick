@@ -54,13 +54,14 @@ it("pairs Scout with the playful wordmark while preserving one accessible Fernbl
   expect(heading.findByType("span").children).toEqual(["Fernblick"]);
   expect(heading.findByType("span").props.className).toBeTruthy();
   expect(heading.findByType("img").props).toMatchObject({
-    src: "/icons/scout-wordmark.png",
+    src: "/icons/scout-wordmark.svg",
     width: 564,
     height: 126,
     alt: "",
     "aria-hidden": "true",
   });
-  expect(renderer.root.findAllByProps({ src: "/icons/scout-head.png" })).toHaveLength(1);
+  expect(renderer.root.findAllByProps({ src: "/icons/scout-head.svg" })).toHaveLength(1);
+  expect(renderer.root.findAllByProps({ "data-animated": true })).toHaveLength(0);
   expect(renderer.root.findAllByType("h1")).toHaveLength(1);
 });
 

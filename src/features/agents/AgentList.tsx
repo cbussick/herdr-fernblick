@@ -87,7 +87,7 @@ export function AgentList({
               <span className={a11yStyles["sr-only"]}>Fernblick</span>
               <img
                 className={overviewStyles["overview-wordmark"]}
-                src="/icons/scout-wordmark.png"
+                src="/icons/scout-wordmark.svg"
                 width={564}
                 height={126}
                 alt=""
