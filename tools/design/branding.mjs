@@ -70,7 +70,7 @@ try {
         if (!eyes || !label) throw new Error("Loading animations missing");
         eyes.pause();
         label.pause();
-        const poses = [0, 3200, 4400, 5200, 6400, 7999].map((time) => {
+        const poses = [0, 400, 1200, 2000, 3200, 7999].map((time) => {
           eyes.currentTime = time;
           return new DOMMatrix(getComputedStyle(eyes.effect.target).transform).m41;
         });
@@ -85,9 +85,14 @@ try {
         };
       });
       assert.equal(motion.eyeDuration, 8000);
+      assert.equal(motion.poses[0], 0, "Initial pose looks right");
+      assert.ok(
+        motion.poses[1] < -5 && motion.poses[1] > -133,
+        "First glance must already be moving at 400ms, before a short load finishes",
+      );
       assert.deepEqual(
-        motion.poses.map((x) => Math.round(x)),
-        [0, 0, -133, -133, 0, 0],
+        motion.poses.slice(2).map((x) => Math.round(x)),
+        [-133, -133, 0, 0],
       );
       assert.ok(Math.abs(motion.dimmed - 0.6) < 0.01);
       assert.equal(motion.bright, 1);

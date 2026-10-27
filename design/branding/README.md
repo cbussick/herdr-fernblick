@@ -61,8 +61,11 @@ at the eye openings: do not clip pupils against a separately painted white eye
 edge, which double-antialiases the boundary and produces a pale fringe.
 Its optional `animated` prop moves only the pupils; the default pose looks right. Reduced motion keeps that static pose.
 `LoadingBrand.tsx` shares the animated SVG and whole-label opacity pulse between
-the real app and Storybook. The pupils rest right for most of each 8s loop, glance
-left and return over 1.2s each, without pausing at center. The label breathes
+the real app and Storybook. The pupils start looking right and immediately begin
+a slow 1.2s glance left, hold left for 0.8s, then return right over 1.2s. They rest
+right for the remaining 4.8s of each 8s loop, without pausing at center. Starting
+the first glance immediately keeps movement visible during short loads.
+The label breathes
 between 1 and 0.6 opacity over 3.2s. Reduced motion disables both. Loading ends
 immediately when the dashboard request settles; there is no minimum splash timer.
 The Storybook `Branding/Loading preview` stories show the animation and comparison.
