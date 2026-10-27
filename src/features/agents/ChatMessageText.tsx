@@ -1,6 +1,7 @@
 import { Fragment, useMemo, type ReactNode } from "react";
 import { splitMessageLinks } from "./chatMessageLinks";
 import { ChatCodeBlock } from "./ChatCodeBlock";
+import { ChatMath } from "./ChatMath";
 import { ChatMarkdownImage } from "./ChatMarkdownImage";
 import { ChatImagePreviewLink } from "./ChatImagePreviewLink";
 import type { PreviewImage } from "./ImageLightbox";
@@ -144,6 +145,16 @@ export function ChatMessageText({
       render(child, i, linked || part.kind === "link"),
     );
     switch (part.kind) {
+      case "math":
+        return (
+          <ChatMath
+            key={index}
+            value={part.value ?? ""}
+            display={part.display ?? false}
+            source={content}
+            annotated={Boolean(annotationSource)}
+          />
+        );
       case "image":
         return (
           <Fragment key={index}>
