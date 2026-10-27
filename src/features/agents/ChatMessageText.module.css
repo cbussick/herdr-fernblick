@@ -80,6 +80,19 @@
   display: none;
 }
 
+.math,
+.math-display {
+  white-space: normal;
+  overflow-wrap: normal;
+}
+
+.math-display {
+  display: block;
+  max-width: 100%;
+  overflow-x: auto;
+  margin-block: 0.75em;
+}
+
 .code {
   padding: 0.08em 0.25em;
   font-family: var(--font-mono);

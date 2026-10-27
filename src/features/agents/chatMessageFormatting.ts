@@ -1,4 +1,7 @@
 import { fromMarkdown } from "mdast-util-from-markdown";
+import { mathFromMarkdown } from "mdast-util-math";
+import { math } from "micromark-extension-math";
+import { normalizeMathDelimiters } from "./chatMathDelimiters.js";
 import { gfmTableFromMarkdown } from "mdast-util-gfm-table";
 import { gfmTaskListItemFromMarkdown } from "mdast-util-gfm-task-list-item";
 import { gfmTable } from "micromark-extension-gfm-table";
@@ -12,6 +15,7 @@ type TextPart =
   | { kind: "syntax"; start: number; end: number };
 type FormattedPart = {
   kind:
+    | "math"
     | "strong"
     | "emphasis"
     | "code"
@@ -39,6 +43,7 @@ type FormattedPart = {
   language?: string;
   value?: string;
   header?: boolean;
+  display?: boolean;
   align?: "left" | "right" | "center" | null;
   children: MessagePart[];
 };
@@ -60,9 +65,10 @@ function webDestination(value: string) {
 export function formatMessageText(text: string, cwd?: string): MessagePart[] {
   const prefixes: { start: number; end: number }[] = [];
   const fences: { start: number; end: number }[] = [];
-  const tree = fromMarkdown(text, {
-    extensions: [gfmTable(), gfmTaskListItem()],
+  const tree = fromMarkdown(normalizeMathDelimiters(text), {
+    extensions: [gfmTable(), gfmTaskListItem(), math()],
     mdastExtensions: [
+      mathFromMarkdown(),
       gfmTableFromMarkdown(),
       gfmTaskListItemFromMarkdown(),
       {
@@ -190,6 +196,27 @@ export function formatMessageText(text: string, cwd?: string): MessagePart[] {
 
   function format(node: Nodes, start: number, end: number, autolink: boolean): MessagePart[] {
     if (node.type === "text") return sourceText(start, end, autolink);
+    if (node.type === "math" || node.type === "inlineMath") {
+      // Dollar flow fences are allowed to run to EOF by Markdown, but a live
+      // response should stay literal until its closing delimiter arrives.
+      if (node.type === "math" && text.startsWith("$$", start)) {
+        const source = text.slice(start, end);
+        const opening = /^\$+/.exec(source)![0];
+        const closing = /(?:\r?\n)[\t ]*(\$+)[\t ]*$/.exec(source)?.[1];
+        if (!closing || closing.length < opening.length) return [literal(start, end)];
+      }
+      return [
+        {
+          kind: "math",
+          start,
+          end,
+          value: node.value,
+          display:
+            node.type === "math" || text.startsWith("\\[", start) || text.startsWith("$$", start),
+          children: [literal(start, end)],
+        },
+      ];
+    }
     if (node.type === "code") {
       const nodeFences = fences.filter((fence) => fence.start >= start && fence.end <= end);
       let contentStart = start;
