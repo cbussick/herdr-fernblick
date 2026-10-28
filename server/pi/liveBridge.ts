@@ -253,14 +253,19 @@ export class LiveBridge {
       validate();
       writeFrame(peer.socket, { type: "board-reply", id: request.id, ok: true, data });
     } catch (error) {
-      if ((request.action === "begin" || request.action === "grant") && peer.boardRun === run)
-        this.clearBoardAccess(peer);
-      writeFrame(peer.socket, {
-        type: "board-reply",
-        id: request.id,
-        ok: false,
-        error: error instanceof Error ? error.message.slice(0, 1024) : "Board request failed",
-      });
+      // Reply first: revocation rejects pending extension RPCs synchronously and
+      // would otherwise replace the actionable error with "request revoked".
+      try {
+        writeFrame(peer.socket, {
+          type: "board-reply",
+          id: request.id,
+          ok: false,
+          error: error instanceof Error ? error.message.slice(0, 1024) : "Board request failed",
+        });
+      } finally {
+        if ((request.action === "begin" || request.action === "grant") && peer.boardRun === run)
+          this.clearBoardAccess(peer);
+      }
     } finally {
       peer.boardRequests--;
     }

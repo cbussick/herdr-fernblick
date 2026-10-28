@@ -400,8 +400,27 @@ See the [standalone package README](../packages/pi-live-chat/README.md) for inst
 socket permissions, mapping checks and all transcript/buffer limits.
 
 Linux /proc and a saved session matching Herdr are required. Same-user filesystem
-permissions, not a secret token, protect the socket. Unique live foreground
-mapping is required; mismatches/ambiguity disable chat rather than guessing.
+permissions, not a secret token, protect the socket.
+
+Ordinary terminal prompts probe optional whiteboard support before a run. Failed
+activation keeps board tools disabled without persisting an access warning on
+unrelated conversation turns. Explicitly authorized board prompts still show
+activation failures, and attempted tool calls still report errors. The backend
+sends a failed control reply before revoking its run so pending calls retain the
+actual validation error rather than a generic revocation message.
+
+If a pane is recognized as Pi but `herdr agent get <pane>` has no `agent_session`,
+live chat and board validation cannot accept it. Herdr 0.9.0 does not recognize
+`reload` as a session-start reason for recovering an unanchored full-lifecycle
+integration, so `/reload` alone may not restore the association. A verified
+session association must be restored through Herdr; do not bypass Fernblick's
+mapping checks or guess a file from the most recently modified session. After
+repair, a fresh chat SSE `snapshot` confirms independent session/process
+validation; `connecting` with “A saved Pi session is required for live chat” means
+the association is still missing.
+
+Unique live foreground mapping is required; mismatches/ambiguity disable chat
+rather than guessing.
 There is a normal cross-process race between a validated foreground observation
 and command delivery; runtime/session/epoch checks prevent delivery into a
 replacement Pi context, but this is not atomic with Herdr.

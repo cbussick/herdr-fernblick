@@ -143,6 +143,49 @@ it.each(["interactive", "extension"])(
   },
 );
 
+it.each(["revoke-first", "reply-first"])(
+  "keeps optional board activation failures out of ordinary conversations: %s",
+  async (order) => {
+    const t = setup();
+    t.input("An ordinary terminal message", "interactive");
+    const starting = t.tools.beforeAgentStart("An ordinary terminal message", t.ctx);
+    const begin = t.frames.at(-1)!;
+    const revoke = () =>
+      t.tools.consume(
+        { type: "board-run-revoke", runId: "runId" in begin ? begin.runId : "" },
+        t.client,
+      );
+    if (order === "revoke-first") revoke();
+    t.reply(begin, undefined, false);
+    if (order === "reply-first") revoke();
+    expect(await starting).toBeUndefined();
+    expect(t.pi.getActiveTools()).not.toContain("board_read");
+    expect(t.pi.getActiveTools()).not.toContain("board_apply");
+    t.tools.agentStart(t.ctx);
+    await expect(t.run("board_read")).rejects.toThrow("No active");
+    await available(t);
+    t.tools.revoke();
+  },
+);
+
+it("preserves actionable failures for explicitly authorized board requests", async () => {
+  const t = setup();
+  t.stage();
+  t.input();
+  const starting = t.tools.beforeAgentStart("Draw a box", t.ctx);
+  const activation = t.frames.at(-1)!;
+  t.tools.consume(
+    { type: "board-reply", id: activation.id, ok: false, error: "Pi session mapping is stale" },
+    t.client,
+  );
+  expect((await starting)?.message).toMatchObject({
+    display: true,
+    customType: "fernblick-board-access",
+    content: expect.stringContaining("Pi session mapping is stale"),
+  });
+  expect(t.pi.getActiveTools()).not.toContain("board_read");
+});
+
 it.each(["steer", "followUp"] as const)(
   "preserves the active scope for queued terminal %s input without a second start hook",
   async (streamingBehavior) => {

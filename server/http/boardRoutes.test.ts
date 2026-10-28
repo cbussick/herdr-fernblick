@@ -259,6 +259,23 @@ it("slow rendering does not block opening or saving, and returns its captured re
   expect(render).toHaveBeenCalledWith(state.scene);
 });
 
+it("returns the missing-session error before revoking a failed native activation", async () => {
+  bridge.setBoardAgentResolver(async () => ({ ...agent, agent_session: undefined }));
+  const runId = randomUUID();
+  const start = frames.length;
+  expect(await control("begin", runId)).toMatchObject({
+    ok: false,
+    error: "A saved Pi session is required for live chat",
+  });
+  expect(frames.slice(start).map((frame) => frame.type)).toEqual([
+    "board-reply",
+    "board-run-revoke",
+  ]);
+  bridge.setBoardAgentResolver(async () => agent);
+  expect(await control("grant", runId)).toMatchObject({ ok: false });
+  expect(await readdir(join(directory, "boards")).catch(() => [])).toEqual([]);
+});
+
 it("denies native board access when Herdr's saved session disagrees with the extension", async () => {
   bridge.setBoardAgentResolver(async () => ({
     ...agent,

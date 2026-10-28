@@ -239,6 +239,10 @@ export class BoardTools {
     } catch (error) {
       // A replaced scope must never be torn down by this old async continuation.
       if (this.scope === scope) this.revoke("Board activation failed");
+      // Ordinary prompts probe optional board support, even for unrelated work.
+      // Fail closed without adding a persistent warning to every conversation turn.
+      // An explicitly authorized board request still needs a visible failure.
+      if (scope.runId) return;
       return this.notice(
         `Whiteboard access unavailable: ${this.errorText(error, scope)}. Tools remain disabled; request new authorization to try again.`,
       );
