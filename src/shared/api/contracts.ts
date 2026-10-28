@@ -99,7 +99,11 @@ export const savedChatSchema = z.object({
   updatedAt: z.string().datetime(),
   activePaneId: z.string().nullable(),
 });
-export const savedChatsResponseSchema = z.object({ chats: z.array(savedChatSchema) });
+export const savedChatsResponseSchema = z.object({
+  chats: z.array(savedChatSchema),
+  indexing: z.boolean().optional(),
+  indexError: z.string().optional(),
+});
 export const deleteChatResponseSchema = z.object({
   ok: z.literal(true),
   sessionId: z.string().min(1).nullable(),

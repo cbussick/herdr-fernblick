@@ -300,8 +300,15 @@ another nonempty session is unreadable or invalid and sharing cannot be checked.
 Readable zero-byte session placeholders are ignored by the sharing scan and left
 untouched; they contain no conversation or asset references.
 
-The backend reads session-file metadata for this list only; the live transcript
-still comes from Pi's live bridge. It discovers local sessions under
+The backend indexes session metadata in the background at startup and every 30 seconds;
+opening Past sessions never waits for a transcript scan. Cards appear progressively on
+the first scan. A private, disposable metadata cache under
+`~/.cache/fernblick/session-index` preserves names and previews across backend restarts.
+Unchanged files reuse indexed metadata; changed files are scanned for the first user
+prompt and latest explicit session name without parsing unrelated conversation records
+or collecting asset references. Full asset-reference scans remain separate safety checks
+for deletion. Cache-storage failures fall back to in-memory indexing. The live transcript
+still comes from Pi's live bridge. The backend discovers local sessions under
 `~/.pi/agent/sessions` (or `PI_CODING_AGENT_DIR/sessions`). Set
 `FERNBLICK_PI_SESSION_DIR` to an absolute directory to browse a different session
 store; `PI_CODING_AGENT_SESSION_DIR` is also recognized. Both flat stores and Pi's

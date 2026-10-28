@@ -48,19 +48,31 @@ export type CatalogChat = Omit<SavedChat, "activePaneId"> & {
   fileIdentity: string;
 };
 
-// Only metadata is read here. Pi remains responsible for restoring conversation context.
+export type CatalogCache = Map<string, { stamp: string; chat: CatalogChat }>;
+
+// Pi remains responsible for restoring conversation context. Asset scans are reserved for mutations.
 export class SessionCatalog {
-  private readonly cache = new Map<string, { stamp: string; chat: CatalogChat }>();
+  private readonly cache: CatalogCache = new Map();
 
   constructor(
-    private readonly root = resolve(
+    readonly root = resolve(
       process.env.FERNBLICK_PI_SESSION_DIR ??
         process.env.PI_CODING_AGENT_SESSION_DIR ??
         join(process.env.PI_CODING_AGENT_DIR ?? join(homedir(), ".pi", "agent"), "sessions"),
     ),
   ) {}
 
-  async list(strict = false): Promise<CatalogChat[]> {
+  list(strict = false): Promise<CatalogChat[]> {
+    return this.scan(strict);
+  }
+
+  // A separate cache prevents lightweight list metadata from satisfying deletion's safety scans.
+  async scanMetadata(cache: CatalogCache): Promise<void> {
+    await this.scan(false, cache);
+  }
+
+  private async scan(strict: boolean, metadataCache?: CatalogCache): Promise<CatalogChat[]> {
+    const cache = metadataCache ?? this.cache;
     const files: string[] = [];
     try {
       // Pi's default layout has one project-directory level; custom roots may be flat.
@@ -81,18 +93,21 @@ export class SessionCatalog {
         }
       }
     } catch (error) {
-      if ((error as NodeJS.ErrnoException).code === "ENOENT") return [];
+      if ((error as NodeJS.ErrnoException).code === "ENOENT") {
+        cache.clear();
+        return [];
+      }
       throw new SavedChatError(
         503,
         "Cannot read saved sessions. Check the session directory permissions.",
       );
     }
     const present = new Set(files);
-    for (const path of this.cache.keys()) if (!present.has(path)) this.cache.delete(path);
+    for (const path of cache.keys()) if (!present.has(path)) cache.delete(path);
     const chats: CatalogChat[] = [];
     // Sequential reads bound file descriptors and memory; unchanged files use cached metadata.
     for (const path of files) {
-      const chat = await this.read(path);
+      const chat = await this.read(path, metadataCache);
       if (chat) chats.push(chat);
       else if (strict && !(await this.isEmpty(path)))
         throw new SavedChatError(
@@ -223,14 +238,25 @@ export class SessionCatalog {
     }
   }
 
-  private async read(path: string): Promise<CatalogChat | null> {
-    const file = await open(path, constants.O_RDONLY | constants.O_NOFOLLOW).catch(() => null);
-    if (!file) return null;
+  private async read(path: string, metadataCache?: CatalogCache): Promise<CatalogChat | null> {
+    const cache = metadataCache ?? this.cache;
+    const metadataOnly = metadataCache !== undefined;
+    const file = await open(
+      path,
+      constants.O_RDONLY | constants.O_NOFOLLOW | constants.O_NONBLOCK,
+    ).catch(() => null);
+    if (!file) {
+      cache.delete(path);
+      return null;
+    }
     try {
       const stats = await file.stat();
-      if (!stats.isFile()) return null;
-      const stamp = `${stats.ino}:${stats.size}:${stats.mtimeMs}:${stats.ctimeMs}`;
-      const cached = this.cache.get(path);
+      if (!stats.isFile()) {
+        cache.delete(path);
+        return null;
+      }
+      const stamp = `${stats.dev}:${stats.ino}:${stats.size}:${stats.mtimeMs}:${stats.ctimeMs}`;
+      const cached = cache.get(path);
       if (cached?.stamp === stamp) return cached.chat;
       let header: z.infer<typeof headerSchema> | undefined;
       let first = true;
@@ -243,6 +269,15 @@ export class SessionCatalog {
       let line = "";
       let oversized = false;
       const consume = (value: string) => {
+        // Parse only potential names after finding the first prompt. JSON validation below
+        // distinguishes real records from quoted text, regardless of property order.
+        if (
+          metadataOnly &&
+          !first &&
+          !value.includes('"session_info"') &&
+          (preview || !value.includes('"user"'))
+        )
+          return;
         let raw: unknown;
         try {
           raw = JSON.parse(value);
@@ -255,6 +290,7 @@ export class SessionCatalog {
         }
         const entry = entrySchema.safeParse(raw).data;
         if (
+          !metadataOnly &&
           entry?.type === "custom" &&
           entry.customType === "fernblick-image-uploads" &&
           Array.isArray(entry.data)
@@ -285,23 +321,28 @@ export class SessionCatalog {
       };
       for await (const chunk of file.createReadStream({ encoding: "utf8", autoClose: false })) {
         // References in oversized image/message lines must still protect shared assets.
-        const references = referenceTail + String(chunk);
-        for (const match of references.matchAll(/\/api\/boards\/([a-f0-9]{64})\/snapshots\//g))
-          boardIds.add(match[1]);
-        for (const match of references.matchAll(
-          /\/api\/uploads\/([0-9a-f-]{36}\.(?:png|jpg|gif|webp))/g,
-        )) {
-          const parsed = uploadIdSchema.safeParse(match[1]);
-          if (parsed.success) uploadIds.add(parsed.data);
+        if (!metadataOnly) {
+          const references = referenceTail + String(chunk);
+          for (const match of references.matchAll(/\/api\/boards\/([a-f0-9]{64})\/snapshots\//g))
+            boardIds.add(match[1]);
+          for (const match of references.matchAll(
+            /\/api\/uploads\/([0-9a-f-]{36}\.(?:png|jpg|gif|webp))/g,
+          )) {
+            const parsed = uploadIdSchema.safeParse(match[1]);
+            if (parsed.success) uploadIds.add(parsed.data);
+          }
+          referenceTail = references.slice(-128);
         }
-        referenceTail = references.slice(-128);
         for (const [index, part] of String(chunk).split("\n").entries()) {
           if (index > 0) {
             if (!oversized) consume(line);
             first = false;
             line = "";
             oversized = false;
-            if (!header) return null;
+            if (!header) {
+              cache.delete(path);
+              return null;
+            }
           }
           if (!oversized) {
             line += part;
@@ -313,7 +354,16 @@ export class SessionCatalog {
         }
       }
       if (line && !oversized) consume(line);
-      if (!header) return null;
+      if (!header) {
+        cache.delete(path);
+        return null;
+      }
+      const after = await file.stat();
+      if (`${after.dev}:${after.ino}:${after.size}:${after.mtimeMs}:${after.ctimeMs}` !== stamp) {
+        // Do not persist a partial scan of a session that changed while it was being read.
+        cache.delete(path);
+        return null;
+      }
       const chat: CatalogChat = {
         id: createHash("sha256")
           .update(JSON.stringify([path, header.id]))
@@ -328,11 +378,11 @@ export class SessionCatalog {
         cwd: header.cwd,
         updatedAt: stats.mtime.toISOString(),
       };
-      this.cache.set(path, { stamp, chat });
+      cache.set(path, { stamp, chat });
       return chat;
     } catch {
       // A damaged or concurrently removed session must not hide the other saved chats.
-      this.cache.delete(path);
+      cache.delete(path);
       return null;
     } finally {
       await file.close();

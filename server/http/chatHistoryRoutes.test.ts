@@ -8,6 +8,7 @@ import { HerdrClient } from "../herdr/HerdrClient.js";
 import { HerdrService } from "../herdr/herdrService.js";
 import { LiveBridge } from "../pi/liveBridge.js";
 import { SessionCatalog } from "../pi/sessionCatalog.js";
+import { SessionIndex } from "../pi/sessionIndex.js";
 import { ChatArtifacts } from "../pi/chatArtifacts.js";
 import { BoardStore } from "../boards/storage.js";
 import { saveImageUpload } from "../../packages/pi-live-chat/images.js";
@@ -22,6 +23,8 @@ let sessionPath: string;
 let active: Agent[];
 let service: HerdrService;
 let boards: BoardStore;
+let catalog: SessionCatalog;
+let sessionIndex: SessionIndex;
 const agent: Agent = {
   agent: "pi",
   agent_status: "idle",
@@ -43,8 +46,11 @@ beforeEach(async () => {
       JSON.stringify({ type: "session_info", name: "Saved work" }) +
       "\n",
   );
-  const catalog = new SessionCatalog(directory);
+  catalog = new SessionCatalog(directory);
   id = (await catalog.list())[0].id;
+  sessionIndex = new SessionIndex(catalog, join(directory, "index"));
+  await sessionIndex.start();
+  await sessionIndex.refresh();
   active = [];
   request.mockReset();
   request.mockImplementation(async <T>(method: string, _params: unknown, schema: z.ZodType<T>) => {
@@ -81,6 +87,7 @@ beforeEach(async () => {
     { request } as unknown as HerdrClient,
     catalog,
     new ChatArtifacts(boards, join(directory, "herdr.sock")),
+    sessionIndex,
   );
   server = createHttpServer(
     service,
@@ -92,6 +99,8 @@ beforeEach(async () => {
   base = `http://127.0.0.1:${(server.address() as { port: number }).port}`;
 });
 afterEach(async () => {
+  await sessionIndex.close();
+  vi.restoreAllMocks();
   boards.close();
   vi.unstubAllEnvs();
   server.closeAllConnections();
@@ -109,6 +118,7 @@ it("lists metadata without file paths, and resumes the saved session in its orig
   const list = await fetch(`${base}/api/chats`);
   expect(list.headers.get("cache-control")).toBe("no-store");
   expect(await list.json()).toEqual({
+    indexing: false,
     chats: [
       {
         id,
@@ -143,6 +153,28 @@ it("lists metadata without file paths, and resumes the saved session in its orig
   expect(await (await fetch(`${base}/api/chats`)).json()).toMatchObject({
     chats: [{ activePaneId: agent.pane_id }],
   });
+});
+
+it("serves indexed cards while a scan is blocked without running a full transcript scan", async () => {
+  let release!: () => void;
+  const blocked = new Promise<void>((resolve) => {
+    release = resolve;
+  });
+  vi.spyOn(catalog, "scanMetadata").mockReturnValueOnce(blocked);
+  const fullScan = vi.spyOn(catalog, "list").mockRejectedValue(new Error("Unexpected full scan"));
+  const pending = sessionIndex.refresh();
+  try {
+    const response = await fetch(`${base}/api/chats`, { signal: AbortSignal.timeout(1000) });
+    expect(response.status).toBe(200);
+    expect(await response.json()).toMatchObject({
+      indexing: true,
+      chats: [{ id, title: "Saved work" }],
+    });
+    expect(fullScan).not.toHaveBeenCalled();
+  } finally {
+    release();
+    await pending;
+  }
 });
 
 it("opens an already-running chat without creating a duplicate", async () => {
@@ -208,6 +240,7 @@ const deleteChat = (chatId = id, origin: string | null = base) =>
 it("deletes only the selected session and removes it from the catalog", async () => {
   const other = join(directory, "other.jsonl");
   await writeFile(other, await readFile(sessionPath));
+  await sessionIndex.refresh();
   expect((await deleteChat()).status).toBe(200);
   await expect(access(sessionPath)).rejects.toMatchObject({ code: "ENOENT" });
   await expect(access(other)).resolves.toBeUndefined();

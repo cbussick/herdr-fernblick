@@ -5,6 +5,7 @@ import { fileURLToPath } from "node:url";
 import { z } from "zod";
 import { SessionCatalog, SavedChatError } from "../pi/sessionCatalog.js";
 import type { ChatArtifacts } from "../pi/chatArtifacts.js";
+import type { SessionIndex } from "../pi/sessionIndex.js";
 import {
   agentSchema,
   savedChatSchema,
@@ -112,11 +113,17 @@ export class HerdrService {
     private readonly client: HerdrClient,
     private readonly sessions = new SessionCatalog(),
     private readonly artifacts?: ChatArtifacts,
+    private readonly sessionIndex?: SessionIndex,
   ) {}
 
   async getSavedChats() {
-    const [chats, dashboard] = await Promise.all([this.sessions.list(), this.getDashboard()]);
+    const snapshot = this.sessionIndex?.snapshot();
+    const [chats, dashboard] = await Promise.all([
+      snapshot ? Promise.resolve(snapshot.chats) : this.sessions.list(),
+      this.getDashboard(),
+    ]);
     return {
+      ...(snapshot ? { indexing: snapshot.indexing, indexError: snapshot.indexError } : {}),
       chats: chats.map((chat) =>
         savedChatSchema.parse({
           ...chat,
@@ -162,7 +169,10 @@ export class HerdrService {
     } catch (error) {
       if (error instanceof SavedChatError && error.status === 404) {
         const receipt = await this.sessions.deletionReceipt(id);
-        if (receipt) return receipt;
+        if (receipt) {
+          this.sessionIndex?.forget(id);
+          return receipt;
+        }
       }
       throw error;
     }
@@ -181,6 +191,7 @@ export class HerdrService {
         ? this.artifacts.delete(current, await this.sessions.list(true))
         : { sessionId: current.sessionId, boardIds: [] },
     );
+    this.sessionIndex?.forget(id);
     return result!;
   }
 

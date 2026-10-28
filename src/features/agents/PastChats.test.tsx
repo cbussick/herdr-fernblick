@@ -161,6 +161,40 @@ it.each([
   },
 );
 
+it("shows cards while the backend indexes and avoids a false empty state", async () => {
+  vi.mocked(getSavedChats).mockResolvedValue({ chats: [], indexing: true });
+  await act(async () => {
+    renderer = create(view());
+  });
+  await settle();
+  expect(JSON.stringify(renderer.toJSON())).toContain("Loading past sessions…");
+  expect(JSON.stringify(renderer.toJSON())).not.toContain("No past sessions yet.");
+  await act(async () => client.setQueryData(["saved-chats"], { chats, indexing: true }));
+  await settle();
+  expect(rows()).toHaveLength(1);
+  expect(JSON.stringify(renderer.toJSON())).toContain("Refreshing past sessions…");
+  expect(JSON.stringify(renderer.toJSON())).not.toContain("Loading past sessions…");
+  await act(async () => client.setQueryData(["saved-chats"], { chats, indexing: false }));
+  await settle();
+  expect(renderer.root.findAllByProps({ role: "status" })).toHaveLength(0);
+});
+
+it("shows indexing failures without a misleading empty state", async () => {
+  vi.mocked(getSavedChats).mockResolvedValue({
+    chats: [],
+    indexing: false,
+    indexError: "Could not refresh saved sessions.",
+  });
+  await act(async () => {
+    renderer = create(view());
+  });
+  await settle();
+  expect(renderer.root.findByProps({ role: "alert" }).children).toEqual([
+    "Could not refresh saved sessions.",
+  ]);
+  expect(JSON.stringify(renderer.toJSON())).not.toContain("No past sessions yet.");
+});
+
 it("keeps cached cards visible without a loading placeholder during background refresh", async () => {
   client.setQueryData(["saved-chats"], { chats });
   let complete!: (value: { chats: SavedChat[] }) => void;

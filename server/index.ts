@@ -7,6 +7,7 @@ import { LiveBridge } from "./pi/liveBridge.js";
 import { BoardStore } from "./boards/storage.js";
 import { BoardRenderer } from "./boards/renderer.js";
 import { SessionCatalog } from "./pi/sessionCatalog.js";
+import { SessionIndex } from "./pi/sessionIndex.js";
 import { ChatArtifacts } from "./pi/chatArtifacts.js";
 import { socketPath } from "../packages/pi-live-chat/security.js";
 
@@ -19,10 +20,14 @@ await bridge.start();
 const boards = new BoardStore(
   process.env.FERNBLICK_BOARD_DIR ?? join(homedir(), ".local/share/fernblick/boards"),
 );
+const sessions = new SessionCatalog();
+const sessionIndex = new SessionIndex(sessions);
+await sessionIndex.start();
 const service = new HerdrService(
   new HerdrClient(herdrSocket),
-  new SessionCatalog(),
+  sessions,
   new ChatArtifacts(boards, herdrSocket),
+  sessionIndex,
 );
 const server = createHttpServer(service, join(projectRoot, "dist"), bridge, boards, {
   directory:
@@ -32,6 +37,7 @@ const server = createHttpServer(service, join(projectRoot, "dist"), bridge, boar
 });
 let renderer: BoardRenderer | undefined;
 server.on("close", () => {
+  void sessionIndex.close();
   boards.close();
   void bridge.close();
   void renderer?.close();
@@ -41,7 +47,9 @@ for (const signal of ["SIGTERM", "SIGINT"] as const)
     boards.close();
     server.close();
     server.closeAllConnections();
-    void Promise.allSettled([bridge.close(), renderer?.close()]).finally(() => process.exit(0));
+    void Promise.allSettled([bridge.close(), renderer?.close(), sessionIndex.close()]).finally(() =>
+      process.exit(0),
+    );
   });
 server.listen(port, host, () => {
   const address = server.address();

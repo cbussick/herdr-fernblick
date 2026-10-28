@@ -28,7 +28,7 @@ export function PastChats({
   const chats = useQuery({
     queryKey: ["saved-chats"],
     queryFn: getSavedChats,
-    refetchInterval: 30_000,
+    refetchInterval: (query) => (query.state.data?.indexing ? 1_000 : 30_000),
   });
   const resume = useMutation({
     mutationFn: resumeChat,
@@ -92,12 +92,16 @@ export function PastChats({
         data-testid="past-chats"
       >
         {cleanupWarning && <p role="status">{cleanupWarning}</p>}
-        {chats.isPending && (
+        {(chats.isPending || (chats.data?.indexing && !chats.data.chats.length)) && (
           <div className={overviewStyles["overview-empty"]} role="status" aria-busy="true">
             <StateIcon kind="loading" spinning />
             <p>Loading past sessions…</p>
           </div>
         )}
+        {chats.data?.indexing && !!chats.data.chats.length && (
+          <p role="status">Refreshing past sessions…</p>
+        )}
+        {chats.data?.indexError && <p role="alert">{chats.data.indexError}</p>}
         {chats.isError && (
           <div className={styles.error}>
             <p role="alert">{chats.error.message}</p>
@@ -106,7 +110,7 @@ export function PastChats({
             </button>
           </div>
         )}
-        {chats.isSuccess && !filtered.length && (
+        {chats.isSuccess && !chats.data.indexing && !chats.data.indexError && !filtered.length && (
           <p>
             {search
               ? "No sessions match your search."
