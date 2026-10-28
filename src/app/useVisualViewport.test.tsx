@@ -11,7 +11,12 @@ let viewport: EventTarget & {
   offsetLeft: number;
   scale: number;
 };
-let events: EventTarget & { visualViewport?: typeof viewport };
+let events: EventTarget & {
+  visualViewport?: typeof viewport;
+  innerWidth: number;
+  innerHeight: number;
+};
+let documentEvents: EventTarget & { visibilityState: string };
 let properties: Map<string, string>;
 const style = { setProperty: vi.fn(), removeProperty: vi.fn() };
 function Fixture() {
@@ -37,7 +42,13 @@ beforeEach(() => {
     offsetLeft: 0,
     scale: 1,
   });
-  events = Object.assign(new EventTarget(), { visualViewport: viewport });
+  events = Object.assign(new EventTarget(), {
+    visualViewport: viewport,
+    innerWidth: 810,
+    innerHeight: 1080,
+  });
+  documentEvents = Object.assign(new EventTarget(), { visibilityState: "visible" });
+  vi.stubGlobal("document", documentEvents);
   vi.stubGlobal("window", events);
 });
 afterEach(async () => {
@@ -94,6 +105,52 @@ it("does not reflow the app to a pinch-zoomed viewport and resumes at normal sca
   expect(bounds()).toEqual(["100px", "0px", "810px", "736px"]);
 });
 
+it("discards stale landscape-shaped bounds when the layout changes while zoomed", async () => {
+  Object.assign(events, { innerWidth: 1080, innerHeight: 778 });
+  Object.assign(viewport, { width: 1080, height: 778 });
+  await mount();
+  expect(bounds()).toEqual(["0px", "0px", "1080px", "778px"]);
+
+  // Replay the reported standalone Safari geometry; no device rotation required.
+  Object.assign(events, { innerWidth: 810, innerHeight: 1048 });
+  Object.assign(viewport, { width: 810, height: 1048, scale: 1.347043752670288 });
+  viewport.dispatchEvent(new Event("resize"));
+  expect(bounds()).toEqual(["0px", "0px", "810px", "1048px"]);
+  expect(viewport.scale).toBe(1.347043752670288);
+});
+
+it.each(["pageshow", "visibilitychange"])(
+  "remeasures on %s even if Safari omits viewport resize events",
+  async (event) => {
+    await mount();
+    viewport.height = 1048;
+    const target = event === "pageshow" ? events : documentEvents;
+    target.dispatchEvent(new Event(event));
+    expect(bounds()).toEqual(["0px", "0px", "810px", "1048px"]);
+  },
+);
+
+it("ignores hidden geometry and remeasures when the app becomes visible", async () => {
+  await mount();
+  documentEvents.visibilityState = "hidden";
+  Object.assign(viewport, { width: 1080, height: 778 });
+  viewport.dispatchEvent(new Event("resize"));
+  expect(bounds()).toEqual(["0px", "0px", "810px", "1080px"]);
+  Object.assign(viewport, { width: 810, height: 1048 });
+  documentEvents.visibilityState = "visible";
+  documentEvents.dispatchEvent(new Event("visibilitychange"));
+  expect(bounds()).toEqual(["0px", "0px", "810px", "1048px"]);
+});
+
+it("does not replace keyboard geometry just because the user pinch zooms", async () => {
+  await mount();
+  Object.assign(viewport, { height: 736, offsetTop: 280 });
+  viewport.dispatchEvent(new Event("resize"));
+  Object.assign(viewport, { height: 368, width: 405, scale: 2 });
+  viewport.dispatchEvent(new Event("resize"));
+  expect(bounds()).toEqual(["280px", "0px", "810px", "736px"]);
+});
+
 it("ignores transient empty viewport geometry", async () => {
   await mount();
   viewport.height = 0;
@@ -116,5 +173,7 @@ it("removes geometry and all event listeners on unmount", async () => {
   viewport.dispatchEvent(new Event("resize"));
   viewport.dispatchEvent(new Event("scroll"));
   events.dispatchEvent(new Event("resize"));
+  events.dispatchEvent(new Event("pageshow"));
+  documentEvents.dispatchEvent(new Event("visibilitychange"));
   expect(style.setProperty).not.toHaveBeenCalled();
 });

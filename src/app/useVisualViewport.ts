@@ -16,11 +16,25 @@ export function useVisualViewport() {
       "--app-viewport-width",
       "--app-viewport-height",
     ];
+    let layoutWidth = window.innerWidth;
+    let layoutHeight = window.innerHeight;
     const fit = () => {
-      // Pinch zoom must magnify the existing layout, not cause it to reflow.
-      if (Math.abs(viewport.scale - 1) > 0.01 || viewport.width <= 0 || viewport.height <= 0)
+      if (document.visibilityState === "hidden" || viewport.width <= 0 || viewport.height <= 0)
         return;
-      const values = [viewport.offsetTop, viewport.offsetLeft, viewport.width, viewport.height];
+      const zoomed = Math.abs(viewport.scale - 1) > 0.01;
+      const layoutChanged =
+        window.innerWidth !== layoutWidth || window.innerHeight !== layoutHeight;
+      // Preserve the keyboard/pan rectangle during intentional pinch zoom. But
+      // Safari can restore a different layout size while still reporting zoom:
+      // retaining the old pixel dimensions then leaves the app clipped/stunted.
+      // Use unzoomed layout bounds in that case, never the smaller zoom rectangle.
+      if (zoomed && !layoutChanged) return;
+      if (zoomed && (window.innerWidth <= 0 || window.innerHeight <= 0)) return;
+      const values = zoomed
+        ? [0, 0, window.innerWidth, window.innerHeight]
+        : [viewport.offsetTop, viewport.offsetLeft, viewport.width, viewport.height];
+      layoutWidth = window.innerWidth;
+      layoutHeight = window.innerHeight;
       properties.forEach((property, index) =>
         element.style.setProperty(property, `${values[index]}px`),
       );
@@ -29,10 +43,14 @@ export function useVisualViewport() {
     viewport.addEventListener("resize", fit);
     viewport.addEventListener("scroll", fit);
     window.addEventListener("resize", fit);
+    window.addEventListener("pageshow", fit);
+    document.addEventListener("visibilitychange", fit);
     return () => {
       viewport.removeEventListener("resize", fit);
       viewport.removeEventListener("scroll", fit);
       window.removeEventListener("resize", fit);
+      window.removeEventListener("pageshow", fit);
+      document.removeEventListener("visibilitychange", fit);
       properties.forEach((property) => element.style.removeProperty(property));
     };
   }, []);

@@ -177,12 +177,35 @@ try {
         await page.setViewportSize({ width: 810, height: 1080 });
         await setVisual({ height: 1080, offsetTop: 0 });
         await aligned();
+        // Replay the dimensions/scale captured after switching back to the iPad PWA.
+        // This checks layout recovery, not Safari's physical app-switch zoom trigger.
+        await page.setViewportSize({ width: 1080, height: 778 });
+        await setVisual({ width: 1080, height: 778 });
+        await page.evaluate(() => {
+          Object.assign(window.fixtureViewport, {
+            width: 810,
+            height: 1048,
+            scale: 1.347043752670288,
+          });
+        });
+        await page.setViewportSize({ width: 810, height: 1048 });
+        await frame();
+        await aligned();
+        await setVisual({ scale: 1 });
+        await aligned();
+        // A visibility event alone must also refresh the saved pixel geometry.
+        await page.evaluate(() => {
+          window.fixtureViewport.height = 1000;
+          document.dispatchEvent(new Event("visibilitychange"));
+        });
+        await frame();
+        await aligned();
         assert.deepEqual(errors, []);
         await page.screenshot({
           path: `design-gallery/visual-viewport/${name}-${mode}-restored.png`,
         });
         console.log(
-          `${name}/${mode}: header and composer stay in visible bounds; pan, blur, keyboard dismissal and draft checks passed`,
+          `${name}/${mode}: keyboard/pan, zoomed layout recovery, resume remeasurement and draft checks passed`,
         );
         await page.close();
       }
