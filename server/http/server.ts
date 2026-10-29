@@ -1,3 +1,4 @@
+import { randomUUID } from "node:crypto";
 import { createReadStream, existsSync, statSync } from "node:fs";
 import { type IncomingMessage, type ServerResponse, createServer } from "node:http";
 import { extname, resolve, sep } from "node:path";
@@ -43,6 +44,12 @@ import {
   MAX_IMAGE_BYTES,
 } from "../../packages/pi-live-chat/protocol.js";
 import { treePageRequestSchema } from "../../packages/pi-live-chat/treeProtocol.js";
+import {
+  createReadReceiptDiagnostics,
+  READ_RECEIPT_REQUEST_ID_HEADER,
+  safeReadReceiptRequestId,
+} from "../../src/shared/api/readReceiptDiagnostics.js";
+
 const chatCommandSchema = sendInputSchema.safeExtend({
   target: chatTargetSchema,
   requestId: z.string().uuid().optional(),
@@ -181,6 +188,7 @@ async function handleApi(
   service: HerdrService,
   bridge: LiveBridge,
   readStatuses?: AgentReadStatuses,
+  logReadReceipt = createReadReceiptDiagnostics(),
 ) {
   const url = new URL(request.url ?? "/", `http://${request.headers.host ?? "localhost"}`);
 
@@ -336,12 +344,46 @@ async function handleApi(
   if (!route) return false;
 
   if (request.method === "POST" && route.action === "read") {
-    requireSameOrigin(request);
-    const body = markAgentReadRequestSchema.parse(await readJson(request));
-    if (!readStatuses) throw new HttpError(503, "Read receipt storage is not configured");
-    await readStatuses.markRead(route.target, body.completionId);
-    sendJson(response, 200, { ok: true });
-    return true;
+    const requestId =
+      safeReadReceiptRequestId(request.headers[READ_RECEIPT_REQUEST_ID_HEADER.toLowerCase()]) ??
+      randomUUID();
+    const started = performance.now();
+    response.setHeader(READ_RECEIPT_REQUEST_ID_HEADER, requestId);
+    let category: Parameters<typeof logReadReceipt>[0]["category"] = "success";
+    const logResult = (aborted: boolean) => {
+      logReadReceipt({
+        boundary: "request",
+        operation: "save",
+        requestId,
+        category: aborted ? "aborted" : category,
+        status: aborted ? undefined : response.statusCode,
+        durationMs: performance.now() - started,
+      });
+    };
+    response.once("finish", () => logResult(false));
+    response.once("close", () => {
+      if (!response.writableFinished) logResult(true);
+    });
+    try {
+      requireSameOrigin(request);
+      const body = markAgentReadRequestSchema.parse(await readJson(request));
+      if (!readStatuses) throw new HttpError(503, "Read receipt storage is not configured");
+      await readStatuses.markRead(route.target, body.completionId, requestId);
+      sendJson(response, 200, { ok: true });
+      return true;
+    } catch (error) {
+      category =
+        error instanceof ReadStatusError && (error.status === 404 || error.status === 409)
+          ? "stale"
+          : error instanceof z.ZodError
+            ? "request_validation"
+            : error instanceof HerdrRequestError || error instanceof ReadStatusError
+              ? "dependency"
+              : error instanceof HttpError
+                ? "http"
+                : "unexpected";
+      throw error;
+    }
   }
 
   if (request.method === "PATCH" && !route.action) {
@@ -499,6 +541,7 @@ export function createHttpServer(
   boards?: BoardStore,
   readReceiptOptions?: ReadReceiptOptions,
 ) {
+  const logReadReceipt = createReadReceiptDiagnostics(readReceiptOptions?.diagnostics);
   const readStatuses = readReceiptOptions
     ? new AgentReadStatuses(service, readReceiptOptions)
     : undefined;
@@ -510,7 +553,7 @@ export function createHttpServer(
     try {
       const handled = request.url?.startsWith("/api/")
         ? (await handleBoard?.(request, response)) ||
-          (await handleApi(request, response, service, bridge, readStatuses))
+          (await handleApi(request, response, service, bridge, readStatuses, logReadReceipt))
         : serveStatic(request, response, publicDir);
 
       if (!handled) sendJson(response, 404, { error: "Not found" });

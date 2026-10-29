@@ -1,3 +1,4 @@
+import { readFile } from "node:fs/promises";
 import { homedir } from "node:os";
 import { join, resolve } from "node:path";
 import { HerdrClient } from "./herdr/HerdrClient.js";
@@ -10,8 +11,27 @@ import { SessionCatalog } from "./pi/sessionCatalog.js";
 import { SessionIndex } from "./pi/sessionIndex.js";
 import { ChatArtifacts } from "./pi/chatArtifacts.js";
 import { socketPath } from "../packages/pi-live-chat/security.js";
+import { ReadReceiptFileLog } from "./agents/readReceiptFileLog.js";
 
 const projectRoot = resolve(process.cwd());
+const receiptLog = new ReadReceiptFileLog({
+  directory: process.env.FERNBLICK_LOG_DIR ?? join(homedir(), ".local/state/fernblick/logs"),
+});
+let logBuild = "unknown";
+try {
+  const metadata: unknown = JSON.parse(
+    await readFile(join(projectRoot, "dist/version.json"), "utf8"),
+  );
+  if (
+    metadata &&
+    typeof metadata === "object" &&
+    "revision" in metadata &&
+    typeof metadata.revision === "string"
+  )
+    logBuild = metadata.revision;
+} catch {
+  /* Development or missing build metadata. */
+}
 const herdrSocket = process.env.HERDR_SOCKET_PATH ?? join(homedir(), ".config/herdr/herdr.sock");
 const host = process.env.HOST ?? "127.0.0.1";
 const port = Number.parseInt(process.env.PORT ?? "8787", 10);
@@ -34,6 +54,7 @@ const server = createHttpServer(service, join(projectRoot, "dist"), bridge, boar
     process.env.FERNBLICK_READ_RECEIPT_DIR ??
     join(homedir(), ".local/share/fernblick/read-receipts"),
   herdrSocket,
+  diagnostics: { build: logBuild, sink: receiptLog.write },
 });
 let renderer: BoardRenderer | undefined;
 server.on("close", () => {
@@ -41,15 +62,19 @@ server.on("close", () => {
   boards.close();
   void bridge.close();
   void renderer?.close();
+  void receiptLog.close();
 });
 for (const signal of ["SIGTERM", "SIGINT"] as const)
   process.once(signal, () => {
     boards.close();
     server.close();
     server.closeAllConnections();
-    void Promise.allSettled([bridge.close(), renderer?.close(), sessionIndex.close()]).finally(() =>
-      process.exit(0),
-    );
+    void Promise.allSettled([
+      bridge.close(),
+      renderer?.close(),
+      sessionIndex.close(),
+      receiptLog.close(),
+    ]).finally(() => process.exit(0));
   });
 server.listen(port, host, () => {
   const address = server.address();

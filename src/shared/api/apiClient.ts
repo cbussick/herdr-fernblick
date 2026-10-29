@@ -40,6 +40,11 @@ import {
   type Target,
 } from "../../../packages/pi-live-chat/protocol";
 
+import { READ_RECEIPT_REQUEST_ID_HEADER } from "./readReceiptDiagnostics";
+import { createBrowserReadReceiptDiagnostics } from "./browserReadReceiptLog";
+
+const logReadReceipt = createBrowserReadReceiptDiagnostics();
+
 export class ApiError extends Error {
   readonly status: number;
   readonly code?: string;
@@ -72,15 +77,64 @@ export async function getAgents() {
 }
 
 export async function markAgentRead(input: { paneId: string; completionId: string }) {
-  const body = await request(`/api/agents/${encodeURIComponent(input.paneId)}/read`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(markAgentReadRequestSchema.parse(input)),
-    // Small idempotent receipts can finish even when the user closes the page.
-    keepalive: true,
-    signal: AbortSignal.timeout(10_000),
-  });
-  markAgentReadResponseSchema.parse(body);
+  // getRandomValues also works on non-secure loopback/tailnet HTTP pages.
+  const bytes = crypto.getRandomValues(new Uint8Array(16));
+  bytes[6] = (bytes[6] & 0x0f) | 0x40;
+  bytes[8] = (bytes[8] & 0x3f) | 0x80;
+  const hex = Array.from(bytes, (byte) => byte.toString(16).padStart(2, "0")).join("");
+  const requestId = `${hex.slice(0, 8)}-${hex.slice(8, 12)}-${hex.slice(12, 16)}-${hex.slice(16, 20)}-${hex.slice(20)}`;
+  const started = performance.now();
+  let category: Parameters<typeof logReadReceipt>[0]["category"] = "request_validation";
+  let status: number | undefined;
+  let signal: AbortSignal | undefined;
+  try {
+    const payload = JSON.stringify(markAgentReadRequestSchema.parse(input));
+    signal = AbortSignal.timeout(10_000);
+    category = "network";
+    const response = await fetch(`/api/agents/${encodeURIComponent(input.paneId)}/read`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        [READ_RECEIPT_REQUEST_ID_HEADER]: requestId,
+      },
+      body: payload,
+      // Small idempotent receipts can finish even when the user closes the page.
+      keepalive: true,
+      signal,
+    });
+    status = response.status;
+    category = response.ok
+      ? "response_validation"
+      : status === 404 || status === 409
+        ? "stale"
+        : "http";
+    const body: unknown = await response.json();
+    if (!response.ok) {
+      const message =
+        typeof body === "object" &&
+        body !== null &&
+        "error" in body &&
+        typeof body.error === "string"
+          ? body.error
+          : "Request failed";
+      throw new ApiError(status, message);
+    }
+    markAgentReadResponseSchema.parse(body);
+    category = "success";
+  } catch (error) {
+    if (signal?.aborted) category = signal.reason?.name === "TimeoutError" ? "timeout" : "aborted";
+    else if (error instanceof TypeError && category !== "request_validation") category = "network";
+    throw error;
+  } finally {
+    logReadReceipt({
+      boundary: "client",
+      operation: "save",
+      requestId,
+      category,
+      status,
+      durationMs: performance.now() - started,
+    });
+  }
 }
 
 export async function getSavedChats() {
