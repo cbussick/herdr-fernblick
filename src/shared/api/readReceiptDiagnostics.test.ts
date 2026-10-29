@@ -25,6 +25,10 @@ it("selects safe fields, rejects arbitrary correlation data, and never logs erro
   const record = JSON.parse(warn.mock.calls[0][0]);
   expect(record).toEqual({
     event: "read_receipt",
+    schemaVersion: 1,
+    build: "unknown",
+    severity: "warn",
+    dropped: 0,
     timestamp: expect.any(String),
     boundary: "client",
     operation: "save",
@@ -36,7 +40,7 @@ it("selects safe fields, rejects arbitrary correlation data, and never logs erro
   expect(safeReadReceiptRequestId([requestId])).toBeUndefined();
 });
 
-it("bounds all categories together and reports suppressed events in the next window", () => {
+it("bounds failures and reports suppressed events in the next window", () => {
   vi.useFakeTimers();
   const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
   const log = createReadReceiptDiagnostics();
@@ -45,6 +49,25 @@ it("bounds all categories together and reports suppressed events in the next win
   vi.advanceTimersByTime(60_000);
   log(event);
   expect(JSON.parse(warn.mock.lastCall![0]).suppressed).toBe(70);
+});
+
+it("reserves failures even after routine messages exhaust their allowance", () => {
+  const sink = vi.fn();
+  const log = createReadReceiptDiagnostics({ sink });
+  for (let i = 0; i < 100; i++) log({ ...event, category: "success" });
+  log(event);
+  expect(sink).toHaveBeenCalledTimes(31);
+  expect(sink.mock.lastCall![0]).toMatchObject({ category: "network", suppressed: 70 });
+});
+
+it("reports a failed sink later without logging raw errors", () => {
+  const sink = vi.fn().mockImplementationOnce(() => {
+    throw new Error("secret");
+  });
+  const log = createReadReceiptDiagnostics({ sink, build: "private/path" });
+  log(event);
+  log(event);
+  expect(sink.mock.lastCall![0]).toMatchObject({ dropped: 1, build: "unknown" });
 });
 
 it("uses info for expected stale completions and cannot break receipt behavior", () => {

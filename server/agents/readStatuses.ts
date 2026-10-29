@@ -4,13 +4,16 @@ import { lstat, mkdir, open, readdir, realpath, stat, unlink } from "node:fs/pro
 import { join, resolve } from "node:path";
 import type { Agent } from "../../src/shared/api/contracts.js";
 import type { HerdrService } from "../herdr/herdrService.js";
-import { createReadReceiptDiagnostics } from "../../src/shared/api/readReceiptDiagnostics.js";
-
-const logReadReceipt = createReadReceiptDiagnostics();
+import {
+  createReadReceiptDiagnostics,
+  safeReadReceiptErrorCode,
+  type ReadReceiptDiagnosticOptions,
+} from "../../src/shared/api/readReceiptDiagnostics.js";
 
 export interface ReadReceiptOptions {
   directory: string;
   herdrSocket: string;
+  diagnostics?: ReadReceiptDiagnosticOptions;
 }
 
 export class ReadStatusError extends Error {
@@ -30,12 +33,14 @@ function missing(error: unknown) {
 export class AgentReadStatuses {
   private readonly directory: string;
   private readonly namespace: string;
+  private readonly logReadReceipt: ReturnType<typeof createReadReceiptDiagnostics>;
 
   constructor(
     private readonly service: HerdrService,
     private readonly options: ReadReceiptOptions,
   ) {
     this.directory = resolve(options.directory);
+    this.logReadReceipt = createReadReceiptDiagnostics(options.diagnostics);
     // Stable across Herdr restarts at this configured endpoint. A separate
     // socket's receipts must never be garbage-collected from our snapshot.
     this.namespace = createHash("sha256").update(resolve(options.herdrSocket)).digest("hex");
@@ -50,7 +55,7 @@ export class AgentReadStatuses {
     try {
       const result = await action();
       if (operation === "save")
-        logReadReceipt({
+        this.logReadReceipt({
           boundary: "persistence",
           operation,
           requestId,
@@ -59,11 +64,12 @@ export class AgentReadStatuses {
         });
       return result;
     } catch (error) {
-      logReadReceipt({
+      this.logReadReceipt({
         boundary: "persistence",
         operation,
         requestId,
         category: "storage",
+        errorCode: safeReadReceiptErrorCode(error),
         durationMs: performance.now() - started,
       });
       throw error;

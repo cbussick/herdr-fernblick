@@ -9,6 +9,8 @@ import { HerdrService } from "../herdr/herdrService.js";
 import { LiveBridge } from "../pi/liveBridge.js";
 import { createHttpServer } from "./server.js";
 import type { Agent } from "../../src/shared/api/contracts.js";
+import { ReadReceiptFileLog } from "../agents/readReceiptFileLog.js";
+import { readFile } from "node:fs/promises";
 
 let directory: string;
 let socketPath: string;
@@ -66,13 +68,17 @@ function createHerdrSocket() {
   });
 }
 
-async function createBackend(path = socketPath) {
+async function createBackend(path = socketPath, log?: ReadReceiptFileLog) {
   const instance = createHttpServer(
     new HerdrService(new HerdrClient(path)),
     "/unused",
     new LiveBridge("/unused/pi.sock", path),
     undefined,
-    { directory: join(directory, "receipts"), herdrSocket: path },
+    {
+      directory: join(directory, "receipts"),
+      herdrSocket: path,
+      diagnostics: log ? { sink: log.write, build: "a".repeat(40) } : undefined,
+    },
   );
   await new Promise<void>((done) => instance.listen(0, "127.0.0.1", done));
   return {
@@ -471,4 +477,45 @@ it("separates stale requests, validation and dependency failures and replaces un
   );
   expect(logs.warn.mock.calls.map(([line]) => JSON.parse(line).category)).not.toContain("stale");
   expect(JSON.stringify(logs.records())).not.toContain("/secret/");
+});
+
+it("retrieves a correlated save failure from disk after restarting the backend", async () => {
+  await stopBackend();
+  const logDirectory = join(directory, "logs");
+  const log = new ReadReceiptFileLog({ directory: logDirectory });
+  ({ server, base } = await createBackend(socketPath, log));
+  try {
+    const first = (await dashboard()).agents[0];
+    await chmod(join(directory, "receipts"), 0o755);
+    const response = await markRead(first.pane_id, first.completion!.id);
+    expect(response.status).toBe(500);
+    const requestId = response.headers.get("X-Fernblick-Read-Request-Id");
+    await log.close();
+    await stopBackend();
+    await startBackend();
+    const lines = (
+      await Promise.all(
+        (await readdir(logDirectory)).map((name) => readFile(join(logDirectory, name), "utf8")),
+      )
+    ).join("");
+    const records = lines
+      .trim()
+      .split("\n")
+      .map((line) => JSON.parse(line));
+    expect(records).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ requestId, boundary: "request", status: 500 }),
+        expect.objectContaining({
+          requestId,
+          boundary: "persistence",
+          category: "storage",
+          build: "a".repeat(40),
+        }),
+      ]),
+    );
+    expect(lines).not.toContain(directory);
+    expect(lines).not.toContain(first.completion!.id);
+  } finally {
+    await log.close();
+  }
 });

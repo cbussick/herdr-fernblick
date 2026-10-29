@@ -59,7 +59,6 @@ const treeRequestSchema = z.object({
   entryId: z.string().min(1).max(256).optional(),
 });
 
-const logReadReceipt = createReadReceiptDiagnostics();
 const MAX_BODY_BYTES = 40_000;
 const targetSchema = z
   .string()
@@ -189,6 +188,7 @@ async function handleApi(
   service: HerdrService,
   bridge: LiveBridge,
   readStatuses?: AgentReadStatuses,
+  logReadReceipt = createReadReceiptDiagnostics(),
 ) {
   const url = new URL(request.url ?? "/", `http://${request.headers.host ?? "localhost"}`);
 
@@ -541,6 +541,7 @@ export function createHttpServer(
   boards?: BoardStore,
   readReceiptOptions?: ReadReceiptOptions,
 ) {
+  const logReadReceipt = createReadReceiptDiagnostics(readReceiptOptions?.diagnostics);
   const readStatuses = readReceiptOptions
     ? new AgentReadStatuses(service, readReceiptOptions)
     : undefined;
@@ -552,7 +553,7 @@ export function createHttpServer(
     try {
       const handled = request.url?.startsWith("/api/")
         ? (await handleBoard?.(request, response)) ||
-          (await handleApi(request, response, service, bridge, readStatuses))
+          (await handleApi(request, response, service, bridge, readStatuses, logReadReceipt))
         : serveStatic(request, response, publicDir);
 
       if (!handled) sendJson(response, 404, { error: "Not found" });

@@ -6,6 +6,7 @@ import { Snackbar } from "../shared/ui/Snackbar";
 import { ChevronIcon, CloseIcon } from "../shared/ui/Icons";
 import styles from "./SettingsDialog.module.css";
 import { getHeaderDiagnostics } from "./useHeaderDiagnostics";
+import { ReadReceiptLogs } from "./ReadReceiptLogs";
 
 function BuildDetails({ build }: { build: BuildInfo | null }) {
   if (!build) return <span>Not checked</span>;
@@ -203,6 +204,7 @@ export function SettingsDialog({ onClose }: { onClose: () => void }) {
           </pre>
           <span ref={probeRef} className={styles.probe} aria-hidden="true" />
         </section>
+        <ReadReceiptLogs />
       </div>
       {notice && (
         <Snackbar

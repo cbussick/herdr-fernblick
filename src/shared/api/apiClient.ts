@@ -40,12 +40,10 @@ import {
   type Target,
 } from "../../../packages/pi-live-chat/protocol";
 
-import {
-  createReadReceiptDiagnostics,
-  READ_RECEIPT_REQUEST_ID_HEADER,
-} from "./readReceiptDiagnostics";
+import { READ_RECEIPT_REQUEST_ID_HEADER } from "./readReceiptDiagnostics";
+import { createBrowserReadReceiptDiagnostics } from "./browserReadReceiptLog";
 
-const logReadReceipt = createReadReceiptDiagnostics();
+const logReadReceipt = createBrowserReadReceiptDiagnostics();
 
 export class ApiError extends Error {
   readonly status: number;
