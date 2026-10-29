@@ -29,43 +29,46 @@ function fixture(input?: (params: { text?: string; keys?: string[] }) => void) {
   });
   return { request, service: new HerdrService({ request } as unknown as HerdrClient) };
 }
-it("never types /quit or submits an existing Pi editor draft during restart", async () => {
-  const { Editor } = (await import(
-    process.env.PI_EDITOR_TEST_MODULE ?? "@earendil-works/pi-tui"
-  )) as typeof import("@earendil-works/pi-tui");
-  const identity = (text: string) => text;
-  const theme: EditorTheme = {
-    borderColor: identity,
-    selectList: {
-      selectedPrefix: identity,
-      selectedText: identity,
-      description: identity,
-      scrollInfo: identity,
-      noMatch: identity,
-    },
-  };
-  const editor = new Editor(
-    { requestRender() {}, terminal: { rows: 24, columns: 80 } } as unknown as TUI,
-    theme,
-  );
-  const draft = "An older unsent prompt";
-  editor.setText(draft);
-  const submitted: string[] = [];
-  editor.onSubmit = (text) => submitted.push(text);
-  const { service, request } = fixture(({ text, keys }) => {
-    if (text) editor.handleInput(`\x1b[200~${text}\x1b[201~`);
-    for (const key of keys ?? []) if (key === "enter") editor.handleInput("\r");
-  });
-  const shutdown = vi.fn(async () => {
-    throw new Error("Pi terminal has an unsent draft");
-  });
-  const result = await service.restartPiAgent("fixture", shutdown).catch((error: Error) => error);
-  expect(submitted).toEqual([]);
-  expect(editor.getText()).toBe(draft);
-  expect(result).toBeInstanceOf(Error);
-  expect(shutdown).toHaveBeenCalledOnce();
-  expect(request.mock.calls.map(([method]) => method)).toEqual(["agent.get"]);
-});
+it.each(["restartPiAgent", "exitPiAgent"] as const)(
+  "never submits an existing Pi editor draft during %s",
+  async (action) => {
+    const { Editor } = (await import(
+      process.env.PI_EDITOR_TEST_MODULE ?? "@earendil-works/pi-tui"
+    )) as typeof import("@earendil-works/pi-tui");
+    const identity = (text: string) => text;
+    const theme: EditorTheme = {
+      borderColor: identity,
+      selectList: {
+        selectedPrefix: identity,
+        selectedText: identity,
+        description: identity,
+        scrollInfo: identity,
+        noMatch: identity,
+      },
+    };
+    const editor = new Editor(
+      { requestRender() {}, terminal: { rows: 24, columns: 80 } } as unknown as TUI,
+      theme,
+    );
+    const draft = "An older unsent prompt";
+    editor.setText(draft);
+    const submitted: string[] = [];
+    editor.onSubmit = (text) => submitted.push(text);
+    const { service, request } = fixture(({ text, keys }) => {
+      if (text) editor.handleInput(`\x1b[200~${text}\x1b[201~`);
+      for (const key of keys ?? []) if (key === "enter") editor.handleInput("\r");
+    });
+    const shutdown = vi.fn(async () => {
+      throw new Error("Pi terminal has an unsent draft");
+    });
+    const result = await service[action]("fixture", shutdown).catch((error: Error) => error);
+    expect(submitted).toEqual([]);
+    expect(editor.getText()).toBe(draft);
+    expect(result).toBeInstanceOf(Error);
+    expect(shutdown).toHaveBeenCalledOnce();
+    expect(request.mock.calls.map(([method]) => method)).toEqual(["agent.get"]);
+  },
+);
 it("waits for shutdown confirmation and excludes simultaneous restarts in one pane", async () => {
   const { service, request } = fixture();
   let confirm!: () => void;
@@ -84,6 +87,53 @@ it("waits for shutdown confirmation and excludes simultaneous restarts in one pa
   expect(request.mock.calls.filter(([method]) => method === "agent.start")).toHaveLength(1);
   expect(request.mock.calls.some(([method]) => method === "pane.send_input")).toBe(false);
 });
+it.each(["restartPiAgent", "exitPiAgent"] as const)(
+  "blocks restart and exit while %s is pending",
+  async (action) => {
+    const { service, request } = fixture();
+    let confirm!: () => void;
+    const shutdown = vi.fn(
+      () =>
+        new Promise<void>((resolve) => {
+          confirm = resolve;
+        }),
+    );
+    const pending = service[action]("fixture", shutdown);
+    await vi.waitFor(() => expect(shutdown).toHaveBeenCalledOnce());
+    await expect(service.exitPiAgent("w1:p2", shutdown)).rejects.toThrow("already in progress");
+    await expect(service.restartPiAgent("w1:p2", shutdown)).rejects.toThrow("already in progress");
+    confirm();
+    await pending;
+    expect(request.mock.calls.filter(([method]) => method === "agent.start")).toHaveLength(
+      action === "restartPiAgent" ? 1 : 0,
+    );
+    expect(
+      request.mock.calls.some(([method]) => method === "tab.close" || method === "pane.send_input"),
+    ).toBe(false);
+  },
+);
+
+it.each(["working", "blocked", "unknown", "unsupported"])(
+  "refuses unsafe exit: %s",
+  async (status) => {
+    const request = vi.fn(async <T>(_method: string, _params: unknown, schema: z.ZodType<T>) =>
+      schema.parse({
+        type: "agent_info",
+        agent: {
+          ...agent,
+          agent: status === "unsupported" ? "codex" : "pi",
+          agent_status: status === "unsupported" ? "idle" : status,
+        },
+      }),
+    );
+    const service = new HerdrService({ request } as unknown as HerdrClient);
+    const shutdown = vi.fn();
+    await expect(service.exitPiAgent("fixture", shutdown)).rejects.toThrow();
+    expect(shutdown).not.toHaveBeenCalled();
+    expect(request).toHaveBeenCalledOnce();
+  },
+);
+
 it("does not launch or fall back to terminal input after an unconfirmed shutdown", async () => {
   const { service, request } = fixture();
   await expect(
@@ -94,32 +144,33 @@ it("does not launch or fall back to terminal input after an unconfirmed shutdown
   expect(request.mock.calls.map(([method]) => method)).toEqual(["agent.get"]);
   await expect(service.restartPiAgent("fixture", async () => {})).resolves.toMatchObject(agent);
 });
-it("does not start a replacement until the old agent actually exits", async () => {
-  vi.useFakeTimers();
-  try {
-    const { service, request } = fixture();
-    request.mockImplementation(
-      async <T>(method: string, _params: unknown, schema: z.ZodType<T>) => {
-        if (method === "agent.get") return schema.parse({ type: "agent_info", agent });
-        if (method === "session.snapshot")
-          return schema.parse({
-            type: "session_snapshot",
-            snapshot: { agents: [agent], panes: [], tabs: [], workspaces: [] },
-          });
-        throw new Error(`Unexpected request: ${method}`);
-      },
-    );
-    const pending = service
-      .restartPiAgent("fixture", async () => {})
-      .catch((error: Error) => error);
-    await vi.advanceTimersByTimeAsync(10_100);
-    expect(await pending).toMatchObject({ message: "Pi did not exit in time" });
-    expect(
-      request.mock.calls.some(
-        ([method]) => method === "agent.start" || method === "pane.send_input",
-      ),
-    ).toBe(false);
-  } finally {
-    vi.useRealTimers();
-  }
-});
+it.each(["restartPiAgent", "exitPiAgent"] as const)(
+  "waits for actual exit during %s",
+  async (action) => {
+    vi.useFakeTimers();
+    try {
+      const { service, request } = fixture();
+      request.mockImplementation(
+        async <T>(method: string, _params: unknown, schema: z.ZodType<T>) => {
+          if (method === "agent.get") return schema.parse({ type: "agent_info", agent });
+          if (method === "session.snapshot")
+            return schema.parse({
+              type: "session_snapshot",
+              snapshot: { agents: [agent], panes: [], tabs: [], workspaces: [] },
+            });
+          throw new Error(`Unexpected request: ${method}`);
+        },
+      );
+      const pending = service[action]("fixture", async () => {}).catch((error: Error) => error);
+      await vi.advanceTimersByTimeAsync(10_100);
+      expect(await pending).toMatchObject({ message: "Pi did not exit in time" });
+      expect(
+        request.mock.calls.some(
+          ([method]) => method === "agent.start" || method === "pane.send_input",
+        ),
+      ).toBe(false);
+    } finally {
+      vi.useRealTimers();
+    }
+  },
+);

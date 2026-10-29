@@ -21,6 +21,7 @@ it.each([true, false])("shows Pi-only editing controls only when supported (%s)"
   );
   expect(html.includes("Show thinking chips")).toBe(supportsPi);
   expect(html.includes("Restart agent session")).toBe(supportsPi);
+  expect(html.includes("Exit agent session")).toBe(supportsPi);
   expect(html).toContain("Agent name");
   expect(html).toContain("Close this tab");
   client.clear();

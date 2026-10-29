@@ -100,7 +100,7 @@ const workspaceCreatedResultSchema = z.object({
 
 export class HerdrService {
   private readonly resuming = new Map<string, Promise<Agent>>();
-  private readonly restarting = new Set<string>();
+  private readonly sessionChanges = new Set<string>();
   private readonly deleting = new Map<
     string,
     Promise<{ sessionId: string | null; boardIds: string[] }>
@@ -338,20 +338,38 @@ export class HerdrService {
   }
 
   async restartPiAgent(target: string, requestShutdown: (agent: Agent) => Promise<void>) {
+    return (await this.changePiSession(target, requestShutdown, true))!;
+  }
+
+  async exitPiAgent(target: string, requestShutdown: (agent: Agent) => Promise<void>) {
+    await this.changePiSession(target, requestShutdown, false);
+  }
+
+  private async changePiSession(
+    target: string,
+    requestShutdown: (agent: Agent) => Promise<void>,
+    restart: boolean,
+  ) {
     const { agent } = await this.client.request("agent.get", { target }, agentInfoResultSchema);
     if (agent.agent !== "pi" || agent.agent_session?.kind !== "path") {
-      throw new Error("Only Pi agents with a saved session can be restarted");
+      throw new HerdrRequestError(
+        "unsupported_agent",
+        "Only Pi agents with a saved session can be restarted or exited safely",
+      );
     }
     if (agent.agent_status !== "idle" && agent.agent_status !== "done") {
       throw new HerdrRequestError(
         "agent_busy",
-        "Wait for the agent to finish before restarting it",
+        "Wait for the agent to finish before restarting or exiting it",
       );
     }
 
-    if (this.restarting.has(agent.pane_id))
-      throw new HerdrRequestError("agent_busy", "A restart is already in progress for this pane");
-    this.restarting.add(agent.pane_id);
+    if (this.sessionChanges.has(agent.pane_id))
+      throw new HerdrRequestError(
+        "agent_busy",
+        "A restart or exit is already in progress for this pane",
+      );
+    this.sessionChanges.add(agent.pane_id);
     try {
       const name = agent.name ?? getDefaultPiAgentName(agent.pane_id);
       // Never type into the terminal: an editor draft would become a user prompt.
@@ -368,7 +386,8 @@ export class HerdrService {
           break;
         }
       }
-      if (!exited) throw new HerdrRequestError("restart_timeout", "Pi did not exit in time");
+      if (!exited) throw new HerdrRequestError("shutdown_timeout", "Pi did not exit in time");
+      if (!restart) return;
 
       await delay(150);
       const restarted = await this.client.request(
@@ -384,7 +403,7 @@ export class HerdrService {
       );
       return restarted.agent;
     } finally {
-      this.restarting.delete(agent.pane_id);
+      this.sessionChanges.delete(agent.pane_id);
     }
   }
 

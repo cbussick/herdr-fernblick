@@ -446,7 +446,7 @@ export default function liveChat(pi: ExtensionAPI) {
               throw new Error("Cannot safely inspect or shut down this Pi runtime");
             if (context.ui.getEditorText().length > 0)
               throw new Error(
-                "Pi terminal has an unsent draft. Save or clear it in Pi before restarting; nothing was submitted or discarded.",
+                "Pi terminal has an unsent draft. Save or clear it in Pi before exiting or restarting; nothing was submitted or discarded.",
               );
             preparing = shuttingDown = true;
             // Confirmation means the shutdown was requested, not that Pi exited.
