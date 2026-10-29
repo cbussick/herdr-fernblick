@@ -1,0 +1,33 @@
+# Render with npm run service:render -- ...; review before installing.
+[Unit]
+Description=Fernblick private Herdr web controller
+Wants=network-online.target
+After=network-online.target tailscaled.service
+StartLimitIntervalSec=120
+StartLimitBurst=5
+
+[Service]
+Type=exec
+User=@USER@
+Group=@GROUP@
+WorkingDirectory=@WORKDIR@
+Environment="HOME=@HOME@"
+Environment="PATH=@NODEDIR@:@HOME@/.local/bin:/usr/local/bin:/usr/bin:/bin"
+EnvironmentFile=@ENVFILE@
+ExecStartPre=@NODE@ @WORKDIR@/tools/systemd/wait-host.mjs
+TimeoutStartSec=150s
+ExecStart=@NODE@ @WORKDIR@/dist-server/server/index.js
+Restart=on-failure
+RestartSec=5s
+TimeoutStopSec=20s
+KillMode=control-group
+UMask=0077
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=fernblick
+LogNamespace=fernblick
+LogRateLimitIntervalSec=30s
+LogRateLimitBurst=100
+
+[Install]
+WantedBy=multi-user.target

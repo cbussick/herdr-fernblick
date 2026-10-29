@@ -85,6 +85,10 @@ HOST="$(tailscale ip -4)" npm start
 
 Then open `http://<vps-magicdns-name>:8787` from a device on the same tailnet. Restrict TCP port 8787 to your user or phone in the tailnet policy. Do not expose this port to the public internet.
 
+For boot startup, crash recovery and bounded startup/crash logs, see the
+[systemd service setup and safe cutover](docs/systemd-service.md). The supplied
+renderer prepares files only; it does not install or start a service.
+
 ### About, build versions and updates
 
 Open the gear beside the Fernblick logo in the overview, then **About & Updates**.

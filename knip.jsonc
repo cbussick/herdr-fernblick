@@ -3,12 +3,16 @@
   // Tests may import helpers that production uses within the same file.
   // Still report those helpers if their internal callers disappear.
   "ignoreExportsUsedInFile": true,
+  // Optional Linux host utility used by offline service verification tests.
+  "ignoreBinaries": ["systemd-analyze"],
   "workspaces": {
     ".": {
       "entry": [
         // Required in production: `start` points at emitted JS, not this source.
         // Normal mode also finds dev:api and reports a harmless redundancy hint.
         "server/index.ts!",
+        // Called by the deployed systemd unit, not a static application import.
+        "tools/systemd/wait-host.mjs!",
         // Standalone visual-regression tools, invoked manually (tools/design/README.md).
         "tools/design/*.mjs",
         // Manual artwork export; setup is documented in design/branding/README.md.

@@ -4,6 +4,8 @@
   "private": true,
   "type": "module",
   "scripts": {
+    "service:render": "node tools/systemd/render-service.mjs",
+    "service:smoke": "node tools/systemd/smoke.mjs --isolated",
     "dev": "concurrently -k -n api,web \"npm:dev:api\" \"npm:dev:web\"",
     "dev:api": "tsx watch server/index.ts",
     "dev:web": "vite",
