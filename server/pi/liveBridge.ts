@@ -533,7 +533,7 @@ export class LiveBridge {
       action === "send" ? { action, text: text ?? "", attachments } : { action },
     );
   }
-  async shutdownForRestart(agent: Agent): Promise<void> {
+  async shutdownAgent(agent: Agent): Promise<void> {
     const { snapshot } = await this.resolve(agent);
     const response = await this.request(agent, targetOf(snapshot), { action: "shutdown" });
     if (response.type === "ack" && response.outcome === "rejected")
@@ -602,7 +602,7 @@ export class LiveBridge {
     if (command.action === "shutdown" && !peer.snapshot.capabilities?.shutdown)
       throw new LiveChatError(
         409,
-        "Run /reload manually in Pi to enable safe restart; no terminal input was sent",
+        "Run /reload manually in Pi to enable safe shutdown; no terminal input was sent",
       );
     if (command.action === "tree-page" && !peer.snapshot.capabilities?.treePages)
       throw new LiveChatError(409, "Run /reload in Pi to browse large conversation paths");

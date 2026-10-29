@@ -1,9 +1,15 @@
 import dialogStyles from "./Dialogs.module.css";
 import { useRef, useState, type FormEvent } from "react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
-import { closeTab, renameAgent, renameTab, restartAgent } from "../../shared/api/apiClient";
+import {
+  closeTab,
+  exitAgentSession,
+  renameAgent,
+  renameTab,
+  restartAgent,
+} from "../../shared/api/apiClient";
 import type { AgentStatus } from "../../shared/api/contracts";
-import { PencilIcon, RestartIcon, TrashIcon } from "../../shared/ui/Icons";
+import { PencilIcon, RestartIcon, TerminalIcon, TrashIcon } from "../../shared/ui/Icons";
 
 interface CloseTabButtonProps {
   agentRunning: boolean;
@@ -35,7 +41,7 @@ export function CloseTabButton({
   const [tabLabel, setTabLabel] = useState(label);
   const [nextAgentName, setNextAgentName] = useState(agentName ?? "");
   const [nextShowThinking, setNextShowThinking] = useState(showThinking);
-  const [confirmation, setConfirmation] = useState<"delete" | "restart" | null>(null);
+  const [confirmation, setConfirmation] = useState<"delete" | "restart" | "exit" | null>(null);
   const saveMutation = useMutation({
     mutationFn: async () => {
       const updates: Promise<void>[] = [];
@@ -59,6 +65,15 @@ export function CloseTabButton({
       dialogRef.current?.close();
     },
   });
+  const exitMutation = useMutation({
+    mutationFn: () => exitAgentSession(agentTarget!),
+    retry: false,
+    onSuccess: () => {
+      dialogRef.current?.close();
+      void queryClient.invalidateQueries({ queryKey: ["agents"] });
+      void queryClient.invalidateQueries({ queryKey: ["saved-chats"] });
+    },
+  });
   const closeMutation = useMutation({
     mutationFn: () => closeTab(tabId),
     onSuccess: () => {
@@ -73,6 +88,7 @@ export function CloseTabButton({
     setConfirmation(null);
     saveMutation.reset();
     restartMutation.reset();
+    exitMutation.reset();
     closeMutation.reset();
     dialogRef.current?.showModal();
   }
@@ -80,6 +96,8 @@ export function CloseTabButton({
     event.preventDefault();
     saveMutation.mutate();
   }
+  const exiting = confirmation === "exit";
+  const sessionMutation = exiting ? exitMutation : restartMutation;
   const validAgentName = !agentRunning || !nextAgentName || agentNamePattern.test(nextAgentName);
   return (
     <>
@@ -101,6 +119,7 @@ export function CloseTabButton({
           setConfirmation(null);
           saveMutation.reset();
           restartMutation.reset();
+          exitMutation.reset();
           closeMutation.reset();
         }}
       >
@@ -136,29 +155,41 @@ export function CloseTabButton({
               </button>
             </div>
           </form>
-        ) : confirmation === "restart" ? (
+        ) : confirmation === "restart" || confirmation === "exit" ? (
           <form
             onSubmit={(event) => {
               event.preventDefault();
-              restartMutation.mutate();
+              sessionMutation.mutate();
             }}
           >
             <div className={dialogStyles["edit-tab-dialog__icon"]}>
-              <RestartIcon />
+              {exiting ? <TerminalIcon /> : <RestartIcon />}
             </div>
-            <h2>Restart this agent session?</h2>
+            <h2>{exiting ? "Exit agent session?" : "Restart this agent session?"}</h2>
             <p>
-              Pi will close and reopen in the same terminal with this conversation and its branches
-              preserved. Restart is blocked if Pi has an unsent terminal draft; save or clear that
-              draft in Pi first. Nothing will be submitted automatically.
+              {exiting
+                ? "Pi will exit, but this terminal tab will stay open under Shell tabs. You can resume the saved conversation from Past sessions. Copy any unsent message in Fernblick before exiting."
+                : "Pi will close and reopen in the same terminal with this conversation and its branches preserved."}{" "}
+              If Pi has an unsent terminal draft, save or clear it in Pi first. Nothing will be
+              submitted automatically.
             </p>
-            {restartMutation.isError ? <p role="alert">{restartMutation.error.message}</p> : null}
+            {sessionMutation.isError ? <p role="alert">{sessionMutation.error.message}</p> : null}
             <div className={dialogStyles["edit-tab-dialog__actions"]}>
-              <button type="button" onClick={() => setConfirmation(null)}>
+              <button
+                type="button"
+                disabled={sessionMutation.isPending}
+                onClick={() => setConfirmation(null)}
+              >
                 Back
               </button>
-              <button type="submit" disabled={restartMutation.isPending}>
-                {restartMutation.isPending ? "Restarting…" : "Restart session"}
+              <button type="submit" disabled={sessionMutation.isPending}>
+                {sessionMutation.isPending
+                  ? exiting
+                    ? "Exiting…"
+                    : "Restarting…"
+                  : exiting
+                    ? "Exit agent session"
+                    : "Restart session"}
               </button>
             </div>
           </form>
@@ -220,6 +251,22 @@ export function CloseTabButton({
               >
                 <RestartIcon />
                 Restart agent session
+              </button>
+            ) : null}
+            {agentRunning && supportsPi && agentTarget ? (
+              <button
+                type="button"
+                className={dialogStyles["edit-restart-button"]}
+                disabled={agentStatus !== "idle" && agentStatus !== "done"}
+                title={
+                  agentStatus === "idle" || agentStatus === "done"
+                    ? "Exit agent session and keep this tab open"
+                    : "Wait for the agent to finish before exiting"
+                }
+                onClick={() => setConfirmation("exit")}
+              >
+                <TerminalIcon />
+                Exit agent session
               </button>
             ) : null}
             <button

@@ -19,6 +19,10 @@ vi.mock("../features/agents/AgentConsole", () => ({
   ),
 }));
 
+vi.mock("../features/agents/ShellConsole", () => ({
+  ShellConsole: () => <main data-testid="shell">Shell</main>,
+}));
+
 const agent: Agent = {
   agent: "pi",
   agent_status: "idle",
@@ -102,6 +106,31 @@ it("returns to the workspaces overview instead of leaving the page on browser Ba
   expect(
     renderer.root.findByProps({ "data-single-pane": true }).props["data-detail-open"],
   ).toBeUndefined();
+});
+
+it("keeps the same pane selected as a shell when its agent exits", async () => {
+  await open();
+  await act(async () => {
+    client.setQueryData(["agents"], {
+      agents: [],
+      tabs: [
+        {
+          label: "My agent",
+          pane_id: agent.pane_id,
+          tab_id: agent.tab_id,
+          workspace_id: agent.workspace_id,
+          revision: 2,
+        },
+      ],
+      workspaces: [{ workspace_id: "w1", label: "Project" }],
+    });
+  });
+  await act(async () => {
+    await new Promise((resolve) => setTimeout(resolve, 20));
+  });
+  expect(chat()).toHaveLength(0);
+  expect(renderer.root.findByProps({ "data-testid": "shell" })).toBeDefined();
+  expect(index).toBe(2);
 });
 
 it("restores the selected chat on browser Forward", async () => {

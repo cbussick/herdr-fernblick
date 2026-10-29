@@ -262,6 +262,14 @@ immediately. If a session was opened after the list loaded, Resume selects that
 existing agent instead of starting a duplicate. Resuming does not send a prompt.
 The original project directory must still exist.
 
+**Exit agent session**, next to **Close this tab** in the tab editor, safely stops Pi
+without closing the terminal tab or its other panes. The pane becomes a shell under
+**Shell tabs**, and the saved conversation is available in **Past sessions**. Exit is
+only available for idle or finished Pi agents with saved sessions. It is blocked if
+Pi has an unsent terminal draft; save or clear that draft first. Copy any unsent
+Fernblick composer message before confirming exit. Nothing is submitted automatically.
+Older Pi sessions may need `/reload` to enable safe shutdown.
+
 **Restart session** uses Pi’s live shutdown API, not a typed terminal command.
 It refuses to restart while Pi is busy or its terminal editor contains an unsent
 draft. Save that text elsewhere and clear the terminal editor before retrying;

@@ -149,7 +149,7 @@ class HttpError extends Error {
 
 function getAgentRoute(pathname: string) {
   const match = pathname.match(
-    /^\/api\/agents\/([^/]+)(?:\/(output|chat|prompt|stop|tree|tree-page|tree-navigation|skills|compact|models|set-model|thinking-levels|set-thinking-level|save-default|keys|restart|read))?$/,
+    /^\/api\/agents\/([^/]+)(?:\/(output|chat|prompt|stop|tree|tree-page|tree-navigation|skills|compact|models|set-model|thinking-levels|set-thinking-level|save-default|keys|restart|exit|read))?$/,
   );
   if (!match) return null;
 
@@ -367,12 +367,17 @@ async function handleApi(
     return true;
   }
 
+  if (request.method === "POST" && route.action === "exit") {
+    requireSameOrigin(request);
+    await service.exitPiAgent(route.target, (agent) => bridge.shutdownAgent(agent));
+    sendJson(response, 200, { ok: true });
+    return true;
+  }
+
   if (request.method === "POST" && route.action === "restart") {
     requireSameOrigin(request);
     sendJson(response, 200, {
-      agent: await service.restartPiAgent(route.target, (agent) =>
-        bridge.shutdownForRestart(agent),
-      ),
+      agent: await service.restartPiAgent(route.target, (agent) => bridge.shutdownAgent(agent)),
     });
     return true;
   }

@@ -162,6 +162,10 @@ export async function closeTab(tabId: string) {
   await request(`/api/tabs/${encodeURIComponent(tabId)}`, { method: "DELETE" });
 }
 
+export async function exitAgentSession(target: string) {
+  await request(`/api/agents/${encodeURIComponent(target)}/exit`, { method: "POST" });
+}
+
 export async function restartAgent(target: string) {
   const body = (await request(`/api/agents/${encodeURIComponent(target)}/restart`, {
     method: "POST",

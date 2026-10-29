@@ -76,94 +76,113 @@ async function peer(snapshot = makeSnapshot()) {
   );
   return { socket, snapshot };
 }
-it.each([
-  "old-peer",
-  "busy",
-  "send-pending",
-  "draft",
-  "lost",
-  "wrong-target",
-  "wrong-type",
-  "success",
-])("guards restart through HTTP without terminal input: %s", async (condition) => {
-  const snapshot = makeSnapshot();
-  if (condition !== "old-peer") snapshot.capabilities = { shutdown: true };
-  snapshot.busy = condition === "busy";
-  snapshot.sendPending = condition === "send-pending";
-  const p = await peer(snapshot);
-  const commands: unknown[] = [];
-  receiveFrames(p.socket, (raw) => {
-    const command = raw as { id: string; action: string; target: unknown };
-    commands.push(command);
-    if (condition === "lost") {
-      p.socket.destroy();
-      return;
-    }
-    if (condition === "draft") {
+it.each(
+  ["restart", "exit"].flatMap((action) =>
+    [
+      "old-peer",
+      "busy",
+      "send-pending",
+      "draft",
+      "lost",
+      "wrong-target",
+      "wrong-type",
+      "success",
+    ].map((condition) => ({ action, condition })),
+  ),
+)(
+  "guards $action through HTTP without terminal input: $condition",
+  async ({ action, condition }) => {
+    const snapshot = makeSnapshot();
+    if (condition !== "old-peer") snapshot.capabilities = { shutdown: true };
+    snapshot.busy = condition === "busy";
+    snapshot.sendPending = condition === "send-pending";
+    const p = await peer(snapshot);
+    const commands: unknown[] = [];
+    receiveFrames(p.socket, (raw) => {
+      const command = raw as { id: string; action: string; target: unknown };
+      commands.push(command);
+      if (condition === "lost") {
+        p.socket.destroy();
+        return;
+      }
+      if (condition === "draft") {
+        writeFrame(p.socket, {
+          type: "ack",
+          id: command.id,
+          outcome: "rejected",
+          reason: "Pi terminal has an unsent draft",
+        });
+        return;
+      }
+      if (condition === "wrong-type") {
+        writeFrame(p.socket, { type: "ack", id: command.id, outcome: "invoked" });
+        return;
+      }
       writeFrame(p.socket, {
-        type: "ack",
+        type: "shutdown-requested",
         id: command.id,
-        outcome: "rejected",
-        reason: "Pi terminal has an unsent draft",
+        target:
+          condition === "wrong-target"
+            ? { ...targetOf(snapshot), epoch: randomUUID() }
+            : command.target,
       });
-      return;
-    }
-    if (condition === "wrong-type") {
-      writeFrame(p.socket, { type: "ack", id: command.id, outcome: "invoked" });
-      return;
-    }
-    writeFrame(p.socket, {
-      type: "shutdown-requested",
-      id: command.id,
-      target:
-        condition === "wrong-target"
-          ? { ...targetOf(snapshot), epoch: randomUUID() }
-          : command.target,
     });
-  });
-  const request = vi.fn(async <T>(method: string, _params: unknown, schema: z.ZodType<T>) => {
-    if (method === "agent.get") return schema.parse({ type: "agent_info", agent });
-    if (method === "session.snapshot")
-      return schema.parse({
-        type: "session_snapshot",
-        snapshot: { agents: [], panes: [], tabs: [], workspaces: [] },
-      });
-    if (method === "agent.start") return schema.parse({ type: "agent_started", agent });
-    throw new Error(`Unexpected Herdr call: ${method}`);
-  });
-  const service = new HerdrService({ request } as unknown as HerdrClient);
-  const server = createHttpServer(service, dir, bridge);
-  await new Promise<void>((done) => server.listen(0, "127.0.0.1", done));
-  const base = `http://127.0.0.1:${(server.address() as { port: number }).port}`;
-  const restart = (origin = base) =>
-    fetch(base + "/api/agents/w1:p1/restart", { method: "POST", headers: { Origin: origin } });
-  try {
-    expect((await restart("https://elsewhere.test")).status).toBe(403);
-    expect(request).not.toHaveBeenCalled();
-    const response = await restart();
-    const body = await response.json();
-    if (condition === "success") {
-      expect(response.status).toBe(200);
-      expect(body.agent.agent_session.value).toBe(agent.agent_session!.value);
-      expect(request.mock.calls.find(([method]) => method === "agent.start")?.[1]).toMatchObject({
-        pane_id: agent.pane_id,
-        args: expect.arrayContaining(["--session", agent.agent_session!.value]),
-      });
-    } else {
-      expect(response.status).toBe(409);
-      expect(request.mock.calls.map(([method]) => method)).toEqual(["agent.get"]);
-      if (condition === "old-peer") expect(body.error).toContain("/reload");
-      if (condition === "draft") expect(body.error).toContain("unsent draft");
+    const request = vi.fn(async <T>(method: string, _params: unknown, schema: z.ZodType<T>) => {
+      if (method === "agent.get") return schema.parse({ type: "agent_info", agent });
+      if (method === "session.snapshot")
+        return schema.parse({
+          type: "session_snapshot",
+          snapshot: { agents: [], panes: [], tabs: [], workspaces: [] },
+        });
+      if (method === "agent.start") return schema.parse({ type: "agent_started", agent });
+      throw new Error(`Unexpected Herdr call: ${method}`);
+    });
+    const service = new HerdrService({ request } as unknown as HerdrClient);
+    const server = createHttpServer(service, dir, bridge);
+    await new Promise<void>((done) => server.listen(0, "127.0.0.1", done));
+    const base = `http://127.0.0.1:${(server.address() as { port: number }).port}`;
+    const restart = (origin = base) =>
+      fetch(base + `/api/agents/w1:p1/${action}`, { method: "POST", headers: { Origin: origin } });
+    try {
+      expect((await restart("https://elsewhere.test")).status).toBe(403);
+      expect(request).not.toHaveBeenCalled();
+      const response = await restart();
+      const body = await response.json();
+      if (condition === "success") {
+        expect(response.status).toBe(200);
+        if (action === "restart") {
+          expect(body.agent.agent_session.value).toBe(agent.agent_session!.value);
+          expect(
+            request.mock.calls.find(([method]) => method === "agent.start")?.[1],
+          ).toMatchObject({
+            pane_id: agent.pane_id,
+            args: expect.arrayContaining(["--session", agent.agent_session!.value]),
+          });
+        } else {
+          expect(body).toEqual({ ok: true });
+          expect(request.mock.calls.map(([method]) => method)).toEqual([
+            "agent.get",
+            "session.snapshot",
+          ]);
+        }
+      } else {
+        expect(response.status).toBe(409);
+        expect(request.mock.calls.map(([method]) => method)).toEqual(["agent.get"]);
+        if (condition === "old-peer") expect(body.error).toContain("/reload");
+        if (condition === "draft") expect(body.error).toContain("unsent draft");
+      }
+      expect(commands).toHaveLength(
+        ["old-peer", "busy", "send-pending"].includes(condition) ? 0 : 1,
+      );
+      for (const command of commands)
+        expect(command).toMatchObject({ action: "shutdown", target: targetOf(snapshot) });
+      expect(request.mock.calls.some(([method]) => method === "pane.send_input")).toBe(false);
+    } finally {
+      server.closeAllConnections();
+      await new Promise<void>((done) => server.close(() => done()));
     }
-    expect(commands).toHaveLength(["old-peer", "busy", "send-pending"].includes(condition) ? 0 : 1);
-    for (const command of commands)
-      expect(command).toMatchObject({ action: "shutdown", target: targetOf(snapshot) });
-    expect(request.mock.calls.some(([method]) => method === "pane.send_input")).toBe(false);
-  } finally {
-    server.closeAllConnections();
-    await new Promise<void>((done) => server.close(() => done()));
-  }
-});
+  },
+);
 
 it("fails closed for absent, stale, ambiguous and background mappings", async () => {
   await expect(bridge.resolve(agent)).rejects.toThrow("unavailable");
