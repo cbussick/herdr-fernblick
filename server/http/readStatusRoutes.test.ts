@@ -3,7 +3,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { createServer as createSocketServer, type Server as SocketServer } from "node:net";
 import type { Server } from "node:http";
-import { afterEach, beforeEach, expect, it } from "vitest";
+import { afterEach, beforeEach, expect, it, vi } from "vitest";
 import { HerdrClient } from "../herdr/HerdrClient.js";
 import { HerdrService } from "../herdr/herdrService.js";
 import { LiveBridge } from "../pi/liveBridge.js";
@@ -127,6 +127,7 @@ beforeEach(async () => {
   await startBackend();
 });
 afterEach(async () => {
+  vi.restoreAllMocks();
   await stopBackend();
   await new Promise<void>((done) => herdr.close(() => done()));
   await rm(directory, { recursive: true, force: true });
@@ -379,4 +380,95 @@ it("refuses symlink receipt files rather than reading or writing their targets",
   expect((await fetch(`${base}/api/agents`)).status).toBe(500);
   await rm(receipt);
   expect((await dashboard()).agents[0].completion!.read).toBe(false);
+});
+
+let diagnosticTime = Date.now();
+function captureDiagnostics() {
+  diagnosticTime += 120_000;
+  vi.spyOn(Date, "now").mockReturnValue(diagnosticTime);
+  const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+  const info = vi.spyOn(console, "info").mockImplementation(() => {});
+  return {
+    warn,
+    info,
+    records: () => [...warn.mock.calls, ...info.mock.calls].map(([line]) => JSON.parse(line)),
+  };
+}
+
+it("correlates a storage failure and successful retry without exposing paths or payloads", async () => {
+  const logs = captureDiagnostics();
+  const first = (await dashboard()).agents[0];
+  await chmod(join(directory, "receipts"), 0o755);
+  const requestId = "12345678-1234-4234-8234-123456789abc";
+  const response = await fetch(`${base}/api/agents/w1%3Ap1/read`, {
+    method: "POST",
+    headers: {
+      Origin: base,
+      "Content-Type": "application/json",
+      "X-Fernblick-Read-Request-Id": requestId,
+    },
+    body: JSON.stringify({ completionId: first.completion!.id, content: "secret chat content" }),
+  });
+  expect(response.status).toBe(500);
+  expect(response.headers.get("X-Fernblick-Read-Request-Id")).toBe(requestId);
+  await response.text();
+  expect(logs.records()).toEqual(
+    expect.arrayContaining([
+      expect.objectContaining({
+        requestId,
+        boundary: "persistence",
+        category: "storage",
+        operation: "save",
+        durationMs: expect.any(Number),
+        timestamp: expect.any(String),
+      }),
+      expect.objectContaining({ requestId, boundary: "request", status: 500 }),
+    ]),
+  );
+  expect(JSON.stringify(logs.records())).not.toMatch(
+    /secret chat|sessions|one.jsonl|herdr.sock|w1:p1/,
+  );
+  expect(JSON.stringify(logs.records())).not.toContain(directory);
+  expect(JSON.stringify(logs.records())).not.toContain(first.completion!.id);
+  await chmod(join(directory, "receipts"), 0o700);
+  expect((await markRead(first.pane_id, first.completion!.id)).status).toBe(200);
+  expect(logs.records()).toEqual(
+    expect.arrayContaining([
+      expect.objectContaining({ boundary: "persistence", category: "success" }),
+      expect.objectContaining({ boundary: "request", category: "success", status: 200 }),
+    ]),
+  );
+});
+
+it("separates stale requests, validation and dependency failures and replaces unsafe IDs", async () => {
+  const logs = captureDiagnostics();
+  const first = (await dashboard()).agents[0];
+  expect((await markRead("w1:p99", first.completion!.id)).status).toBe(404);
+  agents[0].state_change_seq = 14;
+  expect((await markRead(first.pane_id, first.completion!.id)).status).toBe(409);
+  expect((await markRead(first.pane_id, "invalid")).status).toBe(400);
+  snapshotError = true;
+  const response = await fetch(`${base}/api/agents/w1%3Ap1/read`, {
+    method: "POST",
+    headers: {
+      Origin: base,
+      "Content-Type": "application/json",
+      "X-Fernblick-Read-Request-Id": "/secret/session.jsonl",
+    },
+    body: JSON.stringify({ completionId: first.completion!.id }),
+  });
+  expect(response.status).toBe(503);
+  const requestId = response.headers.get("X-Fernblick-Read-Request-Id");
+  expect(requestId).toMatch(/^[a-f0-9-]{36}$/);
+  await response.text();
+  expect(logs.records()).toEqual(
+    expect.arrayContaining([
+      expect.objectContaining({ category: "stale", status: 404 }),
+      expect.objectContaining({ category: "stale", status: 409 }),
+      expect.objectContaining({ category: "request_validation", status: 400 }),
+      expect.objectContaining({ category: "dependency", status: 503, requestId }),
+    ]),
+  );
+  expect(logs.warn.mock.calls.map(([line]) => JSON.parse(line).category)).not.toContain("stale");
+  expect(JSON.stringify(logs.records())).not.toContain("/secret/");
 });

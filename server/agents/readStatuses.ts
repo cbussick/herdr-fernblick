@@ -1,9 +1,12 @@
-import { createHash } from "node:crypto";
+import { createHash, randomUUID } from "node:crypto";
 import { constants } from "node:fs";
 import { lstat, mkdir, open, readdir, realpath, stat, unlink } from "node:fs/promises";
 import { join, resolve } from "node:path";
 import type { Agent } from "../../src/shared/api/contracts.js";
 import type { HerdrService } from "../herdr/herdrService.js";
+import { createReadReceiptDiagnostics } from "../../src/shared/api/readReceiptDiagnostics.js";
+
+const logReadReceipt = createReadReceiptDiagnostics();
 
 export interface ReadReceiptOptions {
   directory: string;
@@ -36,6 +39,35 @@ export class AgentReadStatuses {
     // Stable across Herdr restarts at this configured endpoint. A separate
     // socket's receipts must never be garbage-collected from our snapshot.
     this.namespace = createHash("sha256").update(resolve(options.herdrSocket)).digest("hex");
+  }
+
+  private async storage<T>(
+    operation: "save" | "load" | "cleanup",
+    requestId: string,
+    action: () => Promise<T>,
+  ): Promise<T> {
+    const started = performance.now();
+    try {
+      const result = await action();
+      if (operation === "save")
+        logReadReceipt({
+          boundary: "persistence",
+          operation,
+          requestId,
+          category: "success",
+          durationMs: performance.now() - started,
+        });
+      return result;
+    } catch (error) {
+      logReadReceipt({
+        boundary: "persistence",
+        operation,
+        requestId,
+        category: "storage",
+        durationMs: performance.now() - started,
+      });
+      throw error;
+    }
   }
 
   private async scope() {
@@ -159,17 +191,19 @@ export class AgentReadStatuses {
   }
 
   async getDashboard() {
-    await this.prepare();
-    // Enumerate BEFORE requesting the authoritative snapshot. A slow refresh
-    // must not delete receipts written for a newer answer while it was waiting,
-    // including writes from another backend sharing this directory.
-    const pattern = new RegExp(`^${this.namespace}\\.[a-f0-9]{64}\\.read$`);
-    const candidates = (await readdir(this.directory)).filter((name) => pattern.test(name));
+    const requestId = randomUUID();
+    const candidates = await this.storage("load", requestId, async () => {
+      await this.prepare();
+      // Enumerate BEFORE requesting the authoritative snapshot. A slow refresh
+      // must not delete receipts written for a newer answer while it was waiting,
+      // including writes from another backend sharing this directory.
+      const pattern = new RegExp(`^${this.namespace}\\.[a-f0-9]{64}\\.read$`);
+      return (await readdir(this.directory)).filter((name) => pattern.test(name));
+    });
     const { dashboard, scope } = await this.snapshot();
     const current = new Set(dashboard.agents.map((agent) => this.completionId(agent, scope)));
-    await this.cleanup(candidates, current).catch(() => {
+    await this.storage("cleanup", requestId, () => this.cleanup(candidates, current)).catch(() => {
       // Cleanup is retryable maintenance; a failure must not hide current agents.
-      console.warn("Could not clean up stale read receipts; will retry on the next refresh.");
     });
     return {
       ...dashboard,
@@ -177,20 +211,25 @@ export class AgentReadStatuses {
         dashboard.agents.map(async (agent) => {
           if (agent.agent_status !== "done") return agent;
           const id = this.completionId(agent, scope);
-          return { ...agent, completion: { id, read: await this.receipt(id) } };
+          return {
+            ...agent,
+            completion: { id, read: await this.storage("load", requestId, () => this.receipt(id)) },
+          };
         }),
       ),
     };
   }
 
-  async markRead(paneId: string, completionId: string) {
+  async markRead(paneId: string, completionId: string, requestId: string = randomUUID()) {
     const { dashboard, scope } = await this.snapshot();
     const agent = dashboard.agents.find((item) => item.pane_id === paneId);
     if (!agent) throw new ReadStatusError(404, "Agent no longer exists.");
     const id = this.completionId(agent, scope);
     if (agent.agent_status !== "done" || completionId !== id)
       throw new ReadStatusError(409, "The answer changed. Refresh before marking it read.");
-    await this.prepare();
-    await this.receipt(id, true);
+    await this.storage("save", requestId, async () => {
+      await this.prepare();
+      await this.receipt(id, true);
+    });
   }
 }

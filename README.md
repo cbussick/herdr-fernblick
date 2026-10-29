@@ -38,7 +38,9 @@ page reloads and Fernblick backend restarts and are shared by browsers using the
 same backend storage. Polling does not bring back the same badge; a later answer
 is unread again. Herdr's underlying status, focus, and native UI receipts are
 never changed. Answers arriving in a hidden browser tab remain unread until you
-return. Failed saves keep the answer unread and offer **Retry**.
+return. Failed saves keep the answer unread and offer **Retry**. See
+[read-receipt diagnostics](docs/read-receipt-diagnostics.md) for privacy-safe
+browser/server logs and request correlation when troubleshooting save failures.
 
 Receipts are private, immutable marker files in `FERNBLICK_READ_RECEIPT_DIR`
 (default `~/.local/share/fernblick/read-receipts`); use a persistent volume when
