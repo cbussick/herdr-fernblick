@@ -1,5 +1,5 @@
 import appStyles from "./App.module.css";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import type { Agent, ShellTab, Workspace } from "../shared/api/contracts";
 import { getAgents } from "../shared/api/apiClient";
@@ -34,6 +34,15 @@ export function App() {
     queryFn: getAgents,
     refetchInterval: 2_000,
   });
+
+  // Refetching without cached data resets the query to pending and clears its error.
+  // Keep the last connection failure visible while automatic retries run.
+  const [lastConnectionError, setLastConnectionError] = useState<Error | null>(null);
+  useEffect(() => {
+    if (agentsQuery.data) setLastConnectionError(null);
+    else if (agentsQuery.error) setLastConnectionError(agentsQuery.error);
+  }, [agentsQuery.data, agentsQuery.error]);
+  const connectionError = agentsQuery.data ? null : (agentsQuery.error ?? lastConnectionError);
 
   const {
     agents,
@@ -92,7 +101,22 @@ export function App() {
         </div>
       )}
 
-      {agentsQuery.isPending && agentsQuery.isPaused ? (
+      {connectionError ? (
+        <div className={appStyles["page-state"]} data-testid="page-state" role="alert">
+          <StateIcon kind="unavailable" />
+          <h1>Cannot reach Herdr</h1>
+          <p>{connectionError.message}</p>
+          <button
+            type="button"
+            onClick={() => {
+              setLastConnectionError(null);
+              void agentsQuery.refetch();
+            }}
+          >
+            Try again
+          </button>
+        </div>
+      ) : agentsQuery.isPending && agentsQuery.isPaused ? (
         <div className={appStyles["page-state"]} data-testid="page-state" role="status">
           <StateIcon kind="unavailable" />
           <h1>Fernblick is offline</h1>
@@ -107,15 +131,6 @@ export function App() {
           aria-busy="true"
         >
           <LoadingBrand />
-        </div>
-      ) : agentsQuery.isError && !agentsQuery.data ? (
-        <div className={appStyles["page-state"]} data-testid="page-state" role="alert">
-          <StateIcon kind="unavailable" />
-          <h1>Cannot reach Herdr</h1>
-          <p>{agentsQuery.error.message}</p>
-          <button type="button" onClick={() => void agentsQuery.refetch()}>
-            Try again
-          </button>
         </div>
       ) : (
         <div className={appStyles["workspace"]}>

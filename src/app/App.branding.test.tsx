@@ -82,6 +82,58 @@ it("replaces loading branding with the existing actionable error state", async (
   expect(renderer.root.findByType("button").children).toEqual(["Try again"]);
 });
 
+it("keeps automatic retries quiet but shows loading for manual retries", async () => {
+  vi.mocked(getAgents).mockRejectedValue(new Error("Test connection failed"));
+  await render();
+  await act(settle);
+
+  let complete!: (value: typeof dashboard) => void;
+  let fail!: (error: Error) => void;
+  vi.mocked(getAgents).mockImplementation(
+    () =>
+      new Promise((resolve, reject) => {
+        complete = resolve;
+        fail = reject;
+      }),
+  );
+
+  // Automatic polling must not replace the error with loading branding.
+  await act(async () => {
+    void client.refetchQueries({ queryKey: ["agents"] });
+    await settle();
+  });
+  expect(logo()).toHaveLength(0);
+  expect(renderer.root.findByType("h1").children).toEqual(["Cannot reach Herdr"]);
+  await act(async () => {
+    fail(new Error("Still unavailable"));
+    await settle();
+  });
+  expect(renderer.root.findByType("p").children).toEqual(["Still unavailable"]);
+
+  await act(async () => {
+    renderer.root.findByType("button").props.onClick();
+    await settle();
+  });
+  expect(logo()).toHaveLength(1);
+  await act(async () => {
+    fail(new Error("Manual retry failed"));
+    await settle();
+  });
+  expect(logo()).toHaveLength(0);
+  expect(renderer.root.findByType("p").children).toEqual(["Manual retry failed"]);
+
+  await act(async () => {
+    renderer.root.findByType("button").props.onClick();
+    await settle();
+  });
+  expect(logo()).toHaveLength(1);
+  await act(async () => {
+    complete(dashboard);
+    await settle();
+  });
+  expect(renderer.root.findByType("nav").children).toEqual(["Agents"]);
+});
+
 it("shows the offline explanation instead of a permanent branded splash", async () => {
   onlineManager.setOnline(false);
   await render();
