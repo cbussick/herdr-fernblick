@@ -268,6 +268,11 @@ summary.tab-group__header {
   border-color: var(--color-border-strong);
 }
 
+.pane-row[data-selected] > [data-ui="tab-kind-icon"] {
+  color: var(--color-on-accent);
+  background: var(--color-accent);
+}
+
 .pane-row__copy {
   min-width: 0;
 }
