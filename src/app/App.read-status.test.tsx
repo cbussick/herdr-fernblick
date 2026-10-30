@@ -1,7 +1,12 @@
 import { createHash } from "node:crypto";
-import { act } from "react";
+import { act as reactAct } from "react";
 import { create, type ReactTestRenderer } from "react-test-renderer";
-import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
+import {
+  defaultScheduler,
+  notifyManager,
+  QueryClient,
+  QueryClientProvider,
+} from "@tanstack/react-query";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
 import { App } from "./App";
 import { getAgents, markAgentRead } from "../shared/api/apiClient";
@@ -38,6 +43,24 @@ let renderer: ReactTestRenderer;
 let client: QueryClient;
 let visibility: EventTarget;
 let visibilityState: string;
+let notifications: Array<() => void>;
+
+// Query and mutation observers notify asynchronously. Deliver every queued batch
+// inside React act, including notifications scheduled by effects/receipt promises,
+// instead of assuming a 20 ms sleep is enough before asserting on the warning.
+async function act(callback: () => unknown) {
+  await reactAct(async () => {
+    await callback();
+  });
+  for (let batches = 0; notifications.length; batches++) {
+    if (batches === 100) throw new Error("Read-status notifications did not settle");
+    const pending = notifications.splice(0);
+    await reactAct(async () => {
+      pending.forEach((notify) => notify());
+    });
+  }
+}
+
 const response = (agents: Agent[]) => ({
   agents: agents.map((item) => ({
     ...item,
@@ -61,9 +84,10 @@ const status = (index = 0) =>
     .children.filter((child) => typeof child === "string")
     .join("");
 async function update(agents: Agent[]) {
+  const next = response(agents);
+  vi.mocked(getAgents).mockResolvedValue(next);
   await act(async () => {
-    client.setQueryData(["agents"], response(agents));
-    await new Promise((resolve) => setTimeout(resolve, 20));
+    client.setQueryData(["agents"], next);
   });
 }
 async function openAndBack() {
@@ -76,6 +100,10 @@ async function openAndBack() {
   );
 }
 beforeEach(async () => {
+  notifications = [];
+  notifyManager.setScheduler((callback) => {
+    notifications.push(callback);
+  });
   vi.stubGlobal("IS_REACT_ACT_ENVIRONMENT", true);
   vi.clearAllMocks();
   vi.mocked(markAgentRead).mockResolvedValue(undefined);
@@ -95,9 +123,14 @@ beforeEach(async () => {
   });
 });
 afterEach(async () => {
-  await act(async () => renderer.unmount());
-  client.clear();
-  vi.unstubAllGlobals();
+  try {
+    await act(async () => renderer.unmount());
+    client.clear();
+  } finally {
+    notifyManager.setScheduler(defaultScheduler);
+    notifications = [];
+    vi.unstubAllGlobals();
+  }
 });
 
 it("clears New answer after opening an agent and going back without replying", async () => {
@@ -107,7 +140,6 @@ it("clears New answer after opening an agent and going back without replying", a
   // Polling the same completion must not resurrect the unread badge.
   await act(async () => {
     client.setQueryData(["agents"], response([{ ...agent, revision: 8 }]));
-    await new Promise((resolve) => setTimeout(resolve, 20));
   });
   expect(status()).toBe("Idle");
   const workspaceStatus = renderer.root
@@ -148,9 +180,6 @@ it("saves the viewed completion and restores backend receipts after reopening", 
 it("keeps a failed receipt unread and lets the user retry saving it", async () => {
   vi.mocked(markAgentRead).mockRejectedValueOnce(new Error("Disk unavailable"));
   await openAndBack();
-  await act(async () => {
-    await new Promise((resolve) => setTimeout(resolve, 20));
-  });
   expect(status()).toBe("New answer");
   expect(renderer.root.findByProps({ role: "alert" }).findByType("p").children.join(" ")).toContain(
     "Could not save read status",
@@ -173,7 +202,6 @@ it("dismisses a failed receipt without marking it read or retrying, including ac
       .findAllByType("button")
       .find((node) => node.children.includes("Dismiss"))!
       .props.onClick();
-    await new Promise((resolve) => setTimeout(resolve, 20));
   });
   expect(renderer.root.findAllByProps({ role: "alert" })).toHaveLength(0);
   expect(status()).toBe("New answer");
@@ -202,16 +230,12 @@ it("dismisses a failed receipt without marking it read or retrying, including ac
 it("keeps a dismissed warning hidden in the open conversation but reports a new failed answer", async () => {
   vi.mocked(markAgentRead).mockRejectedValueOnce(new Error("Offline"));
   await act(async () => row().props.onClick());
-  await act(async () => {
-    await new Promise((resolve) => setTimeout(resolve, 20));
-  });
   expect(renderer.root.findAllByProps({ role: "alert" })).toHaveLength(1);
   await act(async () => {
     renderer.root
       .findAllByType("button")
       .find((node) => node.children.includes("Dismiss"))!
       .props.onClick();
-    await new Promise((resolve) => setTimeout(resolve, 20));
   });
   await update([{ ...agent, revision: 8 }]);
   expect(renderer.root.findAllByProps({ role: "alert" })).toHaveLength(0);
