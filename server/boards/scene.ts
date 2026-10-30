@@ -1,4 +1,5 @@
 import { randomInt } from "node:crypto";
+import { BOARD_DRAWING_DEFAULTS } from "../../packages/pi-live-chat/boardDefaults.js";
 import {
   MAX_BOARD_BYTES,
   boardSceneSchema,
@@ -278,7 +279,7 @@ function create(op: Extract<BoardOperation, { op: "create" }>): BoardElement {
     fillStyle: "solid",
     strokeWidth: 2,
     strokeStyle: "solid",
-    roughness: 1,
+    roughness: BOARD_DRAWING_DEFAULTS.roughness,
     opacity: 100,
     groupIds: [],
     frameId: null,
@@ -299,7 +300,7 @@ function create(op: Extract<BoardOperation, { op: "create" }>): BoardElement {
       text: op.text,
       originalText: op.text,
       fontSize: 20,
-      fontFamily: 1,
+      fontFamily: BOARD_DRAWING_DEFAULTS.fontFamily,
       textAlign: "left",
       verticalAlign: "top",
       containerId: null,
@@ -321,7 +322,7 @@ function create(op: Extract<BoardOperation, { op: "create" }>): BoardElement {
       startBinding: null,
       endBinding: null,
       startArrowhead: null,
-      endArrowhead: "arrow",
+      endArrowhead: BOARD_DRAWING_DEFAULTS.endArrowhead,
       elbowed: false,
       lastCommittedPoint: null,
     });

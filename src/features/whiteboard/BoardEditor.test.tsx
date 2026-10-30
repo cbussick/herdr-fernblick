@@ -76,6 +76,30 @@ it("ignores normalized/programmatic callbacks but saves human element-version ch
   mocks.props.onLinkOpen!({} as never, { preventDefault } as never);
   expect(preventDefault).toHaveBeenCalledOnce();
 });
+it("defaults new drawing tools to Nunito, straight strokes and closed arrowheads", async () => {
+  const existing = scene();
+  await act(async () => {
+    renderer = create(
+      <BoardEditor
+        scene={existing}
+        generation={1}
+        locked={false}
+        onChange={() => {}}
+        onReady={() => {}}
+        onError={() => {}}
+      />,
+    );
+  });
+  expect(mocks.props.initialData).toMatchObject({
+    elements: existing.elements,
+    appState: {
+      currentItemFontFamily: 6,
+      currentItemRoughness: 0,
+      currentItemEndArrowhead: "triangle",
+    },
+  });
+});
+
 it("fits the current scene on request without exporting an image", async () => {
   const onReady = vi.fn();
   await act(async () => {

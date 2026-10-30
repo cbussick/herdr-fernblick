@@ -152,7 +152,7 @@ it("validates operation batches atomically and emits native basic shape records"
     type: "text",
     containerId: null,
     originalText: "hello\nworld",
-    fontFamily: 1,
+    fontFamily: 6,
     lineHeight: 1.25,
     autoResize: true,
   });

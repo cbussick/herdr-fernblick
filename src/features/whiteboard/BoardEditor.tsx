@@ -14,6 +14,7 @@ import {
   boardSceneSchema,
   type BoardScene,
 } from "../../../packages/pi-live-chat/boardProtocol";
+import { BOARD_DRAWING_DEFAULTS } from "../../../packages/pi-live-chat/boardDefaults";
 import { downloadScene, sceneFingerprint } from "./scene";
 import { editorChanges } from "./mergeScene";
 import styles from "./Whiteboard.module.css";
@@ -63,7 +64,14 @@ export default function BoardEditor({
     scrollToContent: true,
     elements: restored(scene),
     files: scene.files as unknown as BinaryFiles,
-    appState: { viewBackgroundColor: "#ffffff", exportBackground: true, exportEmbedScene: false },
+    appState: {
+      viewBackgroundColor: "#ffffff",
+      exportBackground: true,
+      exportEmbedScene: false,
+      currentItemFontFamily: BOARD_DRAWING_DEFAULTS.fontFamily,
+      currentItemRoughness: BOARD_DRAWING_DEFAULTS.roughness,
+      currentItemEndArrowhead: BOARD_DRAWING_DEFAULTS.endArrowhead,
+    },
   }));
   const [initialFingerprint] = useState(() =>
     sceneFingerprint(asScene(initial.elements, initial.files)),
