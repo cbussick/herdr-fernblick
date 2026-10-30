@@ -1,4 +1,5 @@
 import { MarkerType, type Edge, type Node, type Viewport } from "@xyflow/react";
+import { maxBoardPoints, validInk, type InkNode } from "./ink";
 
 export const kinds = ["boundary", "card", "icon", "detail", "table", "comment"] as const;
 export type Kind = (typeof kinds)[number];
@@ -37,7 +38,8 @@ export type ComponentData = {
   rows: string[][];
 };
 export type ComponentNode = Node<ComponentData, "component">;
-export type Diagram = { nodes: ComponentNode[]; edges: Edge[]; viewport?: Viewport };
+export type CanvasNode = ComponentNode | InkNode;
+export type Diagram = { nodes: CanvasNode[]; edges: Edge[]; viewport?: Viewport };
 export const storageKey = "fernblick-react-flow-playground-v1";
 
 /** Tailnet HTTP is not a secure context, so randomUUID is not always available. */
@@ -233,7 +235,7 @@ export function restore(raw: string): Diagram {
   const value: unknown = JSON.parse(raw);
   if (
     !isObject(value) ||
-    value.version !== 1 ||
+    (value.version !== 1 && value.version !== 2) ||
     !Array.isArray(value.nodes) ||
     value.nodes.length > 300 ||
     !Array.isArray(value.edges) ||
@@ -241,18 +243,44 @@ export function restore(raw: string): Diagram {
   )
     throw new Error("Unsupported saved board.");
   const ids = new Set<string>();
-  const nodes: ComponentNode[] = value.nodes.map((n: unknown) => {
+  const componentIds = new Set<string>();
+  let totalPoints = 0;
+  const nodes: CanvasNode[] = value.nodes.map((n: unknown) => {
     if (
       !isObject(n) ||
       typeof n.id !== "string" ||
       ids.has(n.id) ||
       !isObject(n.position) ||
       !finite(n.position.x) ||
-      !finite(n.position.y) ||
-      !validData(n.data)
+      !finite(n.position.y)
     )
       throw new Error("Invalid saved component.");
+    if (n.type === "ink") {
+      if (
+        !validInk(n.data) ||
+        n.parentId !== undefined ||
+        (totalPoints += n.data.points.length) > maxBoardPoints
+      )
+        throw new Error("Invalid saved stroke.");
+      const width = n.width ?? (isObject(n.style) ? n.style.width : undefined) ?? n.data.w;
+      const height = n.height ?? (isObject(n.style) ? n.style.height : undefined) ?? n.data.h;
+      if (!finite(width) || width < 1 || !finite(height) || height < 1)
+        throw new Error("Invalid stroke size.");
+      ids.add(n.id);
+      return {
+        id: n.id,
+        type: "ink",
+        position: { x: n.position.x, y: n.position.y },
+        data: n.data,
+        style: { width, height },
+        connectable: false,
+        zIndex: 2000,
+        ariaLabel: "Freehand stroke",
+      };
+    }
+    if (!validData(n.data)) throw new Error("Invalid saved component.");
     const node = makeNode(n.data.kind, n.position.x, n.position.y, n.data, n.id);
+    componentIds.add(n.id);
     if (typeof n.parentId === "string") {
       const parent = (value.nodes as unknown[]).find((p) => isObject(p) && p.id === n.parentId);
       if (
@@ -286,8 +314,8 @@ export function restore(raw: string): Diagram {
       edgeIds.has(e.id) ||
       typeof e.source !== "string" ||
       typeof e.target !== "string" ||
-      !ids.has(e.source) ||
-      !ids.has(e.target)
+      !componentIds.has(e.source) ||
+      !componentIds.has(e.target)
     )
       throw new Error("Invalid connection.");
     edgeIds.add(e.id);
@@ -326,10 +354,17 @@ export function restore(raw: string): Diagram {
 
 export function serialize(diagram: Diagram): string {
   return JSON.stringify({
-    version: 1,
+    version: 2,
     ...diagram,
     nodes: diagram.nodes.map(
-      ({ selected: _selected, dragging: _dragging, measured: _measured, ...node }) => node,
+      ({ selected: _selected, dragging: _dragging, measured: _measured, ...node }) => ({
+        ...node,
+        style: {
+          ...node.style,
+          ...(node.width !== undefined ? { width: node.width } : {}),
+          ...(node.height !== undefined ? { height: node.height } : {}),
+        },
+      }),
     ),
     edges: diagram.edges.map(({ selected: _selected, ...edge }) => edge),
   });

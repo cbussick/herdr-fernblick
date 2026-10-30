@@ -19,6 +19,8 @@ import {
 import { Copy, Download, Maximize, Pencil, RotateCcw, Search, Trash2, X } from "lucide-react";
 import { ComponentView, EditContext, Icon } from "./Components";
 import { ColorPicker, ComponentEditor, Modal } from "./Editor";
+import { DrawingTools, InkContext, InkSurface, InkView, useInkHistory, type Tool } from "./Drawing";
+import { applyInkCommand, isInk, maxBoardPoints, type InkNode } from "./ink";
 import {
   catalog,
   defaults,
@@ -31,12 +33,13 @@ import {
   storageKey,
   type ComponentData,
   type ComponentNode,
+  type CanvasNode,
   type Diagram,
   type Kind,
 } from "./model";
 import styles from "./Playground.module.css";
 
-const nodeTypes = { component: ComponentView };
+const nodeTypes = { component: ComponentView, ink: InkView };
 const edgeOptions = {
   type: "smoothstep",
   markerEnd: { type: MarkerType.ArrowClosed },
@@ -69,19 +72,92 @@ function Playground() {
   const [editing, setEditing] = useState<Editing | null>(null);
   const [edgeEditing, setEdgeEditing] = useState<Edge | null>(null);
   const [resetting, setResetting] = useState(false);
+  const [tool, setTool] = useState<Tool>("select");
+  const [penColor, setPenColor] = useState("#243044");
+  const [penSize, setPenSize] = useState(5);
+  const [hiddenInk, setHiddenInk] = useState(new Set<string>());
+  const transformInk = useRef<InkNode[]>([]);
   const [message, setMessage] = useState(initial.message || "Saved in this browser only");
+  const flow = useReactFlow<CanvasNode>();
   const changed = useRef(false);
   const [revision, setRevision] = useState(0);
   const touch = useCallback(() => {
     changed.current = true;
     setRevision((v) => v + 1);
-  }, []);
-  const flow = useReactFlow<ComponentNode>();
+    setViewport(flow.getViewport());
+  }, [flow]);
+  const history = useInkHistory((command, undo) => {
+    const next = applyInkCommand(flow.getNodes(), command, undo);
+    if (
+      next.length > 300 ||
+      next.filter(isInk).reduce((sum, n) => sum + n.data.points.length, 0) > maxBoardPoints
+    ) {
+      setMessage("Cannot restore drawing: delete some items to make room first.");
+      return false;
+    }
+    setNodes(next);
+    touch();
+    return true;
+  });
+  function chooseTool(next: Tool) {
+    setTool(next);
+    setNodes((current) => current.map((n) => ({ ...n, selected: false })));
+    setEdges((current) => current.map((e) => ({ ...e, selected: false })));
+  }
+  function commitInk(before: InkNode[], after: InkNode[]) {
+    if (!before.length && !after.length) return;
+    history.record(before, after);
+    setNodes((current) => applyInkCommand(current, { before, after }, false));
+    touch();
+  }
+  function startInkTransform(id?: string) {
+    transformInk.current = flow
+      .getNodes()
+      .filter(isInk)
+      .filter((n) => n.id === id || (!id && n.selected));
+  }
+  function finishInkTransform() {
+    const before = transformInk.current;
+    transformInk.current = [];
+    if (!before.length) return;
+    requestAnimationFrame(() =>
+      history.record(
+        before,
+        flow
+          .getNodes()
+          .filter(isInk)
+          .filter((n) => before.some((old) => old.id === n.id)),
+      ),
+    );
+  }
   const canvas = useRef<HTMLDivElement>(null);
   const selected = nodes.filter((node) => node.selected);
   const selectedEdges = edges.filter((edge) => edge.selected);
   const one = selected.length === 1 ? selected[0] : undefined;
-  const boundaries = nodes.filter((node) => node.data.kind === "boundary");
+  const boundaries = nodes.filter(
+    (node): node is ComponentNode => node.type === "component" && node.data.kind === "boundary",
+  );
+  const modal = !!(editing || edgeEditing || resetting);
+  useEffect(() => {
+    function key(event: KeyboardEvent) {
+      if (
+        modal ||
+        (event.target instanceof Element &&
+          event.target.closest("input, textarea, select, [contenteditable=true]"))
+      )
+        return;
+      if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === "z") {
+        event.preventDefault();
+        if (event.shiftKey) history.redo();
+        else history.undo();
+      } else if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === "y") {
+        event.preventDefault();
+        history.redo();
+      } else if (event.key === "Escape") chooseTool("select");
+    }
+    window.addEventListener("keydown", key);
+    return () => window.removeEventListener("keydown", key);
+  });
   useEffect(() => {
     if (!changed.current) return;
     try {
@@ -96,7 +172,7 @@ function Playground() {
   const edit = useCallback(
     (id: string) => {
       const node = flow.getNode(id);
-      if (node) setEditing({ id, data: node.data });
+      if (node?.type === "component") setEditing({ id, data: node.data });
     },
     [flow],
   );
@@ -111,6 +187,7 @@ function Playground() {
       y: rect.top + rect.height / 2 - 80,
     });
     const parent = kind !== "boundary" && one?.data.kind === "boundary" ? one : undefined;
+    setTool("select");
     setEditing({
       data: defaults(kind),
       position: parent ? { x: 45, y: 80 } : center,
@@ -121,7 +198,9 @@ function Playground() {
     if (!editing) return;
     if (editing.id)
       setNodes((current) =>
-        current.map((node) => (node.id === editing.id ? { ...node, data } : node)),
+        current.map((node) =>
+          node.id === editing.id && node.type === "component" ? { ...node, data } : node,
+        ),
       );
     else {
       const node = makeNode(data.kind, editing.position!.x, editing.position!.y, data);
@@ -153,7 +232,7 @@ function Playground() {
       return;
     }
     const ids = new Map(originals.map((n) => [n.id, makeId()]));
-    const copies = originals.map((n) => ({
+    const copies: CanvasNode[] = originals.map((n) => ({
       ...structuredClone(n),
       id: ids.get(n.id)!,
       selected: true,
@@ -176,12 +255,20 @@ function Playground() {
       setMessage("Not duplicated: the canvas would exceed 1,000 connections.");
       return;
     }
+    if (
+      [...nodes, ...copies].filter(isInk).reduce((sum, n) => sum + n.data.points.length, 0) >
+      maxBoardPoints
+    ) {
+      setMessage("Not duplicated: the canvas would exceed the drawing point limit.");
+      return;
+    }
+    history.record([], copies.filter(isInk));
     setNodes((current) => [...current.map((n) => ({ ...n, selected: false })), ...copies]);
     setEdges((current) => [...current, ...copiedEdges]);
     touch();
   }
   function reparent(parentId: string) {
-    if (!one || one.data.kind === "boundary") return;
+    if (!one || isInk(one) || one.data.kind === "boundary") return;
     const oldParent = nodes.find((n) => n.id === one.parentId);
     const parent = nodes.find((n) => n.id === parentId);
     setNodes((current) =>
@@ -210,7 +297,6 @@ function Playground() {
     a.click();
     setTimeout(() => URL.revokeObjectURL(url), 1000);
   }
-  const modal = !!(editing || edgeEditing || resetting);
   return (
     <div className={styles.app}>
       <header className={styles.appHeader}>
@@ -278,7 +364,11 @@ function Playground() {
               selection.
             </p>
             <p>Select a boundary before adding to place a component inside it.</p>
-            <small>No freehand tools or agent connection in this first experiment.</small>
+            <p>
+              Choose Draw to sketch over the canvas. Eraser removes whole strokes. Use Pan or two
+              fingers to navigate.
+            </p>
+            <small>Undo/redo applies to drawing only. Agent tools are not connected.</small>
           </div>
         </aside>
         <main
@@ -288,133 +378,172 @@ function Playground() {
           data-testid="canvas"
         >
           <EditContext.Provider value={edit}>
-            <ReactFlow<ComponentNode>
-              nodes={nodes}
-              edges={edges}
-              nodeTypes={nodeTypes}
-              onNodesChange={(changes) => {
-                setNodes((current) => applyNodeChanges(changes, current));
-                if (
-                  changes.some(
-                    (c) =>
-                      (c.type !== "select" && c.type !== "dimensions") ||
-                      (c.type === "dimensions" && c.resizing !== undefined),
+            <InkContext.Provider
+              value={{ hidden: hiddenInk, start: startInkTransform, finish: finishInkTransform }}
+            >
+              <ReactFlow<CanvasNode>
+                nodes={nodes}
+                edges={edges}
+                nodeTypes={nodeTypes}
+                onNodesChange={(changes) => {
+                  const removed = nodes
+                    .filter(isInk)
+                    .filter((n) => changes.some((c) => c.type === "remove" && c.id === n.id));
+                  if (removed.length) history.record(removed, []);
+                  setNodes((current) => applyNodeChanges(changes, current));
+                  if (
+                    changes.some(
+                      (c) =>
+                        (c.type !== "select" && c.type !== "dimensions") ||
+                        (c.type === "dimensions" && c.resizing !== undefined),
+                    )
                   )
-                )
-                  touch();
-              }}
-              onEdgesChange={(changes) => {
-                setEdges((current) => applyEdgeChanges(changes, current));
-                if (changes.some((c) => c.type !== "select")) touch();
-              }}
-              onConnect={connect}
-              connectionMode={ConnectionMode.Loose}
-              isValidConnection={(connection) => connection.source !== connection.target}
-              onNodeDoubleClick={(_, node) => edit(node.id)}
-              onEdgeDoubleClick={(_, edge) => setEdgeEditing({ ...edge })}
-              defaultEdgeOptions={edgeOptions}
-              defaultViewport={initial.viewport}
-              fitView={!initial.viewport}
-              fitViewOptions={{ padding: 0.18 }}
-              onMoveEnd={(_, next) => {
-                if (changed.current) setViewport(next);
-              }}
-              minZoom={0.15}
-              maxZoom={2}
-              noDragClassName={styles.noDrag}
-              noPanClassName={styles.noPan}
-              noWheelClassName={styles.noWheel}
-              deleteKeyCode={modal ? null : ["Backspace", "Delete"]}
-              nodesDraggable={!modal}
-              nodesConnectable={!modal}
-              elementsSelectable={!modal}
-              proOptions={{ hideAttribution: false }}
-            >
-              <Background variant={BackgroundVariant.Dots} gap={20} size={1} color="#ccd5df" />
-              <Controls showInteractive={false} />
-              <MiniMap
-                className={styles.minimap}
-                nodeColor={(node) => (node.data as ComponentData).color || "#cbd5e1"}
-                pannable
-                zoomable
+                    touch();
+                }}
+                onEdgesChange={(changes) => {
+                  setEdges((current) => applyEdgeChanges(changes, current));
+                  if (changes.some((c) => c.type !== "select")) touch();
+                }}
+                onConnect={connect}
+                connectionMode={ConnectionMode.Loose}
+                isValidConnection={(connection) =>
+                  connection.source !== connection.target &&
+                  flow.getNode(connection.source)?.type === "component" &&
+                  flow.getNode(connection.target)?.type === "component"
+                }
+                onNodeDragStart={() => startInkTransform()}
+                onNodeDragStop={finishInkTransform}
+                onNodeDoubleClick={(_, node) => edit(node.id)}
+                onEdgeDoubleClick={(_, edge) => setEdgeEditing({ ...edge })}
+                defaultEdgeOptions={edgeOptions}
+                defaultViewport={initial.viewport}
+                fitView={!initial.viewport}
+                fitViewOptions={{ padding: 0.18 }}
+                onMoveEnd={(_, next) => {
+                  if (changed.current) setViewport(next);
+                }}
+                minZoom={0.15}
+                maxZoom={2}
+                noDragClassName={styles.noDrag}
+                noPanClassName={styles.noPan}
+                noWheelClassName={styles.noWheel}
+                deleteKeyCode={modal || tool !== "select" ? null : ["Backspace", "Delete"]}
+                nodesDraggable={!modal && tool === "select"}
+                nodesConnectable={!modal && tool === "select"}
+                elementsSelectable={!modal && tool === "select"}
+                panOnDrag={tool === "select" || tool === "pan"}
+                zoomOnDoubleClick={tool === "select" || tool === "pan"}
+                elevateNodesOnSelect={false}
+                proOptions={{ hideAttribution: false }}
+              >
+                <Background variant={BackgroundVariant.Dots} gap={20} size={1} color="#ccd5df" />
+                {!modal && (tool === "draw" || tool === "erase") && (
+                  <InkSurface
+                    tool={tool}
+                    color={penColor}
+                    size={penSize}
+                    nodes={nodes}
+                    onCommit={commitInk}
+                    onHidden={setHiddenInk}
+                    onViewport={setViewport}
+                    onMessage={setMessage}
+                  />
+                )}
+                <Controls showInteractive={false} />
+                <MiniMap<CanvasNode>
+                  className={styles.minimap}
+                  nodeColor={(node) => node.data.color || "#cbd5e1"}
+                  pannable
+                  zoomable
+                />
+              </ReactFlow>
+              <DrawingTools
+                tool={tool}
+                setTool={chooseTool}
+                color={penColor}
+                setColor={setPenColor}
+                size={penSize}
+                setSize={setPenSize}
+                history={history}
+                disabled={modal}
               />
-            </ReactFlow>
-            {(selected.length > 0 || selectedEdges.length > 0) && (
-              <div className={styles.selectionBar} aria-label="Selection actions">
-                <span>{selected.length + selectedEdges.length} selected</span>
-                {one && (
-                  <button onClick={() => edit(one.id)} className={styles.secondary}>
-                    <Pencil size={15} /> Edit
-                  </button>
-                )}
-                {!selected.length && selectedEdges.length === 1 && (
+              {tool === "select" && (selected.length > 0 || selectedEdges.length > 0) && (
+                <div className={styles.selectionBar} aria-label="Selection actions">
+                  <span>{selected.length + selectedEdges.length} selected</span>
+                  {one && !isInk(one) && (
+                    <button onClick={() => edit(one.id)} className={styles.secondary}>
+                      <Pencil size={15} /> Edit
+                    </button>
+                  )}
+                  {!selected.length && selectedEdges.length === 1 && (
+                    <button
+                      className={styles.secondary}
+                      onClick={() => setEdgeEditing({ ...selectedEdges[0]! })}
+                    >
+                      <Pencil size={15} /> Edit connection
+                    </button>
+                  )}
+                  {!!selected.length && (
+                    <button
+                      onClick={duplicate}
+                      className={styles.iconButton}
+                      aria-label="Duplicate selection"
+                    >
+                      <Copy size={17} />
+                    </button>
+                  )}
+                  {one && !isInk(one) && one.data.kind !== "boundary" && (
+                    <select
+                      aria-label="Component boundary"
+                      value={one.parentId || ""}
+                      onChange={(e) => reparent(e.target.value)}
+                    >
+                      <option value="">Outside boundaries</option>
+                      {boundaries.map((b) => (
+                        <option key={b.id} value={b.id}>
+                          Inside {b.data.title}
+                        </option>
+                      ))}
+                    </select>
+                  )}
                   <button
-                    className={styles.secondary}
-                    onClick={() => setEdgeEditing({ ...selectedEdges[0]! })}
-                  >
-                    <Pencil size={15} /> Edit connection
-                  </button>
-                )}
-                {!!selected.length && (
-                  <button
-                    onClick={duplicate}
+                    onClick={() => {
+                      void flow.deleteElements({ nodes: selected, edges: selectedEdges });
+                    }}
                     className={styles.iconButton}
-                    aria-label="Duplicate selection"
+                    aria-label="Delete selection"
                   >
-                    <Copy size={17} />
+                    <Trash2 size={17} />
                   </button>
-                )}
-                {one && one.data.kind !== "boundary" && (
-                  <select
-                    aria-label="Component boundary"
-                    value={one.parentId || ""}
-                    onChange={(e) => reparent(e.target.value)}
+                  <button
+                    onClick={() => {
+                      setNodes((current) => current.map((n) => ({ ...n, selected: false })));
+                      setEdges((current) => current.map((e) => ({ ...e, selected: false })));
+                    }}
+                    className={styles.iconButton}
+                    aria-label="Clear selection"
                   >
-                    <option value="">Outside boundaries</option>
-                    {boundaries.map((b) => (
-                      <option key={b.id} value={b.id}>
-                        Inside {b.data.title}
-                      </option>
-                    ))}
-                  </select>
-                )}
-                <button
-                  onClick={() => {
-                    void flow.deleteElements({ nodes: selected, edges: selectedEdges });
-                  }}
-                  className={styles.iconButton}
-                  aria-label="Delete selection"
-                >
-                  <Trash2 size={17} />
-                </button>
-                <button
-                  onClick={() => {
-                    setNodes((current) => current.map((n) => ({ ...n, selected: false })));
-                    setEdges((current) => current.map((e) => ({ ...e, selected: false })));
-                  }}
-                  className={styles.iconButton}
-                  aria-label="Clear selection"
-                >
-                  <X size={16} />
-                </button>
+                    <X size={16} />
+                  </button>
+                </div>
+              )}
+              {nodes.length === 0 && (
+                <div className={styles.empty}>
+                  <Icon name="layout" size={34} />
+                  <h2>Your canvas is ready</h2>
+                  <p>Add a component from the library to get started.</p>
+                </div>
+              )}
+              <button
+                className={`${styles.fitButton} ${styles.secondary}`}
+                onClick={() => void flow.fitView({ padding: 0.18 })}
+              >
+                <Maximize size={15} /> Fit canvas
+              </button>
+              <div className={styles.status} role="status">
+                {message}
               </div>
-            )}
-            {nodes.length === 0 && (
-              <div className={styles.empty}>
-                <Icon name="layout" size={34} />
-                <h2>Your canvas is ready</h2>
-                <p>Add a component from the library to get started.</p>
-              </div>
-            )}
-            <button
-              className={`${styles.fitButton} ${styles.secondary}`}
-              onClick={() => void flow.fitView({ padding: 0.18 })}
-            >
-              <Maximize size={15} /> Fit canvas
-            </button>
-            <div className={styles.status} role="status">
-              {message}
-            </div>
+            </InkContext.Provider>
           </EditContext.Provider>
         </main>
       </div>
@@ -489,6 +618,8 @@ function Playground() {
                 className={styles.primary}
                 onClick={() => {
                   const next = example();
+                  history.clear();
+                  chooseTool("select");
                   setNodes(next.nodes);
                   setEdges(next.edges);
                   setViewport(undefined);
