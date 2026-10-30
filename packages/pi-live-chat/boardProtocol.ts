@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { flowComponentPropsSchema, flowIdSchema, flowKinds } from "./flowProtocol.js";
 
 // Browser documents use the native Excalidraw format; the agent gets only a
 // bounded summary and a deliberately small operation vocabulary, never JS.
@@ -24,6 +25,9 @@ const boardElementSchema = z
       "freedraw",
       "image",
       "frame",
+      "component",
+      "ink",
+      "connection",
     ]),
     x: coordinate,
     y: coordinate,
@@ -48,6 +52,8 @@ export const boardSceneSchema = z.object({
     .record(z.string().max(128), boardFileSchema)
     .refine((v) => Object.keys(v).length <= 32, "Too many board images"),
   background: z.string().regex(/^#[a-fA-F0-9]{6}$/),
+  // Absent on every pre-existing board: never reinterpret an Excalidraw scene.
+  engine: z.enum(["excalidraw", "react-flow"]).optional(),
 });
 export type BoardScene = z.infer<typeof boardSceneSchema>;
 export type BoardElement = z.infer<typeof boardElementSchema>;
@@ -75,7 +81,14 @@ const boardOperationSchema = z.discriminatedUnion("op", [
       ...operationContext,
       op: z.literal("create"),
       id: elementIdSchema,
-      kind: z.enum(["rectangle", "text", "arrow"]),
+      kind: z.enum(["rectangle", "text", "arrow", ...flowKinds, "connection"]),
+      props: flowComponentPropsSchema.partial().optional(),
+      parentId: flowIdSchema.nullable().optional(),
+      source: flowIdSchema.optional(),
+      target: flowIdSchema.optional(),
+      sourceHandle: z.enum(["top", "right", "bottom", "left"]).optional(),
+      targetHandle: z.enum(["top", "right", "bottom", "left"]).optional(),
+      label: z.string().max(256).optional(),
       x: coordinate,
       y: coordinate,
       width: dimension.optional(),
@@ -93,6 +106,13 @@ const boardOperationSchema = z.discriminatedUnion("op", [
       ...operationContext,
       op: z.literal("update"),
       id: elementIdSchema,
+      props: flowComponentPropsSchema.partial().optional(),
+      parentId: flowIdSchema.nullable().optional(),
+      source: flowIdSchema.optional(),
+      target: flowIdSchema.optional(),
+      sourceHandle: z.enum(["top", "right", "bottom", "left"]).optional(),
+      targetHandle: z.enum(["top", "right", "bottom", "left"]).optional(),
+      label: z.string().max(256).optional(),
       x: coordinate.optional(),
       y: coordinate.optional(),
       width: dimension.optional(),
@@ -114,7 +134,7 @@ export const boardRequestSchema = z.object({
   target: boardTargetSchema,
   grantId: z.string().uuid(),
   boardId: boardIdSchema,
-  action: z.enum(["activate", "read", "apply", "revoke"]),
+  action: z.enum(["activate", "read", "apply", "revoke", "catalog"]),
   offset: z.number().int().min(0).max(2000).optional(),
   limit: z.number().int().min(1).max(100).optional(),
   includeImage: z.boolean().optional(),
