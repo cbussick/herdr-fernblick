@@ -219,6 +219,14 @@
   min-width: 0;
   background: #f8fafc;
 }
+/* iPadOS can select nearby DOM text through an otherwise empty SVG drawing surface.
+   Pointer preventDefault alone does not disable native selection or link callouts. */
+.canvas,
+.canvas * {
+  -webkit-user-select: none;
+  user-select: none;
+  -webkit-touch-callout: none;
+}
 .canvas :global(.react-flow) {
   --xy-edge-stroke-default: #8290a3;
   --xy-edge-stroke-selected-default: #426bc0;

@@ -343,6 +343,8 @@ export function InkSurface({
     event.preventDefault();
     event.stopPropagation();
     if (active.current?.type === "pen" && event.pointerType === "touch") return; // Ignore palms while the pen is down.
+    // Recover from a native selection left by an older build or interrupted gesture.
+    window.getSelection()?.removeAllRanges();
     svg.current!.setPointerCapture(event.pointerId);
     pointers.current.set(event.pointerId, local(event));
     if (pointers.current.size > 1) {
@@ -442,6 +444,7 @@ export function InkSurface({
       data-tool={tool}
       className={styles.inkSurface}
       aria-label={tool === "draw" ? "Freehand drawing surface" : "Whole-stroke eraser surface"}
+      onContextMenu={(event) => event.preventDefault()}
       onPointerDown={down}
       onPointerMove={move}
       onPointerUp={up}
