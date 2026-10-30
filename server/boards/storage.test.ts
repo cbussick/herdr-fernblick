@@ -87,6 +87,120 @@ afterEach(async () => {
   await rm(directory, { recursive: true, force: true });
 });
 
+it("chooses an engine only for new boards and never converts even empty stored boards", async () => {
+  expect((await store.open("session-key", validate, "react-flow")).scene.engine).toBeUndefined();
+  const flow = await store.open("new-flow", validate, "react-flow");
+  expect(flow.scene.engine).toBe("react-flow");
+  expect((await store.open("new-flow")).scene.engine).toBe("react-flow");
+  await expect(store.save(flow.id, 0, blank())).rejects.toThrow(/engine/);
+  await expect(store.save(boardId, 0, { ...blank(), engine: "react-flow" })).rejects.toThrow(
+    /engine/,
+  );
+  await expect(store.save(boardId, 0, { ...blank(), engine: "excalidraw" })).resolves.toMatchObject(
+    { revision: 1 },
+  );
+});
+
+it("serves an authorized catalog with read-only legacy grants", async () => {
+  const grant = await active("read");
+  const result = await store.handle(request(grant, "catalog"), validate);
+  expect(result).toMatchObject({
+    engine: "excalidraw",
+    components: expect.arrayContaining([expect.objectContaining({ id: "card" })]),
+    propsSchema: { type: "object" },
+  });
+  store.revoke(grant.grantId);
+  await expect(store.handle(request(grant, "catalog"), validate)).rejects.toThrow();
+});
+
+it("requires automatic flow relation observations, keeps independent groups and validates final graphs", async () => {
+  boardId = (await store.open("flow", validate, "react-flow")).id;
+  const grant = await active();
+  const nodes: BoardOperation[] = ["a", "b"].map((id) => ({
+    op: "create",
+    id,
+    kind: "card",
+    x: 0,
+    y: 0,
+  }));
+  await store.handle(apply(grant, nodes), validate);
+  const connection: BoardOperation = {
+    op: "create",
+    id: "edge",
+    kind: "connection",
+    source: "a",
+    target: "b",
+    x: 0,
+    y: 0,
+  };
+  expect(await store.handle(apply(grant, [connection], 1), validate)).toMatchObject({
+    revision: 1,
+    applied: [],
+    skipped: [{ id: "edge" }],
+  });
+  await store.handle(request(grant, "read"), validate);
+  const edgeRequest = apply(grant, [connection], 1);
+  const edgeResult = await store.handle(edgeRequest, validate);
+  expect(edgeResult).toMatchObject({ revision: 2, applied: ["edge"] });
+  expect(await store.handle(edgeRequest, validate)).toEqual(edgeResult);
+  await store.handle(request(grant, "read"), validate);
+  const state = await store.read(boardId);
+  state.scene.elements[1].x = 80;
+  await store.save(boardId, 2, state.scene);
+  const grouped: BoardOperation[] = [
+    { op: "update", id: "a", x: 20, groupId: "related" },
+    { op: "create", id: "grouped", kind: "card", x: 0, y: 0, groupId: "related" },
+    { op: "create", id: "independent", kind: "comment", x: 0, y: 0 },
+  ];
+  expect(await store.handle(apply(grant, grouped, 2), validate)).toMatchObject({
+    applied: ["independent"],
+    skipped: [{ id: "a" }, { id: "grouped" }],
+  });
+  await store.handle(request(grant, "read"), validate);
+  const revision = (await store.read(boardId)).revision;
+  await expect(
+    store.handle(apply(grant, [{ op: "delete", id: "a" }], revision), validate),
+  ).rejects.toThrow();
+  expect((await store.read(boardId)).revision).toBe(revision);
+  expect(
+    await store.handle(
+      apply(
+        grant,
+        [
+          { op: "delete", id: "a" },
+          { op: "delete", id: "edge" },
+        ],
+        revision,
+      ),
+      validate,
+    ),
+  ).toMatchObject({ applied: ["a", "edge"] });
+});
+
+it("does not connect newly created endpoints without a prior read", async () => {
+  boardId = (await store.open("atomic-flow", validate, "react-flow")).id;
+  const grant = await active();
+  const operations: BoardOperation[] = [
+    { op: "create", id: "a", kind: "card", x: 0, y: 0, groupId: "g" },
+    { op: "create", id: "b", kind: "card", x: 0, y: 0, groupId: "g" },
+    {
+      op: "create",
+      id: "edge",
+      kind: "connection",
+      x: 0,
+      y: 0,
+      source: "a",
+      target: "b",
+      groupId: "g",
+    },
+  ];
+  expect(await store.handle(apply(grant, operations), validate)).toMatchObject({
+    revision: 0,
+    applied: [],
+    skipped: [{ id: "a" }, { id: "b" }, { id: "edge" }],
+  });
+});
+
 it("persists scenes and immutable snapshots across restart without persisting capabilities", async () => {
   expect(boardId).toMatch(/^[a-f0-9]{64}$/);
   expect(BoardStore.idFor("session-key")).toBe(boardId);

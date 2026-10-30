@@ -13,6 +13,8 @@ import {
   type BoardState,
   type BoardTarget,
 } from "../../packages/pi-live-chat/boardProtocol.js";
+import { flowCatalog, flowComponentPropsSchema } from "../../packages/pi-live-chat/flowProtocol.js";
+import { flowDependencies } from "./flowScene.js";
 import { BoardDisk } from "./disk.js";
 import { BoardError, requireBoard } from "./errors.js";
 import { applyOperations, emptyScene, summarize, validatePng, validateScene } from "./scene.js";
@@ -192,7 +194,11 @@ export class BoardStore {
     }
   }
 
-  async open(sessionKey: string, authorize?: () => void): Promise<BoardState> {
+  async open(
+    sessionKey: string,
+    authorize?: () => void,
+    preferredEngine?: BoardScene["engine"],
+  ): Promise<BoardState> {
     const check = this.guard(authorize);
     check();
     const id = BoardStore.idFor(sessionKey);
@@ -211,7 +217,7 @@ export class BoardStore {
         id,
         sessionKey,
         revision: 0,
-        scene: emptyScene(),
+        scene: emptyScene(preferredEngine),
         updatedAt: Date.now(),
         lastAuthor: "human",
         snapshots: [],
@@ -312,6 +318,11 @@ export class BoardStore {
     author: "human" | "agent",
     check: () => void,
   ): Promise<BoardState> {
+    requireBoard(
+      (state.scene.engine ?? "excalidraw") === (scene.engine ?? "excalidraw"),
+      400,
+      "Board engine cannot change",
+    );
     requireBoard(state.revision < Number.MAX_SAFE_INTEGER, 409, "Board revision limit reached");
     const next: BoardState = {
       ...state,
@@ -570,6 +581,7 @@ export class BoardStore {
             reasons.set(op.id, op.op === "delete" ? "already_deleted" : "target_deleted");
           const dependencies = new Set([
             ...(op.dependsOn ?? []),
+            ...flowDependencies(state.scene, op),
             ...(op.op === "create" ? [] : [op.id]),
           ]);
           for (const id of dependencies) {
@@ -628,6 +640,14 @@ export class BoardStore {
           expiresAt: record.expiresAt,
         };
       }
+      if (request.action === "catalog")
+        return {
+          engine: state.scene.engine ?? "excalidraw",
+          components: flowCatalog,
+          propsSchema: z.toJSONSchema(flowComponentPropsSchema),
+          guidance:
+            "Only react-flow boards support these components. Read all parents and connection endpoints before editing; same-batch new endpoints are not supported. Coordinates of children are relative to their boundary. Delete or reparent children and remove connections explicitly when deleting their parent or endpoint. Props are data only; imageId references an existing board file. Read summaries may truncate large props.",
+        };
       const summary = summarize(state.scene, state.revision, request.offset, request.limit);
       // Explicit opt-in preserves summary-only reads from already-running older
       // extensions. New tools choose their first-page image default at the caller.

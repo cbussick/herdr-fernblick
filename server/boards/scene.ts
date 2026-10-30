@@ -8,8 +8,16 @@ import {
   type BoardScene,
 } from "../../packages/pi-live-chat/boardProtocol.js";
 import { BoardError, requireBoard } from "./errors.js";
+import { validateFlowGraph, type FlowElement } from "../../packages/pi-live-chat/flowProtocol.js";
+import { applyFlowOperations, flowSummary } from "./flowScene.js";
+import { validateRasterBudget } from "./rasterBudget.js";
 
-export const emptyScene = (): BoardScene => ({ elements: [], files: {}, background: "#ffffff" });
+export const emptyScene = (engine?: BoardScene["engine"]): BoardScene => ({
+  elements: [],
+  files: {},
+  background: "#ffffff",
+  ...(engine ? { engine } : {}),
+});
 const nonce = () => randomInt(1, 0x7fffffff);
 const pngMagic = Buffer.from([137, 80, 78, 71, 13, 10, 26, 10]);
 
@@ -97,11 +105,25 @@ export function validateScene(input: unknown): BoardScene {
   const parsed = boardSceneSchema.safeParse(JSON.parse(encoded));
   requireBoard(parsed.success, 400, "Invalid board scene");
   const scene = parsed.data;
+  if (scene.engine === "react-flow") {
+    try {
+      scene.elements = validateFlowGraph(scene);
+    } catch {
+      throw new BoardError(400, "Invalid flow graph");
+    }
+  }
   const ids = new Set<string>();
   for (const element of scene.elements) {
     requireBoard(!ids.has(element.id), 400, "Duplicate shape ID");
     ids.add(element.id);
-    inspect(element, 0, true);
+    if (scene.engine !== "react-flow") {
+      requireBoard(
+        !["component", "ink", "connection"].includes(element.type),
+        400,
+        "Flow elements require the react-flow engine",
+      );
+      inspect(element, 0, true);
+    }
     if (element.type === "image" && !element.isDeleted && element.fileId != null) {
       requireBoard(
         typeof element.fileId === "string" && Object.hasOwn(scene.files, element.fileId),
@@ -127,6 +149,13 @@ export function validateScene(input: unknown): BoardScene {
             : bytes.subarray(0, 4).toString("ascii") === "RIFF" &&
               bytes.subarray(8, 12).toString("ascii") === "WEBP";
     requireBoard(valid, 400, "Asset does not match its raster image type");
+  }
+  if (scene.engine === "react-flow") {
+    try {
+      validateRasterBudget(scene);
+    } catch {
+      throw new BoardError(400, "Flow raster assets exceed the pre-decode dimension/pixel limit");
+    }
   }
   return scene;
 }
@@ -266,6 +295,11 @@ function fields(element: BoardElement, op: Exclude<BoardOperation, { op: "delete
 }
 
 function create(op: Extract<BoardOperation, { op: "create" }>): BoardElement {
+  requireBoard(
+    op.kind === "rectangle" || op.kind === "text" || op.kind === "arrow",
+    400,
+    "Unsupported native shape kind",
+  );
   const element: BoardElement = {
     id: op.id,
     type: op.kind,
@@ -332,6 +366,29 @@ function create(op: Extract<BoardOperation, { op: "create" }>): BoardElement {
 }
 
 export function applyOperations(scene: BoardScene, operations: BoardOperation[]): BoardScene {
+  if (scene.engine === "react-flow") return validateScene(applyFlowOperations(scene, operations));
+  for (const op of operations) {
+    if (op.op === "delete") continue;
+    requireBoard(
+      [
+        op.props,
+        op.parentId,
+        op.source,
+        op.target,
+        op.sourceHandle,
+        op.targetHandle,
+        op.label,
+      ].every((v) => v === undefined),
+      400,
+      "Flow fields require the react-flow engine",
+    );
+    if (op.op === "create")
+      requireBoard(
+        ["rectangle", "text", "arrow"].includes(op.kind),
+        400,
+        "Unsupported native shape kind",
+      );
+  }
   const next = structuredClone(scene);
   const touched = new Set<string>();
   for (const op of operations) {
@@ -370,14 +427,17 @@ export function summarize(scene: BoardScene, revision: number, offset = 0, limit
   const elements: Record<string, unknown>[] = [];
   let bytes = 0;
   for (const e of live.slice(offset, offset + limit)) {
-    const summary: Record<string, unknown> = {
-      id: e.id,
-      type: e.type,
-      x: e.x,
-      y: e.y,
-      width: e.width,
-      height: e.height,
-    };
+    const summary: Record<string, unknown> =
+      scene.engine === "react-flow"
+        ? flowSummary(e as FlowElement, scene.files)
+        : {
+            id: e.id,
+            type: e.type,
+            x: e.x,
+            y: e.y,
+            width: e.width,
+            height: e.height,
+          };
     if (e.type === "text" && typeof e.text === "string") {
       summary.text = e.text.slice(0, 4000);
       if (e.text.length > 4000) summary.textTruncated = true;
@@ -394,11 +454,12 @@ export function summarize(scene: BoardScene, revision: number, offset = 0, limit
       if (e.points.length > 100) summary.pointsTruncated = true;
     }
     const size = Buffer.byteLength(JSON.stringify(summary));
-    if (elements.length && bytes + size > 128 * 1024) break;
+    if (bytes + size > 128 * 1024) break;
     bytes += size;
     elements.push(summary);
   }
   return {
+    ...(scene.engine === "react-flow" ? { engine: scene.engine } : {}),
     revision,
     total: live.length,
     offset,

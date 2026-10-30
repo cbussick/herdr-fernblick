@@ -1,4 +1,6 @@
 import { createServer, type Server } from "node:http";
+import { existsSync } from "node:fs";
+import { defaultFlowProps } from "../../packages/pi-live-chat/flowProtocol.js";
 import { cp, mkdtemp, readFile, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { extname, join } from "node:path";
@@ -10,6 +12,8 @@ import { localExcalidrawFonts } from "../../tools/local-excalidraw-fonts.js";
 import { BoardRenderer } from "./renderer.js";
 import { emptyScene } from "./scene.js";
 
+// The frontend worker supplies this entry at integration. Never replace it with a fake page.
+const hasFlowEntry = existsSync("flow-board-render.html");
 let directory: string;
 let server: Server;
 let inspector: Browser;
@@ -30,7 +34,14 @@ beforeAll(async () => {
     configFile: false,
     logLevel: "silent",
     plugins: [localExcalidrawFonts()],
-    build: { outDir: directory, rolldownOptions: { input: "whiteboard-render.html" } },
+    build: {
+      outDir: directory,
+      rolldownOptions: {
+        input: hasFlowEntry
+          ? ["whiteboard-render.html", "flow-board-render.html"]
+          : "whiteboard-render.html",
+      },
+    },
   });
   await cp(
     "node_modules/@excalidraw/excalidraw/dist/prod/fonts",
@@ -70,6 +81,7 @@ beforeAll(async () => {
       const mime: Record<string, string> = {
         ".html": "text/html",
         ".js": "text/javascript",
+        ".css": "text/css",
         ".woff2": "font/woff2",
       };
       response.writeHead(200, {
@@ -198,6 +210,64 @@ async function raster(noise = false): Promise<string> {
 }
 
 describe("native browser board rendering", () => {
+  it.skipIf(!hasFlowEntry)(
+    "renders real flow components, ink and local images within pixel and byte limits",
+    async () => {
+      const scene: BoardScene = {
+        ...emptyScene("react-flow"),
+        elements: [
+          {
+            id: "card",
+            type: "component",
+            kind: "card",
+            x: 0,
+            y: 0,
+            width: 300,
+            height: 200,
+            version: 1,
+            parentId: null,
+            props: {
+              ...defaultFlowProps("card"),
+              title: "Flow backend integration",
+              imageId: "blue",
+            },
+          },
+          {
+            id: "ink",
+            type: "ink",
+            x: 0,
+            y: 220,
+            width: 300,
+            height: 100,
+            version: 1,
+            props: {
+              points: [
+                [0, 0, 1],
+                [150, 50, 1],
+                [300, 0, 1],
+              ],
+              color: "#ff0000",
+              size: 12,
+              pressure: false,
+              w: 300,
+              h: 100,
+            },
+          },
+        ],
+        files: { blue: { id: "blue", mimeType: "image/png", dataURL: await raster(), created: 0 } },
+      };
+      const png = await renderer.render(scene);
+      const pixels = await inspect(png);
+      expect(png.length).toBeLessThanOrEqual(2 * 1024 * 1024);
+      expect(pixels.width).toBeLessThanOrEqual(2048);
+      expect(pixels.height).toBeLessThanOrEqual(2048);
+      expect(pixels.width * pixels.height).toBeLessThanOrEqual(2 * 1024 * 1024);
+      expect(pixels.red).toBeGreaterThan(100);
+      expect(pixels.blue).toBeGreaterThan(20);
+      expect(pixels.dark).toBeGreaterThan(20);
+      expect(requests).toContain("/flow-board-render.html");
+    },
+  );
   it("prevents real external/API traffic and redirect escapes even without the entry CSP", async () => {
     let escaped = 0;
     const outside = createServer((_request, response) => {

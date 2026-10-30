@@ -62,7 +62,14 @@ export function validateRasterBudget(scene: BoardScene): void {
     scene.elements.flatMap((element) =>
       element.type === "image" && !element.isDeleted && typeof element.fileId === "string"
         ? [element.fileId]
-        : [],
+        : element.type === "component" &&
+            !element.isDeleted &&
+            element.props &&
+            typeof element.props === "object" &&
+            !Array.isArray(element.props) &&
+            typeof element.props.imageId === "string"
+          ? [element.props.imageId]
+          : [],
     ),
   );
   let pixels = 0;

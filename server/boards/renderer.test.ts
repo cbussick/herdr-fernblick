@@ -30,6 +30,8 @@ function fakeBrowser() {
     goto: vi.fn().mockResolvedValue({ ok: () => true }),
     waitForFunction: vi.fn().mockResolvedValue(undefined),
     evaluate: vi.fn().mockResolvedValue(png().toString("base64")),
+    setViewportSize: vi.fn().mockResolvedValue(undefined),
+    screenshot: vi.fn().mockResolvedValue(png()),
   };
   const context = {
     newPage: vi.fn().mockResolvedValue(page),
@@ -110,6 +112,36 @@ describe("BoardRenderer", () => {
     expect(browser.close).toHaveBeenCalled();
   });
 
+  it("prepares flow scenes and screenshots the full prepared viewport, reducing scale for byte limits", async () => {
+    const { page } = fakeBrowser();
+    page.evaluate.mockResolvedValue({ width: 100, height: 100 });
+    page.screenshot.mockResolvedValueOnce(Buffer.alloc(2 * 1024 * 1024 + 1));
+    const result = await renderer().render(emptyScene("react-flow"));
+    expect(result).toEqual(png());
+    expect(page.goto).toHaveBeenCalledWith(
+      "http://127.0.0.1:9191/flow-board-render.html",
+      expect.anything(),
+    );
+    expect(page.setViewportSize).toHaveBeenCalledWith({ width: 100, height: 100 });
+    expect(page.screenshot).toHaveBeenCalledWith(
+      expect.objectContaining({ type: "png", fullPage: false }),
+    );
+    expect(page.evaluate.mock.calls[0][1]).toMatchObject({ scale: 1 });
+    expect(page.evaluate.mock.calls[1][1].scale).toBeLessThan(1);
+  });
+
+  it("fails explicitly for oversized prepared flow dimensions and PNGs that cannot fit", async () => {
+    const { page, browser } = fakeBrowser();
+    page.evaluate.mockResolvedValueOnce({ width: 2049, height: 1 });
+    await expect(renderer().render(emptyScene("react-flow"))).rejects.toThrow(/pixel limit/);
+    expect(page.screenshot).not.toHaveBeenCalled();
+    expect(browser.close).toHaveBeenCalled();
+    page.evaluate.mockResolvedValue({ width: 100, height: 100 });
+    page.screenshot.mockResolvedValue(Buffer.alloc(2 * 1024 * 1024 + 1));
+    await expect(renderer().render(emptyScene("react-flow"))).rejects.toThrow(/could not fit/);
+    expect(page.screenshot).toHaveBeenCalledTimes(8);
+  });
+
   it("does not report success before browser cleanup finishes", async () => {
     const { browser } = fakeBrowser();
     const cleanup = deferred<void>();
@@ -176,6 +208,8 @@ describe("BoardRenderer", () => {
     ).toHaveBeenCalled();
     for (const [path, type] of [
       ["/assets/chunk-abc.js", "script"],
+      ["/assets/flow-abc.css", "stylesheet"],
+      ["/assets/Manrope-abc.woff2", "font"],
       ["/excalidraw/fonts/Virgil/Virgil-Regular.woff2", "font"],
     ])
       expect((await request(`${base}${path}`, type)).fulfill).toHaveBeenCalled();
@@ -191,6 +225,9 @@ describe("BoardRenderer", () => {
       `${base}/`,
       "file:///etc/passwd",
       `${base}/src/main.tsx`,
+      `${base}/flow-board-render.html`,
+      `${base}/assets/image.png`,
+      `${base}/assets/bad.css?query=1`,
     ])
       expect((await request(url)).abort).toHaveBeenCalled();
     expect(

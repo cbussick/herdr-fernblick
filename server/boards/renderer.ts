@@ -11,6 +11,12 @@ const MAX_PENDING = 4; // Includes the active render.
 const pngMagic = Buffer.from([137, 80, 78, 71, 13, 10, 26, 10]);
 
 type RenderFunction = { renderBoardScene: (scene: BoardScene) => Promise<string> };
+type FlowRenderFunction = {
+  prepareFlowBoardScene: (
+    scene: BoardScene,
+    scale?: number,
+  ) => Promise<{ width: number; height: number }>;
+};
 type Job = {
   scene: BoardScene;
   resolve: (png: Buffer) => void;
@@ -28,7 +34,10 @@ function allowedAsset(request: Request, origin: string): boolean {
   const path = url.pathname;
   return (
     (request.resourceType() === "script" && /^\/assets\/[\w.-]+\.js$/.test(path)) ||
-    (request.resourceType() === "font" && /^\/excalidraw\/fonts\/[\w./-]+\.woff2$/.test(path))
+    (request.resourceType() === "stylesheet" && /^\/assets\/[\w.-]+\.css$/.test(path)) ||
+    (request.resourceType() === "font" &&
+      (/^\/assets\/[\w.-]+\.woff2$/.test(path) ||
+        /^\/excalidraw\/fonts\/[\w./-]+\.woff2$/.test(path)))
   );
 }
 
@@ -150,6 +159,8 @@ export class BoardRenderer {
         if (popup !== page) void popup.close().catch(() => {});
       });
       await context.routeWebSocket(/.*/, (socket) => socket.close());
+      const flow = job.scene.engine === "react-flow";
+      const entry = `${this.#origin}/${flow ? "flow-board-render" : "whiteboard-render"}.html`;
       let documentAllowed = true;
       await context.route("**/*", async (route) => {
         const request = route.request();
@@ -159,7 +170,7 @@ export class BoardRenderer {
           request.isNavigationRequest() &&
           request.frame() === page.mainFrame() &&
           request.method() === "GET" &&
-          request.url() === `${this.#origin}/whiteboard-render.html`
+          request.url() === entry
         ) {
           documentAllowed = false;
           allowed = true;
@@ -184,21 +195,64 @@ export class BoardRenderer {
           await route.abort("blockedbyclient").catch(() => {});
         }
       });
-      const response = await page.goto(`${this.#origin}/whiteboard-render.html`, {
+      const response = await page.goto(entry, {
         waitUntil: "load",
         timeout: TIMEOUT_MS,
       });
       if (!response?.ok()) throw new Error("Board renderer entry could not load");
-      await page.waitForFunction(
-        () => typeof (globalThis as unknown as RenderFunction).renderBoardScene === "function",
-      );
-      signal.throwIfAborted();
-      const result = await page.evaluate(
-        (json) => (globalThis as unknown as RenderFunction).renderBoardScene(JSON.parse(json)),
-        JSON.stringify(job.scene),
-      );
-      signal.throwIfAborted();
-      output = decodePng(result);
+      if (flow) {
+        await page.waitForFunction(
+          () =>
+            typeof (globalThis as unknown as FlowRenderFunction).prepareFlowBoardScene ===
+            "function",
+        );
+        for (let attempt = 0, scale = 1; attempt < 8; attempt++) {
+          signal.throwIfAborted();
+          const size = await page.evaluate(
+            ({ json, scale }) =>
+              (globalThis as unknown as FlowRenderFunction).prepareFlowBoardScene(
+                JSON.parse(json),
+                scale,
+              ),
+            { json: JSON.stringify(job.scene), scale },
+          );
+          if (
+            !Number.isInteger(size.width) ||
+            !Number.isInteger(size.height) ||
+            size.width < 1 ||
+            size.height < 1 ||
+            size.width > MAX_SIDE ||
+            size.height > MAX_SIDE ||
+            size.width * size.height > MAX_PIXELS
+          )
+            throw new Error("Board renderer exceeded the pixel limit");
+          await page.setViewportSize(size);
+          const png = await page.screenshot({
+            type: "png",
+            fullPage: false,
+            animations: "disabled",
+            timeout: TIMEOUT_MS,
+          });
+          signal.throwIfAborted();
+          if (png.length <= MAX_PNG_BYTES) {
+            output = decodePng(png.toString("base64"));
+            break;
+          }
+          scale *= Math.min(0.8, Math.sqrt(MAX_PNG_BYTES / png.length) * 0.9);
+        }
+        if (!output) throw new Error("Board renderer could not fit PNG within 2 MiB");
+      } else {
+        await page.waitForFunction(
+          () => typeof (globalThis as unknown as RenderFunction).renderBoardScene === "function",
+        );
+        signal.throwIfAborted();
+        const result = await page.evaluate(
+          (json) => (globalThis as unknown as RenderFunction).renderBoardScene(JSON.parse(json)),
+          JSON.stringify(job.scene),
+        );
+        signal.throwIfAborted();
+        output = decodePng(result);
+      }
     } catch (error) {
       failure = error instanceof Error ? error : new Error("Board rendering failed");
     } finally {
