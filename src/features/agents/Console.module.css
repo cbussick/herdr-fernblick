@@ -198,7 +198,6 @@
   overflow-wrap: anywhere;
   font-size: 1rem;
   height: 100%;
-  max-width: 48rem;
   align-content: start;
   gap: var(--space-5);
   padding: var(--space-5) var(--space-2) var(--space-4);
@@ -223,8 +222,14 @@
 .chat-message {
   display: grid;
   min-width: 0;
-  max-width: 92%;
+  max-width: min(92%, 76ch);
   gap: var(--space-2);
+}
+
+/* Structured output can use the pane; ordinary messages retain a readable measure. */
+.chat-message:has(pre, table) {
+  width: 100%;
+  max-width: 100%;
 }
 
 .chat-message__meta {
@@ -520,7 +525,6 @@
 
 .prompt-composer {
   width: 100%;
-  max-width: 50rem;
   align-self: center;
   padding: var(--space-2) var(--space-4) max(var(--space-3), env(safe-area-inset-bottom));
   background: var(--color-canvas);
@@ -723,5 +727,9 @@
 
   .chat-transcript {
     padding-top: var(--space-8);
+  }
+
+  .prompt-composer {
+    padding-inline: var(--space-6);
   }
 }

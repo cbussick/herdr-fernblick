@@ -266,7 +266,6 @@ summary.tab-group__header {
 .pane-row[data-selected] {
   background: var(--color-accent-soft);
   border-color: var(--color-border-strong);
-  box-shadow: inset 3px 0 var(--color-accent);
 }
 
 .pane-row__copy {

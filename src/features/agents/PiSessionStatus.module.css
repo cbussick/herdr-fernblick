@@ -2,7 +2,6 @@
   display: flex;
   width: 100%;
   min-width: 0;
-  max-width: 50rem;
   max-height: 25dvh;
   align-self: center;
   box-sizing: border-box;

@@ -8,6 +8,10 @@
   font-synthesis: style;
 }
 
+.message :where(p, ul, ol, blockquote) {
+  max-width: 76ch;
+}
+
 .message :where(p) {
   margin: 0;
   white-space: pre-wrap;
@@ -59,7 +63,6 @@
   padding-inline-start: 0.85em;
   margin: 0;
   color: var(--color-text-secondary);
-  border-inline-start: 3px solid var(--color-border-strong);
 }
 
 .message
