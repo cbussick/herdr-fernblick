@@ -1,0 +1,57 @@
+# React Flow component playground
+
+A standalone experiment based on the supplied Obsidian screenshots. It is **not** a Fernblick route, does not register a service worker, and never contacts Herdr, Pi, or the app backend. Components are newly implemented approximations of the screenshots, not imported Obsidian scripts.
+
+## Run
+
+Requires Node 24. From this directory:
+
+```sh
+npm ci
+npm run dev
+# http://127.0.0.1:5191
+```
+
+For access from another device on the same private Tailnet, use a specific local Tailnet IP (never a public/all-interface bind):
+
+```sh
+npm run dev -- --host <local-tailnet-ip>
+```
+
+Use a distinct port if 5191 is occupied. This is a temporary developer server, not a production deployment. Nothing changes the existing app service, proxy, sockets, or saved boards.
+
+## Try
+
+- Add **Boundary**, **Card**, **Icon Node**, **Detail Node**, **Table Node**, or **Comment Node** from the library. The initial example contains all six.
+- Select a component and choose **Edit**, or double-click it. Change title, subtitle, color, icon or local image. Detail nodes have editable text/grouped-text fields and row highlights. Tables have editable columns, rows, and cells. Changes appear in a live preview before saving; Cancel/Escape discards them.
+- Drag between the four connection dots to connect any two components. Double-click an edge to change its label/color. Select an edge and press Delete to remove it.
+- Drag components, use the selected component's resize controls, Shift-click to select several, and duplicate or delete the selection. Drag the canvas to pan, scroll/pinch to zoom; Fit canvas and the minimap help navigate.
+- Select a boundary **before adding** to create a component inside it, or use the selected component's boundary dropdown. Moving a boundary moves its children. Children may extend outside it; this is organizational grouping, not clipping. Boundary nesting is intentionally excluded.
+- Choose **Draw** to sketch anywhere, including over components. Set pen color and width in the toolbar. Mouse and finger input use simulated pressure; styluses use reported pressure. A click makes a dot.
+- On iPad/iPhone, Draw/Eraser intercept native `touchstart` defaults across the entire drawing surface to suppress Scribble interference. This is the upstream Excalidraw workaround, not a system Scribble setting or guaranteed browser API. Toolbar controls, Select/Pan mode, and dialog text fields retain their native touch behavior. Re-enable Scribble in iPad settings, refresh, and retest handwriting to confirm it works on your device.
+- **Select** lets you move, resize, duplicate or delete a stroke just like a node; only its painted path catches clicks, so gaps remain usable. Strokes are independent of boundaries and cannot have connections. Resize stretches the entire stroke.
+- Canvas text selection and native long-press callouts are disabled, including the React Flow attribution, so iPadOS cannot interrupt drawing by selecting nearby labels. Drawing dismisses a selection left over from an older build. Text editing/selection in dialogs is unchanged.
+- **Eraser** removes whole strokes, never the components underneath. A drag is one undoable erase operation. **Undo drawing / Redo drawing** (Ctrl/Cmd+Z, Ctrl/Cmd+Shift+Z or Ctrl+Y) cover stroke creation, erasure, movement, resize, duplication and deletion; they do not undo component edits. The last 50 drawing commands are available for this page session, not after reload. A new drawing change clears redo; ordinary component edits do not.
+- In Draw/Eraser mode, use two fingers to pan/zoom; starting a two-finger gesture discards the provisional stroke. Wheel/pinch-trackpad zoom is also supported. **Pan** mode allows one-finger or mouse panning without drawing. Escape cancels a gesture and returns to Select. Pointer cancellation, window blur or hiding the page discards an unfinished stroke/erase. A pen takes priority even when a palm/touch or pinch gesture arrived first: provisional touch ink/navigation is canceled, and superseded touch IDs cannot cancel the new pen. Touches arriving while a pen stroke is active are ignored as palms. This is application gesture arbitration, not a guarantee about hardware palm rejection or events suppressed by iPadOS/Scribble.
+- Changes are saved in **this browser and origin only** using localStorage, not sent to the server. Storage failures are visible. Download exports editable playground JSON as a backup; an import UI is not included. Reset asks before replacing the canvas with the example.
+
+## Limits and omissions
+
+No agent tools, real-time collaboration, component/connection undo history, partial-stroke erasing, arbitrary uploaded React code, full Lucide search, Obsidian interoperability, or production migration. Included icons are a small searchable Lucide subset. Local raster images up to 2 MiB are supported (no SVG/remote URLs). The browser's storage quota may be smaller than several uploaded images; download before leaving if a save warning appears. Components and strokes share a 300-item limit; drawings allow 10,000 points per stroke and 100,000 per board. Connections are limited to 1,000, detail fields/rows to 100, and table columns to 20. Long gestures are truncated at the drawing limits. Restore operations that would exceed limits are refused without consuming undo/redo history. Grouped detail fields are multiline text, not recursively nested components. Resizing a component does not scale its font or internal content.
+
+React components render trusted code with saved JSON props. Each component and finished freehand stroke is a native React Flow node. Strokes store pressure-bearing scene-coordinate points and render SVG outlines generated by `perfect-freehand`; in-progress drawing uses a pointer-captured overlay, not a second canvas engine. Erasing tests the actual resized stroke outline along the full pointer sweep. Drawing undo applies only affected stroke IDs, preserving unrelated component edits. Stored format version 2 still reads the original version-1 component boards under the same localStorage key. Boundary containment uses `parentId`; connections use source/target node and handle IDs. The property dialogs update the same data that could later be exposed to validated agent tools, but that integration is deliberately absent here.
+
+## Checks
+
+```sh
+npm run check          # model tests, TypeScript, production build
+npm run test:browser   # requires running server, Chromium installed
+npm run test:selection # canvas selection/callout regression, Chromium + WebKit installed
+npm run test:pen       # real browser pen/touch event-order and rapid-tap regression (Chromium)
+npm run test:scribble  # iOS native touch-start policy, Chromium + WebKit; not native Scribble emulation
+# PLAYGROUND_URL=http://127.0.0.1:5191 npm run test:browser
+```
+
+Install Chromium with `npx playwright install chromium` if needed, or `npx playwright install chromium webkit` for selection regression checks. Desktop WebKit cannot reproduce the native UIKit selection popup: that regression checks the actual canvas selection protections, context-menu suppression, attribution hit testing, subsequent strokes and editable dialog text on both engines. Final iPadOS confirmation still needs a real device. The browser script uses fresh contexts, exercises only this playground, and saves evidence under the worktree's ignored `.runtime/react-flow-playground/`. It tests actual handle connections, component dialogs, grouping, drawing/erasing, stroke transforms, scoped undo, cancellation, reload persistence, and narrow touch viewports. Drawing checks use Chromium mouse, touch, pinch and pressure-bearing pen events through Playwright/CDP; this is not a physical-device pen, palm-rejection or latency assessment.
+
+React Flow, Lucide, and perfect-freehand are MIT-licensed; Nunito is bundled through `@fontsource/nunito` under OFL-1.1. Core renderer, icon, and font license notices are included under `public/licenses/` and copied into the standalone build. No React Flow Pro example code is used. See [Apple Pencil input research](../../docs/apple-pencil-input-research.md) for verified upstream issues, the local palm-first reproduction/fix, and the limits of simulated testing.
