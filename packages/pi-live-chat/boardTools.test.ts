@@ -216,7 +216,14 @@ it("does not mislabel ordinary native image attachments as board snapshots", asy
     images: [{ type: "image", data: "image", mimeType: "image/png" }],
   });
   t.reply(undefined, { expiresAt: Date.now() + 60_000 });
-  expect((await before)?.systemPrompt).not.toContain("attached image shows the board");
+  const prompt = (await before)?.systemPrompt;
+  expect(prompt).not.toContain("attached image shows the board");
+  expect(prompt).toContain(
+    "board_components discovers semantic components and typed props on demand",
+  );
+  expect(prompt).toContain("Prefer matching predefined components when useful");
+  expect(prompt).toContain("do not create or read a board for unrelated messages");
+  expect(prompt).not.toContain("propsSchema");
   expect(t.frames.map((r) => r.action)).toEqual(["begin"]);
   t.tools.revoke();
 });
@@ -245,34 +252,38 @@ it("revokes old run on input, never regrants after stop, and starts fresh only o
   t.tools.revoke();
 });
 
-it.each(["session", "epoch", "runtime", "disconnect"])(
-  "fails closed on %s before lazy grant",
-  async (boundary) => {
-    const t = setup();
-    await available(t);
-    const old = t.connection()!;
-    if (boundary === "disconnect") t.changeConnection(undefined);
-    else
-      t.changeConnection({
-        ...old,
-        target: { ...old.target, [boundary === "session" ? "sessionId" : boundary]: randomUUID() },
-      });
-    await expect(t.run("board_read")).rejects.toThrow("stale");
-    expect(t.frames.some((r) => r.action === "grant")).toBe(false);
-  },
-);
-
-it("never reacquires after revocation while a lazy grant is pending", async () => {
+it.each(
+  ["board_read", "board_components"].flatMap((name) =>
+    ["session", "epoch", "runtime", "disconnect"].map((boundary) => ({ name, boundary })),
+  ),
+)("fails closed on $boundary before $name lazy grant", async ({ name, boundary }) => {
   const t = setup();
   await available(t);
-  const read = t.run("board_read");
-  const denied = expect(read).rejects.toThrow("stopped");
-  t.tools.revoke("stopped");
-  await denied;
-  t.reply(undefined, { grant: t.grant });
-  await expect(t.run("board_read")).rejects.toThrow("No active");
-  expect(t.frames.filter((r) => r.action === "grant")).toHaveLength(1);
+  const old = t.connection()!;
+  if (boundary === "disconnect") t.changeConnection(undefined);
+  else
+    t.changeConnection({
+      ...old,
+      target: { ...old.target, [boundary === "session" ? "sessionId" : boundary]: randomUUID() },
+    });
+  await expect(t.run(name)).rejects.toThrow("stale");
+  expect(t.frames.some((r) => r.action === "grant")).toBe(false);
 });
+
+it.each(["board_read", "board_components"])(
+  "%s never reacquires after revocation while a lazy grant is pending",
+  async (name) => {
+    const t = setup();
+    await available(t);
+    const read = t.run(name);
+    const denied = expect(read).rejects.toThrow("stopped");
+    t.tools.revoke("stopped");
+    await denied;
+    t.reply(undefined, { grant: t.grant });
+    await expect(t.run("board_read")).rejects.toThrow("No active");
+    expect(t.frames.filter((r) => r.action === "grant")).toHaveLength(1);
+  },
+);
 
 it("opens the conversation URL without input, changing tools or disturbing an active run", async () => {
   const t = setup();
@@ -296,6 +307,73 @@ it("rejects a delayed open reply after a conversation boundary", async () => {
   await rejected;
 });
 
+it("lazily grants catalog access and returns JSON without rendering or leaking authority", async () => {
+  const t = setup();
+  await available(t);
+  const catalogTool = t.definitions.get("board_components")!;
+  expect(catalogTool).toMatchObject({
+    exposure: "direct",
+    parameters: { type: "object", properties: {}, additionalProperties: false },
+    annotations: { readOnlyHint: true, destructiveHint: false, openWorldHint: false },
+  });
+  for (const args of [{ boardId: t.grant.boardId }, { action: "apply" }, { includeImage: true }])
+    await expect(t.run("board_components", args)).rejects.toThrow("Invalid");
+  expect(t.frames.map((r) => r.action)).toEqual(["begin"]);
+  const discovering = t.run("board_components");
+  expect(t.frames.at(-1)?.action).toBe("grant");
+  t.reply(undefined, { grant: { ...t.grant, mode: "read" } });
+  await Promise.resolve();
+  await Promise.resolve();
+  expect(t.frames.at(-1)).toMatchObject({
+    action: "catalog",
+    boardId: t.grant.boardId,
+    grantId: t.grant.grantId,
+    target: t.target,
+  });
+  const data = {
+    engine: "react-flow",
+    components: [{ id: "card", name: "Card" }],
+    propsSchema: { type: "object" },
+    guidance: ["Use typed props"],
+  };
+  t.reply(undefined, data);
+  expect(await discovering).toEqual({
+    content: [{ type: "text", text: JSON.stringify(data) }],
+    details: undefined,
+  });
+  await expect(t.run("board_apply", apply())).rejects.toThrow("read-only");
+  expect(t.frames.map((r) => r.action)).toEqual(["begin", "grant", "catalog"]);
+  t.tools.revoke();
+});
+
+it("does not forward edits when the lazy grant narrows authority to read-only", async () => {
+  const t = setup();
+  await available(t);
+  const editing = t.run("board_apply", apply());
+  t.reply(undefined, { grant: { ...t.grant, mode: "read" } });
+  await expect(editing).rejects.toThrow("read-only");
+  expect(t.frames.map((r) => r.action)).toEqual(["begin", "grant"]);
+  t.tools.revoke();
+});
+
+it.each(["revoke", "abort", "timeout"])("catalog honors %s without retry", async (boundary) => {
+  const t = setup();
+  await t.activate();
+  const controller = new AbortController();
+  const catalog = t.run("board_components", {}, controller.signal);
+  const request = t.frames.at(-1)!;
+  const rejected = expect(catalog).rejects.toThrow();
+  if (boundary === "revoke")
+    t.tools.consume({ type: "board-revoke", grantId: t.grant.grantId }, t.client);
+  else if (boundary === "abort") controller.abort();
+  else await vi.advanceTimersByTimeAsync(5000);
+  await rejected;
+  t.reply(request, { engine: "react-flow", components: [] });
+  await expect(t.run("board_components")).rejects.toThrow("No active");
+  expect(t.frames.filter((r) => r.action === "catalog")).toHaveLength(1);
+  expect(t.definitions.get("board_components")?.exposure).toBe("hidden");
+});
+
 const apply = () => ({
   baseRevision: 2,
   operationId: randomUUID(),
@@ -314,7 +392,8 @@ const apply = () => ({
 
 it("registers hidden/default-inactive tools and a hook without new input cannot grant access", async () => {
   const t = setup();
-  expect(t.pi.registerTool).toHaveBeenCalledTimes(2);
+  expect(t.pi.registerTool).toHaveBeenCalledTimes(3);
+  await expect(t.run("board_components")).rejects.toThrow("No active");
   for (const tool of t.definitions.values()) {
     expect(tool).toMatchObject({ exposure: "hidden", defaultActive: false });
     expect(JSON.stringify(tool)).not.toContain(t.grant.grantId);
@@ -370,7 +449,14 @@ it("awaits activation, preserves unrelated tools, and keeps grant tokens out of 
   t.reply();
   const result = await activation;
   expect(JSON.stringify(result)).not.toContain(t.grant.grantId);
-  expect(t.pi.getActiveTools()).toEqual(["read", "bash", "unrelated", "board_read", "board_apply"]);
+  expect(t.pi.getActiveTools()).toEqual([
+    "read",
+    "bash",
+    "unrelated",
+    "board_read",
+    "board_components",
+    "board_apply",
+  ]);
   for (const tool of t.definitions.values())
     expect(tool).toMatchObject({ defaultActive: false, exposure: "direct" });
   const read = t.run("board_read", { offset: 10, limit: 3 });
@@ -381,17 +467,22 @@ it("awaits activation, preserves unrelated tools, and keeps grant tokens out of 
   });
   t.reply(undefined, { revision: 3, text: t.grant.grantId });
   expect(JSON.stringify(await read)).not.toContain(t.grant.grantId);
-  t.pi.setActiveTools(["read", "new-tool", "board_read", "board_apply"]);
+  t.pi.setActiveTools(["read", "new-tool", "board_read", "board_components", "board_apply"]);
   t.tools.revoke();
   expect(t.pi.getActiveTools()).toEqual(["read", "new-tool"]);
   for (const tool of t.definitions.values()) expect(tool.exposure).toBe("hidden");
 });
 
-it("read-only grants expose only board_read and reject even direct invocation of board_apply", async () => {
+it("read-only grants expose both read tools and reject even direct invocation of board_apply", async () => {
   const t = setup("read");
   await t.activate();
   expect(t.pi.getActiveTools()).toContain("board_read");
   expect(t.pi.getActiveTools()).not.toContain("board_apply");
+  expect(t.definitions.get("board_components")?.exposure).toBe("direct");
+  const catalog = t.run("board_components");
+  expect(t.frames.at(-1)?.action).toBe("catalog");
+  t.reply(undefined, { engine: "react-flow", components: [], propsSchema: {}, guidance: [] });
+  expect((await catalog).content).toHaveLength(1);
   expect(t.definitions.get("board_apply")?.exposure).toBe("hidden");
   await expect(t.run("board_apply", apply())).rejects.toThrow("read-only");
   const read = t.run("board_read");
@@ -405,6 +496,139 @@ it("read-only grants expose only board_read and reject even direct invocation of
     details: undefined,
     content: [{ type: "text" }],
   });
+  t.tools.revoke();
+});
+
+it.each(["boundary", "card", "icon", "detail", "table", "comment"])(
+  "accepts the shared schema's %s component kind",
+  async (kind) => {
+    const t = setup();
+    await t.activate();
+    const operations = [
+      {
+        op: "create",
+        id: "node",
+        kind,
+        x: 10,
+        y: 20,
+        props: {
+          title: "Node",
+          subtitle: "Label",
+          body: "Content",
+          icon: "user",
+          color: "#123456",
+          imageId: null,
+        },
+      },
+    ];
+    const editing = t.run("board_apply", { ...apply(), operations });
+    expect(t.frames.at(-1)).toMatchObject({ action: "apply", operations });
+    t.reply(undefined, { applied: ["node"], skipped: [] });
+    await editing;
+    t.tools.revoke();
+  },
+);
+
+it("forwards typed flow components, edits, parents and connection dependencies unchanged", async () => {
+  const t = setup();
+  await t.activate();
+  const args = {
+    baseRevision: 2,
+    operationId: randomUUID(),
+    operations: [
+      {
+        op: "create",
+        id: "area",
+        kind: "boundary",
+        x: 10,
+        y: 20,
+        width: 800,
+        height: 600,
+        props: { title: "System" },
+      },
+      {
+        op: "create",
+        id: "detail",
+        kind: "detail",
+        x: 30,
+        y: 40,
+        parentId: "area",
+        groupId: "group",
+        props: {
+          title: "Account",
+          subtitle: "Details",
+          imageId: "asset_1",
+          fields: [{ label: "Owner", value: "Ada", color: "#123456", type: "text" }],
+        },
+      },
+      {
+        op: "create",
+        id: "table",
+        kind: "table",
+        x: 350,
+        y: 40,
+        props: { columns: ["Name", "Value"], rows: [["Count", "3"]] },
+      },
+      {
+        op: "update",
+        id: "existing",
+        x: 100,
+        width: 240,
+        parentId: null,
+        dependsOn: ["area"],
+        props: { title: "Updated", rows: [["Ready", "Yes"]] },
+      },
+      {
+        op: "create",
+        id: "link",
+        kind: "connection",
+        x: 0,
+        y: 0,
+        source: "detail",
+        target: "existing",
+        sourceHandle: "right",
+        targetHandle: "left",
+        label: "uses",
+        dependsOn: ["existing"],
+        groupId: "group",
+      },
+      {
+        op: "update",
+        id: "old-link",
+        source: "existing",
+        target: "table",
+        label: "next",
+        dependsOn: ["existing"],
+      },
+      { op: "update", id: "ink", x: 80, y: 90, width: 200, height: 100, color: "#abcdef" },
+    ],
+  };
+  const editing = t.run("board_apply", args);
+  expect(t.frames.at(-1)).toMatchObject({ action: "apply", ...args });
+  t.reply(undefined, { applied: ["area", "detail", "table"], skipped: [] });
+  await editing;
+  expect(t.definitions.get("board_apply")?.executionMode).toBe("sequential");
+  t.tools.revoke();
+});
+
+it.each([
+  { script: "alert(1)" },
+  { props: { unknown: "value" } },
+  { props: { onClick: "alert(1)" } },
+  { props: { html: "<script>alert(1)</script>" } },
+  { props: { imageId: "https://example.com/image.png" } },
+  { props: { imageId: "data:image/png;base64,AAAA" } },
+  { props: { fields: [{ label: "x", value: "y", color: "", type: "script" }] } },
+])("rejects non-data/unknown flow operation props before RPC: %j", async (invalid) => {
+  const t = setup();
+  await t.activate();
+  await expect(
+    t.run("board_apply", {
+      ...apply(),
+      operations: [{ op: "create", id: "node", kind: "card", x: 0, y: 0, ...invalid }],
+    }),
+  ).rejects.toThrow("Invalid");
+  expect(t.frames.map((r) => r.action)).toEqual(["activate"]);
   t.tools.revoke();
 });
 
@@ -456,35 +680,38 @@ it("bounds strict tool input and forwards revision/operationId without automatic
   t.tools.revoke();
 });
 
-it.each(["input", "revoke", "session", "file", "epoch", "runtime", "disconnect", "connection"])(
-  "revokes active permission and pending RPCs on %s",
-  async (change) => {
-    const t = setup();
-    await t.activate();
-    const retained = t.definitions.get("board_read")!;
-    const read = t.run("board_read");
-    const rejected = expect(read).rejects.toThrow();
-    if (change === "input") t.input("even the next streaming input", "interactive");
-    else if (change === "revoke")
-      t.tools.consume({ type: "board-revoke", grantId: t.grant.grantId }, t.client);
-    else {
-      const connection = t.connection()!;
-      if (change === "session") connection.target = { ...connection.target, sessionId: "other" };
-      if (change === "file") connection.sessionFile = "/other.jsonl";
-      if (change === "epoch") connection.target = { ...connection.target, epoch: randomUUID() };
-      if (change === "runtime") connection.target = { ...connection.target, runtime: randomUUID() };
-      if (change === "disconnect") t.changeConnection(undefined);
-      if (change === "connection") connection.client = { ...t.client } as Socket;
-      // A late reply rechecks the captured target and connection, not just the ID.
-      t.reply();
-    }
-    await rejected;
-    await expect(retained.execute("stale", {}, undefined, undefined, t.ctx)).rejects.toThrow(
-      "No active",
-    );
-    expect(t.definitions.get("board_read")?.exposure).toBe("hidden");
-  },
-);
+it.each(
+  ["board_read", "board_components"].flatMap((name) =>
+    ["input", "revoke", "session", "file", "epoch", "runtime", "disconnect", "connection"].map(
+      (change) => ({ name, change }),
+    ),
+  ),
+)("revokes $name active permission and pending RPCs on $change", async ({ name, change }) => {
+  const t = setup();
+  await t.activate();
+  const retained = t.definitions.get(name)!;
+  const read = t.run(name);
+  const rejected = expect(read).rejects.toThrow();
+  if (change === "input") t.input("even the next streaming input", "interactive");
+  else if (change === "revoke")
+    t.tools.consume({ type: "board-revoke", grantId: t.grant.grantId }, t.client);
+  else {
+    const connection = t.connection()!;
+    if (change === "session") connection.target = { ...connection.target, sessionId: "other" };
+    if (change === "file") connection.sessionFile = "/other.jsonl";
+    if (change === "epoch") connection.target = { ...connection.target, epoch: randomUUID() };
+    if (change === "runtime") connection.target = { ...connection.target, runtime: randomUUID() };
+    if (change === "disconnect") t.changeConnection(undefined);
+    if (change === "connection") connection.client = { ...t.client } as Socket;
+    // A late reply rechecks the captured target and connection, not just the ID.
+    t.reply();
+  }
+  await rejected;
+  await expect(retained.execute("stale", {}, undefined, undefined, t.ctx)).rejects.toThrow(
+    "No active",
+  );
+  expect(t.definitions.get("board_read")?.exposure).toBe("hidden");
+});
 
 it("rejects a changed tool execution context even while the socket binding still looks current", async () => {
   const t = setup();
@@ -608,19 +835,22 @@ it("cannot enable a grant when it is revoked during activation", async () => {
   expect(t.pi.getActiveTools()).not.toContain("board_read");
 });
 
-it("old cached callables cannot borrow a newer request's authorization", async () => {
-  const t = setup();
-  await t.activate();
-  const retained = t.definitions.get("board_read")!;
-  t.tools.revoke();
-  t.grant.grantId = randomUUID();
-  await t.activate();
-  await expect(retained.execute("old-call", {}, undefined, undefined, t.ctx)).rejects.toThrow(
-    "No active",
-  );
-  expect(t.pi.getActiveTools()).toContain("board_read");
-  t.tools.revoke();
-});
+it.each(["board_read", "board_components"])(
+  "old cached %s cannot borrow a newer request's authorization",
+  async (name) => {
+    const t = setup();
+    await t.activate();
+    const retained = t.definitions.get(name)!;
+    t.tools.revoke();
+    t.grant.grantId = randomUUID();
+    await t.activate();
+    await expect(retained.execute("old-call", {}, undefined, undefined, t.ctx)).rejects.toThrow(
+      "No active",
+    );
+    expect(t.pi.getActiveTools()).toContain("board_read");
+    t.tools.revoke();
+  },
+);
 
 it("expires activated preflight without agent_start, but keeps a started request past the handoff deadline", async () => {
   const t = setup();
