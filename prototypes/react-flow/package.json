@@ -11,7 +11,8 @@
     "preview": "vite preview --host 127.0.0.1 --port 5191 --strictPort",
     "test:browser": "node smoke.mjs && node drawing-smoke.mjs",
     "test:selection": "node selection-smoke.mjs",
-    "test:pen": "node pen-smoke.mjs"
+    "test:pen": "node pen-smoke.mjs",
+    "test:scribble": "node scribble-smoke.mjs"
   },
   "dependencies": {
     "@fontsource/nunito": "5.3.0",

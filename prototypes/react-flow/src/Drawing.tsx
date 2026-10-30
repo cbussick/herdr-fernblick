@@ -293,8 +293,23 @@ export function InkSurface({
       void flow.setViewport(next);
       onViewport(next);
     };
+    // iPadOS Scribble can swallow alternate pen strokes even with touch-action:none
+    // and pointerdown.preventDefault. Cancel the *native touchstart* default too,
+    // as Excalidraw does (upstream PR #7494). Keep other platforms untouched.
+    // This surface spans the entire canvas, but only exists in Draw/Eraser mode;
+    // toolbar buttons and dialog text fields are outside it.
+    const appleTouch =
+      /iPad|iPhone|iPod/.test(navigator.userAgent) ||
+      (/Mac/.test(navigator.userAgent) && navigator.maxTouchPoints > 1);
+    const suppressScribble = (event: TouchEvent) => {
+      if (event.cancelable) event.preventDefault();
+    };
+    if (appleTouch) element.addEventListener("touchstart", suppressScribble, { passive: false });
     element.addEventListener("wheel", wheel, { passive: false });
-    return () => element.removeEventListener("wheel", wheel);
+    return () => {
+      element.removeEventListener("wheel", wheel);
+      if (appleTouch) element.removeEventListener("touchstart", suppressScribble);
+    };
   }, [flow, onViewport]);
   function local(event: { clientX: number; clientY: number }) {
     const rect = svg.current!.getBoundingClientRect();

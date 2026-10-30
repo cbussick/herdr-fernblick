@@ -28,6 +28,7 @@ Use a distinct port if 5191 is occupied. This is a temporary developer server, n
 - Drag components, use the selected component's resize controls, Shift-click to select several, and duplicate or delete the selection. Drag the canvas to pan, scroll/pinch to zoom; Fit canvas and the minimap help navigate.
 - Select a boundary **before adding** to create a component inside it, or use the selected component's boundary dropdown. Moving a boundary moves its children. Children may extend outside it; this is organizational grouping, not clipping. Boundary nesting is intentionally excluded.
 - Choose **Draw** to sketch anywhere, including over components. Set pen color and width in the toolbar. Mouse and finger input use simulated pressure; styluses use reported pressure. A click makes a dot.
+- On iPad/iPhone, Draw/Eraser intercept native `touchstart` defaults across the entire drawing surface to suppress Scribble interference. This is the upstream Excalidraw workaround, not a system Scribble setting or guaranteed browser API. Toolbar controls, Select/Pan mode, and dialog text fields retain their native touch behavior. Re-enable Scribble in iPad settings, refresh, and retest handwriting to confirm it works on your device.
 - **Select** lets you move, resize, duplicate or delete a stroke just like a node; only its painted path catches clicks, so gaps remain usable. Strokes are independent of boundaries and cannot have connections. Resize stretches the entire stroke.
 - Canvas text selection and native long-press callouts are disabled, including the React Flow attribution, so iPadOS cannot interrupt drawing by selecting nearby labels. Drawing dismisses a selection left over from an older build. Text editing/selection in dialogs is unchanged.
 - **Eraser** removes whole strokes, never the components underneath. A drag is one undoable erase operation. **Undo drawing / Redo drawing** (Ctrl/Cmd+Z, Ctrl/Cmd+Shift+Z or Ctrl+Y) cover stroke creation, erasure, movement, resize, duplication and deletion; they do not undo component edits. The last 50 drawing commands are available for this page session, not after reload. A new drawing change clears redo; ordinary component edits do not.
@@ -47,6 +48,7 @@ npm run check          # model tests, TypeScript, production build
 npm run test:browser   # requires running server, Chromium installed
 npm run test:selection # canvas selection/callout regression, Chromium + WebKit installed
 npm run test:pen       # real browser pen/touch event-order and rapid-tap regression (Chromium)
+npm run test:scribble  # iOS native touch-start policy, Chromium + WebKit; not native Scribble emulation
 # PLAYGROUND_URL=http://127.0.0.1:5191 npm run test:browser
 ```
 
