@@ -343,6 +343,9 @@ export function InkSurface({
     event.preventDefault();
     event.stopPropagation();
     if (active.current?.type === "pen" && event.pointerType === "touch") return; // Ignore palms while the pen is down.
+    // A Pencil must also win when the palm arrived FIRST. Discard any provisional
+    // touch ink/pinch state; those old touch IDs can no longer cancel or finish this pen.
+    if (event.pointerType === "pen") cancel();
     // Recover from a native selection left by an older build or interrupted gesture.
     window.getSelection()?.removeAllRanges();
     svg.current!.setPointerCapture(event.pointerId);
