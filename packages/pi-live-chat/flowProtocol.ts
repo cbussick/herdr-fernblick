@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { primitiveKinds, primitivePropsSchema } from "./primitiveProtocol.js";
 
 // Shared, data-only contracts. No React, arbitrary HTML, CSS, scripts or network URLs.
 export const flowIdSchema = z
@@ -96,6 +97,14 @@ export const flowElementSchema = z.discriminatedUnion("type", [
   z
     .object({
       ...common,
+      type: z.literal("primitive"),
+      kind: z.enum(primitiveKinds),
+      props: primitivePropsSchema,
+    })
+    .strict(),
+  z
+    .object({
+      ...common,
       type: z.literal("connection"),
       source: flowIdSchema,
       target: flowIdSchema,
@@ -178,6 +187,8 @@ export function validateFlowGraph(scene: {
     if (e.type === "connection") connections++;
     else nodes++;
     if (e.type === "ink") points += e.props.points.length;
+    if (e.type === "primitive" && e.kind === "path")
+      points += e.props.commands.reduce((n, command) => n + (command.length - 1) / 2, 0);
     if (e.type === "component") {
       if (e.props.rows.some((row) => row.length !== e.props.columns.length))
         throw new Error("Table row/column count mismatch");

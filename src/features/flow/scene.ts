@@ -69,14 +69,23 @@ export function toDiagram(input: BoardScene): Diagram {
           id: e.id,
           position: { x: e.x, y: e.y },
           width: e.width,
-          ...(e.type === "ink" || e.kind === "boundary" ? { height: e.height } : {}),
+          ...(e.type === "ink" || e.type === "primitive" || e.kind === "boundary"
+            ? { height: e.height }
+            : {}),
           style: {
             width: e.width,
-            ...(e.type === "ink" || e.kind === "boundary"
+            ...(e.type === "ink" || e.type === "primitive" || e.kind === "boundary"
               ? { height: e.height }
               : { minHeight: e.height }),
           },
         };
+        if (e.type === "primitive")
+          return {
+            ...common,
+            type: "primitive" as const,
+            connectable: false,
+            data: { kind: "primitive" as const, shape: e.kind, drawing: e.props },
+          };
         if (e.type === "ink")
           return {
             ...common,
@@ -124,7 +133,9 @@ export function fromDiagram(diagram: Diagram, base: BoardScene): BoardScene {
       height: n.height ?? Number(n.style?.height ?? old?.height ?? 180),
       version: 1,
     };
-    if (isInk(n)) {
+    if (n.type === "primitive") {
+      candidates.push({ ...common, type: "primitive", kind: n.data.shape, props: n.data.drawing });
+    } else if (isInk(n)) {
       const { kind: _kind, ...props } = n.data;
       candidates.push({ ...common, type: "ink", props });
     } else {

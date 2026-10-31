@@ -9,6 +9,10 @@ import { defaults, makeNode } from "./model";
 import { makeInk } from "./ink";
 import { exportFlowScene, fromDiagram } from "./scene";
 import type { BoardScene } from "../../../packages/pi-live-chat/boardProtocol";
+import {
+  defaultPrimitiveProps,
+  primitiveKinds,
+} from "../../../packages/pi-live-chat/primitiveProtocol";
 import type {} from "../../flow-board-render";
 import type {} from "./editor.fixture";
 let directory: string, server: Server, browser: Browser, page: Page, origin: string;
@@ -174,6 +178,68 @@ describe("isolated production editor and DOM renderer", { timeout: 30_000 }, () 
     ).toBe(true);
     const events = await page.evaluate(() => window.flowTest.events);
     expect(events.lastIndexOf("checkpoint")).toBeLessThan(events.lastIndexOf("change"));
+  });
+  it("renders, selects, moves, resizes, deletes and screenshots safe primitives", async () => {
+    const scene: BoardScene = {
+      ...empty,
+      elements: primitiveKinds.map((kind, i) => ({
+        id: kind,
+        type: "primitive",
+        kind,
+        x: 20 + i * 130,
+        y: 180,
+        width: 110,
+        height: 100,
+        version: 1,
+        props: {
+          ...defaultPrimitiveProps(),
+          fill: "#cceeff",
+          text: "SVG label",
+          commands: [["M", 0, 0], ["Q", 50, 100, 100, 0], ["L", 0, 0], ["Z"]],
+        },
+      })),
+    };
+    await loadEditor();
+    await page.evaluate((raw) => window.flowTest.setScene(JSON.parse(raw)), JSON.stringify(scene));
+    const rectangle = page.getByTestId("primitive-rectangle");
+    await rectangle.waitFor();
+    await rectangle.click();
+    const box = (await rectangle.boundingBox())!;
+    await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2);
+    await page.mouse.down();
+    await page.mouse.move(box.x + box.width / 2 + 35, box.y + box.height / 2 + 25, { steps: 5 });
+    await page.mouse.up();
+    await page.waitForFunction(() =>
+      window.flowTest.changes.at(-1)?.elements.some((e) => e.id === "rectangle" && e.x > 150),
+    );
+    const handle = page.locator(
+      '[data-id="rectangle"] .react-flow__resize-control.bottom.right.handle',
+    );
+    const hb = (await handle.boundingBox())!;
+    await page.mouse.move(hb.x + hb.width / 2, hb.y + hb.height / 2);
+    await page.mouse.down();
+    await page.mouse.move(hb.x + hb.width / 2 + 40, hb.y + hb.height / 2 + 30, { steps: 5 });
+    await page.mouse.up();
+    await page.waitForFunction(() =>
+      window.flowTest.changes.at(-1)?.elements.some((e) => e.id === "rectangle" && e.width > 110),
+    );
+    await page.keyboard.press("Delete");
+    await page.waitForFunction(() =>
+      window.flowTest.changes.at(-1)?.elements.some((e) => e.id === "rectangle" && e.isDeleted),
+    );
+    expect(await page.evaluate(() => window.flowTest.errors)).toEqual([]);
+    await page.goto(`${origin}/flow-board-render.html`);
+    await page.waitForFunction(() => typeof window.prepareFlowBoardScene === "function");
+    const size = await page.evaluate(
+      (raw) => window.prepareFlowBoardScene(JSON.parse(raw)),
+      JSON.stringify(scene),
+    );
+    await page.setViewportSize(size);
+    expect(await page.locator("[data-render-node] svg").count()).toBe(5);
+    expect(await page.locator("svg text").textContent()).toBe("SVG label");
+    const png = await page.screenshot();
+    expect(png.subarray(1, 4).toString()).toBe("PNG");
+    await page.setViewportSize({ width: 1280, height: 900 });
   });
   it("retains pen priority over an existing palm and suppresses native iPad Scribble touchstart", async () => {
     const context = await browser.newContext({

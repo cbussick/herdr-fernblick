@@ -4,6 +4,7 @@ import { getSmoothStepPath, Position } from "@xyflow/react";
 import type { BoardScene } from "../../../packages/pi-live-chat/boardProtocol";
 import { validateFlowGraph } from "../../../packages/pi-live-chat/flowProtocol";
 import { ComponentContent, componentStyle } from "./Components";
+import { PrimitiveSvg } from "./Primitives";
 import { outline, pathFromOutline } from "./ink";
 import { toDiagram, validateScene } from "./scene";
 import styles from "./Playground.module.css";
@@ -88,6 +89,17 @@ export async function prepareFlowBoardScene(
     root ??= createRoot(host);
     const nodes = diagram.nodes.map((n) => {
       const p = position(n.id);
+      if (n.type === "primitive")
+        return (
+          <div
+            key={n.id}
+            data-render-node={n.id}
+            className={renderStyles.node}
+            style={{ left: p.x, top: p.y, width: n.width, height: n.height }}
+          >
+            <PrimitiveSvg shape={n.data.shape} drawing={n.data.drawing} />
+          </div>
+        );
       if (n.type === "ink")
         return (
           <svg

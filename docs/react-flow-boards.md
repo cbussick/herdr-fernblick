@@ -8,17 +8,44 @@ New conversation boards default to React Flow: the six familiar component types,
 
 The existing server-owned board store, per-conversation identity, revisions/CAS, SSE, request-scoped agent permissions, uncertain-write pause and IndexedDB recovery are reused. The browser no longer relies on the playground's localStorage. Work can continue through authorized agent tools without a user browser open. A new flow board is empty, not the prototype's demonstration diagram.
 
-The flow document is a data-only `BoardScene` with `engine: "react-flow"`. Versioned `component`, `ink` and `connection` records live in `elements`; images live in validated raster `files`, referenced by component `imageId`. Components are trusted React code with bounded saved props—not uploaded JS/HTML, CSS, SVG or external-image URLs. Boundaries are one level deep. Flow and native elements cannot be mixed.
+The flow document is a data-only `BoardScene` with `engine: "react-flow"`. Versioned `component`, `primitive`, `ink` and `connection` records live in `elements`; images live in validated raster `files`, referenced by component `imageId`. Components are trusted React code with bounded saved props—not uploaded JS/HTML, CSS, SVG or external-image URLs. Boundaries are one level deep. Flow and native elements cannot be mixed.
 
 ## Agent use
 
-Current extensions expose `board_read`, `board_components` and `board_apply` only for a relevant authorized request. `board_read` identifies the engine and returns structured records and, on demand, a freshly rendered PNG including components, connections, images and ink. `board_components` discovers the six types, editable properties and their schema. Agents should prefer matching components for structured diagrams; they should not read/create a board for unrelated prompts.
+Current extensions expose `board_read`, `board_components` and `board_apply` only for a relevant authorized request. `board_read` identifies the engine and returns structured records and, on demand, a freshly rendered PNG including components, connections, images and ink. `board_components` discovers the six component types, the five SVG primitive kinds, editable properties and their schemas. Agents should prefer matching components for structured diagrams; they should not read/create a board for unrelated prompts.
 
-On flow boards, create kinds are `boundary`, `card`, `icon`, `detail`, `table`, `comment`, and `connection`. Updates can change typed props, position, size, parent and connection details. Existing ink can be moved/resized/recolored/deleted, not generated as arbitrary paths by the agent. Asset IDs refer to images already on the board. Legacy boards retain their rectangle/text/arrow operation vocabulary.
+On flow boards, create kinds are `boundary`, `card`, `icon`, `detail`, `table`, `comment`, and `connection`. Updates can change typed props, position, size, parent and connection details. Existing hand-drawn ink can be moved/resized/recolored/deleted. Agents create freeform drawings using validated `line`, `rectangle`, `ellipse`, `path` and `text` primitives. These SVG-backed objects are selectable, movable, resizable, duplicable and deletable; their drawing properties are edited through agent operations, not a new manual props dialog. Asset IDs refer to images already on the board. Legacy boards retain their rectangle/text/arrow operation vocabulary.
 
 Read targets and dependencies first. Create new parents/endpoints in a batch, read the new revision, then create dependent children/connections in a later batch. Include endpoint/parent IDs in `dependsOn`; server checks implicit relationships too. Group related changes with a shared `groupId`. Changed/deleted/unread targets skip their operation/group, rather than silently overwriting human changes. A parent/endpoint cannot be deleted while leaving live children/connections. No automatic retry follows uncertain outcomes.
 
 Existing Pi processes need a user-initiated `/reload` to register the new tools. Do not reload/restart real agents automatically. Newly launched isolated agents must load this worktree's extension and inherit its private socket environment.
+
+## Safe SVG primitives
+
+Create a primitive with its kind, scene position/dimensions, and optional `drawing` object. Update the same `drawing` field to change its appearance. Defaults and the full schema are returned by `board_components`. `stroke` is a hex color, `fill` is a hex color or `"none"`, and `strokeWidth` is 0–12. `start`/`end` and path command coordinates use normalized 0–100 coordinates inside the object bounds. Paths are typed tuples (`["M",x,y]`, `["L",x,y]`, `["Q",cx,cy,x,y]`, `["C",c1x,c1y,c2x,c2y,x,y]`, `["Z"]`), must start with M, and have at most 500 commands. Text is literal, supports explicit newlines (20 maximum, 2,000 characters), and uses Nunito; `fontSize` is 1–96 in these normalized SVG units. Long rich text belongs in components instead.
+
+Example operation (alongside the normal batch revision/operation ID):
+
+```json
+{
+  "op": "create",
+  "id": "curve",
+  "kind": "path",
+  "x": 100,
+  "y": 200,
+  "width": 300,
+  "height": 150,
+  "drawing": {
+    "stroke": "#17374f",
+    "commands": [
+      ["M", 0, 100],
+      ["C", 25, 0, 75, 0, 100, 100]
+    ]
+  }
+}
+```
+
+Primitive records share node/scene limits; live path control points count toward the 100,000 drawing-point budget. Read summaries include their bounded drawing data. Saving, recovery, backup import and browser-independent screenshots use the same trusted SVG renderer. Primitives are not boundary children or connection endpoints. Raw SVG/XML, arbitrary `d` strings, attribute bags, transforms, URLs, scripts, styles and embedded HTML are not accepted. Legacy Excalidraw tools are unchanged. Existing Pi processes require a user-initiated `/reload` to discover the updated schemas; refresh the test app before using the new records.
 
 ## Backups and recovery
 

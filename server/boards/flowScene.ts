@@ -7,6 +7,11 @@ import {
   type FlowKind,
 } from "../../packages/pi-live-chat/flowProtocol.js";
 import { BoardError, requireBoard } from "./errors.js";
+import {
+  defaultPrimitiveProps,
+  primitiveKinds,
+  type PrimitiveKind,
+} from "../../packages/pi-live-chat/primitiveProtocol.js";
 
 /** Relationships are implicit dependencies, including both sides of existing relations.
  * New endpoints must already have been read; same-batch creation is deliberately not supported.
@@ -64,6 +69,13 @@ export function applyFlowOperations(scene: BoardScene, operations: BoardOperatio
           label: op.label ?? "",
           color: op.color ?? "#429beb",
         };
+      } else if ((primitiveKinds as readonly string[]).includes(op.kind)) {
+        element = {
+          ...common,
+          type: "primitive",
+          kind: op.kind as PrimitiveKind,
+          props: defaultPrimitiveProps(),
+        };
       } else {
         requireBoard(
           (flowKinds as readonly string[]).includes(op.kind),
@@ -93,6 +105,11 @@ export function applyFlowOperations(scene: BoardScene, operations: BoardOperatio
       400,
       "Native fields are not supported on flow elements",
     );
+    requireBoard(
+      element.type === "primitive" || op.drawing === undefined,
+      400,
+      "Drawing props require a primitive",
+    );
     if (element.type !== "component")
       requireBoard(
         op.props === undefined && op.parentId === undefined,
@@ -109,7 +126,13 @@ export function applyFlowOperations(scene: BoardScene, operations: BoardOperatio
       );
     for (const key of ["x", "y", "width", "height"] as const)
       if (op[key] !== undefined) element[key] = op[key];
-    if (element.type === "component") {
+    if (element.type === "primitive") {
+      element.props = {
+        ...element.props,
+        ...op.drawing,
+        ...(op.color === undefined ? {} : { stroke: op.color }),
+      };
+    } else if (element.type === "component") {
       element.props = {
         ...element.props,
         ...op.props,
@@ -180,6 +203,8 @@ export function flowSummary(
         : {}),
     };
   }
+  if (element.type === "primitive")
+    return { ...common, kind: element.kind, drawing: element.props };
   if (element.type === "connection")
     return {
       ...common,

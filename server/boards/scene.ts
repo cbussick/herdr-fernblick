@@ -118,7 +118,7 @@ export function validateScene(input: unknown): BoardScene {
     ids.add(element.id);
     if (scene.engine !== "react-flow") {
       requireBoard(
-        !["component", "ink", "connection"].includes(element.type),
+        !["component", "primitive", "ink", "connection"].includes(element.type),
         400,
         "Flow elements require the react-flow engine",
       );
@@ -372,6 +372,7 @@ export function applyOperations(scene: BoardScene, operations: BoardOperation[])
     requireBoard(
       [
         op.props,
+        op.drawing,
         op.parentId,
         op.source,
         op.target,

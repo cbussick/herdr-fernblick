@@ -1,5 +1,6 @@
 import { z } from "zod";
 import { flowComponentPropsSchema, flowIdSchema, flowKinds } from "./flowProtocol.js";
+import { primitivePropsSchema } from "./primitiveProtocol.js";
 
 // Browser documents use the native Excalidraw format; the agent gets only a
 // bounded summary and a deliberately small operation vocabulary, never JS.
@@ -26,6 +27,7 @@ const boardElementSchema = z
       "image",
       "frame",
       "component",
+      "primitive",
       "ink",
       "connection",
     ]),
@@ -81,7 +83,17 @@ const boardOperationSchema = z.discriminatedUnion("op", [
       ...operationContext,
       op: z.literal("create"),
       id: elementIdSchema,
-      kind: z.enum(["rectangle", "text", "arrow", ...flowKinds, "connection"]),
+      drawing: primitivePropsSchema.partial().optional(),
+      kind: z.enum([
+        "rectangle",
+        "text",
+        "arrow",
+        "line",
+        "ellipse",
+        "path",
+        ...flowKinds,
+        "connection",
+      ]),
       props: flowComponentPropsSchema.partial().optional(),
       parentId: flowIdSchema.nullable().optional(),
       source: flowIdSchema.optional(),
@@ -106,6 +118,7 @@ const boardOperationSchema = z.discriminatedUnion("op", [
       ...operationContext,
       op: z.literal("update"),
       id: elementIdSchema,
+      drawing: primitivePropsSchema.partial().optional(),
       props: flowComponentPropsSchema.partial().optional(),
       parentId: flowIdSchema.nullable().optional(),
       source: flowIdSchema.optional(),

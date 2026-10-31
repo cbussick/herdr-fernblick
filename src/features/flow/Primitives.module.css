@@ -1,0 +1,21 @@
+.node {
+  width: 100%;
+  height: 100%;
+  outline: 1px solid transparent;
+}
+
+.node[data-selected="true"] {
+  outline-color: #429beb;
+}
+
+.svg :is(rect, ellipse, line, path) {
+  vector-effect: non-scaling-stroke;
+}
+
+.svg {
+  display: block;
+  width: 100%;
+  height: 100%;
+  overflow: visible;
+  user-select: none;
+}

@@ -15,6 +15,11 @@ import {
 } from "../../packages/pi-live-chat/boardProtocol.js";
 import { flowCatalog, flowComponentPropsSchema } from "../../packages/pi-live-chat/flowProtocol.js";
 import { flowDependencies } from "./flowScene.js";
+import {
+  primitiveKinds,
+  primitivePropsSchema,
+  defaultPrimitiveProps,
+} from "../../packages/pi-live-chat/primitiveProtocol.js";
 import { BoardDisk } from "./disk.js";
 import { BoardError, requireBoard } from "./errors.js";
 import { applyOperations, emptyScene, summarize, validatePng, validateScene } from "./scene.js";
@@ -645,6 +650,13 @@ export class BoardStore {
           engine: state.scene.engine ?? "excalidraw",
           components: flowCatalog,
           propsSchema: z.toJSONSchema(flowComponentPropsSchema),
+          primitives: {
+            kinds: primitiveKinds,
+            drawingSchema: z.toJSONSchema(primitivePropsSchema),
+            defaults: defaultPrimitiveProps(),
+            guidance:
+              "React Flow only. Create kind line/rectangle/ellipse/path/text and set drawing props (not component props). Geometry start/end and path commands use normalized coordinates 0..100 within the element bounds x/y/width/height. Commands are typed tuples M,L,Q,C,Z; first command must be M. fontSize is in these SVG units. Text supports explicit newlines, not HTML. No raw SVG, d strings, URLs, attributes, transforms or scripts. Primitives cannot be connection endpoints or boundary children.",
+          },
           guidance:
             "Only react-flow boards support these components. Read all parents and connection endpoints before editing; same-batch new endpoints are not supported. Coordinates of children are relative to their boundary. Delete or reparent children and remove connections explicitly when deleting their parent or endpoint. Props are data only; imageId references an existing board file. Read summaries may truncate large props.",
         };

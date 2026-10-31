@@ -113,6 +113,71 @@ it("serves an authorized catalog with read-only legacy grants", async () => {
   await expect(store.handle(request(grant, "catalog"), validate)).rejects.toThrow();
 });
 
+it("authorizes primitive discovery/edits, preserves stale human edits, and persists/replays safely", async () => {
+  boardId = (await store.open("primitive-flow", validate, "react-flow")).id;
+  const readOnly = await active("read");
+  expect(await store.handle(request(readOnly, "catalog"), validate)).toMatchObject({
+    primitives: {
+      kinds: ["line", "rectangle", "ellipse", "path", "text"],
+      drawingSchema: { type: "object" },
+    },
+  });
+  const createPath: BoardOperation = {
+    op: "create",
+    id: "curve",
+    kind: "path",
+    x: 10,
+    y: 20,
+    drawing: {
+      commands: [
+        ["M", 0, 0],
+        ["C", 10, 100, 90, 0, 100, 100],
+      ],
+    },
+  };
+  await expect(store.handle(apply(readOnly, [createPath]), validate)).rejects.toThrow();
+  const grant = await active();
+  const write = apply(grant, [createPath]);
+  const result = await store.handle(write, validate);
+  expect(result).toMatchObject({ revision: 1, applied: ["curve"] });
+  expect(await store.handle(write, validate)).toEqual(result);
+  expect(await store.handle(request(grant, "read"), validate)).toMatchObject({
+    elements: [
+      {
+        type: "primitive",
+        kind: "path",
+        drawing: {
+          commands: [
+            ["M", 0, 0],
+            ["C", 10, 100, 90, 0, 100, 100],
+          ],
+        },
+      },
+    ],
+  });
+  const human = await store.read(boardId);
+  human.scene.elements[0].width = 300;
+  human.scene.elements[0].version = 2;
+  await store.save(boardId, 1, human.scene);
+  expect(
+    await store.handle(apply(grant, [{ op: "update", id: "curve", width: 400 }], 1), validate),
+  ).toMatchObject({ applied: [], skipped: [{ id: "curve" }] });
+  await store.handle(request(grant, "read"), validate);
+  expect(
+    await store.handle(
+      apply(grant, [{ op: "update", id: "curve", drawing: { stroke: "#abcdef" } }], 2),
+      validate,
+    ),
+  ).toMatchObject({ applied: ["curve"] });
+  store.close();
+  store = new BoardStore(directory);
+  expect((await store.read(boardId)).scene.elements[0]).toMatchObject({
+    type: "primitive",
+    width: 300,
+    props: { stroke: "#abcdef" },
+  });
+});
+
 it("requires automatic flow relation observations, keeps independent groups and validates final graphs", async () => {
   boardId = (await store.open("flow", validate, "react-flow")).id;
   const grant = await active();

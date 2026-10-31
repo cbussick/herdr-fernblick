@@ -8,6 +8,10 @@ import {
   type FlowKind,
 } from "../../../packages/pi-live-chat/flowProtocol";
 import type { InkNode } from "./ink";
+import type {
+  PrimitiveKind,
+  PrimitiveProps,
+} from "../../../packages/pi-live-chat/primitiveProtocol";
 export const kinds = flowKinds;
 export type Kind = FlowKind;
 export const catalog = Object.fromEntries(
@@ -17,7 +21,11 @@ export const colors = ["#f28b3c", "#e2bd35", "#429beb", "#43b879", "#eb6666", "#
 // Image data is transient UI state only. scene.ts moves it to the asset map at the boundary.
 export type ComponentData = Omit<FlowComponentProps, "imageId"> & { kind: Kind; image: string };
 export type ComponentNode = Node<ComponentData, "component">;
-export type CanvasNode = ComponentNode | InkNode;
+export type PrimitiveNode = Node<
+  { kind: "primitive"; shape: PrimitiveKind; drawing: PrimitiveProps },
+  "primitive"
+>;
+export type CanvasNode = ComponentNode | InkNode | PrimitiveNode;
 export type Diagram = { nodes: CanvasNode[]; edges: Edge[] };
 export function makeId() {
   return `flow-${Array.from(crypto.getRandomValues(new Uint32Array(4)), (n) => n.toString(16).padStart(8, "0")).join("")}`;

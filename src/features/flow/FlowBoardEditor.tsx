@@ -33,6 +33,7 @@ import {
 } from "@xyflow/react";
 import { Copy, Download, Pencil, RotateCcw, Search, Trash2, X } from "lucide-react";
 import { ComponentView, EditContext, Icon } from "./Components";
+import { PrimitiveView } from "./Primitives";
 import { ColorPicker, ComponentEditor, Modal } from "./Editor";
 import { DrawingTools, InkContext, InkSurface, InkView, useInkHistory, type Tool } from "./Drawing";
 import { applyInkCommand, isInk, maxBoardPoints, type InkNode } from "./ink";
@@ -49,7 +50,7 @@ import {
 } from "./model";
 import styles from "./Playground.module.css";
 
-const nodeTypes = { component: ComponentView, ink: InkView };
+const nodeTypes = { component: ComponentView, ink: InkView, primitive: PrimitiveView };
 const edgeOptions = {
   type: "smoothstep",
   markerEnd: { type: MarkerType.ArrowClosed },
@@ -353,7 +354,7 @@ function Playground(props: BoardEditorProps) {
     touch();
   }
   function reparent(parentId: string) {
-    if (locked || !one || isInk(one) || one.data.kind === "boundary") return;
+    if (locked || one?.type !== "component" || one.data.kind === "boundary") return;
     const oldParent = nodes.find((n) => n.id === one.parentId);
     const parent = nodes.find((n) => n.id === parentId);
     setNodes((current) =>
@@ -642,7 +643,11 @@ function Playground(props: BoardEditorProps) {
                 <Controls showInteractive={false} />
                 <MiniMap<CanvasNode>
                   className={styles["minimap"]}
-                  nodeColor={(node) => node.data.color || "#cbd5e1"}
+                  nodeColor={(node) =>
+                    node.type === "primitive"
+                      ? node.data.drawing.stroke
+                      : node.data.color || "#cbd5e1"
+                  }
                   pannable
                   zoomable
                 />
@@ -662,7 +667,7 @@ function Playground(props: BoardEditorProps) {
                 (selected.length > 0 || selectedEdges.length > 0) && (
                   <div className={styles["selection-bar"]} aria-label="Selection actions">
                     <span>{selected.length + selectedEdges.length} selected</span>
-                    {one && !isInk(one) && (
+                    {one?.type === "component" && (
                       <button onClick={() => edit(one.id)} className={styles["secondary"]}>
                         <Pencil size={15} /> Edit
                       </button>
@@ -684,7 +689,7 @@ function Playground(props: BoardEditorProps) {
                         <Copy size={17} />
                       </button>
                     )}
-                    {one && !isInk(one) && one.data.kind !== "boundary" && (
+                    {one?.type === "component" && one.data.kind !== "boundary" && (
                       <select
                         aria-label="Component boundary"
                         value={one.parentId || ""}
