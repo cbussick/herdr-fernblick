@@ -2,6 +2,7 @@ import {
   Component,
   Suspense,
   lazy,
+  useCallback,
   useEffect,
   useLayoutEffect,
   useRef,
@@ -23,6 +24,7 @@ const Editor = lazy(() => {
   (window as Window & { EXCALIDRAW_ASSET_PATH?: string }).EXCALIDRAW_ASSET_PATH = "/excalidraw/";
   return import("./BoardEditor");
 });
+const FlowEditor = lazy(() => import("../flow/FlowBoardEditor"));
 class EditorBoundary extends Component<{ children: ReactNode }, { error: boolean }> {
   state = { error: false };
   static getDerivedStateFromError() {
@@ -76,6 +78,7 @@ function WhiteboardSession({
 }: WhiteboardProps & { controller: BoardController }) {
   const state = useSyncExternalStore(controller.subscribe, controller.getSnapshot);
   const available = agentState === "ready";
+  const ActiveEditor = state.scene?.engine === "react-flow" ? FlowEditor : Editor;
   const dialog = useRef<HTMLDialogElement>(null);
   const editor = useRef<EditorHandle | null>(null);
   const active = useRef(false);
@@ -89,6 +92,10 @@ function WhiteboardSession({
   const [leave, setLeave] = useState(false);
   const [revoking, setRevoking] = useState(false);
   const [ready, setReady] = useState(false);
+  const onEditorReady = useCallback((handle: EditorHandle | null) => {
+    editor.current = handle;
+    setReady(Boolean(handle));
+  }, []);
   const operation = useRef(false);
   const backButton = useRef<HTMLButtonElement>(null);
   const dismiss = useRef<() => void>(() => {});
@@ -115,7 +122,7 @@ function WhiteboardSession({
     const keydown = (event: KeyboardEvent) => {
       if (!modal || event.defaultPrevented) return;
       const nativeDialog = document.querySelector<HTMLElement>(
-        "[class~=excalidraw-modal-container] [role=dialog], dialog[data-ui=chat-image-preview][open]",
+        "[class~=excalidraw-modal-container] [role=dialog], dialog[data-ui=chat-image-preview][open], dialog[data-ui=flow-component-editor][open]",
       );
       const appStatus = document.querySelector<HTMLElement>('[data-ui="app-status"]');
       if (
@@ -334,7 +341,9 @@ function WhiteboardSession({
             ← Back
           </button>
           <div className={styles.identity}>
-            <h2 id="whiteboard-title">Whiteboard</h2>
+            <h2 id="whiteboard-title">
+              {state.scene?.engine === "react-flow" ? "Component whiteboard" : "Whiteboard"}
+            </h2>
             <span title={[agentName, agentContext].filter(Boolean).join(" · ")}>
               <strong>{agentName}</strong>
               {agentContext ? ` · ${agentContext}` : ""}
@@ -349,17 +358,15 @@ function WhiteboardSession({
             {state.scene ? (
               <EditorBoundary>
                 <Suspense fallback={<p className={styles.notice}>Loading drawing tools…</p>}>
-                  <Editor
+                  <ActiveEditor
                     scene={state.scene}
                     generation={state.generation}
                     locked={working}
                     onChange={(scene) => controller.change(scene)}
                     onError={setEditorError}
                     onInteraction={controller.interaction}
-                    onReady={(handle) => {
-                      editor.current = handle;
-                      setReady(Boolean(handle));
-                    }}
+                    onBeforeReplace={() => controller.checkpoint()}
+                    onReady={onEditorReady}
                   />
                 </Suspense>
               </EditorBoundary>

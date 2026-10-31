@@ -28,6 +28,8 @@
         ".storybook/**/*.{ts,tsx}",
         "*.{ts,mjs}",
         "!src/features/whiteboard/testFixtures.ts!",
+        // Browser-only editor harness, served by the integration test's Vite instance.
+        "!src/features/flow/editor.fixture.tsx!",
       ],
     },
     // Loaded by Pi, not by a static import from the application.

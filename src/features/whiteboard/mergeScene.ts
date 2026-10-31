@@ -4,6 +4,7 @@ import {
   type BoardElement,
   type BoardScene,
 } from "../../../packages/pi-live-chat/boardProtocol";
+import { validateFlowGraph } from "../../../packages/pi-live-chat/flowProtocol";
 
 export function canonical(value: unknown): string {
   return JSON.stringify(value, (_key, child: unknown) => {
@@ -24,6 +25,12 @@ function tombstone(element: BoardElement): BoardElement {
 }
 function references(element: BoardElement): string[] {
   const result: string[] = [];
+  if (element.type === "component" && typeof element.parentId === "string")
+    result.push(element.parentId);
+  if (element.type === "connection") {
+    if (typeof element.source === "string") result.push(element.source);
+    if (typeof element.target === "string") result.push(element.target);
+  }
   for (const key of ["frameId", "containerId"]) {
     if (typeof element[key] === "string") result.push(element[key]);
   }
@@ -53,6 +60,9 @@ function references(element: BoardElement): string[] {
 
 /** Local wins competing edits; deletions win. No field-wise native-record mixing. */
 export function mergeScene(base: BoardScene, local: BoardScene, remote: BoardScene): BoardScene {
+  const engine = base.engine ?? "excalidraw";
+  if ((local.engine ?? "excalidraw") !== engine || (remote.engine ?? "excalidraw") !== engine)
+    throw new Error("Board engine changed; your drawing is retained for explicit recovery");
   const b = new Map(base.elements.map((e) => [e.id, e]));
   const l = new Map(local.elements.map((e) => [e.id, e]));
   const r = new Map(remote.elements.map((e) => [e.id, e]));
@@ -119,7 +129,20 @@ export function mergeScene(base: BoardScene, local: BoardScene, remote: BoardSce
     }
   }
   const files: BoardScene["files"] = {};
-  const used = new Set(elements.filter((e) => e.type === "image").map((e) => e.fileId));
+  const used = new Set(
+    elements.flatMap((e) => {
+      if (e.type === "image") return [e.fileId];
+      if (
+        e.type === "component" &&
+        !e.isDeleted &&
+        e.props &&
+        typeof e.props === "object" &&
+        !Array.isArray(e.props)
+      )
+        return [e.props.imageId];
+      return [];
+    }),
+  );
   for (const id of used) {
     if (typeof id !== "string") continue;
     const mine = local.files[id],
@@ -134,7 +157,9 @@ export function mergeScene(base: BoardScene, local: BoardScene, remote: BoardSce
     elements,
     files,
     background: local.background !== base.background ? local.background : remote.background,
+    ...(local.engine ? { engine: local.engine } : {}),
   });
+  if (scene.engine === "react-flow") validateFlowGraph(scene);
   if (new TextEncoder().encode(JSON.stringify(scene)).byteLength > MAX_BOARD_BYTES)
     throw new Error("Merged board exceeds 12 MiB; your drawing is retained");
   return scene;

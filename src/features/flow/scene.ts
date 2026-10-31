@@ -189,9 +189,17 @@ export function fromDiagram(diagram: Diagram, base: BoardScene): BoardScene {
   return validateScene({
     engine: "react-flow",
     elements: next,
-    files,
+    files: liveFiles(next, files),
     background: base.background,
   });
+}
+function liveFiles(elements: FlowElement[], files: BoardScene["files"]): BoardScene["files"] {
+  const used = new Set(
+    elements.flatMap((e) =>
+      e.type === "component" && !e.isDeleted && e.props.imageId ? [e.props.imageId] : [],
+    ),
+  );
+  return Object.fromEntries(Object.entries(files).filter(([id]) => used.has(id)));
 }
 function equalRecord(a: FlowElement, b: FlowElement) {
   return JSON.stringify(sort(a)) === JSON.stringify(sort(b));
@@ -227,7 +235,9 @@ export function importFlowScene(raw: string): BoardScene {
 export function replacementScene(imported: BoardScene, base: BoardScene): BoardScene {
   const elements = validateFlowGraph(validateScene(imported));
   const ids = new Map(elements.map((e) => [e.id, makeId()]));
-  const files: BoardScene["files"] = { ...base.files };
+  // Recovery checkpoints own their assets. Tombstones need no image bytes, and
+  // repeated clear/import must not exhaust the board's raster asset allowance.
+  const files: BoardScene["files"] = {};
   const assetIds = new Map(
     Object.entries(imported.files).map(([id, file]) => {
       const fresh = makeId();
@@ -237,25 +247,23 @@ export function replacementScene(imported: BoardScene, base: BoardScene): BoardS
   );
   const fresh = elements
     .filter((e) => !e.isDeleted)
-    .map((e) => ({
-      ...e,
-      id: ids.get(e.id)!,
-      version: 1,
-      ...(e.type === "connection"
-        ? { source: ids.get(e.source)!, target: ids.get(e.target)! }
-        : e.type === "component"
-          ? {
-              parentId: e.parentId ? ids.get(e.parentId)! : null,
-              props: {
-                ...e.props,
-                imageId: e.props.imageId ? assetIds.get(e.props.imageId)! : null,
-              },
-            }
-          : {}),
-    }));
+    .map((e): FlowElement => {
+      const id = ids.get(e.id)!;
+      if (e.type === "connection")
+        return { ...e, id, version: 1, source: ids.get(e.source)!, target: ids.get(e.target)! };
+      if (e.type === "component")
+        return {
+          ...e,
+          id,
+          version: 1,
+          parentId: e.parentId ? ids.get(e.parentId)! : null,
+          props: { ...e.props, imageId: e.props.imageId ? assetIds.get(e.props.imageId)! : null },
+        };
+      return { ...e, id, version: 1 };
+    });
   return validateScene({
     ...imported,
-    files,
+    files: liveFiles(fresh, files),
     elements: [
       ...validateFlowGraph(base).map((e) =>
         e.isDeleted ? e : { ...e, isDeleted: true, version: e.version + 1 },

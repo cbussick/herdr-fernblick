@@ -127,7 +127,8 @@ async function post(action = "", extra: Record<string, unknown> = {}, origin = b
   });
 }
 async function open() {
-  const response = await post();
+  // These legacy route fixtures intentionally exercise native Excalidraw records.
+  const response = await post("", { engine: "excalidraw" });
   expect(response.status).toBe(200);
   return (await response.json()) as BoardState;
 }
@@ -188,6 +189,97 @@ async function control(action: "begin" | "grant" | "end" | "open", runId: string
   );
   return frames.find((f) => f.type === "board-reply" && f.id === id)!;
 }
+
+it("defaults new conversations to React Flow without converting an existing board", async () => {
+  const created = await post();
+  expect(created.status).toBe(200);
+  const flow = (await created.json()) as BoardState;
+  expect(flow.scene).toMatchObject({ engine: "react-flow", elements: [] });
+  const reopened = await post("", { engine: "excalidraw" });
+  expect((await reopened.json()).scene.engine).toBe("react-flow");
+});
+
+it("keeps legacy Excalidraw conversations in their original engine", async () => {
+  // Simulate a board persisted before engine markers existed.
+  const legacy = await boards.open(boardSessionKey(snapshot));
+  expect(legacy.scene.engine).toBeUndefined();
+  const reopened = await post("", { engine: "react-flow" });
+  expect((await reopened.json()).scene).toEqual(legacy.scene);
+});
+
+it("discovers components and creates, edits and connects them through terminal tools without a browser", async () => {
+  const run = randomUUID();
+  await control("begin", run);
+  const result = await control("grant", run);
+  const grant = (result.data as { grant: BoardGrant }).grant;
+  expect(await rpc(grant, "catalog")).toMatchObject({
+    ok: true,
+    data: {
+      engine: "react-flow",
+      components: expect.arrayContaining([expect.objectContaining({ id: "card" })]),
+    },
+  });
+  expect(await rpc(grant, "read", { includeImage: false })).toMatchObject({
+    ok: true,
+    data: { engine: "react-flow", revision: 0 },
+  });
+  expect(
+    await rpc(grant, "apply", {
+      baseRevision: 0,
+      operationId: randomUUID(),
+      operations: [
+        {
+          op: "create",
+          id: "service",
+          kind: "card",
+          x: 10,
+          y: 10,
+          props: { title: "Service", body: "Handles requests" },
+        },
+        {
+          op: "create",
+          id: "database",
+          kind: "table",
+          x: 450,
+          y: 10,
+          props: { title: "Database", columns: ["Field", "Type"], rows: [["id", "UUID"]] },
+        },
+      ],
+    }),
+  ).toMatchObject({ ok: true, data: { revision: 1, applied: ["service", "database"] } });
+  await rpc(grant, "read", { includeImage: false });
+  expect(
+    await rpc(grant, "apply", {
+      baseRevision: 1,
+      operationId: randomUUID(),
+      operations: [
+        { op: "update", id: "service", props: { subtitle: "User API" } },
+        {
+          op: "create",
+          id: "reads",
+          kind: "connection",
+          x: 0,
+          y: 0,
+          source: "service",
+          target: "database",
+          label: "Reads",
+          dependsOn: ["service", "database"],
+        },
+      ],
+    }),
+  ).toMatchObject({ ok: true, data: { revision: 2 } });
+  const saved = await boards.read(grant.boardId);
+  expect(saved.scene.elements.find((e) => e.id === "service")?.props).toMatchObject({
+    title: "Service",
+    subtitle: "User API",
+  });
+  expect(saved.scene.elements.find((e) => e.id === "reads")).toMatchObject({
+    type: "connection",
+    source: "service",
+    target: "database",
+  });
+  expect(saved.snapshots).toEqual([]);
+});
 
 it("does not let a late rejected web send revoke a newer native request", async () => {
   autoAcknowledge = false;
@@ -381,9 +473,7 @@ it("a failed visual read does not authorize edits to unseen targets", async () =
     await rpc(grant, "apply", {
       baseRevision: 0,
       operationId: randomUUID(),
-      operations: [
-        { op: "create", id: "box", kind: "rectangle", x: 0, y: 0, width: 50, height: 50 },
-      ],
+      operations: [{ op: "create", id: "box", kind: "card", x: 0, y: 0, width: 50, height: 50 }],
     }),
   ).toMatchObject({ ok: true, data: { revision: 1 } });
   bridge.setBoardRenderer(async () => {

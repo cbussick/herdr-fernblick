@@ -31,7 +31,7 @@ import {
   type Edge,
   type Viewport,
 } from "@xyflow/react";
-import { Copy, Download, Maximize, Pencil, RotateCcw, Search, Trash2, X } from "lucide-react";
+import { Copy, Download, Pencil, RotateCcw, Search, Trash2, X } from "lucide-react";
 import { ComponentView, EditContext, Icon } from "./Components";
 import { ColorPicker, ComponentEditor, Modal } from "./Editor";
 import { DrawingTools, InkContext, InkSurface, InkView, useInkHistory, type Tool } from "./Drawing";
@@ -62,7 +62,7 @@ type Editing = {
   parentId?: string;
 };
 function Playground(props: BoardEditorProps) {
-  const { scene, generation, locked, onChange, onError } = props;
+  const { scene, generation, locked, onError } = props;
   const [initial] = useState(() => toDiagram(scene));
   const base = useRef(scene);
   const callbacks = useRef(props);
@@ -71,6 +71,8 @@ function Playground(props: BoardEditorProps) {
   const pointerIds = useRef(new Set<number>());
   const idleFrame = useRef<number | null>(null);
   const [pendingImport, setPendingImport] = useState<BoardScene | null>(null);
+  const replacementInFlight = useRef(false);
+  const [replacementBusy, setReplacementBusy] = useState(false);
   const [nodes, setNodes] = useState(initial.nodes);
   const [edges, setEdges] = useState(initial.edges);
   const [, setViewport] = useState<Viewport | undefined>(undefined);
@@ -370,6 +372,37 @@ function Playground(props: BoardEditorProps) {
     );
     touch();
   }
+  async function replaceDrawing(source: BoardScene) {
+    if (locked || replacementInFlight.current) return;
+    const before = base.current;
+    replacementInFlight.current = true;
+    setReplacementBusy(true);
+    try {
+      await callbacks.current.onBeforeReplace?.();
+      if (callbacks.current.locked || base.current !== before)
+        throw new Error("Drawing changed while preserving recovery. Try again.");
+      const next = replacementScene(source, before);
+      const diagram = toDiagram(next);
+      base.current = next;
+      changed.current = false;
+      history.clear();
+      chooseTool("select");
+      setNodes(diagram.nodes);
+      setEdges(diagram.edges);
+      callbacks.current.onChange(next);
+      callbacks.current.onError("");
+      setPendingImport(null);
+      setResetting(false);
+      requestAnimationFrame(() => void flow.fitView({ padding: 0.18 }));
+    } catch (error) {
+      callbacks.current.onError(
+        error instanceof Error ? error.message : "Could not preserve recovery",
+      );
+    } finally {
+      replacementInFlight.current = false;
+      setReplacementBusy(false);
+    }
+  }
   function download() {
     const url = URL.createObjectURL(
       new Blob([exportFlowScene(base.current)], { type: "application/json" }),
@@ -416,7 +449,10 @@ function Playground(props: BoardEditorProps) {
       onKeyDown={(e) => {
         if (e.key === "Escape" && (modal || tool !== "select")) {
           e.stopPropagation();
-          if (!modal) chooseTool("select");
+          if (!modal) {
+            e.preventDefault();
+            chooseTool("select");
+          }
         }
       }}
     >
@@ -690,12 +726,6 @@ function Playground(props: BoardEditorProps) {
                   <p>Add a component from the library to get started.</p>
                 </div>
               )}
-              <button
-                className={`${styles["fit-button"]} ${styles["secondary"]}`}
-                onClick={() => void flow.fitView({ padding: 0.18 })}
-              >
-                <Maximize size={15} /> Fit canvas
-              </button>
               <div className={styles["status"]} role="status">
                 {message}
               </div>
@@ -761,31 +791,29 @@ function Playground(props: BoardEditorProps) {
         </Modal>
       )}
       {pendingImport && (
-        <Modal title="Replace this drawing?" onClose={() => setPendingImport(null)}>
+        <Modal
+          title="Replace this drawing?"
+          onClose={() => {
+            if (!replacementInFlight.current) setPendingImport(null);
+          }}
+        >
           <div className={styles["reset-body"]}>
-            <p>Import replaces the current drawing. Download it first to keep a backup.</p>
+            <p>
+              Import replaces the current drawing. A local recovery copy is saved first; download a
+              backup for longer-term storage.
+            </p>
             <footer className={styles["dialog-footer"]}>
-              <button className={styles["secondary"]} onClick={() => setPendingImport(null)}>
+              <button
+                className={styles["secondary"]}
+                disabled={replacementBusy}
+                onClick={() => setPendingImport(null)}
+              >
                 Cancel
               </button>
               <button
                 className={styles["primary"]}
-                disabled={locked}
-                onClick={() => {
-                  try {
-                    const next = replacementScene(pendingImport, base.current);
-                    const diagram = toDiagram(next);
-                    base.current = next;
-                    changed.current = false;
-                    history.clear();
-                    setNodes(diagram.nodes);
-                    setEdges(diagram.edges);
-                    onChange(next);
-                    setPendingImport(null);
-                  } catch (error) {
-                    onError(String(error));
-                  }
-                }}
+                disabled={locked || replacementBusy}
+                onClick={() => void replaceDrawing(pendingImport)}
               >
                 Replace drawing
               </button>
@@ -794,29 +822,36 @@ function Playground(props: BoardEditorProps) {
         </Modal>
       )}
       {resetting && (
-        <Modal title="Clear the canvas?" onClose={() => setResetting(false)}>
+        <Modal
+          title="Clear the canvas?"
+          onClose={() => {
+            if (!replacementInFlight.current) setResetting(false);
+          }}
+        >
           <div className={styles["reset-body"]}>
-            <p>This removes all live elements. Download the drawing first to keep a backup.</p>
+            <p>
+              This removes all live elements. A local recovery copy is saved first; download a
+              backup for longer-term storage.
+            </p>
             <footer className={styles["dialog-footer"]}>
-              <button className={styles["secondary"]} onClick={() => setResetting(false)}>
+              <button
+                className={styles["secondary"]}
+                disabled={replacementBusy}
+                onClick={() => setResetting(false)}
+              >
                 Cancel
               </button>
               <button
                 className={styles["primary"]}
-                onClick={() => {
-                  if (locked) return;
-                  const next = { nodes: [], edges: [] };
-                  history.clear();
-                  chooseTool("select");
-                  setNodes(next.nodes);
-                  setEdges(next.edges);
-
-                  touch();
-                  setResetting(false);
-                  requestAnimationFrame(
-                    () => void flow.fitView({ nodes: next.nodes, padding: 0.18 }),
-                  );
-                }}
+                disabled={locked || replacementBusy}
+                onClick={() =>
+                  void replaceDrawing({
+                    engine: "react-flow",
+                    elements: [],
+                    files: {},
+                    background: base.current.background,
+                  })
+                }
               >
                 Clear canvas
               </button>

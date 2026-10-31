@@ -12,13 +12,35 @@ const dimension = z.number().finite().min(1).max(100_000);
 const text = z.string().max(4000);
 export const flowKinds = ["boundary", "card", "icon", "detail", "table", "comment"] as const;
 export type FlowKind = (typeof flowKinds)[number];
+export const flowIcons = [
+  "",
+  "user",
+  "users",
+  "server",
+  "database",
+  "cloud",
+  "globe",
+  "lock",
+  "code",
+  "settings",
+  "zap",
+  "mail",
+  "heart",
+  "box",
+  "layout",
+  "list",
+  "table",
+  "message",
+  "file",
+  "image",
+] as const;
 export const flowComponentPropsSchema = z
   .object({
     title: text,
     subtitle: text,
     body: text,
     color,
-    icon: z.string().max(128),
+    icon: z.enum(flowIcons),
     imageId: flowIdSchema.nullable(),
     fields: z
       .array(
@@ -122,14 +144,16 @@ export function defaultFlowProps(kind: FlowKind): FlowComponentProps {
     subtitle: "",
     body: "",
     color: "#429beb",
-    icon: {
-      boundary: "box",
-      card: "",
-      icon: "user",
-      detail: "list",
-      table: "table",
-      comment: "message",
-    }[kind],
+    icon: (
+      {
+        boundary: "box",
+        card: "",
+        icon: "user",
+        detail: "list",
+        table: "table",
+        comment: "message",
+      } as const
+    )[kind],
     imageId: null,
     fields: [{ label: "Name", value: "Value", color: "", type: "text" }],
     columns: ["Name", "Value"],

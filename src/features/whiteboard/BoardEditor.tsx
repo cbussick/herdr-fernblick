@@ -30,6 +30,8 @@ export interface BoardEditorProps {
   onReady: (handle: EditorHandle | null) => void;
   onError: (message: string) => void;
   onInteraction?: (active: boolean) => void;
+  /** Persist a recovery copy before an explicit destructive import/clear. */
+  onBeforeReplace?: () => Promise<void>;
 }
 function restored(scene: BoardScene) {
   return restoreElements(scene.elements as unknown as ExcalidrawElement[], null, {

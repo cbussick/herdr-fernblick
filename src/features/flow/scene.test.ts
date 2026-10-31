@@ -145,5 +145,11 @@ describe("production flow scene boundary", () => {
     expect(Object.keys(base.files)).toHaveLength(1);
     expect(base.elements[0]!.props).not.toHaveProperty("image");
     expect(fromDiagram(toDiagram(base), base)).toEqual(base);
+    const deleted = fromDiagram({ nodes: [], edges: [] }, base);
+    expect(deleted.files).toEqual({});
+    expect(deleted.elements[0]).toMatchObject({ isDeleted: true });
+    expect(replacementScene(empty, base).files).toEqual({});
+    expect(Object.keys(replacementScene(base, base).files)).toHaveLength(1);
+    expect(Object.keys(base.files)).toHaveLength(1); // earlier recovery/snapshot is intact
   });
 });

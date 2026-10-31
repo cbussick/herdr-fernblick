@@ -720,17 +720,6 @@
   bottom: 30px;
 }
 
-.fit-button {
-  position: absolute;
-  top: 16px;
-  right: 16px;
-  z-index: 8;
-}
-
-.selection-bar ~ .fit-button {
-  top: 76px;
-}
-
 .status {
   position: absolute;
   bottom: 0;
@@ -1202,15 +1191,6 @@
 
   .canvas {
     min-height: 0;
-  }
-
-  .fit-button {
-    top: auto;
-    bottom: 40px;
-  }
-
-  .selection-bar ~ .fit-button {
-    top: auto;
   }
 
   .drawing-toolbar {

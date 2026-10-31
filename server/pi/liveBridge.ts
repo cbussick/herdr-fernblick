@@ -228,7 +228,11 @@ export class LiveBridge {
           }).toString();
           url.hash = "";
         }
-        const state = await this.boards!.open(boardSessionKey(peer.snapshot!), validate);
+        const state = await this.boards!.open(
+          boardSessionKey(peer.snapshot!),
+          validate,
+          "react-flow",
+        );
         validate();
         if (url) data = { url: url.toString() };
         else {

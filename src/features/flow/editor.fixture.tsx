@@ -9,6 +9,7 @@ const test = {
   events: [] as string[],
   errors: [] as string[],
   ready: false,
+  checkpointError: "",
   setScene: (_scene: BoardScene) => {},
   setLocked: (_locked: boolean) => {},
 };
@@ -36,6 +37,10 @@ function Fixture() {
       generation={generation}
       locked={locked}
       onReady={ready}
+      onBeforeReplace={async () => {
+        test.events.push("checkpoint");
+        if (test.checkpointError) throw new Error(test.checkpointError);
+      }}
       onChange={(scene) => {
         test.events.push("change");
         test.changes.push(scene);

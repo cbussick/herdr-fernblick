@@ -136,6 +136,21 @@ describe("flow scene boundary", () => {
     expect(Buffer.byteLength(JSON.stringify(summary))).toBeLessThan(128 * 1024 + 1024);
   });
 
+  it("returns full ordinary table props so agents need not reconstruct truncated rows", () => {
+    const props = {
+      ...defaultFlowProps("table"),
+      title: "A full readable table",
+      rows: Array.from({ length: 25 }, (_, i) => [
+        String(i),
+        "Existing value that must survive edits",
+      ]),
+    };
+    const scene = applyOperations(emptyScene("react-flow"), [
+      { ...create("table"), kind: "table", props },
+    ]);
+    expect(summarize(scene, 1).elements[0]).toMatchObject({ props, propsTruncated: false });
+  });
+
   it("permits explicit related deletions in either order and reparent-before-delete", () => {
     const scene = fixture();
     expect(

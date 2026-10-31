@@ -147,6 +147,34 @@ describe("isolated production editor and DOM renderer", { timeout: 30_000 }, () 
     expect(parsed.elements.filter((e) => !e.isDeleted)[0]!.id).not.toBe("imported");
     expect(await page.evaluate(() => window.flowTest.errors)).toEqual([]);
   });
+  it("cancels clear if recovery fails and checkpoints before publishing replacement", async () => {
+    await loadEditor();
+    const first = fromDiagram(
+      { nodes: [makeNode("card", 0, 0, defaults("card"), "retained")], edges: [] },
+      empty,
+    );
+    await page.evaluate((raw) => {
+      window.flowTest.setScene(JSON.parse(raw));
+      window.flowTest.checkpointError = "Recovery storage unavailable";
+    }, JSON.stringify(first));
+    await page.getByRole("button", { name: "Clear", exact: true }).click();
+    await page.getByRole("button", { name: "Clear canvas", exact: true }).click();
+    await page.waitForFunction(() =>
+      window.flowTest.errors.includes("Recovery storage unavailable"),
+    );
+    expect(await page.evaluate(() => window.flowTest.changes.length)).toBe(0);
+    expect(await page.locator('[data-id="retained"]').count()).toBe(1);
+    await page.evaluate(() => {
+      window.flowTest.checkpointError = "";
+    });
+    await page.getByRole("button", { name: "Clear canvas", exact: true }).click();
+    await page.waitForFunction(() => window.flowTest.changes.length === 1);
+    expect(
+      await page.evaluate(() => window.flowTest.changes[0]!.elements.every((e) => e.isDeleted)),
+    ).toBe(true);
+    const events = await page.evaluate(() => window.flowTest.events);
+    expect(events.lastIndexOf("checkpoint")).toBeLessThan(events.lastIndexOf("change"));
+  });
   it("retains pen priority over an existing palm and suppresses native iPad Scribble touchstart", async () => {
     const context = await browser.newContext({
       viewport: { width: 1280, height: 900 },

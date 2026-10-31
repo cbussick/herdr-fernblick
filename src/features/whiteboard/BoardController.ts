@@ -401,6 +401,15 @@ export class BoardController {
     });
     return this.pendingSave;
   }
+  /** Archive a durable local recovery copy before an explicit import/clear. */
+  async checkpoint() {
+    if (this.disposed || !this.state.scene) throw new Error("Board is no longer available");
+    const version = this.editVersion;
+    this.patch({ recovery: structuredClone(this.state.scene) });
+    await this.keepLocal();
+    if (this.disposed || this.editVersion !== version)
+      throw new Error("Drawing changed while preparing recovery; replacement canceled");
+  }
   async loadLatest() {
     if (this.loadingLatest) throw new Error("Recovery is already in progress");
     this.loadingLatest = true;

@@ -33,6 +33,41 @@ function setup(local?: LocalDraft) {
   owners.push(owner);
   return { owner, api, store, close, emit: (value: BoardEvent) => event(value) };
 }
+it("durably checkpoints the current scene before a destructive import or clear", async () => {
+  const { owner, store } = setup();
+  await owner.start();
+  owner.change(scene(2));
+  await owner.keepLocal();
+  await owner.checkpoint();
+  expect(owner.state.recovery).toEqual(scene(2));
+  expect(store.write).toHaveBeenLastCalledWith(
+    expect.any(String),
+    expect.objectContaining({ recovery: scene(2), scene: scene(2) }),
+  );
+  owner.change(scene(3));
+  await owner.keepLocal();
+  expect(owner.state.recovery).toEqual(scene(2));
+});
+it("rejects replacement when its recovery checkpoint cannot be persisted", async () => {
+  const { owner, store } = setup();
+  await owner.start();
+  await owner.keepLocal();
+  vi.mocked(store.write).mockRejectedValueOnce(new Error("Quota full"));
+  await expect(owner.checkpoint()).rejects.toThrow("Quota full");
+  expect(owner.state.scene).toEqual(scene());
+});
+it("cancels replacement if the user edits while its checkpoint is writing", async () => {
+  const { owner, store } = setup();
+  await owner.start();
+  await owner.keepLocal();
+  const writing = deferred<void>();
+  vi.mocked(store.write).mockReturnValueOnce(writing.promise);
+  const checkpoint = owner.checkpoint();
+  owner.change(scene(3));
+  writing.resolve();
+  await expect(checkpoint).rejects.toThrow("Drawing changed");
+  expect(owner.state.scene).toEqual(scene(3));
+});
 it("serializes saves and retains edits made while a save is pending", async () => {
   const { owner, api } = setup();
   await owner.start();

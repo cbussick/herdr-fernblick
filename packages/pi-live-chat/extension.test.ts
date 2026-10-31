@@ -1694,7 +1694,13 @@ it.each(["interactive", "extension"])(
       data: { expiresAt: Date.now() + 60_000 },
     });
     await before;
-    expect(t.pi.getActiveTools()).toEqual(["read", "bash", "board_read", "board_apply"]);
+    expect(t.pi.getActiveTools()).toEqual([
+      "read",
+      "bash",
+      "board_read",
+      "board_components",
+      "board_apply",
+    ]);
     expect(boardRequests(t)).toEqual([]);
     expect(t.pi.sendUserMessage).not.toHaveBeenCalled();
     t.emit("agent_start");
@@ -1807,7 +1813,13 @@ it("delivers visual board content to Pi while activating request-scoped edit too
     { type: "image", mimeType: "image/png", data: bytes.toString("base64") },
   ]);
   expect(JSON.stringify(t.pi.sendUserMessage.mock.calls)).not.toContain(board.grantId);
-  expect(t.pi.getActiveTools()).toEqual(["read", "bash", "board_read", "board_apply"]);
+  expect(t.pi.getActiveTools()).toEqual([
+    "read",
+    "bash",
+    "board_read",
+    "board_components",
+    "board_apply",
+  ]);
   t.emit("agent_start");
   t.emit("agent_settled");
   expect(t.pi.getActiveTools()).toEqual(["read", "bash"]);
@@ -1830,7 +1842,7 @@ it("advertises boards, dispatches private RPCs before commands, and gates read-o
   });
   expect(t.pi.getActiveTools()).toEqual(["read", "bash"]);
   const board = await activateBoard(t, "read");
-  expect(t.pi.getActiveTools()).toEqual(["read", "bash", "board_read"]);
+  expect(t.pi.getActiveTools()).toEqual(["read", "bash", "board_read", "board_components"]);
   expect(t.tools.get("board_apply")?.exposure).toBe("hidden");
   expect(JSON.stringify(t.pi.sendUserMessage.mock.calls)).not.toContain(board.grantId);
   t.emit("agent_start");

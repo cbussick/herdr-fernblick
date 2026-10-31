@@ -147,23 +147,28 @@ export function flowSummary(
     const p = element.props;
     // Even JSON-escaped control characters fit one complete summary under 128 KiB.
     const short = (s: string) => s.slice(0, 128);
-    const props = {
-      ...p,
-      title: short(p.title),
-      subtitle: short(p.subtitle),
-      body: short(p.body),
-      fields: p.fields
-        .slice(0, 10)
-        .map((f) => ({ ...f, label: short(f.label), value: short(f.value) })),
-      columns: p.columns.map(short),
-      rows: p.rows.slice(0, 5).map((row) => row.map(short)),
-    };
+    // Ordinary cards/tables must be fully readable so agents can preserve existing
+    // fields/rows. Only exceptionally large records need a marked partial summary.
+    const complete = Buffer.byteLength(JSON.stringify(p)) <= 64 * 1024;
+    const props = complete
+      ? p
+      : {
+          ...p,
+          title: short(p.title),
+          subtitle: short(p.subtitle),
+          body: short(p.body),
+          fields: p.fields
+            .slice(0, 10)
+            .map((f) => ({ ...f, label: short(f.label), value: short(f.value) })),
+          columns: p.columns.map(short),
+          rows: p.rows.slice(0, 5).map((row) => row.map(short)),
+        };
     return {
       ...common,
       kind: element.kind,
       parentId: element.parentId,
       props,
-      propsTruncated: JSON.stringify(props) !== JSON.stringify(p),
+      propsTruncated: !complete,
       ...(p.imageId && files[p.imageId]
         ? {
             imageAsset: {

@@ -2,6 +2,7 @@ import { useEffect, useRef, useState, type FormEvent, type ReactNode } from "rea
 import { Plus, Trash2, Upload, X } from "lucide-react";
 import { ComponentContent, componentStyle, Icon, icons } from "./Components";
 import { catalog, colors, validData, type ComponentData } from "./model";
+import { flowIcons } from "../../../packages/pi-live-chat/flowProtocol";
 import styles from "./Playground.module.css";
 
 export function Modal({
@@ -227,14 +228,17 @@ export function ComponentEditor({
                 >
                   None
                 </button>
-                {Object.entries(icons)
-                  .filter(([, entry]) => entry.label.toLowerCase().includes(query.toLowerCase()))
-                  .map(([key, entry]) => (
+                {flowIcons
+                  .filter(
+                    (key) =>
+                      key !== "" && icons[key]!.label.toLowerCase().includes(query.toLowerCase()),
+                  )
+                  .map((key) => (
                     <button
                       key={key}
                       type="button"
-                      title={entry.label}
-                      aria-label={`Icon: ${entry.label}`}
+                      title={icons[key]!.label}
+                      aria-label={`Icon: ${icons[key]!.label}`}
                       aria-pressed={draft.icon === key && !draft.image}
                       onClick={() => patch({ icon: key, image: "" })}
                     >

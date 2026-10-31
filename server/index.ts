@@ -41,7 +41,7 @@ const boards = new BoardStore(
   process.env.FERNBLICK_BOARD_DIR ?? join(homedir(), ".local/share/fernblick/boards"),
 );
 const sessions = new SessionCatalog();
-const sessionIndex = new SessionIndex(sessions);
+const sessionIndex = new SessionIndex(sessions, process.env.FERNBLICK_SESSION_INDEX_DIR);
 await sessionIndex.start();
 const service = new HerdrService(
   new HerdrClient(herdrSocket),

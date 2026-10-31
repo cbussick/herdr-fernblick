@@ -4,7 +4,7 @@ A small mobile web controller for agents running inside Herdr. Dashboard and Ter
 
 ## Interface
 
-React 19 and TypeScript, built with Vite. The light-blue interface is smartphone-first, with single-pane navigation on portrait iPads and a persistent workspace sidebar on landscape iPads and desktop. Fernblick styles use CSS Modules; icons are custom SVGs and Manrope is bundled locally, with no external font requests. The lazy-loaded Excalidraw whiteboard uses its vendor stylesheet and locally served fonts.
+React 19 and TypeScript, built with Vite. The light-blue interface is smartphone-first, with single-pane navigation on portrait iPads and a persistent workspace sidebar on landscape iPads and desktop. Fernblick styles use CSS Modules; icons are custom SVGs and Manrope is bundled locally, with no external font requests. Whiteboards load lazily: new conversations use structured React Flow components and drawing with locally bundled Nunito; existing Excalidraw boards retain their original editor and local fonts.
 
 When creating an agent, **Create a new workspace** keeps the agent draft intact.
 Creating the workspace returns to that draft with the new workspace selected;
@@ -345,7 +345,7 @@ after an explicit delete confirmation; browsing never rewrites them.
 
 ### Whiteboard
 
-Open **Whiteboard** from live Chat for a fullscreen, persistent Excalidraw canvas identified by agent and workspace. One lazy board belongs to each Pi conversation: the same agent can read/edit it from ordinary Fernblick chat, the board's expandable conversation panel, or Herdr terminal, without a special sending mode. Tools fetch fresh structure and image on demand; prompts do not automatically send screenshots. Back changes view, not access. The Pi extension's `/whiteboard` command opens a conversation-specific browser link (`FERNBLICK_PUBLIC_URL` on the backend); SSH receives a printable URL. Request-scoped authorization, revocation and conversation isolation remain backend-enforced. [Behavior, persistence, conflicts and limits](docs/whiteboard.md); [headless renderer setup](docs/whiteboard-rendering.md).
+Open **Whiteboard** from live Chat for a fullscreen, persistent canvas identified by agent and workspace. New boards use structured React Flow components plus freehand drawing; pre-existing Excalidraw boards remain in their original format. See [structured boards and isolated dogfooding](docs/react-flow-boards.md). One lazy board belongs to each Pi conversation: the same agent can read/edit it from ordinary Fernblick chat, the board's expandable conversation panel, or Herdr terminal, without a special sending mode. Tools fetch fresh structure and image on demand; prompts do not automatically send screenshots. Back changes view, not access. The Pi extension's `/whiteboard` command opens a conversation-specific browser link (`FERNBLICK_PUBLIC_URL` on the backend); SSH receives a printable URL. Request-scoped authorization, revocation and conversation isolation remain backend-enforced. [Behavior, persistence, conflicts and limits](docs/whiteboard.md); [headless renderer setup](docs/whiteboard-rendering.md).
 
 ### Skills
 

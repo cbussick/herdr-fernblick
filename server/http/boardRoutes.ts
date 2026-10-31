@@ -49,7 +49,10 @@ async function body(request: IncomingMessage, max: number) {
     throw new BoardError(400, "Invalid board JSON");
   }
 }
-const openSchema = z.object({ target: targetSchema });
+const openSchema = z.object({
+  target: targetSchema,
+  engine: z.enum(["excalidraw", "react-flow"]).optional(),
+});
 const ownedSchema = openSchema.extend({ boardId: boardIdSchema });
 const saveSchema = ownedSchema.extend({
   baseRevision: z.number().int().nonnegative(),
@@ -114,17 +117,21 @@ export function createBoardRoutes(service: HerdrService, bridge: LiveBridge, boa
         response.setHeader("Content-Type", "application/json; charset=utf-8");
         response.setHeader(
           "Content-Disposition",
-          `attachment; filename="whiteboard-${snapshot.revision}.excalidraw"`,
+          `attachment; filename="whiteboard-${snapshot.revision}.${snapshot.scene.engine === "react-flow" ? "flow.json" : "excalidraw"}"`,
         );
         response.end(
-          JSON.stringify({
-            type: "excalidraw",
-            version: 2,
-            source: "Fernblick",
-            elements: snapshot.scene.elements,
-            files: snapshot.scene.files,
-            appState: { viewBackgroundColor: snapshot.scene.background },
-          }),
+          JSON.stringify(
+            snapshot.scene.engine === "react-flow"
+              ? { format: "fernblick-flow", version: 1, scene: snapshot.scene }
+              : {
+                  type: "excalidraw",
+                  version: 2,
+                  source: "Fernblick",
+                  elements: snapshot.scene.elements,
+                  files: snapshot.scene.files,
+                  appState: { viewBackgroundColor: snapshot.scene.background },
+                },
+          ),
         );
       }
       return true;
@@ -144,7 +151,7 @@ export function createBoardRoutes(service: HerdrService, bridge: LiveBridge, boa
       if (streams.size >= 64) throw new BoardError(503, "Too many whiteboard streams");
       const target = targetSchema.parse(Object.fromEntries(url.searchParams));
       const ctx = await context(pane, target);
-      await boards.open(ctx.key, ctx.validate);
+      await boards.open(ctx.key, ctx.validate, "react-flow");
       ctx.validate();
       response.writeHead(200, {
         "Content-Type": "text/event-stream",
@@ -223,7 +230,7 @@ export function createBoardRoutes(service: HerdrService, bridge: LiveBridge, boa
     const input = openSchema.parse(raw);
     const ctx = await context(pane, input.target);
     if (!action) {
-      const state = await boards.open(ctx.key, ctx.validate);
+      const state = await boards.open(ctx.key, ctx.validate, input.engine ?? "react-flow");
       ctx.validate();
       json(response, state);
       return true;

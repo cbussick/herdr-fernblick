@@ -45,7 +45,13 @@ export default defineConfig({
     }),
   ],
   build: {
-    rolldownOptions: { input: { app: "index.html", whiteboardRender: "whiteboard-render.html" } },
+    rolldownOptions: {
+      input: {
+        app: "index.html",
+        whiteboardRender: "whiteboard-render.html",
+        flowBoardRender: "flow-board-render.html",
+      },
+    },
   },
   optimizeDeps: { rolldownOptions: { plugins: [localExcalidrawFonts()] } },
   server: {

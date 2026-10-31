@@ -13,26 +13,31 @@ export function sceneFingerprint(scene: BoardScene) {
       .sort(([a], [b]) => a.localeCompare(b))
       .map(([id, file]) => [id, file.dataURL]),
     scene.background,
+    scene.engine ?? "excalidraw",
   ]);
 }
 export function downloadScene(scene: BoardScene) {
   const blob = new Blob(
     [
-      JSON.stringify({
-        type: "excalidraw",
-        version: 2,
-        source: "fernblick",
-        elements: scene.elements,
-        files: scene.files,
-        appState: { viewBackgroundColor: scene.background },
-      }),
+      JSON.stringify(
+        scene.engine === "react-flow"
+          ? { format: "fernblick-flow", version: 1, scene }
+          : {
+              type: "excalidraw",
+              version: 2,
+              source: "fernblick",
+              elements: scene.elements,
+              files: scene.files,
+              appState: { viewBackgroundColor: scene.background },
+            },
+      ),
     ],
     { type: "application/json" },
   );
   const url = URL.createObjectURL(blob);
   const link = document.createElement("a");
   link.href = url;
-  link.download = "whiteboard.excalidraw";
+  link.download = scene.engine === "react-flow" ? "whiteboard.flow.json" : "whiteboard.excalidraw";
   link.click();
   setTimeout(() => URL.revokeObjectURL(url), 1000);
 }
