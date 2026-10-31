@@ -1,0 +1,33 @@
+.page {
+  position: fixed;
+  inset: 0;
+  overflow: hidden;
+}
+
+.layer {
+  position: absolute;
+  left: 0;
+  top: 0;
+  width: 1px;
+  height: 1px;
+  transform-origin: 0 0;
+  isolation: isolate;
+}
+
+.node {
+  position: absolute;
+  margin: 0;
+}
+
+.connections {
+  position: absolute;
+  left: 0;
+  top: 0;
+  width: 1px;
+  height: 1px;
+  overflow: visible;
+  pointer-events: none;
+  font:
+    11px Nunito,
+    sans-serif;
+}
