@@ -26,6 +26,7 @@ interface Props {
   canSend: boolean;
   canAttach: boolean;
   onAttach: () => void;
+  onPasteImages: (files: File[]) => void;
   canOpenBoard?: boolean;
   onOpenBoard?: () => void;
   conversationAction?: ReactNode;
@@ -255,6 +256,27 @@ export function SkillComposer(props: Props) {
         value={prompt}
         disabled={sending}
         onChange={(event) => onChange(event.target.value)}
+        onPaste={(event) => {
+          const images = Array.from(event.clipboardData.files).filter((file) =>
+            file.type.startsWith("image/"),
+          );
+          if (!images.length) return;
+          event.preventDefault();
+          if (!sending) props.onPasteImages(images);
+        }}
+        onKeyDown={(event) => {
+          if (
+            event.key === "Enter" &&
+            !event.shiftKey &&
+            !event.nativeEvent.isComposing &&
+            event.nativeEvent.keyCode !== 229
+          ) {
+            event.preventDefault();
+            if (!event.repeat && !sending && props.canSend)
+              event.currentTarget.form?.requestSubmit();
+          }
+        }}
+        title="Enter to send; Shift+Enter for a new line"
         placeholder="Message…"
         rows={1}
         maxLength={32000}

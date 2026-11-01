@@ -740,6 +740,69 @@ it("accepts ten images across selections, caps overflow and restores capacity af
   expect(mocks.command.mock.calls[0][4]).toHaveLength(10);
 });
 
+it("pastes clipboard images into the existing attachment upload flow", async () => {
+  const file = new File(["image"], "clipboard.png", { type: "image/png" });
+  const preventDefault = vi.fn();
+  await act(async () =>
+    renderer.root.findByType("textarea").props.onPaste({
+      clipboardData: { files: [file] },
+      preventDefault,
+    }),
+  );
+  expect(preventDefault).toHaveBeenCalledOnce();
+  expect(renderer.root.findAllByProps({ "aria-label": "Image attachments" })).toHaveLength(1);
+  await act(async () => renderer.root.findByType("form").props.onSubmit({ preventDefault() {} }));
+  await flush();
+  expect(mocks.upload).toHaveBeenCalledWith(file);
+  expect(mocks.command).toHaveBeenCalledOnce();
+});
+
+it("leaves normal text pastes untouched and validates pasted image formats", async () => {
+  const preventDefault = vi.fn();
+  await act(async () =>
+    renderer.root.findByType("textarea").props.onPaste({
+      clipboardData: { files: [] },
+      preventDefault,
+    }),
+  );
+  expect(preventDefault).not.toHaveBeenCalled();
+  await act(async () =>
+    renderer.root.findByType("textarea").props.onPaste({
+      clipboardData: { files: [new File(["svg"], "image.svg", { type: "image/svg+xml" })] },
+      preventDefault,
+    }),
+  );
+  expect(preventDefault).toHaveBeenCalledOnce();
+  expect(renderer.root.findAllByProps({ "aria-label": "Image attachments" })).toHaveLength(0);
+  expect(JSON.stringify(renderer.toJSON())).toContain("PNG, JPEG, GIF or WebP");
+});
+
+it("submits on Enter only when sendable, without interfering with newlines or IME", async () => {
+  const requestSubmit = vi.fn();
+  const preventDefault = vi.fn();
+  const event = {
+    key: "Enter",
+    nativeEvent: { isComposing: false, keyCode: 13 },
+    currentTarget: { form: { requestSubmit } },
+    preventDefault,
+  };
+  renderer.root.findByType("textarea").props.onKeyDown(event);
+  expect(requestSubmit).not.toHaveBeenCalled();
+  await act(async () =>
+    renderer.root.findByType("textarea").props.onChange({ target: { value: "hello" } }),
+  );
+  const keydown = renderer.root.findByType("textarea").props.onKeyDown;
+  preventDefault.mockClear();
+  keydown({ ...event, shiftKey: true });
+  keydown({ ...event, nativeEvent: { isComposing: true } });
+  keydown({ ...event, nativeEvent: { isComposing: false, keyCode: 229 } });
+  expect(preventDefault).not.toHaveBeenCalled();
+  keydown({ ...event, repeat: true });
+  expect(requestSubmit).not.toHaveBeenCalled();
+  keydown(event);
+  expect(requestSubmit).toHaveBeenCalledOnce();
+});
+
 it("clears an acknowledged text-and-image send without waiting for any Pi event", async () => {
   const file = new File(["image"], "image.png", { type: "image/png" });
   await act(async () => {
