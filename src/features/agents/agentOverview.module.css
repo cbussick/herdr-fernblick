@@ -116,6 +116,10 @@
   display: none;
 }
 
+.workspace-disclosure > summary > [data-ui="status-indicator"] {
+  margin-inline-start: var(--space-2);
+}
+
 .workspace-disclosure__copy {
   min-width: 0;
 }
