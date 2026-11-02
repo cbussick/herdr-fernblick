@@ -86,7 +86,7 @@ it("rolls back errors and reports them without retrying", async () => {
   expect(moveWorkspace).toHaveBeenCalledTimes(1);
 });
 
-it("moves a tall workspace to first position when its handle is over the first row", async () => {
+it.each([140, 92, 56])("moves a tall workspace to first position at pointer y=%s", async (y) => {
   const rect = (top: number, height: number) => ({
     left: 10,
     right: 300,
@@ -101,8 +101,8 @@ it("moves a tall workspace to first position when its handle is over the first r
     ["w3", rect(1020, 80)],
   ]);
   const collisions = context().props.collisionDetection({
-    pointerCoordinates: { x: 40, y: 140 },
-    collisionRect: rect(110, 800),
+    pointerCoordinates: { x: 40, y },
+    collisionRect: rect(y - 30, 800),
     droppableRects,
     droppableContainers: [...droppableRects.keys()].map((id) => ({ id })),
   });
@@ -129,6 +129,7 @@ it("targets expanded rows, keeps gaps droppable and preserves keyboard detection
   expect(collisionDetection({ ...args, pointerCoordinates: { x: 40, y: 890 } })[0].id).toBe("w1");
   // In the gap, use the pointer's distance to the nearest row center.
   expect(collisionDetection({ ...args, pointerCoordinates: { x: 40, y: 910 } })[0].id).toBe("w2");
+  expect(collisionDetection({ ...args, pointerCoordinates: { x: 40, y: 1044 } })[0].id).toBe("w2");
   expect(collisionDetection(args)[0].id).toBe("w2");
 });
 
@@ -137,6 +138,8 @@ it("does not consider the rest of the page a drop destination", () => {
   for (const pointerCoordinates of [
     { x: 900, y: 120 },
     { x: 20, y: 20 },
+    { x: 20, y: 55 },
+    { x: 20, y: 215 },
     { x: 20, y: 500 },
   ]) {
     expect(context().props.collisionDetection({ pointerCoordinates, droppableRects })).toEqual([]);
