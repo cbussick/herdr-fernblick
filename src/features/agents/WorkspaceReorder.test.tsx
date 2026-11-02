@@ -86,33 +86,36 @@ it("rolls back errors and reports them without retrying", async () => {
   expect(moveWorkspace).toHaveBeenCalledTimes(1);
 });
 
-it.each([140, 92, 56])("moves a tall workspace to first position at pointer y=%s", async (y) => {
-  const rect = (top: number, height: number) => ({
-    left: 10,
-    right: 300,
-    top,
-    bottom: top + height,
-    width: 290,
-    height,
-  });
-  const droppableRects = new Map([
-    ["w1", rect(100, 80)],
-    ["w2", rect(200, 800)],
-    ["w3", rect(1020, 80)],
-  ]);
-  const collisions = context().props.collisionDetection({
-    pointerCoordinates: { x: 40, y },
-    collisionRect: rect(y - 30, 800),
-    droppableRects,
-    droppableContainers: [...droppableRects.keys()].map((id) => ({ id })),
-  });
-  vi.spyOn(client, "invalidateQueries").mockImplementation(async () => {
-    renderer.update(render(false, [workspaces[1], workspaces[0], workspaces[2]]));
-  });
-  await drag("w2", collisions[0]?.id ?? null);
-  expect(moveWorkspace).toHaveBeenCalledWith({ workspaceId: "w2", beforeWorkspaceId: "w1" });
-  expect(order()).toEqual(["Beta", "Alpha", "Gamma"]);
-});
+it.each([140, 92, 56, 20, 0])(
+  "moves a tall workspace to first position at pointer y=%s",
+  async (y) => {
+    const rect = (top: number, height: number) => ({
+      left: 10,
+      right: 300,
+      top,
+      bottom: top + height,
+      width: 290,
+      height,
+    });
+    const droppableRects = new Map([
+      ["w1", rect(100, 80)],
+      ["w2", rect(200, 800)],
+      ["w3", rect(1020, 80)],
+    ]);
+    const collisions = context().props.collisionDetection({
+      pointerCoordinates: { x: 40, y },
+      collisionRect: rect(y - 30, 800),
+      droppableRects,
+      droppableContainers: [...droppableRects.keys()].map((id) => ({ id })),
+    });
+    vi.spyOn(client, "invalidateQueries").mockImplementation(async () => {
+      renderer.update(render(false, [workspaces[1], workspaces[0], workspaces[2]]));
+    });
+    await drag("w2", collisions[0]?.id ?? null);
+    expect(moveWorkspace).toHaveBeenCalledWith({ workspaceId: "w2", beforeWorkspaceId: "w1" });
+    expect(order()).toEqual(["Beta", "Alpha", "Gamma"]);
+  },
+);
 
 it("targets expanded rows, keeps gaps droppable and preserves keyboard detection", () => {
   const droppableRects = new Map([
@@ -137,8 +140,7 @@ it("does not consider the rest of the page a drop destination", () => {
   const droppableRects = new Map([["w1", { left: 10, right: 300, top: 100, bottom: 170 }]]);
   for (const pointerCoordinates of [
     { x: 900, y: 120 },
-    { x: 20, y: 20 },
-    { x: 20, y: 55 },
+    { x: 20, y: -1 },
     { x: 20, y: 215 },
     { x: 20, y: 500 },
   ]) {

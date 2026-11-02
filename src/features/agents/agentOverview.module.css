@@ -82,6 +82,11 @@
   padding-bottom: 5.5rem;
 }
 
+/* Keep the first row's insertion line inside the scrolling viewport. */
+.workspace-list {
+  padding-top: var(--space-2);
+}
+
 .workspace-disclosure {
   margin-bottom: var(--space-3);
   overflow: hidden;

@@ -23,10 +23,11 @@ import type { Workspace } from "../../shared/api/contracts";
 import styles from "./WorkspaceReorder.module.css";
 import a11yStyles from "../../styles/accessibility.module.css";
 
-// Allow one touch-target's worth of overshoot at either end of the list.
-const edgeDropZone = 44;
+// Allow one touch-target's worth of overshoot below the list.
+const bottomDropZone = 44;
 
-// Keep gaps and list edges droppable, but not distant parts of the page.
+// Above the list (including the search/header area), keep the first position
+// reachable. Horizontal exits and distant space below the list still cancel.
 const workspaceCollision: CollisionDetection = (args) => {
   if (args.pointerCoordinates) {
     const { x, y } = args.pointerCoordinates;
@@ -34,8 +35,8 @@ const workspaceCollision: CollisionDetection = (args) => {
     if (
       !rects.length ||
       !rects.some((rect) => x >= rect.left && x <= rect.right) ||
-      y < Math.min(...rects.map((rect) => rect.top)) - edgeDropZone ||
-      y > Math.max(...rects.map((rect) => rect.bottom)) + edgeDropZone
+      y < 0 ||
+      y > Math.max(...rects.map((rect) => rect.bottom)) + bottomDropZone
     )
       return [];
     // Expanded cards can be much taller than their handles. Follow the pointer,
