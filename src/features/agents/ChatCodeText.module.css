@@ -1,0 +1,46 @@
+.comment,
+.quote {
+  color: #536c7a;
+}
+
+.keyword,
+.selector-tag,
+.literal,
+.meta {
+  color: #7840a0;
+}
+
+.string,
+.regexp,
+.addition,
+.attribute {
+  color: #22643c;
+}
+
+.number,
+.symbol,
+.bullet,
+.deletion {
+  color: #a13c2f;
+}
+
+.title,
+.section,
+.built-in,
+.type {
+  color: #075e91;
+}
+
+.attr,
+.variable,
+.template-variable {
+  color: #865019;
+}
+
+.emphasis {
+  font-style: italic;
+}
+
+.strong {
+  font-weight: 700;
+}

@@ -33,6 +33,7 @@
     "@excalidraw/excalidraw": "0.18.1",
     "@tanstack/react-query": "^5.90.21",
     "katex": "^0.19.1",
+    "lowlight": "^3.3.0",
     "mdast-util-from-markdown": "^2.1.0",
     "mdast-util-gfm-table": "^2.0.0",
     "mdast-util-gfm-task-list-item": "^2.0.0",

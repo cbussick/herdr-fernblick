@@ -218,8 +218,9 @@ describe("ChatMessageText formatting", () => {
       />,
     );
     expect(html).toContain('aria-label="Copy code"');
-    expect(html).toContain(
-      "<code>const value = &#x27;&lt;img&gt;&#x27;;\n  // https://example.com</code>",
+    const code = /<code>([\s\S]*?)<\/code>/.exec(html)?.[1] ?? "";
+    expect(code.replace(/<[^>]+>/g, "")).toBe(
+      "const value = &#x27;&lt;img&gt;&#x27;;\n  // https://example.com",
     );
     expect(html).not.toContain("<a ");
     expect(html).not.toContain("```");

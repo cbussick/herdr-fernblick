@@ -1,6 +1,7 @@
 import { Fragment, useMemo, type ReactNode } from "react";
 import { splitMessageLinks } from "./chatMessageLinks";
 import { ChatCodeBlock } from "./ChatCodeBlock";
+import { ChatCodeText } from "./ChatCodeText";
 import { ChatMath } from "./ChatMath";
 import { ChatMarkdownImage } from "./ChatMarkdownImage";
 import { ChatImagePreviewLink } from "./ChatImagePreviewLink";
@@ -142,7 +143,16 @@ export function ChatMessageText({
     if (part.kind === "text")
       return <Fragment key={index}>{highlighted(part.start, part.end)}</Fragment>;
     const content = part.children.map((child, i) =>
-      render(child, i, linked || part.kind === "link"),
+      part.kind === "codeBlock" && child.kind === "text" ? (
+        <ChatCodeText
+          key={i}
+          value={text.slice(child.start, child.end)}
+          language={part.language}
+          renderRange={(start, end) => highlighted(child.start + start, child.start + end)}
+        />
+      ) : (
+        render(child, i, linked || part.kind === "link")
+      ),
     );
     switch (part.kind) {
       case "math":
