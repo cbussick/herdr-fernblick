@@ -1,40 +1,40 @@
 .comment,
 .quote {
-  color: #536c7a;
+  color: #526079;
 }
 
 .keyword,
 .selector-tag,
 .literal,
 .meta {
-  color: #7840a0;
+  color: #7015a8;
 }
 
 .string,
 .regexp,
 .addition,
 .attribute {
-  color: #22643c;
+  color: #006b36;
 }
 
 .number,
 .symbol,
 .bullet,
 .deletion {
-  color: #a13c2f;
+  color: #a13d00;
 }
 
 .title,
 .section,
 .built-in,
 .type {
-  color: #075e91;
+  color: #0649bb;
 }
 
 .attr,
 .variable,
 .template-variable {
-  color: #865019;
+  color: #a13d00;
 }
 
 .emphasis {
