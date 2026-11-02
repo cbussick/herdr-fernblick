@@ -1,40 +1,46 @@
 .comment,
 .quote {
   color: #526079;
+  font-weight: 400;
 }
 
 .keyword,
 .selector-tag,
-.literal,
 .meta {
-  color: #7015a8;
+  color: #9200b3;
+  font-weight: 700;
 }
 
 .string,
 .regexp,
 .addition,
 .attribute {
-  color: #006b36;
+  color: #007336;
+  font-weight: 600;
 }
 
+.literal,
 .number,
 .symbol,
 .bullet,
 .deletion {
-  color: #a13d00;
+  color: #b42340;
+  font-weight: 600;
 }
 
 .title,
 .section,
 .built-in,
 .type {
-  color: #0649bb;
+  color: #0046d5;
+  font-weight: 600;
 }
 
 .attr,
 .variable,
 .template-variable {
-  color: #a13d00;
+  color: #b13c00;
+  font-weight: 600;
 }
 
 .emphasis {
