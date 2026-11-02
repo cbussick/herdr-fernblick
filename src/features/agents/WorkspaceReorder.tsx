@@ -6,6 +6,7 @@ import {
   KeyboardSensor,
   PointerSensor,
   closestCenter,
+  pointerWithin,
   useSensor,
   useSensors,
   type DragEndEvent,
@@ -34,6 +35,14 @@ const workspaceCollision: CollisionDetection = (args) => {
       y > Math.max(...rects.map((rect) => rect.bottom))
     )
       return [];
+    // Expanded cards can be much taller than their handles. Follow the pointer,
+    // not the dragged card's center, so the first row remains reachable.
+    const hits = pointerWithin(args);
+    if (hits.length) return hits;
+    return closestCenter({
+      ...args,
+      collisionRect: { left: x, right: x, top: y, bottom: y, width: 0, height: 0 },
+    });
   }
   return closestCenter(args);
 };
