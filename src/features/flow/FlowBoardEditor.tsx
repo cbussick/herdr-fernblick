@@ -35,11 +35,13 @@ import { Copy, Download, Pencil, RotateCcw, Search, Trash2, X } from "lucide-rea
 import { ComponentView, EditContext, Icon } from "./Components";
 import { PrimitiveView } from "./Primitives";
 import { ColorPicker, ComponentEditor, Modal } from "./Editor";
-import { DrawingTools, InkContext, InkSurface, InkView, useInkHistory, type Tool } from "./Drawing";
+import { DrawingTools, InkContext, InkSurface, InkView, type Tool } from "./Drawing";
 import { applyInkCommand, isInk, maxBoardPoints, type InkNode } from "./ink";
+import { useBoardHistory } from "./history";
 import {
   catalog,
   defaults,
+  edgeOptions,
   kinds,
   makeId,
   makeNode,
@@ -51,11 +53,6 @@ import {
 import styles from "./Playground.module.css";
 
 const nodeTypes = { component: ComponentView, ink: InkView, primitive: PrimitiveView };
-const edgeOptions = {
-  type: "smoothstep",
-  markerEnd: { type: MarkerType.ArrowClosed },
-  style: { stroke: "#8290a3", strokeWidth: 1.6 },
-};
 type Editing = {
   data: ComponentData;
   id?: string;
@@ -85,30 +82,42 @@ function Playground(props: BoardEditorProps) {
   const [penColor, setPenColor] = useState("#243044");
   const [penSize, setPenSize] = useState(5);
   const [hiddenInk, setHiddenInk] = useState(new Set<string>());
-  const transformInk = useRef<InkNode[]>([]);
   const [message, setMessage] = useState("");
   const flow = useReactFlow<CanvasNode>();
   const changed = useRef(false);
+  const historyGroup = useRef<symbol | undefined>(undefined);
+  const historyFrame = useRef<number | null>(null);
   const [revision, setRevision] = useState(0);
   const touch = useCallback(() => {
+    historyGroup.current ??= Symbol("local board edit");
+    if (historyFrame.current !== null) cancelAnimationFrame(historyFrame.current);
+    historyFrame.current = requestAnimationFrame(() => {
+      historyFrame.current = null;
+      if (!pointerIds.current.size) historyGroup.current = undefined;
+    });
     changed.current = true;
     setRevision((v) => v + 1);
     setViewport(flow.getViewport());
   }, [flow]);
-  const history = useInkHistory((command, undo) => {
-    if (locked) return false;
-    const next = applyInkCommand(flow.getNodes(), command, undo);
-    if (
-      next.length > 300 ||
-      next.filter(isInk).reduce((sum, n) => sum + n.data.points.length, 0) > maxBoardPoints
-    ) {
-      setMessage("Cannot restore drawing: delete some items to make room first.");
-      return false;
-    }
-    setNodes(next);
-    touch();
-    return true;
-  });
+  const history = useBoardHistory(
+    () => base.current,
+    (next) => {
+      if (callbacks.current.locked || pointerIds.current.size) return false;
+      const diagram = toDiagram(next);
+      base.current = next;
+      changed.current = false;
+      setNodes(diagram.nodes);
+      setEdges(diagram.edges);
+      callbacks.current.onChange(next);
+      callbacks.current.onError("");
+      canvas.current
+        ?.closest<HTMLElement>('[data-testid="flow-board-editor"]')
+        ?.focus({ preventScroll: true });
+      setMessage("");
+      return true;
+    },
+    setMessage,
+  );
   function chooseTool(next: Tool) {
     setTool(next);
     setNodes((current) => current.map((n) => ({ ...n, selected: false })));
@@ -116,29 +125,8 @@ function Playground(props: BoardEditorProps) {
   }
   function commitInk(before: InkNode[], after: InkNode[]) {
     if (!before.length && !after.length) return;
-    history.record(before, after);
     setNodes((current) => applyInkCommand(current, { before, after }, false));
     touch();
-  }
-  function startInkTransform(id?: string) {
-    transformInk.current = flow
-      .getNodes()
-      .filter(isInk)
-      .filter((n) => n.id === id || (!id && n.selected));
-  }
-  function finishInkTransform() {
-    const before = transformInk.current;
-    transformInk.current = [];
-    if (!before.length) return;
-    requestAnimationFrame(() =>
-      history.record(
-        before,
-        flow
-          .getNodes()
-          .filter(isInk)
-          .filter((n) => before.some((old) => old.id === n.id)),
-      ),
-    );
   }
   const canvas = useRef<HTMLDivElement>(null);
   const selected = nodes.filter((node) => node.selected);
@@ -184,6 +172,7 @@ function Playground(props: BoardEditorProps) {
     try {
       const next = fromDiagram({ nodes, edges }, base.current);
       if (JSON.stringify(next) !== JSON.stringify(base.current)) {
+        history.record(base.current, next, historyGroup.current);
         base.current = next;
         callbacks.current.onChange(next);
       }
@@ -191,16 +180,17 @@ function Playground(props: BoardEditorProps) {
     } catch (error) {
       callbacks.current.onError(error instanceof Error ? error.message : "Invalid board");
     }
-  }, [nodes, edges, revision, generation]);
+  }, [nodes, edges, revision, generation, history]);
   useLayoutEffect(() => {
     if (appliedGeneration.current === generation) return;
     try {
       const next = toDiagram(scene);
+      history.reconcile(base.current, scene);
       base.current = scene;
       changed.current = false;
       setNodes(next.nodes);
       setEdges(next.edges);
-      history.clear();
+      historyGroup.current = undefined;
       setHiddenInk(new Set());
       setEditing(null);
       setEdgeEditing(null);
@@ -209,7 +199,7 @@ function Playground(props: BoardEditorProps) {
     } catch (error) {
       onError(String(error));
     }
-  }, [generation, scene]);
+  }, [generation, scene, history, onError]);
   useEffect(() => {
     callbacks.current.onReady({
       fit: () => {
@@ -219,6 +209,7 @@ function Playground(props: BoardEditorProps) {
     return () => {
       callbacks.current.onReady(null);
       if (idleFrame.current !== null) cancelAnimationFrame(idleFrame.current);
+      if (historyFrame.current !== null) cancelAnimationFrame(historyFrame.current);
       callbacks.current.onInteraction?.(false);
     };
   }, [flow]);
@@ -229,6 +220,7 @@ function Playground(props: BoardEditorProps) {
   useEffect(() => {
     const clearPointers = () => {
       pointerIds.current.clear();
+      historyGroup.current = undefined;
       if (idleFrame.current !== null) cancelAnimationFrame(idleFrame.current);
       idleFrame.current = requestAnimationFrame(() =>
         callbacks.current.onInteraction?.(modalRef.current),
@@ -348,7 +340,6 @@ function Playground(props: BoardEditorProps) {
       setMessage("Not duplicated: the canvas would exceed the drawing point limit.");
       return;
     }
-    history.record([], copies.filter(isInk));
     setNodes((current) => [...current.map((n) => ({ ...n, selected: false })), ...copies]);
     setEdges((current) => [...current, ...copiedEdges]);
     touch();
@@ -423,6 +414,7 @@ function Playground(props: BoardEditorProps) {
         if (!(e.target instanceof Element && e.target.closest("input,textarea,select,button")))
           e.currentTarget.focus({ preventScroll: true });
         if (locked) return;
+        if (!pointerIds.current.size) historyGroup.current = Symbol("pointer edit");
         pointerIds.current.add(e.pointerId);
         callbacks.current.onInteraction?.(true);
       }}
@@ -430,22 +422,25 @@ function Playground(props: BoardEditorProps) {
         pointerIds.current.delete(e.pointerId);
         if (idleFrame.current !== null) cancelAnimationFrame(idleFrame.current);
         idleFrame.current = requestAnimationFrame(() => {
+          if (!pointerIds.current.size) historyGroup.current = undefined;
           callbacks.current.onInteraction?.(modalRef.current || pointerIds.current.size > 0);
         });
       }}
       onPointerCancelCapture={(e) => {
         pointerIds.current.delete(e.pointerId);
         if (idleFrame.current !== null) cancelAnimationFrame(idleFrame.current);
-        idleFrame.current = requestAnimationFrame(() =>
-          callbacks.current.onInteraction?.(modalRef.current || pointerIds.current.size > 0),
-        );
+        idleFrame.current = requestAnimationFrame(() => {
+          if (!pointerIds.current.size) historyGroup.current = undefined;
+          callbacks.current.onInteraction?.(modalRef.current || pointerIds.current.size > 0);
+        });
       }}
       onLostPointerCaptureCapture={(e) => {
         if (!pointerIds.current.delete(e.pointerId)) return;
         if (idleFrame.current !== null) cancelAnimationFrame(idleFrame.current);
-        idleFrame.current = requestAnimationFrame(() =>
-          callbacks.current.onInteraction?.(modalRef.current || pointerIds.current.size > 0),
-        );
+        idleFrame.current = requestAnimationFrame(() => {
+          if (!pointerIds.current.size) historyGroup.current = undefined;
+          callbacks.current.onInteraction?.(modalRef.current || pointerIds.current.size > 0);
+        });
       }}
       onKeyDown={(e) => {
         if (e.key === "Escape" && (modal || tool !== "select")) {
@@ -563,7 +558,7 @@ function Playground(props: BoardEditorProps) {
               Choose Draw to sketch over the canvas. Eraser removes whole strokes. Use Pan or two
               fingers to navigate.
             </p>
-            <small>Undo/redo applies to drawing only.</small>
+            <small>Undo/redo your edits with Ctrl/Cmd+Z and Ctrl/Cmd+Shift+Z.</small>
           </div>
         </aside>
         <main
@@ -573,19 +568,13 @@ function Playground(props: BoardEditorProps) {
           data-testid="canvas"
         >
           <EditContext.Provider value={edit}>
-            <InkContext.Provider
-              value={{ hidden: hiddenInk, start: startInkTransform, finish: finishInkTransform }}
-            >
+            <InkContext.Provider value={{ hidden: hiddenInk, start: () => {}, finish: () => {} }}>
               <ReactFlow<CanvasNode>
                 nodes={nodes}
                 edges={edges}
                 nodeTypes={nodeTypes}
                 onNodesChange={(changes) => {
                   if (locked && changes.some((c) => c.type !== "dimensions" || c.resizing)) return;
-                  const removed = nodes
-                    .filter(isInk)
-                    .filter((n) => changes.some((c) => c.type === "remove" && c.id === n.id));
-                  if (removed.length) history.record(removed, []);
                   setNodes((current) => applyNodeChanges(changes, current));
                   if (
                     changes.some(
@@ -608,8 +597,6 @@ function Playground(props: BoardEditorProps) {
                   flow.getNode(connection.source)?.type === "component" &&
                   flow.getNode(connection.target)?.type === "component"
                 }
-                onNodeDragStart={() => startInkTransform()}
-                onNodeDragStop={finishInkTransform}
                 onNodeDoubleClick={(_, node) => edit(node.id)}
                 onEdgeDoubleClick={(_, edge) => {
                   if (!locked) setEdgeEditing({ ...edge });
@@ -782,7 +769,7 @@ function Playground(props: BoardEditorProps) {
             <fieldset className={styles["fieldset"]}>
               <legend>Color</legend>
               <ColorPicker
-                value={String(edgeEditing.style?.stroke || "#596579")}
+                value={String(edgeEditing.style?.stroke || edgeOptions.style.stroke)}
                 onChange={(stroke) =>
                   setEdgeEditing({
                     ...edgeEditing,

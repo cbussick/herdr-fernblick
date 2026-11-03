@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import type { BoardScene } from "../../../packages/pi-live-chat/boardProtocol";
 import { validateFlowGraph } from "../../../packages/pi-live-chat/flowProtocol";
-import { defaults, makeNode } from "./model";
+import { defaults, edgeOptions, makeNode } from "./model";
 import { makeInk } from "./ink";
 import {
   exportFlowScene,
@@ -14,6 +14,20 @@ import {
 const empty: BoardScene = { engine: "react-flow", elements: [], files: {}, background: "#ffffff" };
 const card = () => makeNode("card", 10, 20, defaults("card"), "card");
 describe("production flow scene boundary", () => {
+  it("uses black 2px connectors by default and preserves explicitly saved colors", () => {
+    expect(edgeOptions.style).toEqual({ stroke: "#000000", strokeWidth: 2 });
+    const scene = fromDiagram(
+      {
+        nodes: [card(), makeNode("card", 500, 20, defaults("card"), "other")],
+        edges: [{ ...edgeOptions, id: "edge", source: "card", target: "other" }],
+      },
+      empty,
+    );
+    expect(scene.elements.find((e) => e.id === "edge")).toMatchObject({ color: "#000000" });
+    const custom = structuredClone(scene);
+    custom.elements.find((e) => e.id === "edge")!.color = "#ff0000";
+    expect(toDiagram(custom).edges[0]!.style).toEqual({ stroke: "#ff0000", strokeWidth: 2 });
+  });
   it("round trips six components, ink, parenting and connections without view state", () => {
     const group = makeNode("boundary", 0, 0, defaults("boundary"), "group");
     const nodes = [

@@ -1,6 +1,9 @@
 import { z } from "zod";
 import { primitiveKinds, primitivePropsSchema } from "./primitiveProtocol.js";
 
+export const FLOW_CONNECTION_COLOR = "#000000";
+export const FLOW_CONNECTION_WIDTH = 2;
+
 // Shared, data-only contracts. No React, arbitrary HTML, CSS, scripts or network URLs.
 export const flowIdSchema = z
   .string()

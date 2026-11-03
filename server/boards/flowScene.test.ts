@@ -25,6 +25,7 @@ const fixture = () =>
 describe("flow scene boundary", () => {
   it("creates typed defaults, merges props and edits geometry, parents and endpoints", () => {
     const scene = fixture();
+    expect(scene.elements[3]).toMatchObject({ type: "connection", color: "#000000" });
     expect(scene.elements[1]).toMatchObject({
       type: "component",
       kind: "card",

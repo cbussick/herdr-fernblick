@@ -15,7 +15,6 @@ import {
 } from "@xyflow/react";
 import { Eraser, Hand, MousePointer2, Pencil, Redo2, Undo2 } from "lucide-react";
 import {
-  cleanInk,
   gestureViewport,
   hitsInk,
   isInk,
@@ -24,7 +23,6 @@ import {
   maxStrokePoints,
   outline,
   pathFromOutline,
-  type InkCommand,
   type InkData,
   type InkNode,
   type InkPoint,
@@ -66,47 +64,6 @@ export function InkView({ id, data, selected }: NodeProps<InkNode>) {
       </svg>
     </div>
   );
-}
-
-/** Drawing history is ID-scoped, so undo never overwrites unrelated component edits. */
-export function useInkHistory(apply: (command: InkCommand, undo: boolean) => boolean) {
-  const past = useRef<InkCommand[]>([]);
-  const future = useRef<InkCommand[]>([]);
-  const [, render] = useState(0);
-  function record(before: InkNode[], after: InkNode[]) {
-    const command = { before: cleanInk(before), after: cleanInk(after) };
-    if (JSON.stringify(command.before) === JSON.stringify(command.after)) return;
-    past.current = [...past.current.slice(-49), command];
-    future.current = [];
-    render((n) => n + 1);
-  }
-  function undo() {
-    const command = past.current.at(-1);
-    if (!command || !apply(command, true)) return;
-    past.current.pop();
-    future.current.push(command);
-    render((n) => n + 1);
-  }
-  function redo() {
-    const command = future.current.at(-1);
-    if (!command || !apply(command, false)) return;
-    future.current.pop();
-    past.current.push(command);
-    render((n) => n + 1);
-  }
-  function clear() {
-    past.current = [];
-    future.current = [];
-    render((n) => n + 1);
-  }
-  return {
-    record,
-    undo,
-    redo,
-    clear,
-    canUndo: past.current.length > 0,
-    canRedo: future.current.length > 0,
-  };
 }
 
 export function DrawingTools({
@@ -178,8 +135,8 @@ export function DrawingTools({
       <span className={styles["tool-divider"]} />
       <button
         type="button"
-        aria-label="Undo drawing"
-        title="Undo drawing (Ctrl/Cmd+Z)"
+        aria-label="Undo"
+        title="Undo your last edit (Ctrl/Cmd+Z)"
         disabled={disabled || !history.canUndo}
         onClick={history.undo}
       >
@@ -187,8 +144,8 @@ export function DrawingTools({
       </button>
       <button
         type="button"
-        aria-label="Redo drawing"
-        title="Redo drawing (Ctrl/Cmd+Shift+Z)"
+        aria-label="Redo"
+        title="Redo your last edit (Ctrl/Cmd+Shift+Z)"
         disabled={disabled || !history.canRedo}
         onClick={history.redo}
       >

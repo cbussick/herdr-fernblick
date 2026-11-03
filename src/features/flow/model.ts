@@ -1,6 +1,8 @@
 import { MarkerType, type Edge, type Node } from "@xyflow/react";
 import {
   flowCatalog,
+  FLOW_CONNECTION_COLOR,
+  FLOW_CONNECTION_WIDTH,
   flowKinds,
   defaultFlowProps,
   flowComponentPropsSchema,
@@ -60,6 +62,6 @@ export function makeNode(
 }
 export const edgeOptions = {
   type: "smoothstep",
-  markerEnd: { type: MarkerType.ArrowClosed },
-  style: { stroke: "#8290a3", strokeWidth: 1.6 },
+  markerEnd: { type: MarkerType.ArrowClosed, color: FLOW_CONNECTION_COLOR },
+  style: { stroke: FLOW_CONNECTION_COLOR, strokeWidth: FLOW_CONNECTION_WIDTH },
 };

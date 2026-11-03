@@ -255,9 +255,11 @@
 }
 
 .canvas :global(.react-flow) {
-  --xy-edge-stroke-default: #8290a3;
+  --xy-edge-stroke-default: #000;
   --xy-edge-stroke-selected-default: #426bc0;
-  --xy-edge-stroke-width-default: 1.6;
+  --xy-edge-stroke-width-default: 2;
+  --xy-connectionline-stroke-default: #000;
+  --xy-connectionline-stroke-width-default: 2;
   --xy-controls-button-background-color-default: white;
   --xy-background-color-default: #f8fafc;
 }

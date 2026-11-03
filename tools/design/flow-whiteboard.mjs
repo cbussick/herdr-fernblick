@@ -253,6 +253,44 @@ try {
           board.scene.elements.find((e) => e.id === "service").props.title,
           "Human service title",
         );
+        // One drag is one saved undo step in both Chromium and WebKit. The
+        // unrelated incoming agent card and the earlier human title survive.
+        const originalPosition = board.scene.elements.find((e) => e.id === "service");
+        const originalX = originalPosition.x,
+          originalY = originalPosition.y;
+        const movingBox = await page.getByTestId("component-service").boundingBox();
+        await page.mouse.move(movingBox.x + movingBox.width / 2, movingBox.y + 15);
+        await page.mouse.down();
+        await page.mouse.move(movingBox.x + movingBox.width / 2 + 45, movingBox.y + 45, {
+          steps: 10,
+        });
+        await page.mouse.up();
+        await until(
+          () => board.scene.elements.find((e) => e.id === "service").x !== originalX,
+          "component move autosave",
+        );
+        const movedX = board.scene.elements.find((e) => e.id === "service").x;
+        await page.getByRole("button", { name: "Undo", exact: true }).click();
+        await until(
+          () => board.scene.elements.find((e) => e.id === "service").x === originalX,
+          "saved component move undo",
+        );
+        assert.equal(board.scene.elements.find((e) => e.id === "service").y, originalY);
+        assert(board.scene.elements.some((e) => e.id === "agent-card" && !e.isDeleted));
+        await page.getByRole("button", { name: "Redo", exact: true }).click();
+        await until(
+          () => board.scene.elements.find((e) => e.id === "service").x === movedX,
+          "saved component move redo",
+        );
+        await page.getByRole("button", { name: "Undo", exact: true }).click();
+        await until(
+          () => board.scene.elements.find((e) => e.id === "service").x === originalX,
+          "restore component position",
+        );
+        assert.equal(
+          board.scene.elements.find((e) => e.id === "service").props.title,
+          "Human service title",
+        );
         // Drawing is persisted in the same native scene as components.
         await page.getByRole("button", { name: "Draw", exact: true }).click();
         const surface = await page.getByTestId("ink-surface").boundingBox();
@@ -264,12 +302,12 @@ try {
           () => board.scene.elements.some((e) => e.type === "ink" && !e.isDeleted),
           "ink autosave",
         );
-        await page.getByRole("button", { name: "Undo drawing", exact: true }).click();
+        await page.getByRole("button", { name: "Undo", exact: true }).click();
         await until(
           () => board.scene.elements.some((e) => e.type === "ink" && e.isDeleted),
           "saved drawing undo",
         );
-        await page.getByRole("button", { name: "Redo drawing", exact: true }).click();
+        await page.getByRole("button", { name: "Redo", exact: true }).click();
         await until(
           () => board.scene.elements.some((e) => e.type === "ink" && !e.isDeleted),
           "saved drawing redo",

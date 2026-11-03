@@ -1,6 +1,7 @@
 import type { BoardOperation, BoardScene } from "../../packages/pi-live-chat/boardProtocol.js";
 import {
   defaultFlowProps,
+  FLOW_CONNECTION_COLOR,
   flowKinds,
   validateFlowGraph,
   type FlowElement,
@@ -67,7 +68,7 @@ export function applyFlowOperations(scene: BoardScene, operations: BoardOperatio
           sourceHandle: op.sourceHandle ?? "right",
           targetHandle: op.targetHandle ?? "left",
           label: op.label ?? "",
-          color: op.color ?? "#429beb",
+          color: op.color ?? FLOW_CONNECTION_COLOR,
         };
       } else if ((primitiveKinds as readonly string[]).includes(op.kind)) {
         element = {

@@ -4,7 +4,9 @@ The isolated dogfood instance uses `.worktrees/react-flow-boards` on branch `rea
 
 ## What changes
 
-New conversation boards default to React Flow: the six familiar component types, property dialogs, boundaries, connections, ink, whole-stroke erasing, drawing undo/redo, pen priority and canvas-scoped iPad Scribble suppression. Existing boards without an engine marker remain Excalidraw and use the original editor/export path. Opening a board never converts its format; imports cannot switch an existing board's engine.
+New conversation boards default to React Flow: the six familiar component types, property dialogs, boundaries, connections, ink, whole-stroke erasing, local edit undo/redo, pen priority and canvas-scoped iPad Scribble suppression. Existing boards without an engine marker remain Excalidraw and use the original editor/export path. Opening a board never converts its format; imports cannot switch an existing board's engine.
+
+New connections default to black (`#000000`) at 2px in the editor and PNG renderer, whether created manually or by agent tools. Saved/custom colors are preserved; existing boards are not recolored automatically. Undo/redo covers your component moves, resizes, property edits, additions/deletions, duplication, parenting, connections and ink in one local history. Agent edits are never undo steps; conflicting transactions are invalidated while unrelated local history survives. Clear/import retain their separate recovery confirmation.
 
 The existing server-owned board store, per-conversation identity, revisions/CAS, SSE, conversation-bound agent permissions, uncertain-write pause and IndexedDB recovery are reused. The browser no longer relies on the playground's localStorage. Work can continue through authorized agent tools without a user browser open. A new flow board is empty, not the prototype's demonstration diagram.
 

@@ -6,7 +6,10 @@ import {
   boardImageLimits,
   type BoardImageQuality,
 } from "../../../packages/pi-live-chat/boardImageExport";
-import { validateFlowGraph } from "../../../packages/pi-live-chat/flowProtocol";
+import {
+  FLOW_CONNECTION_WIDTH,
+  validateFlowGraph,
+} from "../../../packages/pi-live-chat/flowProtocol";
 import { ComponentContent, componentStyle } from "./Components";
 import { PrimitiveSvg } from "./Primitives";
 import { outline, pathFromOutline } from "./ink";
@@ -199,7 +202,7 @@ export async function prepareFlowBoardScene(
         path.setAttribute("d", d);
         path.setAttribute("fill", "none");
         path.setAttribute("stroke", e.color);
-        path.setAttribute("stroke-width", "1.6");
+        path.setAttribute("stroke-width", String(FLOW_CONNECTION_WIDTH));
         svg.append(path);
         const arrow = document.createElementNS(svg.namespaceURI, "path");
         const angle = { top: -90, right: 0, bottom: 90, left: 180 }[e.targetHandle];

@@ -5,7 +5,7 @@ import { extname, join } from "node:path";
 import { chromium, type Browser, type Page } from "playwright";
 import { build } from "vite";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
-import { defaults, makeNode } from "./model";
+import { defaults, edgeOptions, makeNode } from "./model";
 import { makeInk } from "./ink";
 import { exportFlowScene, fromDiagram } from "./scene";
 import type { BoardScene } from "../../../packages/pi-live-chat/boardProtocol";
@@ -99,18 +99,16 @@ describe("isolated production editor and DOM renderer", { timeout: 30_000 }, () 
     );
     const events = await page.evaluate(() => window.flowTest.events);
     expect(events.lastIndexOf("change")).toBeLessThan(events.lastIndexOf("idle"));
-    await page.getByRole("button", { name: "Undo drawing", exact: true }).click();
+    await page.getByRole("button", { name: "Undo", exact: true }).click();
     await page.waitForFunction(() =>
       window.flowTest.changes.at(-1)?.elements.some((e) => e.type === "ink" && e.isDeleted),
     );
-    await page.getByRole("button", { name: "Redo drawing", exact: true }).click();
+    await page.getByRole("button", { name: "Redo", exact: true }).click();
     const count = await page.evaluate(() => window.flowTest.changes.length);
     await page.evaluate((raw) => window.flowTest.setScene(JSON.parse(raw)), JSON.stringify(empty));
     await page.waitForTimeout(150);
     expect(await page.evaluate(() => window.flowTest.changes.length)).toBe(count);
-    expect(await page.getByRole("button", { name: "Undo drawing", exact: true }).isDisabled()).toBe(
-      true,
-    );
+    expect(await page.getByRole("button", { name: "Undo", exact: true }).isDisabled()).toBe(true);
     await page.evaluate(() => window.flowTest.setLocked(true));
     expect(await page.getByRole("button", { name: "Add Card", exact: true }).isDisabled()).toBe(
       true,
@@ -118,6 +116,183 @@ describe("isolated production editor and DOM renderer", { timeout: 30_000 }, () 
     expect(await page.getByRole("button", { name: "Draw", exact: true }).isDisabled()).toBe(true);
     expect(await page.evaluate(() => window.flowTest.errors)).toEqual([]);
   });
+  it("undoes a component drag as one local edit and redoes it without changing another component", async () => {
+    await loadEditor();
+    const first = fromDiagram(
+      {
+        nodes: [
+          makeNode("card", 100, 100, defaults("card"), "movable"),
+          makeNode("comment", 600, 100, defaults("comment"), "untouched"),
+        ],
+        edges: [],
+      },
+      empty,
+    );
+    await page.evaluate((raw) => window.flowTest.setScene(JSON.parse(raw)), JSON.stringify(first));
+    const node = page.getByTestId("component-movable");
+    await node.waitFor();
+    const box = await node.boundingBox();
+    if (!box) throw new Error("Missing component");
+    await page.mouse.move(box.x + box.width / 2, box.y + 25);
+    await page.mouse.down();
+    await page.mouse.move(box.x + box.width / 2 + 110, box.y + 95, { steps: 12 });
+    await page.mouse.up();
+    await page.waitForFunction(
+      () => window.flowTest.changes.at(-1)?.elements.find((e) => e.id === "movable")?.x !== 100,
+    );
+    const moved = await page.evaluate(
+      () => window.flowTest.changes.at(-1)!.elements.find((e) => e.id === "movable")!,
+    );
+    expect(await page.getByRole("button", { name: "Undo", exact: true }).isEnabled()).toBe(true);
+    await page.getByRole("button", { name: "Undo", exact: true }).click();
+    await page.waitForTimeout(150);
+    const restored = await page.evaluate(() => window.flowTest.changes.at(-1)!);
+    expect(restored.elements.find((e) => e.id === "movable")).toMatchObject({ x: 100, y: 100 });
+    expect(restored.elements.find((e) => e.id === "untouched")).toEqual(
+      first.elements.find((e) => e.id === "untouched"),
+    );
+    expect(await page.getByRole("button", { name: "Undo", exact: true }).isDisabled()).toBe(true);
+    await page.keyboard.press("Control+Shift+Z");
+    await expect
+      .poll(() =>
+        page.evaluate(
+          () => window.flowTest.changes.at(-1)?.elements.find((e) => e.id === "movable")?.x,
+        ),
+      )
+      .toBe(moved.x);
+    expect(await page.evaluate(() => window.flowTest.errors)).toEqual([]);
+  });
+
+  it("undoes a resize and a node/connection deletion as separate complete gestures", async () => {
+    await loadEditor();
+    const first = fromDiagram(
+      {
+        nodes: [
+          makeNode("card", 100, 100, defaults("card"), "resizable"),
+          makeNode("comment", 600, 100, defaults("comment"), "other"),
+        ],
+        edges: [{ ...edgeOptions, id: "edge", source: "resizable", target: "other" }],
+      },
+      empty,
+    );
+    await page.evaluate((raw) => window.flowTest.setScene(JSON.parse(raw)), JSON.stringify(first));
+    const node = page.getByTestId("component-resizable");
+    await node.click({ position: { x: 90, y: 30 } });
+    const handle = page.locator(
+      '.react-flow__node[data-id="resizable"] .react-flow__resize-control.handle.bottom.right',
+    );
+    const box = await handle.boundingBox();
+    if (!box) throw new Error("Missing resize handle");
+    await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2);
+    await page.mouse.down();
+    await page.mouse.move(box.x + 95, box.y + 60, { steps: 10 });
+    await page.mouse.up();
+    await expect
+      .poll(() =>
+        page.evaluate(
+          () => window.flowTest.changes.at(-1)?.elements.find((e) => e.id === "resizable")?.width,
+        ),
+      )
+      .not.toBe(300);
+    await page.getByRole("button", { name: "Undo", exact: true }).click();
+    await expect
+      .poll(() =>
+        page.evaluate(
+          () => window.flowTest.changes.at(-1)?.elements.find((e) => e.id === "resizable")?.width,
+        ),
+      )
+      .toBe(300);
+    expect(await page.getByRole("button", { name: "Undo", exact: true }).isDisabled()).toBe(true);
+    await node.click({ position: { x: 90, y: 30 } });
+    await page.keyboard.press("Delete");
+    await expect
+      .poll(() =>
+        page.evaluate(() =>
+          window.flowTest.changes
+            .at(-1)
+            ?.elements.filter((e) => !e.isDeleted)
+            .map((e) => e.id)
+            .sort(),
+        ),
+      )
+      .toEqual(["other"]);
+    await page.getByRole("button", { name: "Undo", exact: true }).click();
+    await expect
+      .poll(() =>
+        page.evaluate(() =>
+          window.flowTest.changes
+            .at(-1)
+            ?.elements.filter((e) => !e.isDeleted)
+            .map((e) => e.id)
+            .sort(),
+        ),
+      )
+      .toEqual(["edge", "other", "resizable"]);
+    expect(await page.getByRole("button", { name: "Undo", exact: true }).isDisabled()).toBe(true);
+    const path = page.locator('.react-flow__edge[data-id="edge"] .react-flow__edge-path');
+    expect(await path.evaluate((e) => getComputedStyle(e).stroke)).toBe("rgb(0, 0, 0)");
+    expect(await path.evaluate((e) => getComputedStyle(e).strokeWidth)).toBe("2px");
+    expect(await page.evaluate(() => window.flowTest.errors)).toEqual([]);
+  });
+
+  it("undoes saved properties without native text undo or incoming agent changes becoming board undo steps", async () => {
+    await loadEditor();
+    const first = fromDiagram(
+      {
+        nodes: [
+          makeNode("card", 100, 100, defaults("card"), "mine"),
+          makeNode("comment", 600, 100, defaults("comment"), "agent"),
+        ],
+        edges: [],
+      },
+      empty,
+    );
+    await page.evaluate((raw) => window.flowTest.setScene(JSON.parse(raw)), JSON.stringify(first));
+    await page.getByTestId("component-mine").dblclick({ position: { x: 90, y: 30 } });
+    await page.getByLabel("Title", { exact: true }).fill("My change");
+    await page.keyboard.press("Control+z");
+    expect(await page.evaluate(() => window.flowTest.changes.length)).toBe(0);
+    await page.getByLabel("Title", { exact: true }).fill("My change");
+    await page.getByRole("button", { name: "Save changes", exact: true }).click();
+    await expect
+      .poll(() =>
+        page.evaluate(
+          () => window.flowTest.changes.at(-1)?.elements.find((e) => e.id === "mine")?.props,
+        ),
+      )
+      .toMatchObject({ title: "My change" });
+    const count = await page.evaluate(() => window.flowTest.changes.length);
+    await page.evaluate(() => {
+      const next = structuredClone(window.flowTest.changes.at(-1)!);
+      const element = next.elements.find((e) => e.id === "agent")!;
+      element.props = { ...(element.props as object), title: "Agent change" };
+      element.version = Number(element.version) + 1;
+      window.flowTest.setScene(next);
+    });
+    await page.waitForTimeout(100);
+    expect(await page.evaluate(() => window.flowTest.changes.length)).toBe(count);
+    await page.getByRole("button", { name: "Undo", exact: true }).click();
+    const undone = await page.evaluate(() => window.flowTest.changes.at(-1)!);
+    expect(undone.elements.find((e) => e.id === "mine")?.props).toMatchObject({
+      title: defaults("card").title,
+    });
+    expect(undone.elements.find((e) => e.id === "agent")?.props).toMatchObject({
+      title: "Agent change",
+    });
+    await page.getByRole("button", { name: "Redo", exact: true }).click();
+    await page.evaluate(() => {
+      const next = structuredClone(window.flowTest.changes.at(-1)!);
+      const element = next.elements.find((e) => e.id === "mine")!;
+      element.props = { ...(element.props as object), title: "Newer external edit" };
+      element.version = Number(element.version) + 1;
+      window.flowTest.setScene(next);
+    });
+    await expect
+      .poll(() => page.getByRole("button", { name: "Undo", exact: true }).isDisabled())
+      .toBe(true);
+    expect(await page.evaluate(() => window.flowTest.errors)).toEqual([]);
+  });
+
   it("requires confirmation for import, preserves tombstones and does not dirty-loop external changes", async () => {
     await loadEditor();
     const first = fromDiagram(
@@ -351,6 +526,7 @@ describe("isolated production editor and DOM renderer", { timeout: 30_000 }, () 
     expect(png.subarray(1, 4).toString()).toBe("PNG");
     expect(png.length).toBeGreaterThan(10000);
     expect(await page.getByText("Row 34", { exact: true }).isVisible()).toBe(true);
+    expect(await page.locator('svg path[stroke="#000000"][stroke-width="2"]').count()).toBe(1);
     const smaller = await page.evaluate(
       (raw) => window.prepareFlowBoardScene(JSON.parse(raw), 0.5),
       JSON.stringify(scene),

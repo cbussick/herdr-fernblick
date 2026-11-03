@@ -113,7 +113,7 @@ export function toDiagram(input: BoardScene): Diagram {
         sourceHandle: e.sourceHandle,
         targetHandle: e.targetHandle,
         label: e.label,
-        style: { stroke: e.color, strokeWidth: 1.6 },
+        style: { stroke: e.color, strokeWidth: edgeOptions.style.strokeWidth },
         markerEnd: { ...edgeOptions.markerEnd, color: e.color },
       })),
   };
@@ -179,7 +179,7 @@ export function fromDiagram(diagram: Diagram, base: BoardScene): BoardScene {
         sourceHandle: (e.sourceHandle || "right") as "right",
         targetHandle: (e.targetHandle || "left") as "left",
         label: String(e.label ?? ""),
-        color: String(e.style?.stroke || "#8290a3"),
+        color: String(e.style?.stroke || edgeOptions.style.stroke),
       });
   const next = candidates.map((e) => {
     const old = previous.get(e.id);
