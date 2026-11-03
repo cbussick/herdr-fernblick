@@ -4,15 +4,18 @@ import assert from "node:assert/strict";
 import { chromium } from "playwright";
 
 const browser = await chromium.launch();
+const failures = [];
 try {
-  for (const [destination, offset, shouldMove] of [
+  for (const [destination, offset, shouldMove, outsideX] of [
     ["first-header", 20, true],
     ["above-first", -8, true],
-    ["edge-limit", -44, true],
-    ["outside-list", -60, false],
+    ["above-search", -44, true],
+    ["above-header", -80, true],
+    ["near-viewport-top", -180, true],
+    ["horizontal-exit", -8, false, 1],
   ]) {
     const page = await browser.newPage({
-      viewport: { width: 390, height: 844 },
+      viewport: { width: 412, height: 923 },
       hasTouch: true,
       isMobile: true,
       serviceWorkers: "block",
@@ -60,21 +63,68 @@ try {
     const endY = first.y + offset;
     await send("touchStart", x, startY);
     for (let step = 1; step <= 20; step++) {
-      await send("touchMove", x, startY + ((endY - startY) * step) / 20);
+      await send(
+        "touchMove",
+        x + (((outsideX ?? x) - x) * step) / 20,
+        startY + ((endY - startY) * step) / 20,
+      );
       await page.waitForTimeout(20);
     }
+    await page.evaluate(() => new Promise(requestAnimationFrame));
     const marker = await page.locator('[data-marker="before"]').count();
+    // A marker in the DOM can still be clipped by the scrolling list.
+    const painted = marker
+      ? await page.locator('[data-marker="before"]').evaluate((element) => {
+          const style = getComputedStyle(element, "::after");
+          const rect = element.getBoundingClientRect();
+          const top = rect.top + parseFloat(style.top);
+          const bottom = top + parseFloat(style.height);
+          for (let parent = element.parentElement; parent; parent = parent.parentElement) {
+            if (/(auto|scroll|hidden|clip)/.test(getComputedStyle(parent).overflowY)) {
+              const clip = parent.getBoundingClientRect();
+              if (top < clip.top || bottom > clip.bottom) return false;
+            }
+          }
+          return style.backgroundColor !== "rgba(0, 0, 0, 0)";
+        })
+      : false;
+    if (process.env.REORDER_SCREENSHOTS)
+      await page.screenshot({ path: `/tmp/workspace-drop-${destination}.png` });
     await send("touchEnd", 0, 0);
-    await page.waitForTimeout(300);
-    assert.equal(marker, shouldMove ? 1 : 0, `${destination}: incorrect top insertion indicator`);
-    assert.deepEqual(mutations, shouldMove ? [{ workspaceId: "w3", beforeWorkspaceId: "w1" }] : []);
-    assert.deepEqual(
-      await cards.locator(":scope > summary strong").allTextContents(),
-      shouldMove ? ["Gamma", "Alpha", "Beta"] : ["Alpha", "Beta", "Gamma"],
-    );
-    console.log(`${destination}: PASS touch indicator and persisted order`);
+    try {
+      if (shouldMove) {
+        await page.waitForFunction(
+          () =>
+            document.querySelector('[data-testid="workspace-disclosure"] > summary strong')
+              ?.textContent === "Gamma" &&
+            !document.querySelector('[aria-disabled="true"][aria-haspopup="dialog"]'),
+          undefined,
+          { timeout: 10_000 },
+        );
+      }
+      await page.evaluate(() => new Promise(requestAnimationFrame));
+      assert.equal(marker, shouldMove ? 1 : 0, `${destination}: incorrect top insertion indicator`);
+      assert.equal(
+        painted,
+        shouldMove,
+        `${destination}: insertion indicator is clipped or unpainted`,
+      );
+      assert.deepEqual(
+        mutations,
+        shouldMove ? [{ workspaceId: "w3", beforeWorkspaceId: "w1" }] : [],
+      );
+      assert.deepEqual(
+        await cards.locator(":scope > summary strong").allTextContents(),
+        shouldMove ? ["Gamma", "Alpha", "Beta"] : ["Alpha", "Beta", "Gamma"],
+      );
+      console.log(`${destination}: PASS touch indicator and persisted order`);
+    } catch (error) {
+      failures.push(`${destination}: ${error.message}`);
+      console.error(`${destination}: ${error.message}`);
+    }
     await page.close();
   }
+  assert.deepEqual(failures, []);
 } finally {
   await browser.close();
 }
