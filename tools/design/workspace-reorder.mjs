@@ -75,6 +75,8 @@ for (const [name, engine, mobile] of [
     assert.notEqual(await cards.first().getAttribute("open"), null);
     const a = await handle("Alpha").boundingBox();
     const c = await header("Gamma").boundingBox();
+    // Cross Gamma's center with the compact preview, not just with the pointer.
+    const destinationY = c.y + (c.height * 3) / 4;
     if (mobile) {
       assert.equal(await handle("Alpha").evaluate((el) => getComputedStyle(el).opacity), "1");
       assert.equal(a.width, 44);
@@ -113,20 +115,19 @@ for (const [name, engine, mobile] of [
       );
       if (process.env.REORDER_SCREENSHOTS)
         await page.screenshot({ path: "design-gallery/workspace-reorder/touch-between-cards.png" });
-      for (let i = 1; i <= 15; i++) {
-        await send(
-          "touchMove",
-          a.x + a.width / 2,
-          a.y + a.height / 2 + ((c.y + c.height / 2 - a.y - a.height / 2) * i) / 15,
-        );
-        await page.waitForTimeout(20);
-      }
+      const preview = await page.getByTestId("workspace-drag-preview").boundingBox();
+      const lastCard = await cards.last().boundingBox();
+      const pointerY = b.y + (b.height * 3) / 4;
+      await moveTouch(
+        pointerY,
+        pointerY + lastCard.y + lastCard.height / 2 + 1 - preview.y - preview.height / 2,
+      );
       await send("touchEnd", 0, 0);
     } else {
       await handle("Alpha").hover();
       await page.mouse.move(a.x + a.width / 2, a.y + a.height / 2);
       await page.mouse.down();
-      await page.mouse.move(a.x + a.width / 2, c.y + c.height / 2, { steps: 15 });
+      await page.mouse.move(a.x + a.width / 2, destinationY, { steps: 15 });
       await page.locator('[data-marker="after"]').waitFor();
       await page.screenshot({ path: `design-gallery/workspace-reorder/${name}-drag.png` });
       await page.mouse.up();
