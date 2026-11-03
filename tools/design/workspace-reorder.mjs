@@ -85,6 +85,34 @@ for (const [name, engine, mobile] of [
           touchPoints: type === "touchEnd" ? [] : [{ x, y }],
         });
       await send("touchStart", a.x + a.width / 2, a.y + a.height / 2);
+      const b = await cards.nth(1).boundingBox();
+      const moveTouch = async (from, to) => {
+        for (let i = 1; i <= 15; i++) {
+          await send("touchMove", a.x + a.width / 2, from + ((to - from) * i) / 15);
+          await page.waitForTimeout(20);
+        }
+        await page.evaluate(() => new Promise(requestAnimationFrame));
+      };
+      await moveTouch(a.y + a.height / 2, b.y + b.height / 4);
+      const earlyMarkers = await page.locator("[data-marker]").count();
+      await moveTouch(b.y + b.height / 4, b.y + (b.height * 3) / 4);
+      const gap = await page.locator('[data-marker="after"]').evaluate((element) => {
+        const style = getComputedStyle(element, "::after");
+        const top = element.getBoundingClientRect().top + parseFloat(style.top);
+        const bottom = top + parseFloat(style.height);
+        const card = element.querySelector("details").getBoundingClientRect();
+        const next = element.nextElementSibling.querySelector("details").getBoundingClientRect();
+        return { top, bottom, cardBottom: card.bottom, nextTop: next.top };
+      });
+      console.log(`${name}: early markers=${earlyMarkers}, gap=${JSON.stringify(gap)}`);
+      assert.equal(earlyMarkers, 0, "downward reorder must wait until the next row's midpoint");
+      assert.ok(gap.top > gap.cardBottom && gap.bottom < gap.nextTop, "line must be between cards");
+      assert.ok(
+        Math.abs((gap.top + gap.bottom - gap.cardBottom - gap.nextTop) / 2) <= 1,
+        "line must be centered in the gap",
+      );
+      if (process.env.REORDER_SCREENSHOTS)
+        await page.screenshot({ path: "design-gallery/workspace-reorder/touch-between-cards.png" });
       for (let i = 1; i <= 15; i++) {
         await send(
           "touchMove",

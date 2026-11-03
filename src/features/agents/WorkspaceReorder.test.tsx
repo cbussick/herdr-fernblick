@@ -103,6 +103,7 @@ it.each([140, 92, 56, 20, 0])(
       ["w3", rect(1020, 80)],
     ]);
     const collisions = context().props.collisionDetection({
+      active: { id: "w2" },
       pointerCoordinates: { x: 40, y },
       collisionRect: rect(y - 30, 800),
       droppableRects,
@@ -117,12 +118,48 @@ it.each([140, 92, 56, 20, 0])(
   },
 );
 
+it.each([
+  [181, "w1"],
+  [191, "w1"],
+  [192, "w1"],
+  [231, "w1"],
+  [232, "w2"],
+  [233, "w2"],
+  [273, "w2"],
+  [284, "w2"],
+  [323, "w2"],
+  [324, "w3"],
+])("waits for a lower row's midpoint at pointer y=%s", async (y, target) => {
+  const droppableRects = new Map(
+    ["w1", "w2", "w3"].map((id, index) => {
+      const top = 100 + index * 92;
+      return [id, { left: 10, right: 300, top, bottom: top + 80, width: 290, height: 80 }];
+    }),
+  );
+  const collisions = context().props.collisionDetection({
+    active: { id: "w1" },
+    pointerCoordinates: { x: 40, y },
+    collisionRect: { left: 10, right: 300, top: y - 30, bottom: y + 50, width: 290, height: 80 },
+    droppableRects,
+    droppableContainers: [...droppableRects.keys()].map((id) => ({ id })),
+  });
+  expect(collisions[0]?.id).toBe(target);
+  await drag("w1", collisions[0]?.id ?? null);
+  if (target === "w1") expect(moveWorkspace).not.toHaveBeenCalled();
+  else
+    expect(moveWorkspace).toHaveBeenCalledWith({
+      workspaceId: "w1",
+      beforeWorkspaceId: target === "w2" ? "w3" : null,
+    });
+});
+
 it("targets expanded rows, keeps gaps droppable and preserves keyboard detection", () => {
   const droppableRects = new Map([
     ["w1", { left: 10, right: 300, top: 100, bottom: 900, width: 290, height: 800 }],
     ["w2", { left: 10, right: 300, top: 920, bottom: 1000, width: 290, height: 80 }],
   ]);
   const args = {
+    active: { id: "w2" },
     collisionRect: { left: 10, right: 300, top: 920, bottom: 1000, width: 290, height: 80 },
     droppableRects,
     droppableContainers: [...droppableRects.keys()].map((id) => ({ id })),

@@ -39,12 +39,24 @@ const workspaceCollision: CollisionDetection = (args) => {
       y > Math.max(...rects.map((rect) => rect.bottom)) + bottomDropZone
     )
       return [];
+    // Entering the top half of a lower row still means "before that row".
+    // Only offer its after-position once the pointer crosses its midpoint.
+    const activeRect = args.droppableRects.get(args.active.id);
+    const destinations = {
+      ...args,
+      droppableContainers: args.droppableContainers.filter((container) => {
+        const rect = args.droppableRects.get(container.id);
+        return (
+          !activeRect || !rect || rect.top <= activeRect.top || y >= rect.top + rect.height / 2
+        );
+      }),
+    };
     // Expanded cards can be much taller than their handles. Follow the pointer,
     // not the dragged card's center, so the first row remains reachable.
-    const hits = pointerWithin(args);
+    const hits = pointerWithin(destinations);
     if (hits.length) return hits;
     return closestCenter({
-      ...args,
+      ...destinations,
       collisionRect: { left: x, right: x, top: y, bottom: y, width: 0, height: 0 },
     });
   }
