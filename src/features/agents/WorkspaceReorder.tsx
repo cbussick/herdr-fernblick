@@ -6,7 +6,6 @@ import {
   KeyboardSensor,
   PointerSensor,
   closestCenter,
-  pointerWithin,
   useSensor,
   useSensors,
   type DragEndEvent,
@@ -39,25 +38,19 @@ const workspaceCollision: CollisionDetection = (args) => {
       y > Math.max(...rects.map((rect) => rect.bottom)) + bottomDropZone
     )
       return [];
-    // In either direction, cross a row's midpoint before offering the position
-    // beyond it. Entering only its near half should not trigger a reorder.
+    // Dnd-kit measures collisionRect from the visible drag overlay, not the
+    // original (possibly expanded) card. Reorder when its center crosses a
+    // target's center, independently of where the handle was grabbed.
+    const centerY = args.collisionRect.top + args.collisionRect.height / 2;
     const activeRect = args.droppableRects.get(args.active.id);
-    const destinations = {
+    return closestCenter({
       ...args,
       droppableContainers: args.droppableContainers.filter((container) => {
         const rect = args.droppableRects.get(container.id);
         if (!activeRect || !rect || container.id === args.active.id) return true;
         const midpoint = rect.top + rect.height / 2;
-        return rect.top < activeRect.top ? y <= midpoint : y >= midpoint;
+        return rect.top < activeRect.top ? centerY <= midpoint : centerY >= midpoint;
       }),
-    };
-    // Expanded cards can be much taller than their handles. Follow the pointer,
-    // not the dragged card's center, so the first row remains reachable.
-    const hits = pointerWithin(destinations);
-    if (hits.length) return hits;
-    return closestCenter({
-      ...destinations,
-      collisionRect: { left: x, right: x, top: y, bottom: y, width: 0, height: 0 },
     });
   }
   return closestCenter(args);
@@ -270,7 +263,11 @@ export function WorkspaceReorder<T extends Workspace>({
           ))}
         </SortableContext>
         <DragOverlay dropAnimation={null}>
-          {active ? <div className={styles.preview}>{active.label}</div> : null}
+          {active ? (
+            <div className={styles.preview} data-testid="workspace-drag-preview">
+              {active.label}
+            </div>
+          ) : null}
         </DragOverlay>
       </DndContext>
       <p role="status" className={a11yStyles["sr-only"]}>
