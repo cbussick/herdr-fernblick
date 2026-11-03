@@ -5,9 +5,15 @@ import {
   boardStateSchema,
   boardTargetSchema,
   type BoardTarget,
+  type BoardScene,
 } from "../../../packages/pi-live-chat/boardProtocol";
 import { ackSchema, uploadIdSchema } from "../../../packages/pi-live-chat/protocol";
 import { ApiError } from "../../shared/api/apiClient";
+import {
+  boardImageQualitySchema,
+  boardImageLimits,
+  type BoardImageQuality,
+} from "../../../packages/pi-live-chat/boardImageExport";
 
 const saveSchema = z.object({
   target: boardTargetSchema,
@@ -95,6 +101,47 @@ async function forward(
   return ack.data;
 }
 export const boardApi = {
+  async exportPng(
+    pane: string,
+    target: BoardTarget,
+    boardId: string,
+    scene: BoardScene,
+    quality: BoardImageQuality,
+    signal?: AbortSignal,
+  ) {
+    const input = z
+      .object({
+        target: boardTargetSchema,
+        boardId: boardIdSchema,
+        scene: boardSceneSchema,
+        quality: boardImageQualitySchema,
+      })
+      .strict()
+      .parse({ target, boardId, scene, quality });
+    const response = await fetch(endpoint(pane) + "/export", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(input),
+      signal: signal
+        ? AbortSignal.any([signal, AbortSignal.timeout(60000)])
+        : AbortSignal.timeout(60000),
+    });
+    if (!response.ok) {
+      const error = z
+        .object({ error: z.string() })
+        .safeParse(await response.json().catch(() => null));
+      throw new ApiError(
+        response.status,
+        error.success ? error.data.error : "Could not export PNG",
+      );
+    }
+    if (response.headers.get("Content-Type")?.split(";")[0] !== "image/png")
+      throw new Error("Invalid PNG export response");
+    const blob = await response.blob();
+    if (!blob.size || blob.size > boardImageLimits(quality).maxBytes)
+      throw new Error("PNG export exceeds the size limit");
+    return blob;
+  },
   async open(pane: string, target: BoardTarget, signal?: AbortSignal) {
     return boardStateSchema.parse(
       await post(pane, "", { target: boardTargetSchema.parse(target) }, signal),

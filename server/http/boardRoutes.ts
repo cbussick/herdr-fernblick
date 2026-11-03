@@ -15,7 +15,8 @@ import {
   MAX_BOARD_BYTES,
 } from "../../packages/pi-live-chat/boardProtocol.js";
 import { readImageUpload, mimeTypeForUpload } from "../uploads/imageUploads.js";
-import { validatePng } from "../boards/scene.js";
+import { validatePng, validateScene } from "../boards/scene.js";
+import { boardImageQualitySchema } from "../../packages/pi-live-chat/boardImageExport.js";
 
 function sameOrigin(request: IncomingMessage) {
   const origin = request.headers.origin;
@@ -58,6 +59,10 @@ const saveSchema = ownedSchema.extend({
   baseRevision: z.number().int().nonnegative(),
   scene: boardSceneSchema,
 });
+const exportSchema = ownedSchema
+  .pick({ target: true, boardId: true })
+  .extend({ scene: boardSceneSchema, quality: boardImageQualitySchema })
+  .strict();
 const promptSchema = ownedSchema
   .extend({
     revision: z.number().int().nonnegative(),
@@ -137,7 +142,7 @@ export function createBoardRoutes(service: HerdrService, bridge: LiveBridge, boa
       return true;
     }
     const route = url.pathname.match(
-      /^\/api\/agents\/([^/]+)\/board(?:\/(save|send|prompt|revoke|events))?$/,
+      /^\/api\/agents\/([^/]+)\/board(?:\/(save|send|prompt|revoke|events|export))?$/,
     );
     if (!route) return false;
     const pane = z
@@ -226,7 +231,10 @@ export function createBoardRoutes(service: HerdrService, bridge: LiveBridge, boa
       return true;
     }
     if (request.method !== "POST" || action === "events") return false;
-    const raw = await body(request, action === "save" ? MAX_BOARD_BYTES + 65536 : 200_000);
+    const raw = await body(
+      request,
+      action === "save" || action === "export" ? MAX_BOARD_BYTES + 65536 : 200_000,
+    );
     const input = openSchema.parse(raw);
     const ctx = await context(pane, input.target);
     if (!action) {
@@ -241,6 +249,24 @@ export function createBoardRoutes(service: HerdrService, bridge: LiveBridge, boa
     if (action === "save") {
       const value = saveSchema.parse(raw);
       json(response, await boards.save(ctx.id, value.baseRevision, value.scene, ctx.validate));
+    } else if (action === "export") {
+      const value = exportSchema.parse(raw);
+      const current = await boards.read(ctx.id);
+      ctx.validate();
+      const scene = validateScene(value.scene);
+      if ((scene.engine ?? "excalidraw") !== (current.scene.engine ?? "excalidraw"))
+        throw new BoardError(400, "Export cannot change the board engine");
+      // Render a detached draft, not a save or a grant. Unsynced work can be exported too.
+      const png = await bridge.exportBoardImage(scene, value.quality);
+      ctx.validate();
+      response.setHeader("Cache-Control", "private, no-store");
+      response.setHeader("Content-Type", "image/png");
+      response.setHeader(
+        "Content-Disposition",
+        `attachment; filename="whiteboard${value.quality === "high" ? "-high" : ""}.png"`,
+      );
+      response.setHeader("Content-Length", png.length);
+      response.end(png);
     } else if (action === "revoke") {
       bridge.revokeBoardAccess(input.target);
       json(response, { ok: true });

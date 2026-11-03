@@ -492,7 +492,7 @@ function Playground(props: BoardEditorProps) {
           </label>
           <button className={styles["secondary"]} onClick={download}>
             <Download size={16} />
-            <span>Download</span>
+            <span>Download JSON</span>
           </button>
           <button
             disabled={locked}

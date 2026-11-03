@@ -225,7 +225,7 @@ export default function BoardEditor({
               )
             }
           >
-            Download my drawing
+            Download JSON
           </MainMenu.Item>
           <MainMenu.DefaultItems.ClearCanvas />
         </MainMenu>

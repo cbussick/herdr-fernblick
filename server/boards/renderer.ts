@@ -3,22 +3,29 @@ import type { BoardScene } from "../../packages/pi-live-chat/boardProtocol.js";
 import { validateScene } from "./scene.js";
 import { validateRasterBudget } from "./rasterBudget.js";
 
-const MAX_PNG_BYTES = 2 * 1024 * 1024;
-const MAX_SIDE = 2048;
-const MAX_PIXELS = 2 * 1024 * 1024;
+import {
+  boardImageLimits,
+  type BoardImageQuality,
+} from "../../packages/pi-live-chat/boardImageExport.js";
+type Limits = ReturnType<typeof boardImageLimits>;
 const TIMEOUT_MS = 30_000;
 const MAX_PENDING = 4; // Includes the active render.
 const pngMagic = Buffer.from([137, 80, 78, 71, 13, 10, 26, 10]);
 
-type RenderFunction = { renderBoardScene: (scene: BoardScene) => Promise<string> };
+type RenderFunction = {
+  renderBoardScene: (scene: BoardScene, quality?: BoardImageQuality) => Promise<string>;
+};
 type FlowRenderFunction = {
   prepareFlowBoardScene: (
     scene: BoardScene,
     scale?: number,
+    quality?: BoardImageQuality,
   ) => Promise<{ width: number; height: number }>;
 };
 type Job = {
   scene: BoardScene;
+  quality?: BoardImageQuality;
+  limits: Limits;
   resolve: (png: Buffer) => void;
   reject: (error: Error) => void;
   controller: AbortController;
@@ -41,17 +48,17 @@ function allowedAsset(request: Request, origin: string): boolean {
   );
 }
 
-function decodePng(value: unknown): Buffer {
+function decodePng(value: unknown, limits: Limits): Buffer {
   if (
     typeof value !== "string" ||
-    value.length > Math.ceil(MAX_PNG_BYTES / 3) * 4 ||
+    value.length > Math.ceil(limits.maxBytes / 3) * 4 ||
     !/^[A-Za-z0-9+/]+={0,2}$/.test(value)
   )
     throw new Error("Board renderer returned an invalid or oversized PNG");
   const png = Buffer.from(value, "base64");
   if (
     png.length < 33 ||
-    png.length > MAX_PNG_BYTES ||
+    png.length > limits.maxBytes ||
     png.toString("base64") !== value ||
     !png.subarray(0, 8).equals(pngMagic) ||
     png.toString("ascii", 12, 16) !== "IHDR"
@@ -59,7 +66,13 @@ function decodePng(value: unknown): Buffer {
     throw new Error("Board renderer returned an invalid or oversized PNG");
   const width = png.readUInt32BE(16);
   const height = png.readUInt32BE(20);
-  if (!width || !height || width > MAX_SIDE || height > MAX_SIDE || width * height > MAX_PIXELS)
+  if (
+    !width ||
+    !height ||
+    width > limits.maxSide ||
+    height > limits.maxSide ||
+    width * height > limits.maxPixels
+  )
     throw new Error("Board renderer exceeded the pixel limit");
   return png;
 }
@@ -82,12 +95,14 @@ export class BoardRenderer {
     this.#origin = origin;
   }
 
-  render(scene: BoardScene): Promise<Buffer> {
+  render(scene: BoardScene, quality?: BoardImageQuality): Promise<Buffer> {
     if (this.#closed) return Promise.reject(new Error("Board renderer is closed"));
     if (this.#queue.length + (this.#active ? 1 : 0) >= MAX_PENDING)
       return Promise.reject(new Error("Board renderer is busy"));
     let snapshot: BoardScene;
+    let limits: Limits;
     try {
+      limits = boardImageLimits(quality);
       snapshot = validateScene(scene);
       validateRasterBudget(snapshot);
     } catch (error) {
@@ -97,6 +112,8 @@ export class BoardRenderer {
       const controller = new AbortController();
       const job: Job = {
         scene: snapshot,
+        quality,
+        limits,
         resolve,
         reject,
         controller,
@@ -137,6 +154,7 @@ export class BoardRenderer {
     let output: Buffer | undefined;
     let failure: Error | undefined;
     const signal = job.controller.signal;
+    const limits = job.limits;
     const abort = () => {
       // Closing the process also interrupts CPU-bound page.evaluate work.
       void browser?.close().catch(() => {});
@@ -209,21 +227,22 @@ export class BoardRenderer {
         for (let attempt = 0, scale = 1; attempt < 8; attempt++) {
           signal.throwIfAborted();
           const size = await page.evaluate(
-            ({ json, scale }) =>
+            ({ json, scale, quality }) =>
               (globalThis as unknown as FlowRenderFunction).prepareFlowBoardScene(
                 JSON.parse(json),
                 scale,
+                quality,
               ),
-            { json: JSON.stringify(job.scene), scale },
+            { json: JSON.stringify(job.scene), scale, quality: job.quality },
           );
           if (
             !Number.isInteger(size.width) ||
             !Number.isInteger(size.height) ||
             size.width < 1 ||
             size.height < 1 ||
-            size.width > MAX_SIDE ||
-            size.height > MAX_SIDE ||
-            size.width * size.height > MAX_PIXELS
+            size.width > limits.maxSide ||
+            size.height > limits.maxSide ||
+            size.width * size.height > limits.maxPixels
           )
             throw new Error("Board renderer exceeded the pixel limit");
           await page.setViewportSize(size);
@@ -234,24 +253,34 @@ export class BoardRenderer {
             timeout: TIMEOUT_MS,
           });
           signal.throwIfAborted();
-          if (png.length <= MAX_PNG_BYTES) {
-            output = decodePng(png.toString("base64"));
+          if (png.length <= limits.maxBytes) {
+            output = decodePng(png.toString("base64"), limits);
             break;
           }
-          scale *= Math.min(0.8, Math.sqrt(MAX_PNG_BYTES / png.length) * 0.9);
+          scale *= Math.min(0.8, Math.sqrt(limits.maxBytes / png.length) * 0.9);
         }
-        if (!output) throw new Error("Board renderer could not fit PNG within 2 MiB");
+        if (!output) throw new Error("Board renderer could not fit PNG within the output limit");
       } else {
         await page.waitForFunction(
           () => typeof (globalThis as unknown as RenderFunction).renderBoardScene === "function",
         );
         signal.throwIfAborted();
         const result = await page.evaluate(
-          (json) => (globalThis as unknown as RenderFunction).renderBoardScene(JSON.parse(json)),
-          JSON.stringify(job.scene),
+          (input) => {
+            // Preserve the legacy single-JSON argument when no download profile is requested.
+            const { json, quality } =
+              typeof input === "string" ? { json: input, quality: undefined } : input;
+            return (globalThis as unknown as RenderFunction).renderBoardScene(
+              JSON.parse(json),
+              quality,
+            );
+          },
+          job.quality
+            ? { json: JSON.stringify(job.scene), quality: job.quality }
+            : JSON.stringify(job.scene),
         );
         signal.throwIfAborted();
-        output = decodePng(result);
+        output = decodePng(result, limits);
       }
     } catch (error) {
       failure = error instanceof Error ? error : new Error("Board rendering failed");

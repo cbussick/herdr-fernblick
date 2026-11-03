@@ -210,6 +210,38 @@ async function raster(noise = false): Promise<string> {
 }
 
 describe("native browser board rendering", () => {
+  it.each(["excalidraw", "react-flow"] as const)(
+    "renders downloadable %s PNGs at the selected resolution",
+    async (engine) => {
+      const scene: BoardScene = {
+        ...emptyScene(engine),
+        elements:
+          engine === "react-flow"
+            ? [
+                {
+                  id: "card",
+                  type: "component",
+                  kind: "card",
+                  x: 0,
+                  y: 0,
+                  width: 600,
+                  height: 400,
+                  version: 1,
+                  parentId: null,
+                  props: { ...defaultFlowProps("card"), title: "Download resolution" },
+                },
+              ]
+            : [element("rectangle", "box", 0, 0, { width: 600, height: 400 })],
+      };
+      const normal = await renderer.render(scene, "standard");
+      const high = await renderer.render(scene, "high");
+      expect(high.readUInt32BE(16)).toBeGreaterThanOrEqual(normal.readUInt32BE(16) * 2 - 1);
+      expect(high.readUInt32BE(20)).toBeGreaterThanOrEqual(normal.readUInt32BE(20) * 2 - 1);
+      expect(high.readUInt32BE(16)).toBeLessThanOrEqual(4096);
+      expect(high.length).toBeLessThanOrEqual(16 * 1024 * 1024);
+    },
+    30_000,
+  );
   it.skipIf(!hasFlowEntry)(
     "renders real flow components, ink and local images within pixel and byte limits",
     async () => {

@@ -14,6 +14,7 @@ function setup(local?: LocalDraft) {
   const close = vi.fn();
   const api = {
     ...boardApi,
+    exportPng: vi.fn().mockResolvedValue(new Blob(["PNG"], { type: "image/png" })),
     open: vi.fn().mockResolvedValue(board()),
     save: vi.fn().mockImplementation(async (_pane, input) => ({
       ...board(input.baseRevision + 1),
@@ -33,6 +34,28 @@ function setup(local?: LocalDraft) {
   owners.push(owner);
   return { owner, api, store, close, emit: (value: BoardEvent) => event(value) };
 }
+it("exports an unsynced draft without saving or clearing dirty state and cancels on disposal", async () => {
+  const { owner, api } = setup();
+  await owner.start();
+  owner.interaction(true);
+  owner.change(scene(30));
+  const draft = structuredClone(owner.state.scene!);
+  const result = await owner.exportPng(draft, "high", new AbortController().signal);
+  expect(result.type).toBe("image/png");
+  expect(api.save).not.toHaveBeenCalled();
+  expect(owner.state.dirty).toBe(true);
+  expect(api.exportPng).toHaveBeenCalledWith(
+    "pane",
+    target,
+    board().id,
+    draft,
+    "high",
+    expect.any(AbortSignal),
+  );
+  const signal = api.exportPng.mock.calls[0]![5] as AbortSignal;
+  owner.dispose();
+  expect(signal.aborted).toBe(true);
+});
 it("durably checkpoints the current scene before a destructive import or clear", async () => {
   const { owner, store } = setup();
   await owner.start();

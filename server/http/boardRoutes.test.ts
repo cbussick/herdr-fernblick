@@ -199,6 +199,59 @@ it("defaults new conversations to React Flow without converting an existing boar
   expect((await reopened.json()).scene.engine).toBe("react-flow");
 });
 
+it("exports unsynced drafts as a PNG without saving, granting tools or sending a prompt", async () => {
+  const state = await open();
+  const render = vi.fn(async () => png);
+  bridge.setBoardRenderer(render);
+  const draft = {
+    ...state.scene,
+    elements: [{ id: "draft", type: "rectangle", x: 25, y: 30, width: 150, height: 100 }],
+  };
+  const response = await post("export", { boardId: state.id, scene: draft, quality: "high" });
+  expect(response.status).toBe(200);
+  expect(response.headers.get("Content-Type")).toBe("image/png");
+  expect(response.headers.get("Cache-Control")).toContain("no-store");
+  expect(response.headers.get("Content-Disposition")).toContain("whiteboard-high.png");
+  expect(Buffer.from(await response.arrayBuffer())).toEqual(png);
+  expect(render).toHaveBeenCalledWith(draft, "high");
+  expect(await boards.read(state.id)).toEqual(state);
+  expect(frames.filter((f) => f.type === "command" || f.type === "board-grant")).toEqual([]);
+});
+it("enforces export ownership, origin, quality, scene and engine validation", async () => {
+  const state = await open();
+  const render = vi.fn(async () => png);
+  bridge.setBoardRenderer(render);
+  const input = { boardId: state.id, scene: state.scene, quality: "standard" };
+  expect((await post("export", { ...input, boardId: "b".repeat(64) })).status).toBe(403);
+  expect((await post("export", input, "https://evil.test")).status).toBe(403);
+  expect((await post("export", { ...input, quality: "ultra" })).status).toBe(400);
+  expect(
+    (await post("export", { ...input, scene: { ...state.scene, engine: "react-flow" } })).status,
+  ).toBe(400);
+  expect(
+    (
+      await post("export", {
+        ...input,
+        scene: { ...state.scene, background: "url(https://evil.test)" },
+      })
+    ).status,
+  ).toBe(400);
+  expect(render).not.toHaveBeenCalled();
+});
+it("revalidates export identity after rendering and rejects a stale session", async () => {
+  const state = await open();
+  bridge.setBoardRenderer(async () => {
+    snapshot = { ...snapshot, seq: 2, epoch: randomUUID() };
+    writeFrame(socket, snapshot);
+    await vi.waitFor(() => expect(bridge.current(agent).snapshot.epoch).toBe(snapshot.epoch));
+    return png;
+  });
+  expect(
+    (await post("export", { boardId: state.id, scene: state.scene, quality: "standard" })).status,
+  ).toBe(409);
+  expect((await boards.read(state.id)).revision).toBe(0);
+});
+
 it("keeps legacy Excalidraw conversations in their original engine", async () => {
   // Simulate a board persisted before engine markers existed.
   const legacy = await boards.open(boardSessionKey(snapshot));

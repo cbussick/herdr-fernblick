@@ -59,6 +59,14 @@ afterEach(async () => {
 });
 
 describe("BoardRenderer", () => {
+  it("keeps download pixel budgets separate from agent snapshots", async () => {
+    const { page } = fakeBrowser();
+    page.evaluate.mockResolvedValue(png(3000, 2000).toString("base64"));
+    const value = renderer();
+    await expect(value.render(emptyScene(), "high")).resolves.toEqual(png(3000, 2000));
+    await expect(value.render(emptyScene())).rejects.toThrow("pixel limit");
+    await expect(value.render(emptyScene(), "standard")).rejects.toThrow("pixel limit");
+  });
   it("is lazy, validates its origin and refuses invalid scenes before launching", async () => {
     for (const origin of [
       "file:///tmp",

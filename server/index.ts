@@ -84,6 +84,6 @@ server.listen(port, host, () => {
     process.env.FERNBLICK_RENDER_ORIGIN ??
       `http://${hostname}:${typeof address === "object" && address ? address.port : port}`,
   );
-  bridge.setBoardRenderer((scene) => renderer!.render(scene));
+  bridge.setBoardRenderer((scene, quality) => renderer!.render(scene, quality));
   process.stdout.write(`Fernblick listening on http://${host}:${port}\n`);
 });

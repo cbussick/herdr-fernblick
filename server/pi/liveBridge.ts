@@ -32,6 +32,7 @@ import {
   type BoardGrant,
   type BoardRequest,
 } from "../../packages/pi-live-chat/boardProtocol.js";
+import type { BoardImageQuality } from "../../packages/pi-live-chat/boardImageExport.js";
 import { BoardStore } from "../boards/storage.js";
 import type { TreePageRequest } from "../../packages/pi-live-chat/treeProtocol.js";
 
@@ -108,8 +109,12 @@ export class LiveBridge {
   setBoardAgentResolver(resolveAgent: (pane: string) => Promise<Agent>) {
     this.boardAgent = resolveAgent;
   }
-  private boardRenderer?: (scene: BoardScene) => Promise<Buffer>;
-  setBoardRenderer(render: (scene: BoardScene) => Promise<Buffer>) {
+  private boardRenderer?: (scene: BoardScene, quality?: BoardImageQuality) => Promise<Buffer>;
+  async exportBoardImage(scene: BoardScene, quality: BoardImageQuality) {
+    if (!this.boardRenderer) throw new LiveChatError(503, "Whiteboard renderer unavailable");
+    return this.boardRenderer(scene, quality);
+  }
+  setBoardRenderer(render: (scene: BoardScene, quality?: BoardImageQuality) => Promise<Buffer>) {
     this.boardRenderer = render;
   }
   private clearBoardAccess(peer: Peer) {

@@ -13,6 +13,7 @@ import {
 import { createPortal } from "react-dom";
 import type { BoardTarget } from "../../../packages/pi-live-chat/boardProtocol";
 import { BoardController } from "./BoardController";
+import { BoardExport } from "./BoardExport";
 import { downloadScene } from "./scene";
 import type { EditorHandle } from "./BoardEditor";
 import { ConversationDock, type WhiteboardConversation } from "./ConversationDock";
@@ -90,6 +91,7 @@ function WhiteboardSession({
     current.current = { available, structured, target, editorError };
   });
   const [leave, setLeave] = useState(false);
+  const [exporting, setExporting] = useState(false);
   const [revoking, setRevoking] = useState(false);
   const [ready, setReady] = useState(false);
   const onEditorReady = useCallback((handle: EditorHandle | null) => {
@@ -122,7 +124,7 @@ function WhiteboardSession({
     const keydown = (event: KeyboardEvent) => {
       if (!modal || event.defaultPrevented) return;
       const nativeDialog = document.querySelector<HTMLElement>(
-        "[class~=excalidraw-modal-container] [role=dialog], dialog[data-ui=chat-image-preview][open], dialog[data-ui=flow-component-editor][open]",
+        "[class~=excalidraw-modal-container] [role=dialog], dialog[data-ui=chat-image-preview][open], dialog[data-ui=flow-component-editor][open], dialog[data-ui=board-export][open]",
       );
       const appStatus = document.querySelector<HTMLElement>('[data-ui="app-status"]');
       if (
@@ -349,6 +351,13 @@ function WhiteboardSession({
               {agentContext ? ` · ${agentContext}` : ""}
             </span>
           </div>
+          <button
+            type="button"
+            disabled={working || !state.scene || !state.board}
+            onClick={() => setExporting(true)}
+          >
+            Export
+          </button>
           <span className={styles["save-status"]} role="status">
             {state.saving ? "Saving…" : state.dirty ? "Unsynced" : "Saved"}
           </span>
@@ -490,6 +499,14 @@ function WhiteboardSession({
           />
         </div>
       </div>
+      {exporting && state.scene && state.board && (
+        <BoardExport
+          scene={state.scene}
+          renderPng={(scene, quality, signal) => controller.exportPng(scene, quality, signal)}
+          onInteraction={controller.interaction}
+          onClose={() => setExporting(false)}
+        />
+      )}
     </dialog>,
     document.body,
   );

@@ -14,6 +14,43 @@ const input = {
   requestId: id,
 };
 afterEach(() => vi.unstubAllGlobals());
+it("downloads binary PNG with explicit quality and current draft without saving", async () => {
+  const fetch = vi
+    .fn()
+    .mockResolvedValue(new Response("png bytes", { headers: { "Content-Type": "image/png" } }));
+  vi.stubGlobal("fetch", fetch);
+  const blob = await boardApi.exportPng("w:p", target, board().id, board().scene, "high");
+  expect(blob.type).toBe("image/png");
+  expect(await blob.text()).toBe("png bytes");
+  expect(fetch).toHaveBeenCalledOnce();
+  expect(fetch).toHaveBeenCalledWith(
+    "/api/agents/w%3Ap/board/export",
+    expect.objectContaining({ method: "POST" }),
+  );
+  expect(JSON.parse(fetch.mock.calls[0]![1].body)).toEqual({
+    target,
+    boardId: board().id,
+    scene: board().scene,
+    quality: "high",
+  });
+});
+it("reports failed PNG exports without retrying and rejects non-image replies", async () => {
+  const fetch = vi
+    .fn()
+    .mockResolvedValueOnce(
+      new Response(JSON.stringify({ error: "Renderer busy" }), { status: 503 }),
+    )
+    .mockResolvedValueOnce(new Response("not png"));
+  vi.stubGlobal("fetch", fetch);
+  await expect(
+    boardApi.exportPng("pane", target, board().id, board().scene, "standard"),
+  ).rejects.toThrow("Renderer busy");
+  expect(fetch).toHaveBeenCalledTimes(1);
+  await expect(
+    boardApi.exportPng("pane", target, board().id, board().scene, "standard"),
+  ).rejects.toThrow("Invalid PNG");
+});
+
 it("uses the fixed board endpoint and validates returned scenes", async () => {
   const fetch = vi.fn().mockResolvedValue(new Response(JSON.stringify(board()), { status: 200 }));
   vi.stubGlobal("fetch", fetch);

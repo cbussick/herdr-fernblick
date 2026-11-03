@@ -1,13 +1,16 @@
 import type { BoardScene } from "../packages/pi-live-chat/boardProtocol";
 import type { BinaryFiles } from "@excalidraw/excalidraw/types";
 
-const MAX_PNG_BYTES = 2 * 1024 * 1024;
-const MAX_PIXELS = 2 * 1024 * 1024;
+import {
+  boardImageLimits,
+  type BoardImageQuality,
+} from "../packages/pi-live-chat/boardImageExport";
 
 // Must precede the first runtime Excalidraw import, just like the editor.
 (window as Window & { EXCALIDRAW_ASSET_PATH?: string }).EXCALIDRAW_ASSET_PATH = "/excalidraw/";
 
-async function renderBoardScene(scene: BoardScene): Promise<string> {
+async function renderBoardScene(scene: BoardScene, quality?: BoardImageQuality): Promise<string> {
+  const limits = boardImageLimits(quality);
   const { exportToBlob, restoreElements } = await import("@excalidraw/excalidraw");
   // Native restoration retains frames, bindings, freehand pressures, image crop,
   // rotation and all other supported native element properties.
@@ -34,7 +37,8 @@ async function renderBoardScene(scene: BoardScene): Promise<string> {
     if (!image.naturalWidth || !image.naturalHeight || decodedPixels > 32 * 1024 * 1024)
       throw new Error("Board raster assets exceed the decoded pixel limit");
   }
-  for (const maxSide of [2048, 1448, 1024, 724, 512]) {
+  for (const factor of [1, Math.SQRT1_2, 0.5, Math.SQRT1_2 / 2, 0.25]) {
+    const maxSide = Math.floor(limits.maxSide * factor);
     const blob = await exportToBlob({
       elements,
       files: scene.files as BinaryFiles,
@@ -51,10 +55,10 @@ async function renderBoardScene(scene: BoardScene): Promise<string> {
         if (!Number.isFinite(width) || !Number.isFinite(height) || width <= 0 || height <= 0)
           throw new Error("Invalid board export bounds");
         const scale = Math.min(
-          1,
+          limits.scale,
           maxSide / width,
           maxSide / height,
-          Math.sqrt(MAX_PIXELS / width / height),
+          Math.sqrt(limits.maxPixels / width / height),
         );
         return {
           width: Math.max(1, Math.floor(width * scale)),
@@ -65,7 +69,7 @@ async function renderBoardScene(scene: BoardScene): Promise<string> {
     });
     if (Array.from(document.fonts).some((font) => font.status === "error"))
       throw new Error("Local whiteboard fonts could not load");
-    if (blob.size > MAX_PNG_BYTES) continue;
+    if (blob.size > limits.maxBytes) continue;
     // FileReader avoids huge number arrays crossing the automation protocol.
     return await new Promise<string>((resolve, reject) => {
       const reader = new FileReader();

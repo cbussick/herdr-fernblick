@@ -4,6 +4,7 @@ import type {
   BoardTarget,
 } from "../../../packages/pi-live-chat/boardProtocol";
 import { ApiError } from "../../shared/api/apiClient";
+import type { BoardImageQuality } from "../../../packages/pi-live-chat/boardImageExport";
 import { boardApi, type BoardEvent } from "./boardApi";
 import { draftStore, type DraftStore, type LocalDraft } from "./draftStore";
 import { canonical, mergeScene } from "./mergeScene";
@@ -400,6 +401,17 @@ export class BoardController {
       this.schedule();
     });
     return this.pendingSave;
+  }
+  exportPng(scene: BoardScene, quality: BoardImageQuality, signal: AbortSignal) {
+    if (this.disposed || !this.state.board) throw new Error("Board is no longer available");
+    return this.api.exportPng(
+      this.pane,
+      this.target,
+      this.state.board.id,
+      scene,
+      quality,
+      AbortSignal.any([signal, this.abort.signal]),
+    );
   }
   /** Archive a durable local recovery copy before an explicit import/clear. */
   async checkpoint() {

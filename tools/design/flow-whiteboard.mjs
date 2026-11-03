@@ -1,7 +1,7 @@
 // Synthetic integration fixture: no Herdr/Pi sockets or production agents are contacted.
 // npm run build && node tools/design/flow-whiteboard.mjs
 import assert from "node:assert/strict";
-import { mkdir } from "node:fs/promises";
+import { mkdir, readFile } from "node:fs/promises";
 import { resolve } from "node:path";
 import { chromium, webkit } from "playwright";
 import { createHttpServer } from "../../dist-server/server/http/server.js";
@@ -115,6 +115,8 @@ try {
         const saves = [];
         const prompts = [];
         let failSaves = false;
+        let failExports = false;
+        const exports = [];
         await page.addInitScript(
           ({ snapshot }) => {
             window.fixtureSources = [];
@@ -181,6 +183,21 @@ try {
               updatedAt: Date.now(),
             };
             return route.fulfill({ json: board });
+          }
+          if (url.pathname.endsWith("/board/export")) {
+            exports.push(request.postDataJSON());
+            if (failExports)
+              return route.fulfill({
+                status: 503,
+                json: { error: "Fixture renderer unavailable" },
+              });
+            return route.fulfill({
+              contentType: "image/png",
+              body: Buffer.from(
+                "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVQIHWP4z8DwHwAFgAI/ScLbtAAAAABJRU5ErkJggg==",
+                "base64",
+              ),
+            });
           }
           if (url.pathname.endsWith("/prompt")) {
             const input = request.postDataJSON();
@@ -286,6 +303,59 @@ try {
           board.scene.elements.find((e) => e.id === "service").props.title,
           "Human service title",
         );
+        // Independent JSON/PNG downloads capture the local paused draft, not an older saved board.
+        const beforeExports = saves.length;
+        await whiteboard.getByRole("button", { name: "Export", exact: true }).click();
+        const exportDialog = page.getByRole("dialog", { name: "Export board", exact: true });
+        await exportDialog.waitFor();
+        await page.screenshot({
+          path: `.runtime/flow-board-evidence/export-${name}-${layout}.png`,
+        });
+        const jsonDownloadPromise = page.waitForEvent("download");
+        await exportDialog.getByRole("button", { name: "Download JSON", exact: true }).click();
+        const jsonDownload = await jsonDownloadPromise;
+        assert.equal(jsonDownload.suggestedFilename(), "whiteboard.flow.json");
+        const backup = JSON.parse(await readFile(await jsonDownload.path(), "utf8"));
+        assert.equal(backup.format, "fernblick-flow");
+        assert.equal(
+          backup.scene.elements.find((e) => e.id === "service").props.title,
+          "Unsynced local title",
+        );
+        assert.equal(exports.length, 0, "JSON download must not request or bundle PNG");
+        failExports = true;
+        await exportDialog.getByRole("button", { name: "Download PNG", exact: true }).click();
+        await exportDialog
+          .getByRole("alert")
+          .filter({ hasText: "Fixture renderer unavailable" })
+          .waitFor();
+        assert.equal(
+          await exportDialog
+            .getByRole("button", { name: "Download JSON", exact: true })
+            .isEnabled(),
+          true,
+        );
+        assert.equal(exports.length, 1, "failed exports must not retry automatically");
+        failExports = false;
+        await exportDialog.getByLabel("Image resolution", { exact: true }).selectOption("high");
+        const pngDownloadPromise = page.waitForEvent("download");
+        await exportDialog.getByRole("button", { name: "Download PNG", exact: true }).click();
+        const pngDownload = await pngDownloadPromise;
+        assert.equal(pngDownload.suggestedFilename(), "whiteboard-high.png");
+        assert.equal((await readFile(await pngDownload.path())).subarray(1, 4).toString(), "PNG");
+        assert.equal(exports[1].quality, "high");
+        assert.equal(
+          exports[1].scene.elements.find((e) => e.id === "service").props.title,
+          "Unsynced local title",
+        );
+        assert.equal(saves.length, beforeExports, "export must not save or overwrite a draft");
+        assert.equal(prompts.length, 1, "export must not send prompts");
+        await page.keyboard.press("Escape");
+        await exportDialog.waitFor({ state: "detached" });
+        assert.equal(
+          await whiteboard.isVisible(),
+          true,
+          "Escape must close only the export dialog",
+        );
         assert.deepEqual(errors, []);
         await context.close();
       }
@@ -294,7 +364,7 @@ try {
     }
   }
   console.log(
-    "PASS: isolated Chromium/WebKit flow conversation boards, durable props+ink, save-before-prompt, remote additions, and paused draft recovery without uncertain-write replay.",
+    "PASS: isolated Chromium/WebKit flow boards, independent JSON/PNG downloads of unsynced drafts, export failures, save-before-prompt, remote additions and paused recovery without write replay.",
   );
 } finally {
   server.closeAllConnections();

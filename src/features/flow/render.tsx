@@ -2,6 +2,10 @@ import { createRoot, type Root } from "react-dom/client";
 import { flushSync } from "react-dom";
 import { getSmoothStepPath, Position } from "@xyflow/react";
 import type { BoardScene } from "../../../packages/pi-live-chat/boardProtocol";
+import {
+  boardImageLimits,
+  type BoardImageQuality,
+} from "../../../packages/pi-live-chat/boardImageExport";
 import { validateFlowGraph } from "../../../packages/pi-live-chat/flowProtocol";
 import { ComponentContent, componentStyle } from "./Components";
 import { PrimitiveSvg } from "./Primitives";
@@ -14,13 +18,19 @@ import "@fontsource/nunito/600.css";
 import "@fontsource/nunito/700.css";
 
 export type Bounds = { x: number; y: number; width: number; height: number };
-export function fittedOutput(bounds: Bounds, scale = 1) {
+export function fittedOutput(bounds: Bounds, scale = 1, quality?: BoardImageQuality) {
   if (!Number.isFinite(scale) || scale <= 0 || scale > 1)
     throw new Error("Render scale must be greater than zero and at most one");
+  const limits = boardImageLimits(quality);
   const width = Math.max(1, bounds.width + 64),
     height = Math.max(1, bounds.height + 64);
   const zoom =
-    Math.min(1, 2048 / width, 2048 / height, Math.sqrt(2097152 / (width * height))) * scale;
+    Math.min(
+      limits.scale,
+      limits.maxSide / width,
+      limits.maxSide / height,
+      Math.sqrt(limits.maxPixels / (width * height)),
+    ) * scale;
   return {
     width: Math.max(1, Math.floor(width * zoom)),
     height: Math.max(1, Math.floor(height * zoom)),
@@ -64,6 +74,7 @@ let busy = false;
 export async function prepareFlowBoardScene(
   input: BoardScene,
   scale = 1,
+  quality?: BoardImageQuality,
 ): Promise<{ width: number; height: number }> {
   if (busy) throw new Error("A scene is already being prepared");
   busy = true;
@@ -220,6 +231,7 @@ export async function prepareFlowBoardScene(
     const output = fittedOutput(
       { x: minX, y: minY, width: maxX - minX, height: maxY - minY },
       scale,
+      quality,
     );
     host.style.width = `${output.width}px`;
     host.style.height = `${output.height}px`;

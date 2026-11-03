@@ -47,6 +47,14 @@ Example operation (alongside the normal batch revision/operation ID):
 
 Primitive records share node/scene limits; live path control points count toward the 100,000 drawing-point budget. Read summaries include their bounded drawing data. Saving, recovery, backup import and browser-independent screenshots use the same trusted SVG renderer. Primitives are not boundary children or connection endpoints. Raw SVG/XML, arbitrary `d` strings, attribute bags, transforms, URLs, scripts, styles and embedded HTML are not accepted. Legacy Excalidraw tools are unchanged. Existing Pi processes require a user-initiated `/reload` to discover the updated schemas; refresh the test app before using the new records.
 
+## Downloads
+
+The board header’s **Export** button offers separate **Download JSON** and **Download PNG** actions. Nothing is bundled or automatically downloaded together. JSON preserves the editable document (legacy native boards keep their `.excalidraw` JSON extension). PNG captures the entire diagram, including components, tables, images, ink and primitives—not the viewport, toolbar or chat.
+
+The dialog freezes the current valid local scene, including unsynced changes. PNG sends that detached scene to the authenticated backend renderer; it does not save/overwrite the board, send a prompt, grant agent access or create a stored snapshot. JSON remains browser-local and available even if PNG fails. Closing the dialog cancels the client request and prevents a late download. Backend work stays subject to the shared bounded queue/deadline and sandbox.
+
+PNG resolution choices are Standard (up to 2048 px per side, 4 Mi pixels) and High (up to 4096 px per side, 16 Mi pixels, up to twice the dimensions). Both have a 16 MiB compressed-file limit; exceptionally large/high-entropy boards are fitted/downscaled. The smaller agent screenshot limits remain unchanged (2048 side, 2 Mi pixels, 2 MiB). PNG needs the backend and the current authorized Pi session; JSON does not. SVG whole-board export is not implemented yet.
+
 ## Backups and recovery
 
 Download uses a `fernblick-flow` version-1 JSON envelope containing the normalized scene. Imports are validated and explicitly confirmed, and use fresh record/asset IDs instead of reusing tombstoned IDs. They are a deliberate replacement, not a merge or engine converter. A durable local recovery checkpoint is required before import/clear; the previous local drawing remains downloadable. Storage failure cancels replacement. Ordinary autosave/network failure preserves the current draft and does not replay an uncertain write after reload.
