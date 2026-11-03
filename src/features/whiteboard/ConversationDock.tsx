@@ -134,6 +134,7 @@ export function ConversationDock({
         <textarea
           aria-label="Message the agent"
           placeholder="Message…"
+          title="Enter to send; Shift+Enter for a new line"
           value={conversation.draft}
           readOnly={conversation.sending}
           rows={1}
@@ -142,8 +143,9 @@ export function ConversationDock({
           onKeyDown={(event) => {
             if (
               event.key === "Enter" &&
-              (event.metaKey || event.ctrlKey) &&
-              !event.nativeEvent.isComposing
+              !event.shiftKey &&
+              !event.nativeEvent.isComposing &&
+              event.nativeEvent.keyCode !== 229
             ) {
               event.preventDefault();
               if (!event.repeat) submit();

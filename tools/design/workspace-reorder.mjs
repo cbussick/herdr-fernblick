@@ -75,6 +75,8 @@ for (const [name, engine, mobile] of [
     assert.notEqual(await cards.first().getAttribute("open"), null);
     const a = await handle("Alpha").boundingBox();
     const c = await header("Gamma").boundingBox();
+    // Cross Gamma's center with the compact preview, not just with the pointer.
+    const destinationY = c.y + (c.height * 3) / 4;
     if (mobile) {
       assert.equal(await handle("Alpha").evaluate((el) => getComputedStyle(el).opacity), "1");
       assert.equal(a.width, 44);
@@ -85,20 +87,47 @@ for (const [name, engine, mobile] of [
           touchPoints: type === "touchEnd" ? [] : [{ x, y }],
         });
       await send("touchStart", a.x + a.width / 2, a.y + a.height / 2);
-      for (let i = 1; i <= 15; i++) {
-        await send(
-          "touchMove",
-          a.x + a.width / 2,
-          a.y + a.height / 2 + ((c.y + c.height / 2 - a.y - a.height / 2) * i) / 15,
-        );
-        await page.waitForTimeout(20);
-      }
+      const b = await cards.nth(1).boundingBox();
+      const moveTouch = async (from, to) => {
+        for (let i = 1; i <= 15; i++) {
+          await send("touchMove", a.x + a.width / 2, from + ((to - from) * i) / 15);
+          await page.waitForTimeout(20);
+        }
+        await page.evaluate(() => new Promise(requestAnimationFrame));
+      };
+      await moveTouch(a.y + a.height / 2, b.y + b.height / 4);
+      const earlyMarkers = await page.locator("[data-marker]").count();
+      await moveTouch(b.y + b.height / 4, b.y + (b.height * 3) / 4);
+      const gap = await page.locator('[data-marker="after"]').evaluate((element) => {
+        const style = getComputedStyle(element, "::after");
+        const top = element.getBoundingClientRect().top + parseFloat(style.top);
+        const bottom = top + parseFloat(style.height);
+        const card = element.querySelector("details").getBoundingClientRect();
+        const next = element.nextElementSibling.querySelector("details").getBoundingClientRect();
+        return { top, bottom, cardBottom: card.bottom, nextTop: next.top };
+      });
+      console.log(`${name}: early markers=${earlyMarkers}, gap=${JSON.stringify(gap)}`);
+      assert.equal(earlyMarkers, 0, "downward reorder must wait until the next row's midpoint");
+      assert.ok(gap.top > gap.cardBottom && gap.bottom < gap.nextTop, "line must be between cards");
+      assert.ok(
+        Math.abs((gap.top + gap.bottom - gap.cardBottom - gap.nextTop) / 2) <= 1,
+        "line must be centered in the gap",
+      );
+      if (process.env.REORDER_SCREENSHOTS)
+        await page.screenshot({ path: "design-gallery/workspace-reorder/touch-between-cards.png" });
+      const preview = await page.getByTestId("workspace-drag-preview").boundingBox();
+      const lastCard = await cards.last().boundingBox();
+      const pointerY = b.y + (b.height * 3) / 4;
+      await moveTouch(
+        pointerY,
+        pointerY + lastCard.y + lastCard.height / 2 + 1 - preview.y - preview.height / 2,
+      );
       await send("touchEnd", 0, 0);
     } else {
       await handle("Alpha").hover();
       await page.mouse.move(a.x + a.width / 2, a.y + a.height / 2);
       await page.mouse.down();
-      await page.mouse.move(a.x + a.width / 2, c.y + c.height / 2, { steps: 15 });
+      await page.mouse.move(a.x + a.width / 2, destinationY, { steps: 15 });
       await page.locator('[data-marker="after"]').waitFor();
       await page.screenshot({ path: `design-gallery/workspace-reorder/${name}-drag.png` });
       await page.mouse.up();

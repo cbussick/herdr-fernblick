@@ -89,13 +89,13 @@ it("does not present the previous turn as a reply to a newly received prompt", a
   expect(text()).toContain("Final response");
   expect(text()).toContain("Next question");
 });
-it("leaves Enter and IME composition alone; only Cmd/Ctrl+Enter submits", async () => {
+it("sends on Enter but leaves Shift+Enter and IME composition alone", async () => {
   conversation.draft = "A question";
   await act(async () => renderer.update(render()));
   const keydown = renderer.root.findByType("textarea").props.onKeyDown;
   const preventDefault = vi.fn();
   await act(async () => {
-    keydown({ key: "Enter", nativeEvent: { isComposing: false }, preventDefault });
+    keydown({ key: "Enter", shiftKey: true, nativeEvent: { isComposing: false }, preventDefault });
     keydown({ key: "Enter", metaKey: true, nativeEvent: { isComposing: true }, preventDefault });
   });
   expect(conversation.onSend).not.toHaveBeenCalled();
@@ -111,7 +111,7 @@ it("leaves Enter and IME composition alone; only Cmd/Ctrl+Enter submits", async 
   );
   expect(conversation.onSend).not.toHaveBeenCalled();
   await act(async () =>
-    keydown({ key: "Enter", metaKey: true, nativeEvent: { isComposing: false }, preventDefault }),
+    keydown({ key: "Enter", nativeEvent: { isComposing: false }, preventDefault }),
   );
   expect(conversation.onSend).toHaveBeenCalledOnce();
 });

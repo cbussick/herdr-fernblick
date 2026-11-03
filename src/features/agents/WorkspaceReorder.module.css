@@ -18,11 +18,11 @@
 }
 
 .item[data-marker="before"]::after {
-  top: -0.375rem;
+  top: calc(var(--space-3) / -2 - 1px);
 }
 
 .item[data-marker="after"]::after {
-  bottom: 0.375rem;
+  bottom: calc(var(--space-3) / -2 - 1px);
 }
 
 .handle {

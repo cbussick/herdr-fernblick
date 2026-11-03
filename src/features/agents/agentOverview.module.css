@@ -82,6 +82,11 @@
   padding-bottom: 5.5rem;
 }
 
+/* Keep the first row's insertion line inside the scrolling viewport. */
+.workspace-list {
+  padding-top: var(--space-2);
+}
+
 .workspace-disclosure {
   margin-bottom: var(--space-3);
   overflow: hidden;
@@ -114,6 +119,10 @@
 .workspace-disclosure > summary::-webkit-details-marker,
 .tab-group__header::-webkit-details-marker {
   display: none;
+}
+
+.workspace-disclosure > summary > [data-ui="status-indicator"] {
+  margin-inline-start: var(--space-2);
 }
 
 .workspace-disclosure__copy {

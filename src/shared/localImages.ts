@@ -9,7 +9,8 @@ export function isLocalImagePath(value: string): boolean {
   );
 }
 
-export function localImageSource(destination: string, cwd?: string): string | undefined {
+// Shared by image previews and explicit wiki file links; never discover vaults.
+export function resolveLocalPath(destination: string, cwd?: string): string | undefined {
   let path = destination;
   try {
     path = decodeURIComponent(destination);
@@ -30,5 +31,10 @@ export function localImageSource(destination: string, cwd?: string): string | un
     // Preserve ./ and ../ for filesystem resolution, including directory symlinks.
     path = `${cwd.replace(/\/+$/, "")}/${path}`;
   }
-  if (isLocalImagePath(path)) return `/api/local-images?path=${encodeURIComponent(path)}`;
+  if (isLocalImagePath(path)) return path;
+}
+
+export function localImageSource(destination: string, cwd?: string): string | undefined {
+  const path = resolveLocalPath(destination, cwd);
+  if (path) return `/api/local-images?path=${encodeURIComponent(path)}`;
 }

@@ -337,7 +337,7 @@ function PiAgentConsole({ agent, onBack }: AgentConsoleProps) {
     setAttachmentPreview(null);
     setAttachmentError("");
   }
-  function selectImages(files: FileList | null) {
+  function selectImages(files: FileList | File[] | null) {
     if (!files) return;
     if (send.isError) {
       send.reset();
@@ -717,6 +717,7 @@ function PiAgentConsole({ agent, onBack }: AgentConsoleProps) {
                     canSend={canSend}
                     canAttach={attachments.length < MAX_IMAGES}
                     onAttach={() => fileInputRef.current?.click()}
+                    onPasteImages={selectImages}
                     canOpenBoard={Boolean(
                       snapshot?.version === 2 &&
                       !live.error &&

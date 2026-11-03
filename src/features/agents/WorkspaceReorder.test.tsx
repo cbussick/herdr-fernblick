@@ -86,11 +86,177 @@ it("rolls back errors and reports them without retrying", async () => {
   expect(moveWorkspace).toHaveBeenCalledTimes(1);
 });
 
+it.each([140, 92, 56, 20, 0])(
+  "moves a tall workspace to first position at preview center y=%s",
+  async (y) => {
+    const rect = (top: number, height: number) => ({
+      left: 10,
+      right: 300,
+      top,
+      bottom: top + height,
+      width: 290,
+      height,
+    });
+    const droppableRects = new Map([
+      ["w1", rect(100, 80)],
+      ["w2", rect(200, 800)],
+      ["w3", rect(1020, 80)],
+    ]);
+    const collisions = context().props.collisionDetection({
+      active: { id: "w2" },
+      pointerCoordinates: { x: 40, y },
+      collisionRect: rect(y - 27, 54),
+      droppableRects,
+      droppableContainers: [...droppableRects.keys()].map((id) => ({ id })),
+    });
+    vi.spyOn(client, "invalidateQueries").mockImplementation(async () => {
+      renderer.update(render(false, [workspaces[1], workspaces[0], workspaces[2]]));
+    });
+    await drag("w2", collisions[0]?.id ?? null);
+    expect(moveWorkspace).toHaveBeenCalledWith({ workspaceId: "w2", beforeWorkspaceId: "w1" });
+    expect(order()).toEqual(["Beta", "Alpha", "Gamma"]);
+  },
+);
+
+it.each([
+  [181, "w1"],
+  [191, "w1"],
+  [192, "w1"],
+  [231, "w1"],
+  [232, "w2"],
+  [233, "w2"],
+  [273, "w2"],
+  [284, "w2"],
+  [323, "w2"],
+  [324, "w3"],
+])("waits for a lower row's midpoint at preview center y=%s", async (y, target) => {
+  const droppableRects = new Map(
+    ["w1", "w2", "w3"].map((id, index) => {
+      const top = 100 + index * 92;
+      return [id, { left: 10, right: 300, top, bottom: top + 80, width: 290, height: 80 }];
+    }),
+  );
+  const collisions = context().props.collisionDetection({
+    active: { id: "w1" },
+    pointerCoordinates: { x: 40, y },
+    collisionRect: { left: 10, right: 300, top: y - 40, bottom: y + 40, width: 290, height: 80 },
+    droppableRects,
+    droppableContainers: [...droppableRects.keys()].map((id) => ({ id })),
+  });
+  expect(collisions[0]?.id).toBe(target);
+  await drag("w1", collisions[0]?.id ?? null);
+  if (target === "w1") expect(moveWorkspace).not.toHaveBeenCalled();
+  else
+    expect(moveWorkspace).toHaveBeenCalledWith({
+      workspaceId: "w1",
+      beforeWorkspaceId: target === "w2" ? "w3" : null,
+    });
+});
+
+it.each([
+  [283, "w3"],
+  [273, "w3"],
+  [272, "w3"],
+  [233, "w3"],
+  [232, "w2"],
+  [231, "w2"],
+  [181, "w2"],
+  [180, "w2"],
+  [141, "w2"],
+  [140, "w1"],
+])("waits for an upper row's midpoint at preview center y=%s", async (y, target) => {
+  const droppableRects = new Map(
+    ["w1", "w2", "w3"].map((id, index) => {
+      const top = 100 + index * 92;
+      return [id, { left: 10, right: 300, top, bottom: top + 80, width: 290, height: 80 }];
+    }),
+  );
+  const collisions = context().props.collisionDetection({
+    active: { id: "w3" },
+    pointerCoordinates: { x: 40, y },
+    collisionRect: { left: 10, right: 300, top: y - 40, bottom: y + 40, width: 290, height: 80 },
+    droppableRects,
+    droppableContainers: [...droppableRects.keys()].map((id) => ({ id })),
+  });
+  expect(collisions[0]?.id).toBe(target);
+  await drag("w3", collisions[0]?.id ?? null);
+  if (target === "w3") expect(moveWorkspace).not.toHaveBeenCalled();
+  else expect(moveWorkspace).toHaveBeenCalledWith({ workspaceId: "w3", beforeWorkspaceId: target });
+});
+
+it.each([
+  ["w1", 231, 260, "w1"],
+  ["w1", 232, 200, "w2"],
+  ["w1", 233, 200, "w2"],
+  ["w3", 233, 210, "w3"],
+  ["w3", 232, 260, "w2"],
+  ["w3", 231, 260, "w2"],
+])(
+  "uses the dragged preview center for %s at center=%s and pointer=%s",
+  async (from, center, pointer, target) => {
+    const droppableRects = new Map(
+      ["w1", "w2", "w3"].map((id, index) => {
+        const top = 100 + index * 92;
+        return [id, { left: 10, right: 300, top, bottom: top + 80, width: 290, height: 80 }];
+      }),
+    );
+    const collisions = context().props.collisionDetection({
+      active: { id: from },
+      pointerCoordinates: { x: 40, y: pointer },
+      collisionRect: {
+        left: 10,
+        right: 250,
+        width: 240,
+        top: center - 27,
+        bottom: center + 27,
+        height: 54,
+      },
+      droppableRects,
+      droppableContainers: [...droppableRects.keys()].map((id) => ({ id })),
+    });
+    expect(collisions[0]?.id).toBe(target);
+    await drag(from, collisions[0]?.id ?? null);
+    if (target === from) expect(moveWorkspace).not.toHaveBeenCalled();
+    else
+      expect(moveWorkspace).toHaveBeenCalledWith({
+        workspaceId: from,
+        beforeWorkspaceId: from === "w1" ? "w3" : "w2",
+      });
+  },
+);
+
+it("targets expanded rows, keeps gaps droppable and preserves keyboard detection", () => {
+  const droppableRects = new Map([
+    ["w1", { left: 10, right: 300, top: 100, bottom: 900, width: 290, height: 800 }],
+    ["w2", { left: 10, right: 300, top: 920, bottom: 1000, width: 290, height: 80 }],
+  ]);
+  const args = {
+    active: { id: "w2" },
+    collisionRect: { left: 10, right: 300, top: 920, bottom: 1000, width: 290, height: 80 },
+    droppableRects,
+    droppableContainers: [...droppableRects.keys()].map((id) => ({ id })),
+  };
+  const collisionDetection = context().props.collisionDetection;
+  const atCenter = (center: number) =>
+    collisionDetection({
+      ...args,
+      pointerCoordinates: { x: 40, y: 960 },
+      collisionRect: { ...args.collisionRect, top: center - 27, bottom: center + 27, height: 54 },
+    })[0].id;
+  // An expanded row also requires the preview center to cross its midpoint.
+  expect(atCenter(890)).toBe("w2");
+  expect(atCenter(500)).toBe("w1");
+  expect(atCenter(910)).toBe("w2");
+  expect(atCenter(1044)).toBe("w2");
+  expect(collisionDetection(args)[0].id).toBe("w2");
+});
+
 it("does not consider the rest of the page a drop destination", () => {
   const droppableRects = new Map([["w1", { left: 10, right: 300, top: 100, bottom: 170 }]]);
   for (const pointerCoordinates of [
     { x: 900, y: 120 },
-    { x: 20, y: 20 },
+    { x: 20, y: -1 },
+    { x: 20, y: 215 },
     { x: 20, y: 500 },
   ]) {
     expect(context().props.collisionDetection({ pointerCoordinates, droppableRects })).toEqual([]);

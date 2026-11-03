@@ -1,6 +1,6 @@
-# Structured React Flow boards (isolated dogfood branch)
+# Structured React Flow boards
 
-Worktree: `.worktrees/react-flow-boards`, branch `react-flow-boards`. This is not deployed to the main app. The original standalone playground remains separate and unchanged.
+The isolated dogfood instance uses `.worktrees/react-flow-boards` on branch `react-flow-boards`. Keep its Herdr session, sockets and data separate from the main app. The original standalone playground remains separate and unchanged.
 
 ## What changes
 
@@ -90,7 +90,7 @@ export FERNBLICK_PI_ISOLATED=1
 HOST=127.0.0.1 PORT=8793 FERNBLICK_PUBLIC_URL=http://127.0.0.1:8793 npm start
 ```
 
-Use a distinct, available private port and the URL actually reachable by the testing browser. For iPad testing bind a specific Tailnet address and set the public URL accordingly, or use a separately approved HTTPS proxy; do not bind all interfaces or change the existing app mapping. `FERNBLICK_PI_SESSION_DIR` scopes Fernblick's saved-session catalog; it does not relocate a Pi process's own save directory. Configure that in the isolated Pi launch too, including any agents created from the UI, or launch the dogfood agents manually. The built backend serves the renderer at its own origin. Vite's dev server is not the on-demand PNG renderer. No live test stack or new Herdr session is started automatically by this work.
+Use a distinct, available private port and the URL actually reachable by the testing browser. For iPad testing bind a specific Tailnet address and set the public URL accordingly, or use a separately approved HTTPS proxy; do not bind all interfaces or change the existing app mapping. `FERNBLICK_PI_SESSION_DIR` scopes Fernblick's saved-session catalog; it does not relocate a Pi process's own save directory. Configure that in the isolated Pi launch too, including any agents created from the UI, or launch the dogfood agents manually. The built backend serves the renderer at its own origin. Vite's dev server is not the on-demand PNG renderer. These backend commands do not create a Herdr session or reconfigure the deployed app.
 
 ## Verification
 
