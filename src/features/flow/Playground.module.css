@@ -839,7 +839,7 @@
 }
 
 .form-field textarea {
-  resize: vertical;
+  resize: none;
   min-height: 80px;
 }
 
@@ -871,20 +871,35 @@
   outline: 1px solid #d8e0eb;
 }
 
-.swatch[aria-pressed="true"] {
+.custom-color {
+  position: relative;
+  display: grid;
+  place-items: center;
+  padding: 0;
+  background: white;
+  color: #596579;
+  cursor: pointer;
+}
+
+.swatch[aria-pressed="true"],
+.custom-color[data-selected="true"],
+.custom-color:focus-within {
   outline: 2px solid #5878ae;
   outline-offset: 2px;
 }
 
-.custom-color {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  font-size: 11px;
-  color: #718096;
+.custom-color input {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  opacity: 0;
+  cursor: pointer;
 }
 
-.custom-color input,
 .highlight input {
   width: 28px;
   height: 28px;

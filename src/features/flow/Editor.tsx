@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState, type FormEvent, type ReactNode } from "react";
-import { Plus, Trash2, Upload, X } from "lucide-react";
+import { Palette, Plus, Trash2, Upload, X } from "lucide-react";
 import { ComponentContent, componentStyle, Icon, icons } from "./Components";
 import { catalog, colors, validData, type ComponentData } from "./model";
 import { flowIcons } from "../../../packages/pi-live-chat/flowProtocol";
@@ -109,8 +109,12 @@ export function ColorPicker({
           onClick={() => onChange(color)}
         />
       ))}
-      <label className={styles["custom-color"]}>
-        Custom
+      <label
+        className={`${styles["swatch"]} ${styles["custom-color"]}`}
+        title="Custom color"
+        data-selected={!colors.includes(value)}
+      >
+        <Palette size={16} aria-hidden="true" />
         <input
           type="color"
           aria-label="Custom accent color"
@@ -269,7 +273,7 @@ export function ComponentEditor({
                   Remove image
                 </button>
               )}
-              <small>Local images only, up to 2 MiB. No external requests.</small>
+              <small>Up to 2 MiB</small>
             </fieldset>
             {kind === "detail" && (
               <fieldset className={styles["fieldset"]}>
@@ -457,7 +461,6 @@ export function ComponentEditor({
                 <ComponentContent data={draft} />
               </div>
             </div>
-            <p>These are React components, not flattened drawings.</p>
           </aside>
         </div>
         <footer className={styles["dialog-footer"]}>

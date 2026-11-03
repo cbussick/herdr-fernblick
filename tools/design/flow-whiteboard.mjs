@@ -220,6 +220,40 @@ try {
         // Manual edit is durably saved before a prompt is forwarded.
         await page.getByTestId("component-service").dblclick({ position: { x: 100, y: 25 } });
         let editor = page.getByRole("dialog", { name: "Edit Card", exact: true });
+        assert.equal(
+          await editor
+            .getByText("These are React components, not flattened drawings.", { exact: true })
+            .count(),
+          0,
+        );
+        assert.equal(await editor.getByText("Up to 2 MiB", { exact: true }).count(), 1);
+        assert(
+          await editor
+            .locator("textarea")
+            .evaluateAll((elements) =>
+              elements.every((e) => getComputedStyle(e).resize === "none"),
+            ),
+        );
+        const customColor = editor.getByLabel("Custom accent color", { exact: true });
+        const customSwatch = customColor.locator("..");
+        assert.equal((await customSwatch.textContent()).trim(), "");
+        assert.equal(await customSwatch.locator("svg").count(), 1);
+        const customBox = await customSwatch.boundingBox();
+        const swatchBox = await editor
+          .getByRole("button", { name: "Use #f28b3c", exact: true })
+          .boundingBox();
+        assert.equal(customBox.width, swatchBox.width);
+        assert.equal(customBox.height, swatchBox.height);
+        assert.equal(await customSwatch.evaluate((e) => getComputedStyle(e).borderRadius), "50%");
+        assert(
+          await customColor.evaluate((e) => {
+            const box = e.getBoundingClientRect();
+            return document.elementFromPoint(box.x + box.width / 2, box.y + box.height / 2) === e;
+          }),
+        );
+        await page.screenshot({
+          path: `.runtime/flow-board-evidence/editor-${name}-${layout}.png`,
+        });
         await editor.getByLabel("Title", { exact: true }).fill("Human service title");
         await editor.getByRole("button", { name: "Save changes", exact: true }).click();
         await until(

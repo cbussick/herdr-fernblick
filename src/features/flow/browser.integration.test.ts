@@ -339,6 +339,52 @@ describe("isolated production editor and DOM renderer", { timeout: 30_000 }, () 
     }
   });
 
+  it("keeps component-editor copy minimal, uses an icon-only circular custom color picker and fixes textarea size", async () => {
+    await loadEditor();
+    await page.getByRole("button", { name: "Add Card", exact: true }).click();
+    const dialog = page.getByRole("dialog", { name: "Add Card", exact: true });
+    await dialog.waitFor();
+    expect(
+      await dialog
+        .getByText("These are React components, not flattened drawings.", { exact: true })
+        .count(),
+    ).toBe(0);
+    expect(await dialog.getByText("Up to 2 MiB", { exact: true }).count()).toBe(1);
+    expect(await dialog.getByText(/Local images only|No external requests/).count()).toBe(0);
+    expect(
+      await dialog.getByLabel("Body", { exact: true }).evaluate((e) => getComputedStyle(e).resize),
+    ).toBe("none");
+    const input = dialog.getByLabel("Custom accent color", { exact: true });
+    const custom = input.locator("..");
+    expect((await custom.textContent())?.trim()).toBe("");
+    expect(await custom.locator("svg").count()).toBe(1);
+    const presetBox = await dialog
+      .getByRole("button", { name: "Use #f28b3c", exact: true })
+      .boundingBox();
+    const customBox = await custom.boundingBox();
+    expect(customBox?.width).toBe(presetBox?.width);
+    expect(customBox?.height).toBe(presetBox?.height);
+    expect(await custom.evaluate((e) => getComputedStyle(e).borderRadius)).toBe("50%");
+    expect(
+      await input.evaluate((e) => {
+        const box = e.getBoundingClientRect();
+        return document.elementFromPoint(box.x + box.width / 2, box.y + box.height / 2) === e;
+      }),
+    ).toBe(true);
+    await input.focus();
+    expect(await custom.evaluate((e) => getComputedStyle(e).outlineWidth)).toBe("2px");
+    await input.evaluate((e) => {
+      Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value")!.set!.call(e, "#123456");
+      e.dispatchEvent(new Event("change", { bubbles: true }));
+    });
+    await expect.poll(() => custom.getAttribute("data-selected")).toBe("true");
+    await dialog.getByRole("button", { name: "Add component", exact: true }).click();
+    await expect
+      .poll(() => page.evaluate(() => window.flowTest.changes.at(-1)?.elements[0]?.props))
+      .toMatchObject({ color: "#123456" });
+    expect(await page.evaluate(() => window.flowTest.errors)).toEqual([]);
+  });
+
   it("requires confirmation for import, preserves tombstones and does not dirty-loop external changes", async () => {
     await loadEditor();
     const first = fromDiagram(

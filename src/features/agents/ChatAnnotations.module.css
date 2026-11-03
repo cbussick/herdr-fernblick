@@ -282,7 +282,7 @@
   min-height: 6rem;
   max-height: 10rem;
   padding: var(--space-3);
-  resize: vertical;
+  resize: none;
   color: var(--color-text);
   font-size: 1rem;
   line-height: 1.5;
