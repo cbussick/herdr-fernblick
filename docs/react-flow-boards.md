@@ -55,13 +55,13 @@ Each menu opening freezes the current valid local scene, including unsynced chan
 
 PNG resolution choices are Standard (up to 2048 px per side, 4 Mi pixels) and High (up to 4096 px per side, 16 Mi pixels, up to twice the dimensions). Both have a 16 MiB compressed-file limit; exceptionally large/high-entropy boards are fitted/downscaled. The smaller agent screenshot limits remain unchanged (2048 side, 2 Mi pixels, 2 MiB). PNG needs the backend and the current authorized Pi session; JSON does not. SVG whole-board export is not implemented yet.
 
-## Retired Excalidraw browser drafts
+## Browser draft storage
 
-Browser board storage is version 2. On its first access after the updated app loads, it permanently deletes cached Excalidraw drafts (including dirty/paused ones and their recovery copies), and removes Excalidraw recovery scenes from otherwise intact React Flow drafts. No conversion, archive or confirmation is performed. A Flow drawing with an incompatible native base is retained but paused rather than merged against that base.
+Browser board storage stays at version 2 for devices already updated during the Excalidraw retirement. The temporary destructive cleanup shipped in `899c5d4` has been removed after all devices were confirmed updated. Upgrades, reads and writes no longer automatically delete or filter drawings, base scenes or recovery copies, including legacy records. Previously deleted data is not restored, and devices that skipped that one-time cleanup will no longer be wiped automatically.
 
-Reads/writes also reject legacy persistence so old drafts cannot be restored through the current storage layer. Old version-1 clients cannot reopen the upgraded database; close outdated Fernblick tabs and refresh if the upgrade is blocked. New connections close on version changes and abandoned upgrade requests do not leave a database connection open.
+Version-1 databases can upgrade without changing their records. Old version-1 app code cannot reopen a version-2 database; close outdated Fernblick tabs and refresh if an upgrade is blocked. Connections close on version changes and abandoned upgrade requests do not leave a database connection open.
 
-This is an intentionally destructive retirement, authorized after the old boards were backed up separately. It changes only this origin's whiteboard draft store—not React Flow drawing content, chat storage, other sites, server boards, or `/tmp` backups. Refresh the updated app and reopen the board to load the server's new React Flow scene instead of the cached native revision.
+Ordinary explicit conversation deletion still removes the matching local drafts/recovery copies. This storage change does not alter chat storage, server boards or `/tmp` backups.
 
 ## Backups and recovery
 

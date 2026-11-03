@@ -21,6 +21,7 @@ type Harness = {
   draftTest: {
     read(key: string): Promise<unknown>;
     write(key: string, value: unknown): Promise<void>;
+    remove(sessionId: string | null, boardIds: string[]): Promise<void>;
     start(): Promise<{ engine?: string; revision?: number; conflict: boolean }>;
   };
 };
@@ -43,9 +44,9 @@ beforeAll(async () => {
           server.middlewares.use("/draft-cleanup", (_req, res) => {
             res.setHeader("Content-Type", "text/html");
             res.end(`<script type="module">
-        import { draftStore } from '/src/features/whiteboard/draftStore.ts';
+        import { draftStore, removeWhiteboardDrafts } from '/src/features/whiteboard/draftStore.ts';
         import { BoardController } from '/src/features/whiteboard/BoardController.ts';
-        window.draftTest = { ...draftStore, async start() {
+        window.draftTest = { ...draftStore, remove: removeWhiteboardDrafts, async start() {
           const scene = { engine:'react-flow', elements:[], files:{}, background:'#ffffff' };
           const api = {open:async()=>({id:'a'.repeat(64),revision:0,scene,updatedAt:Date.now(),lastAuthor:'human',snapshots:[],access:null}),events:()=>()=>{}};
           const owner = new BoardController('pane',{runtime:'11111111-1111-4111-8111-111111111111',epoch:'22222222-2222-4222-8222-222222222222',sessionId:'cleanup-session'},api,draftStore);
@@ -127,136 +128,154 @@ async function rawRecords(page: Page) {
   );
 }
 
-describe.each(["chromium", "webkit"])("destructive Excalidraw cache cleanup (%s)", (browser) => {
-  it("deletes all legacy drafts/recovery, preserving Flow drafts and unrelated browser storage", async () => {
-    const { page, context } = await pageFor(browser);
-    try {
-      const valid = draft(flow, { recovery: flow, dirty: false, paused: false });
-      const withLegacyRecovery = draft(flow, { recovery: native });
-      await seed(page, {
-        old: draft(native, { recovery: native }),
-        explicit: draft({ ...native, engine: "excalidraw" }),
-        flow: valid,
-        recovery: withLegacyRecovery,
-        nativeBase: draft(flow, { baseScene: native, paused: false, recovery: flow }),
-        unknown: { unrelated: true },
-      });
-      await page.evaluate(() => localStorage.setItem("chat-draft", "Do not erase"));
-      expect(await page.evaluate(() => (window as Harness).draftTest.read("old"))).toBeUndefined();
-      const records = await rawRecords(page);
-      expect(records.old).toBeUndefined();
-      expect(records.explicit).toBeUndefined();
-      expect(records.flow).toEqual(valid);
-      const { recovery: _removed, ...expected } = withLegacyRecovery;
-      expect(records.recovery).toEqual(expected);
-      expect(records.nativeBase).toEqual(
-        draft(flow, { baseScene: undefined, paused: true, recovery: flow }),
-      );
-      expect(records.unknown).toEqual({ unrelated: true });
-      expect(await page.evaluate(() => localStorage.getItem("chat-draft"))).toBe("Do not erase");
-    } finally {
-      await context.close();
-    }
-  });
-  it("opens the server's empty Flow revision zero instead of a cached native revision 127", async () => {
-    const { page, context } = await pageFor(browser);
-    try {
-      await seed(page, {
-        '["pane","cleanup-session"]': draft(native, { dirty: false, paused: false }),
-      });
-      expect(await page.evaluate(() => (window as Harness).draftTest.start())).toEqual({
-        engine: "react-flow",
-        revision: 0,
-        conflict: false,
-      });
-    } finally {
-      await context.close();
-    }
-  });
-  it("handles a blocked upgrade without leaving an abandoned database connection open", async () => {
-    const { page, context } = await pageFor(browser);
-    try {
-      await seed(page, { old: draft(native) });
-      await page.evaluate(
-        () =>
-          new Promise<void>((resolve, reject) => {
-            const request = indexedDB.open("fernblick-whiteboards", 1);
-            request.onerror = () => reject(request.error);
-            request.onsuccess = () => {
-              window.heldDraftDb = request.result;
-              resolve();
-            };
-          }),
-      );
-      const error = await page.evaluate(async () => {
-        try {
-          await window.draftTest.read("old");
-          return "unexpected success";
-        } catch (error) {
-          return String(error);
-        }
-      });
-      expect(error).toContain("Close other Fernblick tabs");
-      await page.evaluate(() => {
-        window.heldDraftDb!.close();
-        delete window.heldDraftDb;
-      });
-      const next = await page.evaluate(
-        () =>
-          new Promise<string>((resolve, reject) => {
-            const request = indexedDB.open("fernblick-whiteboards", 3);
-            request.onblocked = () => resolve("blocked");
-            request.onerror = () => reject(request.error);
-            request.onsuccess = () => {
-              request.result.close();
-              resolve("upgraded");
-            };
-          }),
-      );
-      expect(next).toBe("upgraded");
-      expect((await rawRecords(page)).old).toBeUndefined();
-    } finally {
-      await context.close();
-    }
-  });
-  it("prevents old version-one clients and current writes from restoring native drafts", async () => {
-    const { page, context } = await pageFor(browser);
-    try {
-      await seed(page, { old: draft(native) });
-      await page.evaluate(() => (window as Harness).draftTest.read("old"));
-      const oldVersion = await page.evaluate(
-        () =>
-          new Promise<string>((resolve) => {
-            const request = indexedDB.open("fernblick-whiteboards", 1);
-            request.onerror = () => resolve(request.error!.name);
-            request.onsuccess = () => {
-              request.result.close();
-              resolve("opened");
-            };
-          }),
-      );
-      expect(oldVersion).toBe("VersionError");
-      await page.evaluate(
-        (raw) => (window as Harness).draftTest.write("old", JSON.parse(raw)),
-        JSON.stringify(draft(native)),
-      );
-      await page.evaluate(
-        (raw) => (window as Harness).draftTest.write("flow", JSON.parse(raw)),
-        JSON.stringify(draft(flow, { recovery: native })),
-      );
-      await expect(
-        page.evaluate(() => window.draftTest.write("flow", undefined)),
-      ).rejects.toThrow();
-      await seed(page, { injected: draft(native) }, 2);
-      expect(
-        await page.evaluate(() => (window as Harness).draftTest.read("injected")),
-      ).toBeUndefined();
-      const records = await rawRecords(page);
-      expect(records.old).toBeUndefined();
-      expect(records.injected).toBeUndefined();
-      expect(records.flow).toEqual(draft(flow));
-    } finally {
-      await context.close();
-    }
-  });
-});
+describe.each(["chromium", "webkit"])(
+  "non-destructive version-two draft storage (%s)",
+  (browser) => {
+    it("upgrades version one without deleting or modifying any stored drafts or recovery copies", async () => {
+      const { page, context } = await pageFor(browser);
+      try {
+        const records = {
+          old: draft(native, { recovery: native }),
+          explicit: draft({ ...native, engine: "excalidraw" }),
+          flow: draft(flow, { recovery: flow, dirty: false, paused: false }),
+          recovery: draft(flow, { recovery: native }),
+          nativeBase: draft(flow, { baseScene: native, paused: false }),
+          unknown: { unrelated: true },
+        };
+        await seed(page, records);
+        await page.evaluate(() => localStorage.setItem("chat-draft", "Do not erase"));
+        expect(await page.evaluate(() => window.draftTest.read("old"))).toEqual(records.old);
+        expect(await rawRecords(page)).toEqual(records);
+        expect(await page.evaluate(() => localStorage.getItem("chat-draft"))).toBe("Do not erase");
+      } finally {
+        await context.close();
+      }
+    });
+    it("continues opening the Flow board on already-updated version-two devices", async () => {
+      const { page, context } = await pageFor(browser);
+      try {
+        await seed(
+          page,
+          {
+            '["pane","cleanup-session"]': draft(flow, {
+              baseRevision: 0,
+              dirty: false,
+              paused: false,
+            }),
+          },
+          2,
+        );
+        expect(await page.evaluate(() => (window as Harness).draftTest.start())).toEqual({
+          engine: "react-flow",
+          revision: 0,
+          conflict: false,
+        });
+      } finally {
+        await context.close();
+      }
+    });
+    it("only removes drafts when explicitly deleting their conversation", async () => {
+      const { page, context } = await pageFor(browser);
+      try {
+        const records = {
+          keep: draft(flow, { recovery: native }),
+          byId: draft(native, { boardId: "b".repeat(64) }),
+          '["pane","remove-session"]': draft(flow, { boardId: "c".repeat(64) }),
+          untargeted: draft(native, { boardId: "d".repeat(64) }),
+        };
+        await seed(page, records, 2);
+        await page.evaluate(() => window.draftTest.remove("remove-session", ["b".repeat(64)]));
+        expect(await rawRecords(page)).toEqual({
+          keep: records.keep,
+          untargeted: records.untargeted,
+        });
+      } finally {
+        await context.close();
+      }
+    });
+    it("handles a blocked upgrade without leaving an abandoned database connection open", async () => {
+      const { page, context } = await pageFor(browser);
+      try {
+        await seed(page, { old: draft(native) });
+        await page.evaluate(
+          () =>
+            new Promise<void>((resolve, reject) => {
+              const request = indexedDB.open("fernblick-whiteboards", 1);
+              request.onerror = () => reject(request.error);
+              request.onsuccess = () => {
+                window.heldDraftDb = request.result;
+                resolve();
+              };
+            }),
+        );
+        const error = await page.evaluate(async () => {
+          try {
+            await window.draftTest.read("old");
+            return "unexpected success";
+          } catch (error) {
+            return String(error);
+          }
+        });
+        expect(error).toContain("Close other Fernblick tabs");
+        await page.evaluate(() => {
+          window.heldDraftDb!.close();
+          delete window.heldDraftDb;
+        });
+        const next = await page.evaluate(
+          () =>
+            new Promise<string>((resolve, reject) => {
+              const request = indexedDB.open("fernblick-whiteboards", 3);
+              request.onblocked = () => resolve("blocked");
+              request.onerror = () => reject(request.error);
+              request.onsuccess = () => {
+                request.result.close();
+                resolve("upgraded");
+              };
+            }),
+        );
+        expect(next).toBe("upgraded");
+        expect((await rawRecords(page)).old).toEqual(draft(native));
+      } finally {
+        await context.close();
+      }
+    });
+    it("keeps database version two but removes destructive read/write filtering", async () => {
+      const { page, context } = await pageFor(browser);
+      try {
+        await seed(page, { old: draft(native) });
+        await page.evaluate(() => (window as Harness).draftTest.read("old"));
+        const oldVersion = await page.evaluate(
+          () =>
+            new Promise<string>((resolve) => {
+              const request = indexedDB.open("fernblick-whiteboards", 1);
+              request.onerror = () => resolve(request.error!.name);
+              request.onsuccess = () => {
+                request.result.close();
+                resolve("opened");
+              };
+            }),
+        );
+        expect(oldVersion).toBe("VersionError");
+        await page.evaluate(
+          (raw) => (window as Harness).draftTest.write("old", JSON.parse(raw)),
+          JSON.stringify(draft(native)),
+        );
+        await page.evaluate(
+          (raw) => (window as Harness).draftTest.write("flow", JSON.parse(raw)),
+          JSON.stringify(draft(flow, { recovery: native })),
+        );
+        await expect(
+          page.evaluate(() => window.draftTest.write("flow", undefined)),
+        ).rejects.toThrow();
+        await seed(page, { injected: draft(native) }, 2);
+        expect(await page.evaluate(() => window.draftTest.read("injected"))).toEqual(draft(native));
+        const records = await rawRecords(page);
+        expect(records.old).toEqual(draft(native));
+        expect(records.injected).toEqual(draft(native));
+        expect(records.flow).toEqual(draft(flow, { recovery: native }));
+      } finally {
+        await context.close();
+      }
+    });
+  },
+);
