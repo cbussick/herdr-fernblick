@@ -47,8 +47,9 @@ type GrantRecord = {
   grant: BoardGrant;
   target: BoardTarget;
   state: "pending" | "active";
-  expiresAt: number;
-  timer: ReturnType<typeof setTimeout>;
+  expiresAt: number | null;
+  timer?: ReturnType<typeof setTimeout>;
+  lifetime: "request" | "connection";
   results: Map<string, { fingerprint: string; result: ApplyResult }>;
   // At most the 2,000 live shape IDs; no scene/assets or capability data retained.
   observed: Map<string, { revision: number; fingerprint: string }>;
@@ -178,7 +179,7 @@ export class BoardStore {
       (a, b) =>
         Number(b.state === "active") - Number(a.state === "active") ||
         Number(b.grant.mode === "edit") - Number(a.grant.mode === "edit") ||
-        b.expiresAt - a.expiresAt,
+        (b.expiresAt ?? Number.MAX_SAFE_INTEGER) - (a.expiresAt ?? Number.MAX_SAFE_INTEGER),
     );
     const record = records[0];
     return {
@@ -430,7 +431,13 @@ export class BoardStore {
     });
   }
 
-  grant(boardId: string, target: BoardTarget, mode: "read" | "edit", revision: number): BoardGrant {
+  grant(
+    boardId: string,
+    target: BoardTarget,
+    mode: "read" | "edit",
+    revision: number,
+    lifetime: "request" | "connection" = "request",
+  ): BoardGrant {
     this.alive();
     validId(boardId);
     validRevision(revision);
@@ -451,6 +458,7 @@ export class BoardStore {
       grant,
       target: parsed.data,
       state: "pending",
+      lifetime,
       expiresAt: Date.now() + PENDING_MS,
       timer: this.expirationTimer(grant.grantId, PENDING_MS),
       results: new Map(),
@@ -468,7 +476,8 @@ export class BoardStore {
   }
   private expire(): void {
     const now = Date.now();
-    for (const [id, record] of this.grants) if (record.expiresAt <= now) this.revoke(id);
+    for (const [id, record] of this.grants)
+      if (record.expiresAt !== null && record.expiresAt <= now) this.revoke(id);
   }
   private authorized(request: BoardRequest, active: boolean): GrantRecord {
     this.alive();
@@ -633,8 +642,11 @@ export class BoardStore {
         if (record.state === "pending") {
           clearTimeout(record.timer);
           record.state = "active";
-          record.expiresAt = Date.now() + ACTIVE_MS;
-          record.timer = this.expirationTimer(request.grantId, ACTIVE_MS);
+          record.expiresAt = record.lifetime === "connection" ? null : Date.now() + ACTIVE_MS;
+          record.timer =
+            record.lifetime === "connection"
+              ? undefined
+              : this.expirationTimer(request.grantId, ACTIVE_MS);
           this.notify(request.boardId);
         }
         // Activation retries do not extend the lease or grant edit privileges.

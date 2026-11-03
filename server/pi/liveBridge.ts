@@ -54,7 +54,7 @@ interface Peer {
   snapshot?: Snapshot;
   boardGrant?: BoardGrant;
   boardRequests: number;
-  boardRun?: { id: string; revoked: boolean; expiresAt: number };
+  boardRun?: { id: string; revoked: boolean; expiresAt: number | null };
 }
 interface Pending {
   peer: Peer;
@@ -186,7 +186,11 @@ export class LiveBridge {
       peer.boardRun?.id !== request.runId
     ) {
       this.clearBoardAccess(peer);
-      peer.boardRun = { id: request.runId, revoked: false, expiresAt: Date.now() + 15 * 60_000 };
+      peer.boardRun = {
+        id: request.runId,
+        revoked: false,
+        expiresAt: request.lifetime === "connection" ? null : Date.now() + 15 * 60_000,
+      };
     }
     if (request.action === "end" && peer.boardRun?.id === request.runId)
       this.clearBoardAccess(peer);
@@ -198,7 +202,7 @@ export class LiveBridge {
         peer.boardRun !== run ||
         run.id !== request.runId ||
         run.revoked ||
-        run.expiresAt <= Date.now()
+        (run.expiresAt !== null && run.expiresAt <= Date.now())
       )
         throw new LiveChatError(403, "Whiteboard request ended or was revoked; send a new request");
     };
@@ -243,7 +247,13 @@ export class LiveBridge {
         else {
           // Concurrent tool calls share one lease and its idempotence ledger.
           if (!peer.boardGrant) {
-            peer.boardGrant = this.boards!.grant(state.id, request.target, "edit", state.revision);
+            peer.boardGrant = this.boards!.grant(
+              state.id,
+              request.target,
+              "edit",
+              state.revision,
+              run!.expiresAt === null ? "connection" : "request",
+            );
             await this.boards!.handle(
               {
                 type: "board-request",
@@ -292,7 +302,9 @@ export class LiveBridge {
         !peer.snapshot ||
         !matchesTarget(peer.snapshot, request.target) ||
         peer.boardGrant?.grantId !== request.grantId ||
-        (peer.boardRun && (peer.boardRun.revoked || peer.boardRun.expiresAt <= Date.now())) ||
+        (peer.boardRun &&
+          (peer.boardRun.revoked ||
+            (peer.boardRun.expiresAt !== null && peer.boardRun.expiresAt <= Date.now()))) ||
         BoardStore.idFor(boardSessionKey(peer.snapshot)) !== request.boardId
       )
         throw new LiveChatError(403, "Board access is not authorized for this request");
@@ -473,7 +485,11 @@ export class LiveBridge {
         socket.destroy();
         return;
       }
-      if (prev && (prev.epoch !== next.epoch || (prev.busy && !next.busy && !next.sendPending)))
+      if (
+        prev &&
+        (prev.epoch !== next.epoch ||
+          (prev.busy && !next.busy && !next.sendPending && peer.boardRun?.expiresAt !== null))
+      )
         this.clearBoardAccess(peer);
       peer.snapshot = next;
       clearTimeout(handshake);

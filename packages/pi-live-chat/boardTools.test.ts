@@ -113,6 +113,58 @@ async function available(t: ReturnType<typeof setup>, source = "interactive") {
   t.tools.agentStart(t.ctx);
 }
 
+it("keeps connected tools available across long idle periods and settlement without creating a board", async () => {
+  const t = setup();
+  const connecting = t.tools.connected();
+  expect(t.frames.at(-1)).toMatchObject({ action: "begin", lifetime: "connection" });
+  t.reply(undefined, {});
+  await connecting;
+  expect(t.pi.getActiveTools()).toEqual([
+    "read",
+    "bash",
+    "unrelated",
+    "board_read",
+    "board_components",
+    "board_apply",
+  ]);
+  expect(t.frames.map((f) => f.action)).toEqual(["begin"]);
+  t.tools.settled();
+  t.tools.compacting();
+  await vi.advanceTimersByTimeAsync(24 * 60 * 60_000);
+  expect(t.pi.getActiveTools()).toContain("board_apply");
+  expect(t.frames.map((f) => f.action)).toEqual(["begin"]);
+  const reading = t.run("board_read", { includeImage: false });
+  expect(t.frames.at(-1)?.action).toBe("grant");
+  t.reply(undefined, { grant: t.grant });
+  await Promise.resolve();
+  await Promise.resolve();
+  expect(t.frames.at(-1)?.action).toBe("read");
+  t.reply(undefined, { revision: 2, elements: [] });
+  await reading;
+  t.tools.settled();
+  expect(t.pi.getActiveTools()).toContain("board_apply");
+  t.tools.revoke();
+  await t.tools.connected();
+  expect(t.pi.getActiveTools()).not.toContain("board_apply");
+});
+
+it("does not expire ordinary access during slow preflight compaction or a long running task", async () => {
+  const t = setup();
+  t.input("Prepare a large board", "interactive");
+  t.tools.compacting();
+  await vi.advanceTimersByTimeAsync(60 * 60_000);
+  const starting = t.tools.beforeAgentStart("Prepare a large board", t.ctx);
+  expect(t.frames.at(-1)).toMatchObject({ action: "begin", lifetime: "connection" });
+  t.reply(undefined, { expiresAt: null });
+  await starting;
+  t.tools.agentStart(t.ctx);
+  await vi.advanceTimersByTimeAsync(24 * 60 * 60_000);
+  expect(t.pi.getActiveTools()).toContain("board_apply");
+  t.tools.settled();
+  expect(t.pi.getActiveTools()).toContain("board_apply");
+  t.tools.revoke();
+});
+
 it.each(["interactive", "extension"])(
   "makes tools available on first %s prompt without opening or rendering a board",
   async (source) => {

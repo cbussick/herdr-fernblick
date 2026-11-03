@@ -154,7 +154,21 @@ async function setup(beforeStart?: (pi: ReturnType<typeof fakePi>) => void) {
   const connections: Socket[] = [];
   const server = createServer((socket) => {
     connections.push(socket);
-    receiveFrames(socket, (value) => frames.push(value));
+    receiveFrames(socket, (value) => {
+      frames.push(value);
+      const frame = value as Record<string, unknown>;
+      if (
+        frame.type === "board-control" &&
+        frame.action === "begin" &&
+        frame.lifetime === "connection"
+      )
+        writeFrame(socket, {
+          type: "board-reply",
+          id: frame.id,
+          ok: true,
+          data: { expiresAt: null },
+        });
+    });
   });
   await new Promise<void>((done) => server.listen(path, done));
   const { chmod } = await import("node:fs/promises");
@@ -180,6 +194,7 @@ async function setup(beforeStart?: (pi: ReturnType<typeof fakePi>) => void) {
   beforeStart?.(pi);
   expect(pi.emit("session_start")).toEqual([undefined]);
   await vi.waitFor(() => expect(latest()).toBeDefined());
+  await vi.waitFor(() => expect(pi.tools.get("board_read")?.exposure).toBe("direct"));
   const command = (
     action: "send" | "stop" | "compact" | "shutdown",
     target = targetOf(latest()!),
@@ -1384,7 +1399,7 @@ it("sends ten 10 MiB image-only uploads as Pi ImageContent without putting base6
   });
 }, 15_000);
 
-it.each(["epoch", "session", "busy", "input", "stop"] as const)(
+it.each(["epoch", "session", "busy", "input", "stop", "compact"] as const)(
   "rechecks %s after async image preparation before invoking Pi",
   async (change) => {
     const t = await setup();
@@ -1433,7 +1448,10 @@ it.each(["epoch", "session", "busy", "input", "stop"] as const)(
     });
     await started;
     if (change === "epoch") t.emit("session_tree");
-    else if (change === "session") t.emit("session_shutdown");
+    else if (change === "compact") {
+      t.emit("session_before_compact");
+      t.emit("session_compact_failed");
+    } else if (change === "session") t.emit("session_shutdown");
     else if (change === "input") t.emit("input", { text: "unrelated", source: "interactive" });
     else if (change === "stop")
       expect(await t.ack(t.command("stop"))).toMatchObject({
@@ -1445,7 +1463,10 @@ it.each(["epoch", "session", "busy", "input", "stop"] as const)(
     else await new Promise((done) => setTimeout(done, 50));
     expect(t.pi.sendUserMessage).not.toHaveBeenCalled();
     expect(boardRequests(t)).toEqual([]);
-    expect(t.pi.getActiveTools()).not.toContain("board_read");
+    // A rejected image send must not remove the conversation's default tools.
+    expect(t.pi.getActiveTools().includes("board_read")).toBe(
+      change === "epoch" || change === "busy" || change === "compact",
+    );
   },
 );
 
@@ -1673,7 +1694,8 @@ it.each(["interactive", "extension"])(
   "exposes whiteboard from the first %s turn without a UI-specific prompt or image",
   async (source) => {
     const t = await setup();
-    expect(t.tools.get("board_read")?.exposure).toBe("hidden");
+    expect(t.tools.get("board_read")?.exposure).toBe("direct");
+    expect(boardRequests(t)).toEqual([]);
     t.emit("input", { text: "An ordinary message", source });
     const before = Promise.all(
       t.emit("before_agent_start", {
@@ -1837,10 +1859,16 @@ it("advertises boards, dispatches private RPCs before commands, and gates read-o
     shutdown: true,
   });
   expect(t.tools.get("board_read")).toMatchObject({
-    exposure: "hidden",
+    exposure: "direct",
     defaultActive: false,
   });
-  expect(t.pi.getActiveTools()).toEqual(["read", "bash"]);
+  expect(t.pi.getActiveTools()).toEqual([
+    "read",
+    "bash",
+    "board_read",
+    "board_components",
+    "board_apply",
+  ]);
   const board = await activateBoard(t, "read");
   expect(t.pi.getActiveTools()).toEqual(["read", "bash", "board_read", "board_components"]);
   expect(t.tools.get("board_apply")?.exposure).toBe("hidden");

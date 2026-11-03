@@ -165,6 +165,7 @@ export const boardControlSchema = z
     target: boardTargetSchema,
     runId: z.string().uuid(),
     action: z.enum(["begin", "grant", "end", "open"]),
+    lifetime: z.literal("connection").optional(),
   })
   .strict();
 export type BoardControl = z.infer<typeof boardControlSchema>;
@@ -200,7 +201,7 @@ export const boardStateSchema = z.object({
     .object({
       mode: z.enum(["read", "edit"]),
       state: z.enum(["pending", "active"]),
-      expiresAt: z.number(),
+      expiresAt: z.number().nullable(),
     })
     .nullable(),
 });

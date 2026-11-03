@@ -679,6 +679,24 @@ describe("capability lifecycle", () => {
     expect((await store.read(boardId)).access).toBeNull();
   });
 
+  it("keeps activated connection grants without a timer while still expiring unactivated handoffs", async () => {
+    vi.useFakeTimers({ toFake: ["Date", "setTimeout", "clearTimeout"] });
+    const pending = store.grant(boardId, owner, "edit", 0, "connection");
+    vi.advanceTimersByTime(30_000);
+    await expect(store.handle(request(pending, "activate"), validate)).rejects.toMatchObject({
+      status: 403,
+    });
+    const grant = store.grant(boardId, owner, "edit", 0, "connection");
+    await store.handle(request(grant, "activate"), validate);
+    expect((await store.read(boardId)).access).toMatchObject({ expiresAt: null });
+    vi.advanceTimersByTime(7 * 24 * 60 * 60_000);
+    expect(await store.handle(request(grant, "read"), validate)).toMatchObject({ revision: 0 });
+    store.revokeTarget(owner);
+    await expect(store.handle(request(grant, "read"), validate)).rejects.toMatchObject({
+      status: 403,
+    });
+  });
+
   it("expires pending grants after 30 seconds and active grants after 15 minutes without renewing on retries", async () => {
     vi.useFakeTimers({ toFake: ["Date", "setTimeout", "clearTimeout"] });
     const pending = store.grant(boardId, owner, "edit", 0);

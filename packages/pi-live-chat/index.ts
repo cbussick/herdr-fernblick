@@ -298,7 +298,9 @@ export default function liveChat(pi: ExtensionAPI) {
     }
   }
   function writeSnapshot(client: Socket, value: Snapshot) {
-    if (!writeFrame(client, value) || !client.writableNeedDrain || publishStallTimer) return;
+    if (!writeFrame(client, value)) return;
+    boards?.connected();
+    if (!client.writableNeedDrain || publishStallTimer) return;
     // Brief stalls coalesce; a permanently stalled backend still loses its peer.
     publishStallTimer = setTimeout(() => {
       publishStallTimer = undefined;
@@ -717,7 +719,7 @@ export default function liveChat(pi: ExtensionAPI) {
           // invocation, then retain serialization until a terminal callback, even
           // if the socket disconnects or the backend deadline expires.
           preparing = true;
-          boards?.revoke("Whiteboard context is compacting");
+          boards?.compacting();
           let settled = false;
           const finish = (error?: Error) => {
             if (settled) return;
@@ -920,7 +922,7 @@ export default function liveChat(pi: ExtensionAPI) {
   });
   pi.on("agent_settled", (_e, ctx) => {
     if (!context) return;
-    boards?.revoke("Whiteboard request settled");
+    boards?.settled();
     context = ctx;
     active = false;
     finishHandoff();
@@ -937,7 +939,7 @@ export default function liveChat(pi: ExtensionAPI) {
   function reconcile(event: { type: string }, ctx: ExtensionContext) {
     if (!context) return;
     inputGeneration++;
-    boards?.revoke("Whiteboard context changed");
+    if (event.type === "session_tree") boards?.revoke("Whiteboard context changed");
     context = ctx;
     if (event.type === "session_compact") compacting = false;
     if (event.type === "session_tree") epoch = randomUUID();
@@ -953,7 +955,8 @@ export default function liveChat(pi: ExtensionAPI) {
   pi.on("session_before_fork", revokeBoardContext);
   pi.on("session_before_tree", revokeBoardContext);
   pi.on("session_before_compact", (_event, ctx) => {
-    revokeBoardContext();
+    inputGeneration++;
+    boards?.compacting();
     if (!context) return;
     context = ctx;
     compacting = true;

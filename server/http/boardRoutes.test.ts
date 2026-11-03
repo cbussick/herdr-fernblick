@@ -181,9 +181,20 @@ async function rpc(
   );
   return frames.find((f) => f.type === "board-reply" && f.id === id)!;
 }
-async function control(action: "begin" | "grant" | "end" | "open", runId: string) {
+async function control(
+  action: "begin" | "grant" | "end" | "open",
+  runId: string,
+  lifetime?: "connection",
+) {
   const id = randomUUID();
-  writeFrame(socket, { type: "board-control", id, target: targetOf(snapshot), runId, action });
+  writeFrame(socket, {
+    type: "board-control",
+    id,
+    target: targetOf(snapshot),
+    runId,
+    action,
+    lifetime,
+  });
   await vi.waitFor(() =>
     expect(frames.some((f) => f.type === "board-reply" && f.id === id)).toBe(true),
   );
@@ -402,6 +413,39 @@ it("slow rendering does not block opening or saving, and returns its captured re
     data: { revision: 0, image: { mimeType: "image/png" } },
   });
   expect(render).toHaveBeenCalledWith(state.scene);
+});
+
+it("keeps connection-bound access through long preparation, settlement and idle, but honors Stop access", async () => {
+  vi.useFakeTimers({ toFake: ["Date"] });
+  try {
+    const run = randomUUID();
+    expect(await control("begin", run, "connection")).toMatchObject({
+      ok: true,
+      data: { expiresAt: null },
+    });
+    expect(await readdir(join(directory, "boards")).catch(() => [])).toEqual([]);
+    vi.setSystemTime(Date.now() + 24 * 60 * 60_000);
+    const result = await control("grant", run);
+    expect(result.ok).toBe(true);
+    const grant = (result.data as { grant: BoardGrant }).grant;
+    expect((await boards.read(grant.boardId)).access).toMatchObject({
+      state: "active",
+      expiresAt: null,
+    });
+    for (const busy of [true, false]) {
+      snapshot = { ...snapshot, seq: snapshot.seq + 1, busy };
+      writeFrame(socket, snapshot);
+      await vi.waitFor(() => expect(bridge.current(agent).snapshot.seq).toBe(snapshot.seq));
+    }
+    vi.setSystemTime(Date.now() + 24 * 60 * 60_000);
+    expect(await rpc(grant, "read", { includeImage: false })).toMatchObject({ ok: true });
+    expect((await post("revoke", { boardId: grant.boardId })).status).toBe(200);
+    expect(await rpc(grant, "read", { includeImage: false })).toMatchObject({ ok: false });
+    expect(await control("grant", run)).toMatchObject({ ok: false });
+    expect(await control("begin", run, "connection")).toMatchObject({ ok: false });
+  } finally {
+    vi.useRealTimers();
+  }
 });
 
 it("returns the missing-session error before revoking a failed native activation", async () => {
