@@ -59,9 +59,23 @@ try {
         touchPoints: type === "touchEnd" ? [] : [{ x, y }],
       });
     const x = source.x + source.width / 2;
-    const startY = source.y + source.height / 2;
+    let startY = source.y + source.height / 2;
     const endY = first.y + offset;
     await send("touchStart", x, startY);
+    if (destination === "first-header") {
+      const nearHalf = first.y + (first.height * 3) / 4;
+      for (let step = 1; step <= 20; step++) {
+        await send("touchMove", x, startY + ((nearHalf - startY) * step) / 20);
+        await page.waitForTimeout(20);
+      }
+      await page.evaluate(() => new Promise(requestAnimationFrame));
+      assert.equal(
+        await page.locator('[data-marker="before"] > details > summary strong').textContent(),
+        "Beta",
+        "upward drag must not target Alpha before crossing its midpoint",
+      );
+      startY = nearHalf;
+    }
     for (let step = 1; step <= 20; step++) {
       await send(
         "touchMove",

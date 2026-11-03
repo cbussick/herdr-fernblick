@@ -39,16 +39,16 @@ const workspaceCollision: CollisionDetection = (args) => {
       y > Math.max(...rects.map((rect) => rect.bottom)) + bottomDropZone
     )
       return [];
-    // Entering the top half of a lower row still means "before that row".
-    // Only offer its after-position once the pointer crosses its midpoint.
+    // In either direction, cross a row's midpoint before offering the position
+    // beyond it. Entering only its near half should not trigger a reorder.
     const activeRect = args.droppableRects.get(args.active.id);
     const destinations = {
       ...args,
       droppableContainers: args.droppableContainers.filter((container) => {
         const rect = args.droppableRects.get(container.id);
-        return (
-          !activeRect || !rect || rect.top <= activeRect.top || y >= rect.top + rect.height / 2
-        );
+        if (!activeRect || !rect || container.id === args.active.id) return true;
+        const midpoint = rect.top + rect.height / 2;
+        return rect.top < activeRect.top ? y <= midpoint : y >= midpoint;
       }),
     };
     // Expanded cards can be much taller than their handles. Follow the pointer,

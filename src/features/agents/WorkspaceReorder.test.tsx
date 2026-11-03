@@ -153,6 +153,37 @@ it.each([
     });
 });
 
+it.each([
+  [283, "w3"],
+  [273, "w3"],
+  [272, "w3"],
+  [233, "w3"],
+  [232, "w2"],
+  [231, "w2"],
+  [181, "w2"],
+  [180, "w2"],
+  [141, "w2"],
+  [140, "w1"],
+])("waits for an upper row's midpoint at pointer y=%s", async (y, target) => {
+  const droppableRects = new Map(
+    ["w1", "w2", "w3"].map((id, index) => {
+      const top = 100 + index * 92;
+      return [id, { left: 10, right: 300, top, bottom: top + 80, width: 290, height: 80 }];
+    }),
+  );
+  const collisions = context().props.collisionDetection({
+    active: { id: "w3" },
+    pointerCoordinates: { x: 40, y },
+    collisionRect: { left: 10, right: 300, top: y - 30, bottom: y + 50, width: 290, height: 80 },
+    droppableRects,
+    droppableContainers: [...droppableRects.keys()].map((id) => ({ id })),
+  });
+  expect(collisions[0]?.id).toBe(target);
+  await drag("w3", collisions[0]?.id ?? null);
+  if (target === "w3") expect(moveWorkspace).not.toHaveBeenCalled();
+  else expect(moveWorkspace).toHaveBeenCalledWith({ workspaceId: "w3", beforeWorkspaceId: target });
+});
+
 it("targets expanded rows, keeps gaps droppable and preserves keyboard detection", () => {
   const droppableRects = new Map([
     ["w1", { left: 10, right: 300, top: 100, bottom: 900, width: 290, height: 800 }],
@@ -165,8 +196,9 @@ it("targets expanded rows, keeps gaps droppable and preserves keyboard detection
     droppableContainers: [...droppableRects.keys()].map((id) => ({ id })),
   };
   const collisionDetection = context().props.collisionDetection;
-  // The pointer is inside the expanded first row, but nearer the second row's center.
-  expect(collisionDetection({ ...args, pointerCoordinates: { x: 40, y: 890 } })[0].id).toBe("w1");
+  // An expanded row also requires crossing its midpoint when moving upward.
+  expect(collisionDetection({ ...args, pointerCoordinates: { x: 40, y: 890 } })[0].id).toBe("w2");
+  expect(collisionDetection({ ...args, pointerCoordinates: { x: 40, y: 500 } })[0].id).toBe("w1");
   // In the gap, use the pointer's distance to the nearest row center.
   expect(collisionDetection({ ...args, pointerCoordinates: { x: 40, y: 910 } })[0].id).toBe("w2");
   expect(collisionDetection({ ...args, pointerCoordinates: { x: 40, y: 1044 } })[0].id).toBe("w2");
