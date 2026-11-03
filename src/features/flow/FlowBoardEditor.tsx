@@ -490,9 +490,19 @@ function Playground(props: BoardEditorProps) {
               }}
             />
           </label>
-          <button className={styles["secondary"]} onClick={download}>
+          <button
+            className={styles["secondary"]}
+            aria-label="Download"
+            title="Download"
+            aria-haspopup={props.onDownload ? "menu" : undefined}
+            aria-expanded={props.onDownload ? !!props.downloadMenuOpen : undefined}
+            aria-controls={props.downloadMenuOpen ? "board-download-menu" : undefined}
+            onClick={(event) =>
+              props.onDownload ? props.onDownload(event.currentTarget) : download()
+            }
+          >
             <Download size={16} />
-            <span>Download JSON</span>
+            <span>Download</span>
           </button>
           <button
             disabled={locked}

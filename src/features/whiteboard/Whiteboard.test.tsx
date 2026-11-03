@@ -97,6 +97,11 @@ afterEach(async () => {
   await act(async () => renderer.unmount());
   vi.unstubAllGlobals();
 });
+it("uses the editor Download control instead of adding a second header export button", () => {
+  expect(button("Export")).toBeUndefined();
+  expect(editor().props.onDownload).toBeTypeOf("function");
+  expect(editor().props.downloadMenuOpen).toBe(false);
+});
 it("identifies the agent and removes sharing, history and repeated permission explanations", async () => {
   await updateAccess({ mode: "edit", state: "active", expiresAt: Date.now() + 60000 });
   const output = JSON.stringify(renderer.toJSON());

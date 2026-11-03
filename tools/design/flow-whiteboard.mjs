@@ -101,6 +101,7 @@ try {
       for (const [layout, viewport] of [
         ["desktop", { width: 1440, height: 1000 }],
         ["portrait", { width: 820, height: 1180 }],
+        ["phone", { width: 390, height: 844 }],
       ]) {
         const context = await browser.newContext({
           viewport,
@@ -305,14 +306,37 @@ try {
         );
         // Independent JSON/PNG downloads capture the local paused draft, not an older saved board.
         const beforeExports = saves.length;
-        await whiteboard.getByRole("button", { name: "Export", exact: true }).click();
-        const exportDialog = page.getByRole("dialog", { name: "Export board", exact: true });
+        assert.equal(
+          await whiteboard.getByRole("button", { name: "Export", exact: true }).count(),
+          0,
+        );
+        const downloadButton = whiteboard.getByRole("button", { name: "Download", exact: true });
+        await downloadButton.click();
+        const exportDialog = page.getByRole("menu", { name: "Download board", exact: true });
         await exportDialog.waitFor();
+        const menuBox = await exportDialog.boundingBox();
+        assert(
+          menuBox.x >= 0 &&
+            menuBox.y >= 0 &&
+            menuBox.x + menuBox.width <= viewport.width &&
+            menuBox.y + menuBox.height <= viewport.height,
+          "download menu must fit the viewport",
+        );
+        await page.waitForFunction(
+          () => document.activeElement?.getAttribute("role") === "menuitem",
+        );
+        await page.keyboard.press("ArrowDown");
+        assert(
+          await exportDialog
+            .getByRole("menuitem", { name: "Download PNG", exact: true })
+            .evaluate((el) => el === document.activeElement),
+        );
+        await page.keyboard.press("Home");
         await page.screenshot({
           path: `.runtime/flow-board-evidence/export-${name}-${layout}.png`,
         });
         const jsonDownloadPromise = page.waitForEvent("download");
-        await exportDialog.getByRole("button", { name: "Download JSON", exact: true }).click();
+        await exportDialog.getByRole("menuitem", { name: "Download JSON", exact: true }).click();
         const jsonDownload = await jsonDownloadPromise;
         assert.equal(jsonDownload.suggestedFilename(), "whiteboard.flow.json");
         const backup = JSON.parse(await readFile(await jsonDownload.path(), "utf8"));
@@ -322,23 +346,27 @@ try {
           "Unsynced local title",
         );
         assert.equal(exports.length, 0, "JSON download must not request or bundle PNG");
+        await exportDialog.waitFor({ state: "detached" });
+        assert.equal(await downloadButton.getAttribute("aria-expanded"), "false");
+        await downloadButton.click();
         failExports = true;
-        await exportDialog.getByRole("button", { name: "Download PNG", exact: true }).click();
+        await exportDialog.getByRole("menuitem", { name: "Download PNG", exact: true }).click();
         await exportDialog
           .getByRole("alert")
           .filter({ hasText: "Fixture renderer unavailable" })
           .waitFor();
         assert.equal(
           await exportDialog
-            .getByRole("button", { name: "Download JSON", exact: true })
+            .getByRole("menuitem", { name: "Download JSON", exact: true })
             .isEnabled(),
           true,
         );
         assert.equal(exports.length, 1, "failed exports must not retry automatically");
         failExports = false;
-        await exportDialog.getByLabel("Image resolution", { exact: true }).selectOption("high");
         const pngDownloadPromise = page.waitForEvent("download");
-        await exportDialog.getByRole("button", { name: "Download PNG", exact: true }).click();
+        await exportDialog
+          .getByRole("menuitem", { name: "Download PNG (high resolution)", exact: true })
+          .click();
         const pngDownload = await pngDownloadPromise;
         assert.equal(pngDownload.suggestedFilename(), "whiteboard-high.png");
         assert.equal((await readFile(await pngDownload.path())).subarray(1, 4).toString(), "PNG");
@@ -349,12 +377,18 @@ try {
         );
         assert.equal(saves.length, beforeExports, "export must not save or overwrite a draft");
         assert.equal(prompts.length, 1, "export must not send prompts");
+        await exportDialog.waitFor({ state: "detached" });
+        await downloadButton.click();
         await page.keyboard.press("Escape");
+        await exportDialog.waitFor({ state: "detached" });
+        assert(await downloadButton.evaluate((el) => el === document.activeElement));
+        await downloadButton.click();
+        await page.mouse.click(4, viewport.height / 2);
         await exportDialog.waitFor({ state: "detached" });
         assert.equal(
           await whiteboard.isVisible(),
           true,
-          "Escape must close only the export dialog",
+          "Dismissing the download menu must not close the board",
         );
         assert.deepEqual(errors, []);
         await context.close();

@@ -193,6 +193,20 @@ try {
         await dialog.waitFor();
         await dialog.locator("canvas").first().waitFor();
         await dialog.getByRole("button", { name: "Fit drawing", exact: true }).click();
+        assert.equal(await dialog.getByRole("button", { name: "Export", exact: true }).count(), 0);
+        await dialog.getByTestId("main-menu-trigger").click();
+        await dialog.getByText("Download", { exact: true }).click();
+        const downloads = page.getByRole("menu", { name: "Download board", exact: true });
+        await downloads.waitFor();
+        assert.equal(
+          await downloads.getByRole("menuitem", { name: "Download PNG", exact: true }).count(),
+          1,
+        );
+        await page.waitForFunction(
+          () => document.activeElement?.getAttribute("role") === "menuitem",
+        );
+        await page.keyboard.press("Escape");
+        await downloads.waitFor({ state: "detached" });
         assert.match(await dialog.locator("header").first().innerText(), /Planner.*FeBO/s);
         assert.equal(await dialog.getByRole("button", { name: "Share drawing" }).count(), 0);
         assert.equal(

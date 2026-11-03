@@ -32,6 +32,8 @@ export interface BoardEditorProps {
   onInteraction?: (active: boolean) => void;
   /** Persist a recovery copy before an explicit destructive import/clear. */
   onBeforeReplace?: () => Promise<void>;
+  onDownload?: (anchor: HTMLElement) => void;
+  downloadMenuOpen?: boolean;
 }
 function restored(scene: BoardScene) {
   return restoreElements(scene.elements as unknown as ExcalidrawElement[], null, {
@@ -60,7 +62,9 @@ export default function BoardEditor({
   onReady,
   onError,
   onInteraction,
+  onDownload,
 }: BoardEditorProps) {
+  const root = useRef<HTMLDivElement>(null);
   const [api, setApi] = useState<ExcalidrawImperativeAPI | null>(null);
   const [initial] = useState(() => ({
     scrollToContent: true,
@@ -133,6 +137,7 @@ export default function BoardEditor({
   return (
     <div
       className={styles.editor}
+      ref={root}
       data-testid="whiteboard-editor"
       onClickCapture={(event) => {
         if (event.target instanceof Element && event.target.closest("a[href]")) {
@@ -213,7 +218,14 @@ export default function BoardEditor({
         </WelcomeScreen>
         <MainMenu>
           <MainMenu.Item
-            onSelect={() =>
+            onSelect={() => {
+              if (onDownload && root.current) {
+                onDownload(
+                  root.current.querySelector<HTMLElement>('[data-testid="main-menu-trigger"]') ??
+                    root.current,
+                );
+                return;
+              }
               downloadScene(
                 api
                   ? ({
@@ -222,10 +234,10 @@ export default function BoardEditor({
                       background: "#ffffff",
                     } as unknown as BoardScene)
                   : current.current.scene,
-              )
-            }
+              );
+            }}
           >
-            Download JSON
+            Download
           </MainMenu.Item>
           <MainMenu.DefaultItems.ClearCanvas />
         </MainMenu>

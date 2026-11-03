@@ -91,7 +91,8 @@ function WhiteboardSession({
     current.current = { available, structured, target, editorError };
   });
   const [leave, setLeave] = useState(false);
-  const [exporting, setExporting] = useState(false);
+  const [downloadAnchor, setDownloadAnchor] = useState<HTMLElement | null>(null);
+  const closeDownloads = useCallback(() => setDownloadAnchor(null), []);
   const [revoking, setRevoking] = useState(false);
   const [ready, setReady] = useState(false);
   const onEditorReady = useCallback((handle: EditorHandle | null) => {
@@ -351,13 +352,6 @@ function WhiteboardSession({
               {agentContext ? ` · ${agentContext}` : ""}
             </span>
           </div>
-          <button
-            type="button"
-            disabled={working || !state.scene || !state.board}
-            onClick={() => setExporting(true)}
-          >
-            Export
-          </button>
           <span className={styles["save-status"]} role="status">
             {state.saving ? "Saving…" : state.dirty ? "Unsynced" : "Saved"}
           </span>
@@ -375,6 +369,10 @@ function WhiteboardSession({
                     onError={setEditorError}
                     onInteraction={controller.interaction}
                     onBeforeReplace={() => controller.checkpoint()}
+                    onDownload={(anchor) =>
+                      setDownloadAnchor((current) => (current === anchor ? null : anchor))
+                    }
+                    downloadMenuOpen={!!downloadAnchor}
                     onReady={onEditorReady}
                   />
                 </Suspense>
@@ -499,12 +497,13 @@ function WhiteboardSession({
           />
         </div>
       </div>
-      {exporting && state.scene && state.board && (
+      {downloadAnchor && state.scene && state.board && (
         <BoardExport
           scene={state.scene}
+          anchor={downloadAnchor}
           renderPng={(scene, quality, signal) => controller.exportPng(scene, quality, signal)}
           onInteraction={controller.interaction}
-          onClose={() => setExporting(false)}
+          onClose={closeDownloads}
         />
       )}
     </dialog>,
