@@ -55,6 +55,14 @@ Each menu opening freezes the current valid local scene, including unsynced chan
 
 PNG resolution choices are Standard (up to 2048 px per side, 4 Mi pixels) and High (up to 4096 px per side, 16 Mi pixels, up to twice the dimensions). Both have a 16 MiB compressed-file limit; exceptionally large/high-entropy boards are fitted/downscaled. The smaller agent screenshot limits remain unchanged (2048 side, 2 Mi pixels, 2 MiB). PNG needs the backend and the current authorized Pi session; JSON does not. SVG whole-board export is not implemented yet.
 
+## Retired Excalidraw browser drafts
+
+Browser board storage is version 2. On its first access after the updated app loads, it permanently deletes cached Excalidraw drafts (including dirty/paused ones and their recovery copies), and removes Excalidraw recovery scenes from otherwise intact React Flow drafts. No conversion, archive or confirmation is performed. A Flow drawing with an incompatible native base is retained but paused rather than merged against that base.
+
+Reads/writes also reject legacy persistence so old drafts cannot be restored through the current storage layer. Old version-1 clients cannot reopen the upgraded database; close outdated Fernblick tabs and refresh if the upgrade is blocked. New connections close on version changes and abandoned upgrade requests do not leave a database connection open.
+
+This is an intentionally destructive retirement, authorized after the old boards were backed up separately. It changes only this origin's whiteboard draft store—not React Flow drawing content, chat storage, other sites, server boards, or `/tmp` backups. Refresh the updated app and reopen the board to load the server's new React Flow scene instead of the cached native revision.
+
 ## Backups and recovery
 
 Download uses a `fernblick-flow` version-1 JSON envelope containing the normalized scene. Imports are validated and explicitly confirmed, and use fresh record/asset IDs instead of reusing tombstoned IDs. They are a deliberate replacement, not a merge or engine converter. A durable local recovery checkpoint is required before import/clear; the previous local drawing remains downloadable. Storage failure cancels replacement. Ordinary autosave/network failure preserves the current draft and does not replay an uncertain write after reload.

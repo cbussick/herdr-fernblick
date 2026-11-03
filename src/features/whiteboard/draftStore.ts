@@ -17,13 +17,77 @@ export interface DraftStore {
   write(key: string, draft: LocalDraft): Promise<void>;
 }
 
+function legacyScene(value: unknown): boolean {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return false;
+  const scene = value as Record<string, unknown>;
+  return (
+    Array.isArray(scene.elements) && (scene.engine === undefined || scene.engine === "excalidraw")
+  );
+}
+
+/** Intentionally destructive: the user retired Excalidraw and backed it up separately. */
+function cleanDraft(raw: unknown): { value: unknown; changed: boolean } {
+  if (!raw || typeof raw !== "object" || Array.isArray(raw)) return { value: raw, changed: false };
+  const draft = raw as Record<string, unknown>;
+  if (legacyScene(draft.scene)) return { value: undefined, changed: true };
+  if (
+    !draft.scene ||
+    typeof draft.scene !== "object" ||
+    !("engine" in draft.scene) ||
+    draft.scene.engine !== "react-flow"
+  )
+    return { value: raw, changed: false };
+  const value = { ...draft };
+  let changed = false;
+  if (legacyScene(value.recovery)) {
+    delete value.recovery;
+    changed = true;
+  }
+  if (legacyScene(value.baseScene)) {
+    // Keep the Flow drawing, but never merge it against an incompatible native base.
+    delete value.baseScene;
+    value.paused = true;
+    changed = true;
+  }
+  return { value: changed ? value : raw, changed };
+}
+
 async function database() {
   return new Promise<IDBDatabase>((resolve, reject) => {
-    const request = indexedDB.open("fernblick-whiteboards", 1);
-    request.onupgradeneeded = () => request.result.createObjectStore("drafts");
+    // Version two also fences off old version-one tabs: they cannot restore native drafts.
+    const request = indexedDB.open("fernblick-whiteboards", 2);
+    let abandoned = false;
+    request.onupgradeneeded = () => {
+      const db = request.result;
+      const store = db.objectStoreNames.contains("drafts")
+        ? request.transaction!.objectStore("drafts")
+        : db.createObjectStore("drafts");
+      const requestCursor = store.openCursor();
+      requestCursor.onsuccess = () => {
+        const cursor = requestCursor.result;
+        if (!cursor) return;
+        const cleaned = cleanDraft(cursor.value);
+        if (cleaned.changed) {
+          if (cleaned.value === undefined) cursor.delete();
+          else cursor.update(cleaned.value);
+        }
+        cursor.continue();
+      };
+    };
     request.onerror = () => reject(request.error);
-    request.onblocked = () => reject(new Error("Local draft storage is blocked"));
-    request.onsuccess = () => resolve(request.result);
+    request.onblocked = () => {
+      abandoned = true;
+      reject(new Error("Close other Fernblick tabs and reload to clear old board storage"));
+    };
+    request.onsuccess = () => {
+      const db = request.result;
+      if (abandoned) {
+        db.close();
+        return;
+      }
+      db.onversionchange = () => db.close();
+      resolve(db);
+    };
   });
 }
 /** Clear this origin's saved drawings/recovery copies for a deleted conversation. */
@@ -64,15 +128,27 @@ export const draftStore: DraftStore = {
     const db = await database();
     try {
       return await new Promise<LocalDraft | undefined>((resolve, reject) => {
-        const tx = db.transaction("drafts", "readonly");
-        const request = tx.objectStore("drafts").get(key);
+        const tx = db.transaction("drafts", "readwrite");
+        const store = tx.objectStore("drafts");
+        const request = store.get(key);
+        let result: LocalDraft | undefined;
         request.onsuccess = () => {
-          const parsed = draftSchema.safeParse(request.result);
-          if (request.result !== undefined && !parsed.success)
+          const cleaned = cleanDraft(request.result);
+          const parsed = draftSchema.safeParse(cleaned.value);
+          if (cleaned.value !== undefined && !parsed.success) {
+            tx.abort();
             reject(new Error("Local draft is unreadable"));
-          else resolve(parsed.success ? parsed.data : undefined);
+            return;
+          }
+          if (cleaned.changed) {
+            if (cleaned.value === undefined) store.delete(key);
+            else store.put(cleaned.value, key);
+          }
+          result = parsed.success ? parsed.data : undefined;
         };
+        tx.oncomplete = () => resolve(result);
         request.onerror = () => reject(request.error);
+        tx.onerror = () => reject(tx.error);
         tx.onabort = () => reject(tx.error);
       });
     } finally {
@@ -84,7 +160,9 @@ export const draftStore: DraftStore = {
     try {
       await new Promise<void>((resolve, reject) => {
         const tx = db.transaction("drafts", "readwrite");
-        tx.objectStore("drafts").put(draftSchema.parse(draft), key);
+        const cleaned = cleanDraft(draft);
+        if (cleaned.changed && cleaned.value === undefined) tx.objectStore("drafts").delete(key);
+        else tx.objectStore("drafts").put(draftSchema.parse(cleaned.value), key);
         tx.oncomplete = () => resolve();
         tx.onabort = () => reject(tx.error);
         tx.onerror = () => reject(tx.error);
