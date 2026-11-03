@@ -141,6 +141,114 @@ describe("ChatMessageText formatting", () => {
     expect(html).toContain("[[My note|Note]]");
   });
 
+  it("renders explicit wiki file links and aliases without a vault resolver", () => {
+    const html = renderToStaticMarkup(
+      <ChatMessageText
+        cwd="/workspace/project"
+        text="[[/tmp/Report #1?.md|Report]] [[./notes/today.md]] [[README.md]] [[../notes/ü%2520.md|Note]]"
+      />,
+    );
+    expect(html).toContain('href="file:///tmp/Report%20%231%3F.md"');
+    expect(html).toContain(">Report</a>");
+    expect(html).toContain('href="file:///workspace/project/./notes/today.md"');
+    expect(html).toContain('href="file:///workspace/project/README.md"');
+    expect(html).toContain('href="file:///workspace/project/../notes/%C3%BC%2520.md"');
+    expect(html).not.toContain("<img");
+    expect(html).not.toContain("/api/local-images");
+  });
+
+  it.each(["png", "jpg", "jpeg", "gif", "webp", "PNG"])(
+    "renders wiki %s embeds with the existing linked lazy image preview",
+    (extension) => {
+      const html = renderToStaticMarkup(
+        <ChatMessageText
+          cwd="/workspace/project"
+          text={`![[./design/Logo #1.${extension}|Preview]]`}
+        />,
+      );
+      const src = `/api/local-images?path=${encodeURIComponent(`/workspace/project/./design/Logo #1.${extension}`)}`;
+      expect(html).toContain(`src="${src}"`);
+      expect(html).toContain(`href="${src}"`);
+      expect(html).toContain('alt="Preview"');
+      expect(html).toContain('loading="lazy"');
+      expect(html).toContain('referrerPolicy="no-referrer"');
+      expect(html).toContain('data-message-control="true"');
+      expect(html).not.toContain("![[");
+    },
+  );
+
+  it("supports absolute and web wiki embeds without requiring a cwd", () => {
+    const html = renderToStaticMarkup(
+      <ChatMessageText text="![[/tmp/a.png]] ![[https://example.com/a.webp?q=1|Web]]" />,
+    );
+    expect(html).toContain('src="/api/local-images?path=%2Ftmp%2Fa.png"');
+    expect(html).toContain('alt="/tmp/a.png"');
+    expect(html).toContain('src="https://example.com/a.webp?q=1"');
+    expect(html).toContain('alt="Web"');
+    expect(html.match(/<img /g)).toHaveLength(2);
+  });
+
+  it("leaves unresolved, unsafe and unsupported wiki targets literal", () => {
+    const targets = [
+      "//host/a.png",
+      "file:///tmp/a.png",
+      "data:image/png;base64,AA",
+      "javascript%3Aalert(1)",
+      "%2Ftmp/a.png",
+      "~/a.png",
+      "bad%00.png",
+      "#heading",
+      "?query",
+      "",
+      "/tmp/a.png|",
+    ];
+    for (const target of targets) {
+      const html = renderToStaticMarkup(
+        <ChatMessageText cwd="/workspace/project" text={`[[${target}]] ![[${target}]]`} />,
+      );
+      expect(html).not.toContain("<a ");
+      expect(html).not.toContain("<img");
+    }
+    const html = renderToStaticMarkup(
+      <ChatMessageText text="[[relative.md]] ![[relative.png]] ![[/tmp/a.svg]] ![[https://example.com/a.svg]] ![[/tmp/a.pdf]]" />,
+    );
+    expect(html).not.toContain("<a ");
+    expect(html).not.toContain("<img");
+  });
+
+  it("keeps escaped wiki syntax and code literal even with a cwd", () => {
+    const html = renderToStaticMarkup(
+      <ChatMessageText
+        cwd="/workspace/project"
+        text={
+          "\\[[/tmp/a.md]] \\![[/tmp/a.png]] \\[[relative.md]] `[[relative.md]] ![[relative.png]]`\n\n```md\n[[/tmp/a.md]] ![[/tmp/a.png]]\n```\n\n    ![[/tmp/a.png]]"
+        }
+      />,
+    );
+    expect(html).not.toContain("<a ");
+    expect(html).not.toContain("<img");
+  });
+
+  it("preserves wiki source characters and annotation offsets at every streaming prefix", () => {
+    const text = "Before [[./notes/ü.md|Note]] and ![[./Logo #1.png|A & B]] **after**.";
+    for (let end = 0; end <= text.length; end++) {
+      const partial = text.slice(0, end);
+      const html = renderToStaticMarkup(
+        <ChatMessageText text={partial} cwd="/workspace/project" annotationSource="a1" />,
+      );
+      expect(html.replace(/<[^>]+>/g, "")).toBe(renderToStaticMarkup(<>{partial}</>));
+    }
+  });
+
+  it("does not nest anchors when wiki embeds appear inside Markdown links", () => {
+    const html = renderToStaticMarkup(
+      <ChatMessageText cwd="/project" text="[![[a.png]]](https://example.com/page)" />,
+    );
+    expect(html.match(/<a /g)).toHaveLength(1);
+    // Markdown link labels retain their existing non-autolinking behavior.
+    expect(html).not.toContain("<img");
+  });
+
   it("formats ordinary user links too", () => {
     const html = renderToStaticMarkup(
       <ChatMessageText text="[Docs](https://example.com)" annotationFeedback />,

@@ -8,7 +8,7 @@ import { gfmTable } from "micromark-extension-gfm-table";
 import { gfmTaskListItem } from "micromark-extension-gfm-task-list-item";
 import type { Nodes } from "mdast";
 import { splitMessageLinks } from "./chatMessageLinks.js";
-import { localImageSource } from "../../shared/localImages.js";
+import { localImageSource, resolveLocalPath } from "../../shared/localImages.js";
 
 type TextPart =
   | { kind: "text"; start: number; end: number }
@@ -120,30 +120,57 @@ export function formatMessageText(text: string, cwd?: string): MessagePart[] {
   function textParts(start: number, end: number): MessagePart[] {
     const parts: MessagePart[] = [];
     let offset = start;
-    // No vault resolver exists here. Only URL wikilinks are navigable; note
-    // targets and incomplete/unsafe links stay literal instead of guessing URLs.
-    for (const match of text.slice(start, end).matchAll(/\[\[([^\]\n]+)\]\]/g)) {
+    // Recognize only complete standalone wiki syntax in prose, not Markdown
+    // destinations/code. Local targets use the same path checks as images.
+    for (const match of text.slice(start, end).matchAll(/!?\[\[([^\]\n]+)\]\]/g)) {
       const matchStart = start + match.index;
       const matchEnd = matchStart + match[0].length;
       parts.push(...bareLinks(offset, matchStart));
       const separator = match[1].indexOf("|");
       const target = separator === -1 ? match[1] : match[1].slice(0, separator);
       const backslashes = /\\+$/.exec(text.slice(start, matchStart))?.[0].length ?? 0;
-      const href = backslashes % 2 === 0 ? webDestination(target) : undefined;
-      const labelStart = matchStart + 2 + (separator === -1 ? 0 : separator + 1);
+      const embed = match[0].startsWith("!");
+      const webHref = webDestination(target);
+      const path = webHref ? undefined : resolveLocalPath(target, cwd);
+      const fileHref = path
+        ? `file://${path.split("/").map(encodeURIComponent).join("/")}`
+        : undefined;
+      const href =
+        backslashes % 2 !== 0
+          ? undefined
+          : embed
+            ? (webHref ?? localImageSource(target, cwd))
+            : (webHref ?? fileHref);
+      const labelStart = matchStart + (embed ? 3 : 2) + (separator === -1 ? 0 : separator + 1);
       const labelEnd = matchEnd - 2;
-      if (href && labelStart < labelEnd) {
-        parts.push({
-          kind: "link",
-          start: matchStart,
-          end: matchEnd,
-          href,
-          children: [
-            syntax(matchStart, labelStart),
-            literal(labelStart, labelEnd),
-            syntax(labelEnd, matchEnd),
-          ],
-        });
+      // Wiki embeds support the existing raster formats, not SVG or other
+      // document types. The backend still validates the actual local bytes.
+      const raster = /\.(?:png|jpe?g|gif|webp)$/i.test(
+        webHref ? new URL(webHref).pathname : (path ?? ""),
+      );
+      if (href && labelStart < labelEnd && (!embed || raster)) {
+        parts.push(
+          embed
+            ? {
+                kind: "image",
+                start: matchStart,
+                end: matchEnd,
+                href,
+                alt: text.slice(labelStart, labelEnd),
+                children: [syntax(matchStart, matchEnd)],
+              }
+            : {
+                kind: "link",
+                start: matchStart,
+                end: matchEnd,
+                href,
+                children: [
+                  syntax(matchStart, labelStart),
+                  literal(labelStart, labelEnd),
+                  syntax(labelEnd, matchEnd),
+                ],
+              },
+        );
       } else {
         parts.push(literal(matchStart, matchEnd));
       }
