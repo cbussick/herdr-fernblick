@@ -293,6 +293,52 @@ describe("isolated production editor and DOM renderer", { timeout: 30_000 }, () 
     expect(await page.evaluate(() => window.flowTest.errors)).toEqual([]);
   });
 
+  it("renders comment nodes with an even thin outline and no left accent stripe in editor and exports", async () => {
+    const scene = fromDiagram(
+      { nodes: [makeNode("comment", 100, 100, defaults("comment"), "comment")], edges: [] },
+      empty,
+    );
+    for (const mode of ["editor", "renderer"]) {
+      if (mode === "editor") {
+        await loadEditor();
+        await page.evaluate(
+          (raw) => window.flowTest.setScene(JSON.parse(raw)),
+          JSON.stringify(scene),
+        );
+      } else {
+        await page.goto(`${origin}/flow-board-render.html`);
+        await page.waitForFunction(() => !!window.prepareFlowBoardScene);
+        await page.evaluate(
+          (raw) => window.prepareFlowBoardScene(JSON.parse(raw)),
+          JSON.stringify(scene),
+        );
+      }
+      const comment = page.locator('[data-kind="comment"]');
+      await comment.waitFor();
+      const style = await comment.evaluate((element) => {
+        const css = getComputedStyle(element);
+        return {
+          widths: [
+            css.borderTopWidth,
+            css.borderRightWidth,
+            css.borderBottomWidth,
+            css.borderLeftWidth,
+          ],
+          colors: [
+            css.borderTopColor,
+            css.borderRightColor,
+            css.borderBottomColor,
+            css.borderLeftColor,
+          ],
+          background: css.backgroundColor,
+        };
+      });
+      expect(style.widths).toEqual(["1px", "1px", "1px", "1px"]);
+      expect(new Set(style.colors).size).toBe(1);
+      expect(style.background).not.toBe("rgb(255, 255, 255)");
+    }
+  });
+
   it("requires confirmation for import, preserves tombstones and does not dirty-loop external changes", async () => {
     await loadEditor();
     const first = fromDiagram(
