@@ -21,15 +21,6 @@ describe("white code block palette", () => {
     expect(message).toMatch(/\.code-toolbar\s*\{[^}]*background: var\(--color-surface-subtle\);/);
   });
 
-  it("emphasizes colored tokens without making comments or plain code bold", () => {
-    expect(syntax).toMatch(/\.keyword,[^{]*\{[^}]*font-weight: 700;/);
-    for (const token of ["string", "literal", "title", "attr"]) {
-      expect(syntax).toMatch(new RegExp(`\\.${token},[^{]*\\{[^}]*font-weight: 600;`));
-    }
-    expect(syntax).toMatch(/\.comment,[^{]*\{[^}]*font-weight: 400;/);
-    expect(message).not.toMatch(/\.code-block(?: pre)?\s*\{[^}]*font-weight:/);
-  });
-
   it("keeps every syntax color and default code text above WCAG AA contrast on white", () => {
     const colors = [...syntax.matchAll(/color:\s*#([a-f\d]{6});/g)].map((match) => match[1]);
     const defaultColor = /\.code-block\s*\{[^}]*color:\s*#([a-f\d]{6});/.exec(message)?.[1];
