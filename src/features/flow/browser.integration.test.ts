@@ -116,6 +116,45 @@ describe("isolated production editor and DOM renderer", { timeout: 30_000 }, () 
     expect(await page.getByRole("button", { name: "Draw", exact: true }).isDisabled()).toBe(true);
     expect(await page.evaluate(() => window.flowTest.errors)).toEqual([]);
   });
+  it("uses a searchable toolbar picker on mobile without changing the desktop library", async () => {
+    try {
+      await page.setViewportSize({ width: 390, height: 844 });
+      await loadEditor();
+      const library = page.getByRole("complementary", { name: "Component library" });
+      const trigger = page.getByRole("button", { name: "Add a component", exact: true });
+      expect(await library.isVisible()).toBe(false);
+      expect(await trigger.isVisible()).toBe(true);
+      await trigger.click();
+      const picker = page.getByRole("dialog", { name: "Add a component", exact: true });
+      await picker.waitFor();
+      expect(await page.evaluate(() => window.flowTest.events.at(-1))).toBe("active");
+      await picker.getByLabel("Find a component").fill("card");
+      expect(await picker.getByRole("button", { name: "Add Card", exact: true }).count()).toBe(1);
+      expect(await picker.getByRole("button", { name: "Add Boundary", exact: true }).count()).toBe(
+        0,
+      );
+      await page.keyboard.press("Escape");
+      expect(await picker.count()).toBe(0);
+      expect(await page.evaluate(() => window.flowTest.changes.length)).toBe(0);
+      expect(await trigger.evaluate((element) => element === document.activeElement)).toBe(true);
+      await trigger.click();
+      await picker.getByRole("button", { name: "Add Card", exact: true }).click();
+      const editor = page.getByRole("dialog", { name: "Add Card", exact: true });
+      await editor.getByLabel("Title", { exact: true }).fill("Mobile card");
+      await editor.getByRole("button", { name: "Add component", exact: true }).click();
+      await page.waitForFunction(() => window.flowTest.changes.length === 1);
+      expect(await page.getByText("Mobile card", { exact: true }).count()).toBe(1);
+      await trigger.click();
+      await page.evaluate(() => window.flowTest.setLocked(true));
+      await picker.waitFor({ state: "detached" });
+      expect(await trigger.isDisabled()).toBe(true);
+      await page.setViewportSize({ width: 1280, height: 900 });
+      expect(await library.isVisible()).toBe(true);
+      expect(await trigger.isVisible()).toBe(false);
+    } finally {
+      await page.setViewportSize({ width: 1280, height: 900 });
+    }
+  });
   it("undoes a component drag as one local edit and redoes it without changing another component", async () => {
     await loadEditor();
     const first = fromDiagram(

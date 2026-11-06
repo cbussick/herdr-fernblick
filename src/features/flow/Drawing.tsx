@@ -13,7 +13,7 @@ import {
   type NodeProps,
   type Viewport,
 } from "@xyflow/react";
-import { Eraser, Hand, MousePointer2, Pencil, Redo2, Undo2 } from "lucide-react";
+import { Blocks, Eraser, Hand, MousePointer2, Pencil, Redo2, Undo2 } from "lucide-react";
 import {
   gestureViewport,
   hitsInk,
@@ -75,6 +75,7 @@ export function DrawingTools({
   setSize,
   history,
   disabled,
+  onAddComponent,
 }: {
   tool: Tool;
   setTool: (t: Tool) => void;
@@ -84,9 +85,23 @@ export function DrawingTools({
   setSize: (s: number) => void;
   history: { undo: () => void; redo: () => void; canUndo: boolean; canRedo: boolean };
   disabled: boolean;
+  onAddComponent?: () => void;
 }) {
   return (
     <div className={styles["drawing-toolbar"]} aria-label="Drawing tools">
+      {onAddComponent && (
+        <button
+          type="button"
+          className={styles["add-component"]}
+          aria-label="Add a component"
+          title="Add a component"
+          aria-haspopup="dialog"
+          disabled={disabled}
+          onClick={onAddComponent}
+        >
+          <Blocks size={17} />
+        </button>
+      )}
       {(
         [
           { tool: "select", label: "Select", icon: MousePointer2 },

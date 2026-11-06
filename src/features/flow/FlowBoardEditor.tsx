@@ -75,6 +75,8 @@ function Playground(props: BoardEditorProps) {
   const [edges, setEdges] = useState(initial.edges);
   const [, setViewport] = useState<Viewport | undefined>(undefined);
   const [query, setQuery] = useState("");
+  const [picking, setPicking] = useState(false);
+  const pickerTrigger = useRef<HTMLElement | null>(null);
   const [editing, setEditing] = useState<Editing | null>(null);
   const [edgeEditing, setEdgeEditing] = useState<Edge | null>(null);
   const [resetting, setResetting] = useState(false);
@@ -135,8 +137,14 @@ function Playground(props: BoardEditorProps) {
   const boundaries = nodes.filter(
     (node): node is ComponentNode => node.type === "component" && node.data.kind === "boundary",
   );
-  const modal = !!(editing || edgeEditing || resetting || pendingImport);
+  const modal = !!(picking || editing || edgeEditing || resetting || pendingImport);
   const modalRef = useRef(modal);
+  useEffect(() => {
+    if (!modal && pickerTrigger.current) {
+      if (!locked) pickerTrigger.current.focus({ preventScroll: true });
+      pickerTrigger.current = null;
+    }
+  }, [modal, locked]);
   useEffect(() => {
     function key(event: KeyboardEvent) {
       if (
@@ -192,6 +200,7 @@ function Playground(props: BoardEditorProps) {
       setEdges(next.edges);
       historyGroup.current = undefined;
       setHiddenInk(new Set());
+      setPicking(false);
       setEditing(null);
       setEdgeEditing(null);
       setPendingImport(null);
@@ -238,6 +247,7 @@ function Playground(props: BoardEditorProps) {
   }, [modal]);
   useEffect(() => {
     if (locked) {
+      setPicking(false);
       chooseTool("select");
       setEditing(null);
       setEdgeEditing(null);
@@ -253,6 +263,7 @@ function Playground(props: BoardEditorProps) {
   );
   function add(kind: Kind) {
     if (locked) return;
+    setPicking(false);
     if (nodes.length >= 300) {
       setMessage("This playground is limited to 300 components.");
       return;
@@ -405,6 +416,44 @@ function Playground(props: BoardEditorProps) {
     a.click();
     setTimeout(() => URL.revokeObjectURL(url), 1000);
   }
+  const libraryContent = (
+    <>
+      <label className={styles["search"]}>
+        <Search size={16} />
+        <input
+          aria-label="Find a component"
+          placeholder="Find a component…"
+          value={query}
+          onChange={(e) => setQuery(e.target.value)}
+        />
+      </label>
+      <div className={styles["library-items"]}>
+        {kinds
+          .filter((kind) =>
+            `${catalog[kind].name} ${catalog[kind].description}`
+              .toLowerCase()
+              .includes(query.toLowerCase()),
+          )
+          .map((kind) => (
+            <button
+              key={kind}
+              className={styles["library-item"]}
+              disabled={locked}
+              onClick={() => add(kind)}
+              aria-label={`Add ${catalog[kind].name}`}
+            >
+              <span className={styles["library-icon"]}>
+                <Icon name={catalog[kind].icon} size={21} />
+              </span>
+              <span>
+                <strong>{catalog[kind].name}</strong>
+                <small>{catalog[kind].description}</small>
+              </span>
+            </button>
+          ))}
+      </div>
+    </>
+  );
   return (
     <div
       className={styles["app"]}
@@ -512,40 +561,7 @@ function Playground(props: BoardEditorProps) {
       <div className={styles["workspace"]}>
         <aside className={styles["library"]} aria-label="Component library">
           <h2>Add a component</h2>
-          <label className={styles["search"]}>
-            <Search size={16} />
-            <input
-              aria-label="Find a component"
-              placeholder="Find a component…"
-              value={query}
-              onChange={(e) => setQuery(e.target.value)}
-            />
-          </label>
-          <div className={styles["library-items"]}>
-            {kinds
-              .filter((kind) =>
-                `${catalog[kind].name} ${catalog[kind].description}`
-                  .toLowerCase()
-                  .includes(query.toLowerCase()),
-              )
-              .map((kind) => (
-                <button
-                  key={kind}
-                  className={styles["library-item"]}
-                  disabled={locked}
-                  onClick={() => add(kind)}
-                  aria-label={`Add ${catalog[kind].name}`}
-                >
-                  <span className={styles["library-icon"]}>
-                    <Icon name={catalog[kind].icon} size={21} />
-                  </span>
-                  <span>
-                    <strong>{catalog[kind].name}</strong>
-                    <small>{catalog[kind].description}</small>
-                  </span>
-                </button>
-              ))}
-          </div>
+          {libraryContent}
           <div className={styles["library-help"]}>
             <strong>Make it yours</strong>
             <p>Select a component, then choose Edit. Or double-click it.</p>
@@ -658,6 +674,12 @@ function Playground(props: BoardEditorProps) {
                 setSize={setPenSize}
                 history={history}
                 disabled={locked || modal}
+                onAddComponent={() => {
+                  pickerTrigger.current =
+                    document.activeElement instanceof HTMLElement ? document.activeElement : null;
+                  setQuery("");
+                  setPicking(true);
+                }}
               />
               {!locked &&
                 tool === "select" &&
@@ -735,6 +757,11 @@ function Playground(props: BoardEditorProps) {
           </EditContext.Provider>
         </main>
       </div>
+      {picking && (
+        <Modal title="Add a component" onClose={() => setPicking(false)}>
+          <div className={styles["component-picker"]}>{libraryContent}</div>
+        </Modal>
+      )}
       {editing && (
         <ComponentEditor
           initial={editing.data}
