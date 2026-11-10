@@ -146,7 +146,10 @@ afterEach(async () => {
   vi.unstubAllEnvs();
   vi.useRealTimers();
 });
-async function setup(beforeStart?: (pi: ReturnType<typeof fakePi>) => void) {
+async function setup(
+  beforeStart?: (pi: ReturnType<typeof fakePi>) => void,
+  beforeBoardBeginReply?: () => Promise<void> | undefined,
+) {
   const dir = await mkdtemp(join(tmpdir(), "fb-ext-"));
   const path = join(dir, "pi.sock");
   vi.stubEnv("FERNBLICK_PI_SOCKET", path);
@@ -161,13 +164,18 @@ async function setup(beforeStart?: (pi: ReturnType<typeof fakePi>) => void) {
         frame.type === "board-control" &&
         frame.action === "begin" &&
         frame.lifetime === "connection"
-      )
-        writeFrame(socket, {
-          type: "board-reply",
-          id: frame.id,
-          ok: true,
-          data: { expiresAt: null },
-        });
+      ) {
+        void (async () => {
+          await beforeBoardBeginReply?.();
+          if (!socket.destroyed)
+            writeFrame(socket, {
+              type: "board-reply",
+              id: frame.id,
+              ok: true,
+              data: { expiresAt: null },
+            });
+        })();
+      }
     });
   });
   await new Promise<void>((done) => server.listen(path, done));
@@ -1402,7 +1410,9 @@ it("sends ten 10 MiB image-only uploads as Pi ImageContent without putting base6
 it.each(["epoch", "session", "busy", "input", "stop", "compact"] as const)(
   "rechecks %s after async image preparation before invoking Pi",
   async (change) => {
-    const t = await setup();
+    let beginReply: Promise<void> | undefined;
+    let releaseBeginReply: (() => void) | undefined;
+    const t = await setup(undefined, () => beginReply);
     vi.stubEnv("FERNBLICK_UPLOAD_DIR", t.dir);
     const imageId = `${randomUUID()}.png`;
     await writeFile(join(t.dir, imageId), Buffer.from([137, 80, 78, 71, 13, 10, 26, 10]), {
@@ -1447,8 +1457,12 @@ it.each(["epoch", "session", "busy", "input", "stop", "compact"] as const)(
       },
     });
     await started;
-    if (change === "epoch") t.emit("session_tree");
-    else if (change === "compact") {
+    if (change === "epoch") {
+      beginReply = new Promise<void>((resolve) => {
+        releaseBeginReply = resolve;
+      });
+      t.emit("session_tree");
+    } else if (change === "compact") {
       t.emit("session_before_compact");
       t.emit("session_compact_failed");
     } else if (change === "session") t.emit("session_shutdown");
@@ -1463,10 +1477,25 @@ it.each(["epoch", "session", "busy", "input", "stop", "compact"] as const)(
     else await new Promise((done) => setTimeout(done, 50));
     expect(t.pi.sendUserMessage).not.toHaveBeenCalled();
     expect(boardRequests(t)).toEqual([]);
-    // A rejected image send must not remove the conversation's default tools.
-    expect(t.pi.getActiveTools().includes("board_read")).toBe(
-      change === "epoch" || change === "busy" || change === "compact",
-    );
+    if (change === "epoch") {
+      // The rejection ACK is independent of the new epoch's authorization.
+      // Hold that reply to prove tools stay hidden until the backend confirms it.
+      await vi.waitFor(() => {
+        const begins = t.frames.filter((frame) => {
+          const value = frame as Record<string, unknown>;
+          return value.type === "board-control" && value.action === "begin";
+        });
+        expect(begins).toHaveLength(2);
+      });
+      expect(t.pi.getActiveTools()).not.toContain("board_read");
+      releaseBeginReply!();
+      await vi.waitFor(() => expect(t.pi.getActiveTools()).toContain("board_read"));
+    } else {
+      // A rejected image send must not remove an unchanged conversation's tools.
+      expect(t.pi.getActiveTools().includes("board_read")).toBe(
+        change === "busy" || change === "compact",
+      );
+    }
   },
 );
 
