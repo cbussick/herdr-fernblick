@@ -4,7 +4,7 @@ The isolated dogfood instance uses `.worktrees/react-flow-boards` on branch `rea
 
 ## What changes
 
-New conversation boards default to React Flow: the six familiar component types, property dialogs, boundaries, connections, ink, whole-stroke erasing, local edit undo/redo, pen priority and canvas-scoped iPad Scribble suppression. Existing boards without an engine marker remain Excalidraw and use the original editor/export path. Opening a board never converts its format; imports cannot switch an existing board's engine.
+New conversation boards default to React Flow: the six familiar component types, property dialogs, boundaries, connections, ink, whole-stroke erasing, local edit undo/redo, pen priority and canvas-scoped iPad Scribble suppression. Excalidraw support has been removed. Boards without a React Flow engine marker are rejected, not converted or overwritten.
 
 New connections default to black (`#000000`) at 2px in the editor and PNG renderer, whether created manually or by agent tools. Saved/custom colors are preserved; existing boards are not recolored automatically. Undo/redo covers your component moves, resizes, property edits, additions/deletions, duplication, parenting, connections and ink in one local history. Agent edits are never undo steps; conflicting transactions are invalidated while unrelated local history survives. Clear/import retain their separate recovery confirmation.
 
@@ -16,7 +16,7 @@ The flow document is a data-only `BoardScene` with `engine: "react-flow"`. Versi
 
 Current extensions keep `board_read`, `board_components` and `board_apply` available throughout the connected conversation, without a 15-minute cutoff or renewal between requests. Connection validation does not create/read a board: the first tool call obtains its conversation-bound grant lazily. Stop access remains explicit and cannot be undone by ordinary publication, compaction or settlement; a fresh user request may obtain new access. Legacy snapshot-attached grants retain their request-scoped behavior. `board_read` identifies the engine and returns structured records and, on demand, a freshly rendered PNG including components, connections, images and ink. `board_components` discovers the six component types, the five SVG primitive kinds, editable properties and their schemas. Agents should prefer matching components for structured diagrams; they should not read/create a board for unrelated prompts.
 
-On flow boards, create kinds are `boundary`, `card`, `icon`, `detail`, `table`, `comment`, and `connection`. Updates can change typed props, position, size, parent and connection details. Existing hand-drawn ink can be moved/resized/recolored/deleted. Agents create freeform drawings using validated `line`, `rectangle`, `ellipse`, `path` and `text` primitives. These SVG-backed objects are selectable, movable, resizable, duplicable and deletable; their drawing properties are edited through agent operations, not a new manual props dialog. Asset IDs refer to images already on the board. Legacy boards retain their rectangle/text/arrow operation vocabulary.
+On flow boards, create kinds are `boundary`, `card`, `icon`, `detail`, `table`, `comment`, and `connection`. Updates can change typed props, position, size, parent and connection details. Existing hand-drawn ink can be moved/resized/recolored/deleted. Agents create freeform drawings using validated `line`, `rectangle`, `ellipse`, `path` and `text` primitives. These SVG-backed objects are selectable, movable, resizable, duplicable and deletable; their drawing properties are edited through agent operations, not a new manual props dialog. Asset IDs refer to images already on the board.
 
 Read targets and dependencies first. Create new parents/endpoints in a batch, read the new revision, then create dependent children/connections in a later batch. Include endpoint/parent IDs in `dependsOn`; server checks implicit relationships too. Group related changes with a shared `groupId`. Changed/deleted/unread targets skip their operation/group, rather than silently overwriting human changes. A parent/endpoint cannot be deleted while leaving live children/connections. No automatic retry follows uncertain outcomes.
 
@@ -47,11 +47,11 @@ Example operation (alongside the normal batch revision/operation ID):
 }
 ```
 
-Primitive records share node/scene limits; live path control points count toward the 100,000 drawing-point budget. Read summaries include their bounded drawing data. Saving, recovery, backup import and browser-independent screenshots use the same trusted SVG renderer. Primitives are not boundary children or connection endpoints. Raw SVG/XML, arbitrary `d` strings, attribute bags, transforms, URLs, scripts, styles and embedded HTML are not accepted. Legacy Excalidraw tools are unchanged. Existing Pi processes require a user-initiated `/reload` to discover the updated schemas; refresh the test app before using the new records.
+Primitive records share node/scene limits; live path control points count toward the 100,000 drawing-point budget. Read summaries include their bounded drawing data. Saving, recovery, backup import and browser-independent screenshots use the same trusted SVG renderer. Primitives are not boundary children or connection endpoints. Raw SVG/XML, arbitrary `d` strings, attribute bags, transforms, URLs, scripts, styles and embedded HTML are not accepted. Existing Pi processes require a user-initiated `/reload` to discover the updated schemas; refresh the test app before using the new records.
 
 ## Downloads
 
-The editor’s existing **Download** button opens an anchored action menu with **Download JSON**, **Download PNG**, and **Download PNG (high resolution)**. There is no extra Export button in the board header. Nothing is bundled or automatically downloaded together. JSON preserves the editable document (legacy native boards keep their `.excalidraw` JSON extension). PNG captures the entire diagram, including components, tables, images, ink and primitives—not the viewport, toolbar or chat.
+The editor’s existing **Download** button opens an anchored action menu with **Download JSON**, **Download PNG**, and **Download PNG (high resolution)**. There is no extra Export button in the board header. Nothing is bundled or automatically downloaded together. JSON preserves the editable document as `.flow.json`. PNG captures the entire diagram, including components, tables, images, ink and primitives—not the viewport, toolbar or chat.
 
 Each menu opening freezes the current valid local scene, including unsynced changes. PNG sends that detached scene to the authenticated backend renderer; it does not save/overwrite the board, send a prompt, grant agent access or create a stored snapshot. JSON remains browser-local and available even if PNG fails. Choosing a successful download closes the menu. Escape, an outside tap, or the Download button dismisses it and restores focus; dismissing during rendering cancels the client request and prevents a late download. Backend work stays subject to the shared bounded queue/deadline and sandbox.
 
@@ -59,7 +59,7 @@ PNG resolution choices are Standard (up to 2048 px per side, 4 Mi pixels) and Hi
 
 ## Browser draft storage
 
-Browser board storage stays at version 2 for devices already updated during the Excalidraw retirement. The temporary destructive cleanup shipped in `899c5d4` has been removed after all devices were confirmed updated. Upgrades, reads and writes no longer automatically delete or filter drawings, base scenes or recovery copies, including legacy records. Previously deleted data is not restored, and devices that skipped that one-time cleanup will no longer be wiped automatically.
+Browser board storage stays at version 2 for devices already updated during the Excalidraw retirement. The temporary destructive cleanup shipped in `899c5d4` has been removed after all devices were confirmed updated. Upgrades and reads never automatically delete stored drawings or recovery copies. Legacy drafts are unreadable by the current schema, and legacy writes are rejected; their stored bytes are preserved. Previously deleted data is not restored, and devices that skipped that one-time cleanup will no longer be wiped automatically.
 
 Version-1 databases can upgrade without changing their records. Old version-1 app code cannot reopen a version-2 database; close outdated Fernblick tabs and refresh if an upgrade is blocked. Connections close on version changes and abandoned upgrade requests do not leave a database connection open.
 
@@ -69,7 +69,7 @@ Ordinary explicit conversation deletion still removes the matching local drafts/
 
 Download uses a `fernblick-flow` version-1 JSON envelope containing the normalized scene. Imports are validated and explicitly confirmed, and use fresh record/asset IDs instead of reusing tombstoned IDs. They are a deliberate replacement, not a merge or engine converter. A durable local recovery checkpoint is required before import/clear; the previous local drawing remains downloadable. Storage failure cancels replacement. Ordinary autosave/network failure preserves the current draft and does not replay an uncertain write after reload.
 
-The standalone playground's nodes/edges JSON and Obsidian libraries are different formats; they are not automatically migrated. Old Excalidraw scenes remain editable in Excalidraw. This branch introduces no shared linked-component/version-update system or partial-stroke eraser.
+The standalone playground's nodes/edges JSON and Obsidian libraries are different formats; they are not automatically migrated. Old Excalidraw scenes are not supported in Fernblick. This branch introduces no shared linked-component/version-update system or partial-stroke eraser.
 
 ## Safely run a separate stack
 
@@ -107,7 +107,7 @@ Use a distinct, available private port and the URL actually reachable by the tes
 `VITEST_MAX_WORKERS=2 npm run check` covers protocols, authorization, storage, semantic operations, controller recovery, merging, editor adapters and build. Browser/renderer tests need the matching Playwright Chromium (and WebKit for UI coverage). After a build:
 
 ```sh
-node tools/design/conversation-whiteboard.mjs # legacy editor regression
+node tools/design/conversation-whiteboard.mjs # conversation/editor regression
 node tools/design/flow-whiteboard.mjs         # flow board/chat/save/recovery fixture
 ```
 

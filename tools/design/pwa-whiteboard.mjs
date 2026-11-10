@@ -121,7 +121,7 @@ try {
                 json: {
                   id: "a".repeat(64),
                   revision: 1,
-                  scene: { elements: [], files: {}, background: "#ffffff" },
+                  scene: { engine: "react-flow", elements: [], files: {}, background: "#ffffff" },
                   updatedAt: 1,
                   lastAuthor: "human",
                   snapshots: [],
@@ -141,7 +141,7 @@ try {
         await page.keyboard.press("Enter");
         const board = page.getByTestId("whiteboard");
         await board.waitFor();
-        await board.locator("canvas").first().waitFor();
+        await board.getByTestId("flow-board-editor").waitFor();
         const input = board.getByRole("textbox", { name: "Message the agent" });
         await input.fill("Keep my whiteboard draft");
         // Keyboard-sized viewport without requiring a physical software keyboard.

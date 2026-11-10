@@ -1,5 +1,5 @@
 import { useEffect, useId, useRef, useState, type ReactNode } from "react";
-import { type Target } from "../../../packages/pi-live-chat/protocol";
+import { sameTarget, type Target } from "../../../packages/pi-live-chat/protocol";
 import { BranchIcon } from "../../shared/ui/Icons";
 import { ConversationSettings, type ConversationSettingsProps } from "./ConversationSettings";
 import { ConversationActionsMenu } from "./ConversationActionsMenu";
@@ -44,13 +44,8 @@ export function ConversationCompaction({
     if (confirmation) confirmButton.current?.focus();
   }, [confirmation]);
   // A confirmation belongs to the target that was visible when it opened.
-  const sameTarget =
-    target &&
-    confirmation &&
-    target.runtime === confirmation.runtime &&
-    target.sessionId === confirmation.sessionId &&
-    target.epoch === confirmation.epoch;
-  if (confirmation && (!connected || !sameTarget)) setConfirmation(null);
+  if (confirmation && (!connected || !target || !sameTarget(target, confirmation)))
+    setConfirmation(null);
   function cancel() {
     setConfirmation(null);
     trigger.current?.focus();

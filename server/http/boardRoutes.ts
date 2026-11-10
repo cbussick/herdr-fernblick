@@ -52,7 +52,6 @@ async function body(request: IncomingMessage, max: number) {
 }
 const openSchema = z.object({
   target: targetSchema,
-  engine: z.enum(["excalidraw", "react-flow"]).optional(),
 });
 const ownedSchema = openSchema.extend({ boardId: boardIdSchema });
 const saveSchema = ownedSchema.extend({
@@ -122,21 +121,10 @@ export function createBoardRoutes(service: HerdrService, bridge: LiveBridge, boa
         response.setHeader("Content-Type", "application/json; charset=utf-8");
         response.setHeader(
           "Content-Disposition",
-          `attachment; filename="whiteboard-${snapshot.revision}.${snapshot.scene.engine === "react-flow" ? "flow.json" : "excalidraw"}"`,
+          `attachment; filename="whiteboard-${snapshot.revision}.flow.json"`,
         );
         response.end(
-          JSON.stringify(
-            snapshot.scene.engine === "react-flow"
-              ? { format: "fernblick-flow", version: 1, scene: snapshot.scene }
-              : {
-                  type: "excalidraw",
-                  version: 2,
-                  source: "Fernblick",
-                  elements: snapshot.scene.elements,
-                  files: snapshot.scene.files,
-                  appState: { viewBackgroundColor: snapshot.scene.background },
-                },
-          ),
+          JSON.stringify({ format: "fernblick-flow", version: 1, scene: snapshot.scene }),
         );
       }
       return true;
@@ -156,7 +144,7 @@ export function createBoardRoutes(service: HerdrService, bridge: LiveBridge, boa
       if (streams.size >= 64) throw new BoardError(503, "Too many whiteboard streams");
       const target = targetSchema.parse(Object.fromEntries(url.searchParams));
       const ctx = await context(pane, target);
-      await boards.open(ctx.key, ctx.validate, "react-flow");
+      await boards.open(ctx.key, ctx.validate);
       ctx.validate();
       response.writeHead(200, {
         "Content-Type": "text/event-stream",
@@ -238,7 +226,7 @@ export function createBoardRoutes(service: HerdrService, bridge: LiveBridge, boa
     const input = openSchema.parse(raw);
     const ctx = await context(pane, input.target);
     if (!action) {
-      const state = await boards.open(ctx.key, ctx.validate, input.engine ?? "react-flow");
+      const state = await boards.open(ctx.key, ctx.validate);
       ctx.validate();
       json(response, state);
       return true;
@@ -251,11 +239,10 @@ export function createBoardRoutes(service: HerdrService, bridge: LiveBridge, boa
       json(response, await boards.save(ctx.id, value.baseRevision, value.scene, ctx.validate));
     } else if (action === "export") {
       const value = exportSchema.parse(raw);
-      const current = await boards.read(ctx.id);
+      await boards.read(ctx.id);
       ctx.validate();
       const scene = validateScene(value.scene);
-      if ((scene.engine ?? "excalidraw") !== (current.scene.engine ?? "excalidraw"))
-        throw new BoardError(400, "Export cannot change the board engine");
+
       // Render a detached draft, not a save or a grant. Unsynced work can be exported too.
       const png = await bridge.exportBoardImage(scene, value.quality);
       ctx.validate();

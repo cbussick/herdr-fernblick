@@ -1,7 +1,6 @@
 import { chromium, type Browser, type Request } from "playwright";
 import type { BoardScene } from "../../packages/pi-live-chat/boardProtocol.js";
 import { validateScene } from "./scene.js";
-import { validateRasterBudget } from "./rasterBudget.js";
 
 import {
   boardImageLimits,
@@ -12,9 +11,6 @@ const TIMEOUT_MS = 30_000;
 const MAX_PENDING = 4; // Includes the active render.
 const pngMagic = Buffer.from([137, 80, 78, 71, 13, 10, 26, 10]);
 
-type RenderFunction = {
-  renderBoardScene: (scene: BoardScene, quality?: BoardImageQuality) => Promise<string>;
-};
 type FlowRenderFunction = {
   prepareFlowBoardScene: (
     scene: BoardScene,
@@ -42,24 +38,14 @@ function allowedAsset(request: Request, origin: string): boolean {
   return (
     (request.resourceType() === "script" && /^\/assets\/[\w.-]+\.js$/.test(path)) ||
     (request.resourceType() === "stylesheet" && /^\/assets\/[\w.-]+\.css$/.test(path)) ||
-    (request.resourceType() === "font" &&
-      (/^\/assets\/[\w.-]+\.woff2$/.test(path) ||
-        /^\/excalidraw\/fonts\/[\w./-]+\.woff2$/.test(path)))
+    (request.resourceType() === "font" && /^\/assets\/[\w.-]+\.woff2$/.test(path))
   );
 }
 
-function decodePng(value: unknown, limits: Limits): Buffer {
-  if (
-    typeof value !== "string" ||
-    value.length > Math.ceil(limits.maxBytes / 3) * 4 ||
-    !/^[A-Za-z0-9+/]+={0,2}$/.test(value)
-  )
-    throw new Error("Board renderer returned an invalid or oversized PNG");
-  const png = Buffer.from(value, "base64");
+function validatePng(png: Buffer, limits: Limits): Buffer {
   if (
     png.length < 33 ||
     png.length > limits.maxBytes ||
-    png.toString("base64") !== value ||
     !png.subarray(0, 8).equals(pngMagic) ||
     png.toString("ascii", 12, 16) !== "IHDR"
   )
@@ -77,7 +63,7 @@ function decodePng(value: unknown, limits: Limits): Buffer {
   return png;
 }
 
-/** On-demand native Excalidraw exports, independent of any user's browser/editor.
+/** On-demand structured board exports, independent of any user's browser/editor.
  * The origin must serve a production Vite build. No browser launches until render().
  * Each job gets a fresh browser (no cookies, caches or scene state survive a job).
  */
@@ -104,7 +90,6 @@ export class BoardRenderer {
     try {
       limits = boardImageLimits(quality);
       snapshot = validateScene(scene);
-      validateRasterBudget(snapshot);
     } catch (error) {
       return Promise.reject(error);
     }
@@ -177,8 +162,7 @@ export class BoardRenderer {
         if (popup !== page) void popup.close().catch(() => {});
       });
       await context.routeWebSocket(/.*/, (socket) => socket.close());
-      const flow = job.scene.engine === "react-flow";
-      const entry = `${this.#origin}/${flow ? "flow-board-render" : "whiteboard-render"}.html`;
+      const entry = `${this.#origin}/flow-board-render.html`;
       let documentAllowed = true;
       await context.route("**/*", async (route) => {
         const request = route.request();
@@ -218,70 +202,46 @@ export class BoardRenderer {
         timeout: TIMEOUT_MS,
       });
       if (!response?.ok()) throw new Error("Board renderer entry could not load");
-      if (flow) {
-        await page.waitForFunction(
-          () =>
-            typeof (globalThis as unknown as FlowRenderFunction).prepareFlowBoardScene ===
-            "function",
-        );
-        for (let attempt = 0, scale = 1; attempt < 8; attempt++) {
-          signal.throwIfAborted();
-          const size = await page.evaluate(
-            ({ json, scale, quality }) =>
-              (globalThis as unknown as FlowRenderFunction).prepareFlowBoardScene(
-                JSON.parse(json),
-                scale,
-                quality,
-              ),
-            { json: JSON.stringify(job.scene), scale, quality: job.quality },
-          );
-          if (
-            !Number.isInteger(size.width) ||
-            !Number.isInteger(size.height) ||
-            size.width < 1 ||
-            size.height < 1 ||
-            size.width > limits.maxSide ||
-            size.height > limits.maxSide ||
-            size.width * size.height > limits.maxPixels
-          )
-            throw new Error("Board renderer exceeded the pixel limit");
-          await page.setViewportSize(size);
-          const png = await page.screenshot({
-            type: "png",
-            fullPage: false,
-            animations: "disabled",
-            timeout: TIMEOUT_MS,
-          });
-          signal.throwIfAborted();
-          if (png.length <= limits.maxBytes) {
-            output = decodePng(png.toString("base64"), limits);
-            break;
-          }
-          scale *= Math.min(0.8, Math.sqrt(limits.maxBytes / png.length) * 0.9);
-        }
-        if (!output) throw new Error("Board renderer could not fit PNG within the output limit");
-      } else {
-        await page.waitForFunction(
-          () => typeof (globalThis as unknown as RenderFunction).renderBoardScene === "function",
-        );
+      await page.waitForFunction(
+        () =>
+          typeof (globalThis as unknown as FlowRenderFunction).prepareFlowBoardScene === "function",
+      );
+      for (let attempt = 0, scale = 1; attempt < 8; attempt++) {
         signal.throwIfAborted();
-        const result = await page.evaluate(
-          (input) => {
-            // Preserve the legacy single-JSON argument when no download profile is requested.
-            const { json, quality } =
-              typeof input === "string" ? { json: input, quality: undefined } : input;
-            return (globalThis as unknown as RenderFunction).renderBoardScene(
+        const size = await page.evaluate(
+          ({ json, scale, quality }) =>
+            (globalThis as unknown as FlowRenderFunction).prepareFlowBoardScene(
               JSON.parse(json),
+              scale,
               quality,
-            );
-          },
-          job.quality
-            ? { json: JSON.stringify(job.scene), quality: job.quality }
-            : JSON.stringify(job.scene),
+            ),
+          { json: JSON.stringify(job.scene), scale, quality: job.quality },
         );
+        if (
+          !Number.isInteger(size.width) ||
+          !Number.isInteger(size.height) ||
+          size.width < 1 ||
+          size.height < 1 ||
+          size.width > limits.maxSide ||
+          size.height > limits.maxSide ||
+          size.width * size.height > limits.maxPixels
+        )
+          throw new Error("Board renderer exceeded the pixel limit");
+        await page.setViewportSize(size);
+        const png = await page.screenshot({
+          type: "png",
+          fullPage: false,
+          animations: "disabled",
+          timeout: TIMEOUT_MS,
+        });
         signal.throwIfAborted();
-        output = decodePng(result, limits);
+        if (png.length <= limits.maxBytes) {
+          output = validatePng(png, limits);
+          break;
+        }
+        scale *= Math.min(0.8, Math.sqrt(limits.maxBytes / png.length) * 0.9);
       }
+      if (!output) throw new Error("Board renderer could not fit PNG within the output limit");
     } catch (error) {
       failure = error instanceof Error ? error : new Error("Board rendering failed");
     } finally {

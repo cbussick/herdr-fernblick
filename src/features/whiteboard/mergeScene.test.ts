@@ -1,9 +1,14 @@
 import { expect, it } from "vitest";
 import { boardSceneSchema, type BoardScene } from "../../../packages/pi-live-chat/boardProtocol";
-import { canonical, editorChanges, mergeScene } from "./mergeScene";
+import { canonical, mergeScene } from "./mergeScene";
 import { scene } from "./testFixtures";
 
-const blank = (): BoardScene => ({ elements: [], files: {}, background: "#ffffff" });
+const blank = (): BoardScene => ({
+  engine: "react-flow",
+  elements: [],
+  files: {},
+  background: "#ffffff",
+});
 const named = (id: string, version = 1) => ({ ...scene(version).elements[0], id });
 it("combines independent additions exactly once in both merge orders", () => {
   const local = { ...blank(), elements: [named("human")] };
@@ -54,47 +59,12 @@ it("preserves local ordering and places incoming additions without losing record
   const remote = { ...base, elements: [named("a"), named("new"), named("b")] };
   expect(mergeScene(base, local, remote).elements.map((e) => e.id)).toEqual(["b", "a", "new"]);
 });
-it("canonicalizes nested native metadata and strips editor restoration-only changes", () => {
+it("canonicalizes nested metadata", () => {
   expect(canonical({ b: 1, a: { d: 2, c: 3 } })).toBe(canonical({ a: { c: 3, d: 2 }, b: 1 }));
-  const raw = scene();
-  const restored = { ...raw, elements: [{ ...raw.elements[0], customData: { repaired: true } }] };
-  const next = { ...restored, elements: [...restored.elements, named("human")] };
-  expect(editorChanges(raw, restored, next).elements).toEqual([...raw.elements, named("human")]);
 });
-it("retains native image assets and detects content collisions", () => {
-  const file = {
-    id: "asset",
-    mimeType: "image/png" as const,
-    dataURL: "data:image/png;base64,YQ==",
-    created: 1,
-  };
-  const image = { ...named("image"), type: "image" as const, fileId: "asset" };
-  const remote = { ...blank(), elements: [image], files: { asset: file } };
-  expect(mergeScene(blank(), { ...blank(), elements: [named("human")] }, remote).files).toEqual(
-    remote.files,
-  );
-  const local = { ...remote, files: { asset: { ...file, dataURL: "data:image/png;base64,Yg==" } } };
-  expect(() => mergeScene(remote, local, remote)).toThrow("asset conflict");
-});
-it("rejects a live relation to a concurrently deleted shape", () => {
-  const base = { ...blank(), elements: [named("box")] };
-  const local = { ...base, elements: [{ ...named("box"), isDeleted: true }] };
-  const remote = {
-    ...base,
-    elements: [...base.elements, { ...named("label"), type: "text" as const, containerId: "box" }],
-  };
-  expect(() => mergeScene(base, local, remote)).toThrow("binding/frame");
-});
-it("keeps valid untouched bindings and enforces merged shape limits", () => {
-  const base = {
-    ...blank(),
-    elements: [named("box"), { ...named("label"), type: "text" as const, containerId: "box" }],
-  };
-  expect(
-    mergeScene(base, base, { ...base, elements: [...base.elements, named("agent")] }).elements,
-  ).toHaveLength(3);
+it("enforces merged shape limits", () => {
   const local = { ...blank(), elements: Array.from({ length: 2000 }, (_, i) => named("l" + i)) };
   const remote = { ...blank(), elements: [named("agent")] };
   expect(() => mergeScene(blank(), local, remote)).toThrow();
-  expect(boardSceneSchema.parse(base)).toEqual(base);
+  expect(boardSceneSchema.parse(scene())).toEqual(scene());
 });

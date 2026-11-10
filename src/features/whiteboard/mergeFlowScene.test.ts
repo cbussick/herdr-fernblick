@@ -100,7 +100,7 @@ it("pauses rather than publishing a new connection to a concurrently deleted nod
   ).toThrow("recovery");
 });
 it("never treats an engine change as an ordinary scene merge", () => {
-  const native = { elements: [], files: {}, background: "#ffffff" };
+  const native = { elements: [], files: {}, background: "#ffffff" } as unknown as BoardScene;
   expect(() => mergeScene(native, blank(), native)).toThrow("engine changed");
   expect(() => mergeScene(blank(), blank(), native)).toThrow("engine changed");
 });

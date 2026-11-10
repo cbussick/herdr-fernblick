@@ -12,20 +12,15 @@ import {
 } from "react";
 import { createPortal } from "react-dom";
 import type { BoardTarget } from "../../../packages/pi-live-chat/boardProtocol";
+import { sameTarget } from "../../../packages/pi-live-chat/protocol";
 import { BoardController } from "./BoardController";
 import { BoardExport } from "./BoardExport";
 import { downloadScene } from "./scene";
-import type { EditorHandle } from "./BoardEditor";
+import type { EditorHandle } from "./editorTypes";
 import { ConversationDock, type WhiteboardConversation } from "./ConversationDock";
 import styles from "./Whiteboard.module.css";
 
-// No runtime Excalidraw import may precede this assignment. The fonts are
-// served locally; never rely on the vendor's CDN fallback.
-const Editor = lazy(() => {
-  (window as Window & { EXCALIDRAW_ASSET_PATH?: string }).EXCALIDRAW_ASSET_PATH = "/excalidraw/";
-  return import("./BoardEditor");
-});
-const FlowEditor = lazy(() => import("../flow/FlowBoardEditor"));
+const ActiveEditor = lazy(() => import("../flow/FlowBoardEditor"));
 class EditorBoundary extends Component<{ children: ReactNode }, { error: boolean }> {
   state = { error: false };
   static getDerivedStateFromError() {
@@ -79,7 +74,6 @@ function WhiteboardSession({
 }: WhiteboardProps & { controller: BoardController }) {
   const state = useSyncExternalStore(controller.subscribe, controller.getSnapshot);
   const available = agentState === "ready";
-  const ActiveEditor = state.scene?.engine === "react-flow" ? FlowEditor : Editor;
   const dialog = useRef<HTMLDialogElement>(null);
   const editor = useRef<EditorHandle | null>(null);
   const active = useRef(false);
@@ -107,15 +101,14 @@ function WhiteboardSession({
     active.current = true;
     const focused = document.activeElement;
     const modal = dialog.current;
-    // Native Excalidraw dialogs portal to body. A top-layer showModal() would
-    // make those dialogs inert, so this body portal supplies modality instead.
+    // Keep the sibling app-update portal actionable while making the app inert.
+    // Nested editor/image dialogs retain their own focus and Escape handling.
     const background = modal
       ? Array.from(document.body.children).filter(
           (element): element is HTMLElement =>
             element instanceof HTMLElement &&
             element !== modal &&
-            !element.matches('[data-ui="app-status"]') &&
-            !element.classList.contains("excalidraw"),
+            !element.matches('[data-ui="app-status"]'),
         )
       : [];
     const previous = background.map((element) => [element, element.inert] as const);
@@ -125,7 +118,7 @@ function WhiteboardSession({
     const keydown = (event: KeyboardEvent) => {
       if (!modal || event.defaultPrevented) return;
       const nativeDialog = document.querySelector<HTMLElement>(
-        "[class~=excalidraw-modal-container] [role=dialog], dialog[data-ui=chat-image-preview][open], dialog[data-ui=flow-component-editor][open], dialog[data-ui=board-export][open]",
+        "dialog[data-ui=chat-image-preview][open], dialog[data-ui=flow-component-editor][open], dialog[data-ui=board-export][open]",
       );
       const appStatus = document.querySelector<HTMLElement>('[data-ui="app-status"]');
       if (
@@ -140,7 +133,7 @@ function WhiteboardSession({
       const scope = nativeDialog ?? modal;
       // The global notice is a sibling body portal so it stays actionable while
       // the app root is inert. Include it in this modal's normal Tab order, but
-      // keep nested Excalidraw/image dialogs in control of their own focus.
+      // keep nested editor/image dialogs in control of their own focus.
       const scopes = (!nativeDialog && appStatus ? [modal, appStatus] : [scope]).sort(
         (left, right) =>
           left.compareDocumentPosition(right) & Node.DOCUMENT_POSITION_FOLLOWING ? -1 : 1,
@@ -207,13 +200,7 @@ function WhiteboardSession({
 
   function assertTarget() {
     const now = current.current;
-    if (
-      !active.current ||
-      !now.available ||
-      now.target.runtime !== controller.target.runtime ||
-      now.target.epoch !== controller.target.epoch ||
-      now.target.sessionId !== controller.target.sessionId
-    )
+    if (!active.current || !now.available || !sameTarget(now.target, controller.target))
       throw new Error(
         "The agent is busy, disconnected, or this session changed. Nothing further was sent.",
       );
@@ -344,9 +331,7 @@ function WhiteboardSession({
             ← Back
           </button>
           <div className={styles.identity}>
-            <h2 id="whiteboard-title">
-              {state.scene?.engine === "react-flow" ? "Component whiteboard" : "Whiteboard"}
-            </h2>
+            <h2 id="whiteboard-title">Component whiteboard</h2>
             <span title={[agentName, agentContext].filter(Boolean).join(" · ")}>
               <strong>{agentName}</strong>
               {agentContext ? ` · ${agentContext}` : ""}

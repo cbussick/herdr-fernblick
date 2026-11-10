@@ -5,9 +5,15 @@ import {
   messageSchema,
   navigationResponseSchema,
   sendInputSchema,
+  sameTarget,
 } from "./protocol.js";
 
 const target = { runtime: randomUUID(), epoch: randomUUID(), sessionId: "session" };
+it("compares session identity by value, including every generation field", () => {
+  expect(sameTarget(target, { ...target })).toBe(true);
+  for (const field of ["runtime", "epoch", "sessionId"] as const)
+    expect(sameTarget(target, { ...target, [field]: randomUUID() })).toBe(false);
+});
 it.each([10, 11])(
   "validates the %i-image boundary across send, history and navigation",
   (count) => {

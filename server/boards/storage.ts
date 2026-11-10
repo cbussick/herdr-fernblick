@@ -1,5 +1,6 @@
 import { createHash, randomUUID } from "node:crypto";
 import { z } from "zod";
+import { sameTarget } from "../../packages/pi-live-chat/protocol.js";
 import {
   MAX_BOARD_BYTES,
   MAX_BOARD_PNG_BYTES,
@@ -54,8 +55,6 @@ type GrantRecord = {
   // At most the 2,000 live shape IDs; no scene/assets or capability data retained.
   observed: Map<string, { revision: number; fingerprint: string }>;
 };
-const sameTarget = (a: BoardTarget, b: BoardTarget) =>
-  a.runtime === b.runtime && a.epoch === b.epoch && a.sessionId === b.sessionId;
 const validRevision = (revision: number) =>
   requireBoard(Number.isSafeInteger(revision) && revision >= 0, 400, "Invalid board revision");
 const validId = (id: string) =>
@@ -136,7 +135,13 @@ export class BoardStore {
     this.alive();
     if (!bytes) return null;
     try {
-      const parsed = storedStateSchema.safeParse(JSON.parse(bytes.toString("utf8")));
+      const raw = JSON.parse(bytes.toString("utf8"));
+      if (raw?.scene && raw.scene.engine !== "react-flow")
+        throw new BoardError(
+          410,
+          "Legacy Excalidraw boards are no longer supported. Stored data has not been changed.",
+        );
+      const parsed = storedStateSchema.safeParse(raw);
       requireBoard(parsed.success, 500, "Invalid stored board");
       const state = parsed.data;
       requireBoard(
@@ -153,7 +158,8 @@ export class BoardStore {
       state.scene = validateScene(state.scene);
       state.access = null;
       return state;
-    } catch {
+    } catch (error) {
+      if (error instanceof BoardError && error.status === 410) throw error;
       throw new BoardError(500, "Stored board is corrupt or unsafe; refusing to overwrite it");
     }
   }
@@ -200,11 +206,7 @@ export class BoardStore {
     }
   }
 
-  async open(
-    sessionKey: string,
-    authorize?: () => void,
-    preferredEngine?: BoardScene["engine"],
-  ): Promise<BoardState> {
+  async open(sessionKey: string, authorize?: () => void): Promise<BoardState> {
     const check = this.guard(authorize);
     check();
     const id = BoardStore.idFor(sessionKey);
@@ -223,7 +225,7 @@ export class BoardStore {
         id,
         sessionKey,
         revision: 0,
-        scene: emptyScene(preferredEngine),
+        scene: emptyScene(),
         updatedAt: Date.now(),
         lastAuthor: "human",
         snapshots: [],
@@ -324,11 +326,6 @@ export class BoardStore {
     author: "human" | "agent",
     check: () => void,
   ): Promise<BoardState> {
-    requireBoard(
-      (state.scene.engine ?? "excalidraw") === (scene.engine ?? "excalidraw"),
-      400,
-      "Board engine cannot change",
-    );
     requireBoard(state.revision < Number.MAX_SAFE_INTEGER, 409, "Board revision limit reached");
     const next: BoardState = {
       ...state,
@@ -659,7 +656,7 @@ export class BoardStore {
       }
       if (request.action === "catalog")
         return {
-          engine: state.scene.engine ?? "excalidraw",
+          engine: state.scene.engine,
           components: flowCatalog,
           propsSchema: z.toJSONSchema(flowComponentPropsSchema),
           primitives: {

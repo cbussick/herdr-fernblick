@@ -31,37 +31,12 @@ function references(element: BoardElement): string[] {
     if (typeof element.source === "string") result.push(element.source);
     if (typeof element.target === "string") result.push(element.target);
   }
-  for (const key of ["frameId", "containerId"]) {
-    if (typeof element[key] === "string") result.push(element[key]);
-  }
-  for (const key of ["startBinding", "endBinding"]) {
-    const binding = element[key];
-    if (
-      binding &&
-      typeof binding === "object" &&
-      !Array.isArray(binding) &&
-      typeof binding.elementId === "string"
-    )
-      result.push(binding.elementId);
-  }
-  if (Array.isArray(element.boundElements)) {
-    for (const bound of element.boundElements) {
-      if (
-        bound &&
-        typeof bound === "object" &&
-        !Array.isArray(bound) &&
-        typeof bound.id === "string"
-      )
-        result.push(bound.id);
-    }
-  }
   return result;
 }
 
 /** Local wins competing edits; deletions win. No field-wise native-record mixing. */
 export function mergeScene(base: BoardScene, local: BoardScene, remote: BoardScene): BoardScene {
-  const engine = base.engine ?? "excalidraw";
-  if ((local.engine ?? "excalidraw") !== engine || (remote.engine ?? "excalidraw") !== engine)
+  if ([base, local, remote].some((scene) => scene.engine !== "react-flow"))
     throw new Error("Board engine changed; your drawing is retained for explicit recovery");
   const b = new Map(base.elements.map((e) => [e.id, e]));
   const l = new Map(local.elements.map((e) => [e.id, e]));
@@ -87,7 +62,7 @@ export function mergeScene(base: BoardScene, local: BoardScene, remote: BoardSce
 
   // Server array order is authoritative unless the human actually reordered
   // existing shapes. Insert independent local additions next to their local
-  // predecessor. restoreElements repairs native indices to this array order.
+  // predecessor.
   const common = base.elements.map((e) => e.id).filter((id) => l.has(id) && r.has(id));
   const projected = (s: BoardScene) =>
     s.elements.map((e) => e.id).filter((id) => common.includes(id));
@@ -106,13 +81,13 @@ export function mergeScene(base: BoardScene, local: BoardScene, remote: BoardSce
   for (const id of chosen.keys()) if (!order.includes(id)) order.push(id);
   const elements = order.flatMap((id) => (chosen.has(id) ? [chosen.get(id)!] : []));
 
-  // Never publish dangling native relations. Preserve whole dependency sets;
-  // incompatible simultaneous binding/frame edits use explicit recovery.
+  // Never publish dangling component/connection relations. Preserve whole
+  // dependency sets; incompatible concurrent edits use explicit recovery.
   for (const element of elements.filter((e) => !e.isDeleted)) {
     for (const id of references(element)) {
       const target = chosen.get(id);
       if (!target || target.isDeleted)
-        throw new Error("Concurrent binding/frame change needs recovery; your drawing is retained");
+        throw new Error("Concurrent relationship change needs recovery; your drawing is retained");
       const sources = [local, remote].filter((s) =>
         same(
           s.elements.find((e) => e.id === element.id),
@@ -131,7 +106,6 @@ export function mergeScene(base: BoardScene, local: BoardScene, remote: BoardSce
   const files: BoardScene["files"] = {};
   const used = new Set(
     elements.flatMap((e) => {
-      if (e.type === "image") return [e.fileId];
       if (
         e.type === "component" &&
         !e.isDeleted &&
@@ -157,24 +131,10 @@ export function mergeScene(base: BoardScene, local: BoardScene, remote: BoardSce
     elements,
     files,
     background: local.background !== base.background ? local.background : remote.background,
-    ...(local.engine ? { engine: local.engine } : {}),
+    engine: "react-flow",
   });
-  if (scene.engine === "react-flow") validateFlowGraph(scene);
+  validateFlowGraph(scene);
   if (new TextEncoder().encode(JSON.stringify(scene)).byteLength > MAX_BOARD_BYTES)
     throw new Error("Merged board exceeds 12 MiB; your drawing is retained");
   return scene;
-}
-
-/** Strip restoration-only changes from untouched records at the editor boundary. */
-export function editorChanges(raw: BoardScene, baseline: BoardScene, next: BoardScene): BoardScene {
-  const original = new Map(raw.elements.map((e) => [e.id, e]));
-  const restored = new Map(baseline.elements.map((e) => [e.id, e]));
-  return {
-    ...next,
-    elements: next.elements.map((e) => {
-      const previous = restored.get(e.id);
-      const native = original.get(e.id);
-      return native && same(previous, e) ? native : e;
-    }),
-  };
 }

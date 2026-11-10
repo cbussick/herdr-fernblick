@@ -333,8 +333,9 @@ export type Target = z.infer<typeof targetSchema>;
 export function targetOf(s: Snapshot): Target {
   return { runtime: s.identity.runtime, epoch: s.epoch, sessionId: s.identity.sessionId };
 }
+export function sameTarget(a: Target, b: Target) {
+  return a.runtime === b.runtime && a.epoch === b.epoch && a.sessionId === b.sessionId;
+}
 export function matchesTarget(s: Snapshot, t: Target) {
-  return (
-    s.identity.runtime === t.runtime && s.epoch === t.epoch && s.identity.sessionId === t.sessionId
-  );
+  return sameTarget(targetOf(s), t);
 }

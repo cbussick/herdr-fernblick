@@ -84,7 +84,7 @@ const contentTypes: Record<string, string> = {
 function setSecurityHeaders(response: ServerResponse) {
   response.setHeader(
     "Content-Security-Policy",
-    // Excalidraw positions its canvas/text with inline styles and embeds fonts on export.
+    // React Flow positions its canvas nodes with inline styles.
     // Markdown images may load directly from web/tailnet URLs. Scripts and API
     // connections remain same-origin; no server-side image proxy is exposed.
     "default-src 'self'; connect-src 'self'; img-src 'self' blob: data: http: https:; font-src 'self' data:; style-src 'self' 'unsafe-inline'; script-src 'self'; worker-src 'self' blob:; base-uri 'none'; frame-ancestors 'none'; form-action 'self'",

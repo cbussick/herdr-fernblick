@@ -15,7 +15,6 @@ import {
   createTabRequestSchema,
   createTabResponseSchema,
   terminalOutputSchema,
-  type Agent,
   type CreateAgentRequest,
   type CreateWorkspaceRequest,
   type CreateTabRequest,
@@ -35,6 +34,7 @@ import {
   thinkingChangedResponseSchema,
   defaultSavedResponseSchema,
   sameDefaultSelection,
+  sameTarget,
   type DefaultSelection,
   type ThinkingLevel,
   type Target,
@@ -57,19 +57,23 @@ export class ApiError extends Error {
   }
 }
 
+async function readResponse(response: Response): Promise<unknown> {
+  // Successful responses must be valid JSON. Error pages from proxies need not be.
+  if (response.ok) return response.json();
+  const body: unknown = await response.json().catch(() => null);
+  const message =
+    typeof body === "object" && body !== null && "error" in body && typeof body.error === "string"
+      ? body.error
+      : "Request failed";
+  const code =
+    typeof body === "object" && body !== null && "code" in body && typeof body.code === "string"
+      ? body.code
+      : undefined;
+  throw new ApiError(response.status, message, code);
+}
+
 async function request(path: string, init?: RequestInit) {
-  const response = await fetch(path, init);
-  const body = (await response.json()) as unknown;
-
-  if (!response.ok) {
-    const message =
-      typeof body === "object" && body !== null && "error" in body && typeof body.error === "string"
-        ? body.error
-        : "Request failed";
-    throw new ApiError(response.status, message);
-  }
-
-  return body;
+  return readResponse(await fetch(path, init));
 }
 
 export async function getAgents() {
@@ -108,18 +112,7 @@ export async function markAgentRead(input: { paneId: string; completionId: strin
       : status === 404 || status === 409
         ? "stale"
         : "http";
-    const body: unknown = await response.json();
-    if (!response.ok) {
-      const message =
-        typeof body === "object" &&
-        body !== null &&
-        "error" in body &&
-        typeof body.error === "string"
-          ? body.error
-          : "Request failed";
-      throw new ApiError(status, message);
-    }
-    markAgentReadResponseSchema.parse(body);
+    markAgentReadResponseSchema.parse(await readResponse(response));
     category = "success";
   } catch (error) {
     if (signal?.aborted) category = signal.reason?.name === "TimeoutError" ? "timeout" : "aborted";
@@ -221,10 +214,10 @@ export async function exitAgentSession(target: string) {
 }
 
 export async function restartAgent(target: string) {
-  const body = (await request(`/api/agents/${encodeURIComponent(target)}/restart`, {
+  const body = await request(`/api/agents/${encodeURIComponent(target)}/restart`, {
     method: "POST",
-  })) as { agent: Agent };
-  return body.agent;
+  });
+  return createAgentResponseSchema.parse(body).agent;
 }
 
 export async function getPaneOutput(
@@ -286,12 +279,7 @@ export async function getAgentSkills(pane: string, target: Target, signal?: Abor
       signal,
     }),
   );
-  if (
-    response.target.runtime !== target.runtime ||
-    response.target.epoch !== target.epoch ||
-    response.target.sessionId !== target.sessionId
-  )
-    throw new Error("Pi session changed. Reopen Skills.");
+  if (!sameTarget(response.target, target)) throw new Error("Pi session changed. Reopen Skills.");
   return response;
 }
 export async function getAgentModels(pane: string, target: Target, signal?: AbortSignal) {
@@ -303,11 +291,7 @@ export async function getAgentModels(pane: string, target: Target, signal?: Abor
       signal,
     }),
   );
-  if (
-    result.target.runtime !== target.runtime ||
-    result.target.sessionId !== target.sessionId ||
-    result.target.epoch !== target.epoch
-  )
+  if (!sameTarget(result.target, target))
     throw new Error("Pi session changed. Reopen the model picker.");
   return result;
 }
@@ -334,9 +318,7 @@ export async function setAgentModel(
   const result = modelChangedResponseSchema.safeParse(body);
   if (
     !result.success ||
-    result.data.target.runtime !== target.runtime ||
-    result.data.target.sessionId !== target.sessionId ||
-    result.data.target.epoch !== target.epoch ||
+    !sameTarget(result.data.target, target) ||
     result.data.model.provider !== provider ||
     result.data.model.id !== modelId
   )
@@ -352,11 +334,7 @@ export async function getAgentThinkingLevels(pane: string, target: Target, signa
       signal,
     }),
   );
-  if (
-    result.target.runtime !== target.runtime ||
-    result.target.sessionId !== target.sessionId ||
-    result.target.epoch !== target.epoch
-  )
+  if (!sameTarget(result.target, target))
     throw new Error("Pi session changed. Reopen Thinking level.");
   return result;
 }
@@ -384,9 +362,7 @@ export async function setAgentThinkingLevel(
   const result = thinkingChangedResponseSchema.safeParse(body);
   if (
     !result.success ||
-    result.data.target.runtime !== target.runtime ||
-    result.data.target.sessionId !== target.sessionId ||
-    result.data.target.epoch !== target.epoch ||
+    !sameTarget(result.data.target, target) ||
     result.data.provider !== provider ||
     result.data.modelId !== modelId ||
     result.data.level !== level
@@ -416,9 +392,7 @@ export async function saveAgentGlobalDefault(
   const result = defaultSavedResponseSchema.safeParse(body);
   if (
     !result.success ||
-    result.data.target.runtime !== target.runtime ||
-    result.data.target.sessionId !== target.sessionId ||
-    result.data.target.epoch !== target.epoch ||
+    !sameTarget(result.data.target, target) ||
     !sameDefaultSelection(result.data.selection, selection)
   )
     throw new Error("No valid default save confirmation. Check Pi settings before trying again.");
@@ -440,11 +414,7 @@ export async function getAgentTreePage(
         : AbortSignal.timeout(15_000),
     }),
   );
-  if (
-    response.target.runtime !== target.runtime ||
-    response.target.epoch !== target.epoch ||
-    response.target.sessionId !== target.sessionId
-  )
+  if (!sameTarget(response.target, target))
     throw new Error("Conversation session changed. Reopen conversation paths.");
   return response.page;
 }
@@ -475,12 +445,7 @@ export async function compactAgentConversation(pane: string, target: Target) {
     });
   }
   const result = compactionResponseSchema.safeParse(body);
-  if (
-    !result.success ||
-    result.data.target.runtime !== target.runtime ||
-    result.data.target.sessionId !== target.sessionId ||
-    result.data.target.epoch !== target.epoch
-  )
+  if (!result.success || !sameTarget(result.data.target, target))
     throw new Error("No valid compaction confirmation. Check Pi before trying again.");
   return result.data;
 }

@@ -167,22 +167,10 @@ function PiAgentConsole({ agent, onBack }: AgentConsoleProps) {
   const initializing = view === "chat" && !snapshot && !live.error;
   const starting = initializing && !agent.agent_session;
   // Discard a captured tree target before rendering commands for a replacement session.
-  if (
-    treeTarget &&
-    (!snapshot ||
-      treeTarget.runtime !== snapshot.identity.runtime ||
-      treeTarget.epoch !== snapshot.epoch ||
-      treeTarget.sessionId !== snapshot.identity.sessionId)
-  ) {
+  if (treeTarget && (!snapshot || !matchesTarget(snapshot, treeTarget))) {
     setTreeTarget(null);
   }
-  if (
-    boardTarget &&
-    snapshot &&
-    (boardTarget.runtime !== snapshot.identity.runtime ||
-      boardTarget.epoch !== snapshot.epoch ||
-      boardTarget.sessionId !== snapshot.identity.sessionId)
-  ) {
+  if (boardTarget && snapshot && !matchesTarget(snapshot, boardTarget)) {
     // Missing live state pauses sending; only a confirmed identity change closes
     // the board. Unmount then aborts in-flight work and retains the old draft.
     setBoardTarget(null);

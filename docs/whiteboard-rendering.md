@@ -1,6 +1,6 @@
 # On-demand whiteboard rendering
 
-`BoardRenderer` (`server/boards/renderer.ts`) exports the **current native scene** as a PNG on demand, without an open editor or a connected browser. It uses the pinned Excalidraw 0.18.1 `restoreElements` / `exportToBlob` implementation in headless Chromium, not a simplified shape renderer. Native freehand paths/pressure, frames, text, rotation, bindings, and inline raster assets follow the same export path as Excalidraw. Fonts and their vendor fallback are served locally, as in the editor.
+`BoardRenderer` (`server/boards/renderer.ts`) exports the **current structured scene** as a PNG on demand, without an open editor or connected browser. Headless Chromium renders the same trusted React Flow components, SVG primitives, ink and raster assets as the editor, using locally bundled fonts. Excalidraw scenes and the legacy render entry are no longer supported.
 
 ## Installation and deployment
 
@@ -14,7 +14,7 @@ npm run build
 
 Install the browser as the same OS user that runs the backend, or set `PLAYWRIGHT_BROWSERS_PATH` consistently during installation and service startup. In an image with preinstalled OS libraries, `npx playwright install chromium` is sufficient. Do not rely on the developer's external `PLAYWRIGHT_MODULE` paths, another project's dependencies, or an unrelated Chromium cache revision. Reinstall Chromium after changing the Playwright pin. A missing binary/library causes the read to fail; there is no stale screenshot fallback.
 
-Ship `dist/whiteboard-render.html`, all `dist/assets/` chunks, and `dist/excalidraw/fonts/` with the usual frontend build. Keep the bundled font licenses. The renderer origin must serve that build; **the Vite development server is intentionally not supported** by the narrow asset allowlist. In a development backend, first build and serve the built frontend at the renderer's origin. The dedicated page is not an editor and never contacts board APIs.
+Ship `dist/flow-board-render.html` and all `dist/assets/` scripts, styles and fonts with the usual frontend build. Keep the bundled font licenses. The renderer origin must serve that build; **the Vite development server is intentionally not supported** by the narrow asset allowlist. In a development backend, first build and serve the built frontend at the renderer's origin. The dedicated page is not an editor and never contacts board APIs.
 
 ## Runtime contract
 
@@ -34,9 +34,9 @@ The runtime captures a scene and summary at the same revision, then renders outs
 
 ## Untrusted-scene boundary
 
-The entry accepts validated JSON only, never script, markup, URLs to navigate to, or agent-provided export options. Browser requests are denied by default. Only the initial dedicated HTML document, same-origin built `/assets/*.js` scripts, and `/excalidraw/fonts/**/*.woff2` fonts are allowed. External origins, redirects/navigation after the initial document, APIs, uploads, arbitrary same-origin paths, non-GET requests, query-bearing asset requests, and WebSockets are blocked. Service workers and downloads are disabled; popups are closed. The page also has a restrictive CSP. Inline raster assets use only the board's validated raster data URLs; SVG assets are not accepted.
+The entry accepts validated JSON only, never script, markup, URLs to navigate to, or agent-provided export options. Browser requests are denied by default. Only the initial dedicated HTML document and same-origin built `/assets/*.js`, `/assets/*.css`, and `/assets/*.woff2` resources are allowed. External origins, redirects/navigation after the initial document, APIs, uploads, arbitrary same-origin paths, non-GET requests, query-bearing asset requests, and WebSockets are blocked. Service workers and downloads are disabled; popups are closed. The page also has a restrictive CSP. Inline raster assets use only the board's validated raster data URLs; SVG assets are not accepted.
 
-This is defense in depth around a native renderer, **not an OS security sandbox**. Playwright's default Chromium launch configuration is used; run the backend as an unprivileged OS user and apply container/process memory limits for hostile workloads. Header preflight rejects straightforward oversized-raster allocations before decoding, but it is not a complete decoder or process memory ceiling. Malformed/animated assets and native Excalidraw geometry work can still consume memory before the browser's checks or timeout can stop them. The scene input limits still apply. Do not expose arbitrary renderer origins or the renderer API to unauthenticated callers.
+This is defense in depth around a native renderer, **not an OS security sandbox**. Playwright's default Chromium launch configuration is used; run the backend as an unprivileged OS user and apply container/process memory limits for hostile workloads. Header preflight rejects straightforward oversized-raster allocations before decoding, but it is not a complete decoder or process memory ceiling. Malformed/animated assets and DOM layout and drawing work can still consume memory before the browser's checks or timeout can stop them. The scene input limits still apply. Do not expose arbitrary renderer origins or the renderer API to unauthenticated callers.
 
 ## Verification
 
@@ -46,6 +46,6 @@ npm run typecheck
 npm run build
 ```
 
-The integration tests require the matching installed Chromium. They build a dedicated entry into a temporary directory, serve it on an ephemeral loopback port, render through the real `BoardRenderer`, inspect PNG pixels, and delete their fixture/browser/server resources. They do not contact Herdr, a live backend, a user board, or an agent. Coverage includes native shape types, pressure freehand, raster pixels, all native font-family choices and local CJK fallback, deleted elements, empty/current scenes, huge bounds, PNG byte downscaling, missing-font/corrupt-image failure, real shutdown, and external/API/redirect blocking even without the entry CSP. Unit tests cover queue/concurrency limits, total deadlines, shutdown/late launch cleanup, page failures, input detachment, output limits and request interception.
+The integration tests require the matching installed Chromium. They build a dedicated entry into a temporary directory, serve it on an ephemeral loopback port, render through the real `BoardRenderer`, inspect PNG pixels, and delete their fixture/browser/server resources. They do not contact Herdr, a live backend, a user board, or an agent. Coverage includes structured components, pressure freehand, raster pixels, local fonts, empty/current scenes, huge bounds, PNG byte downscaling, missing-font/corrupt-image failure, real shutdown, and external/API/redirect blocking even without the entry CSP. Unit tests cover queue/concurrency limits, total deadlines, shutdown/late launch cleanup, page failures, input detachment, output limits and request interception.
 
 If a highly parallel full-suite run times out in an unrelated large-upload socket test under browser/build load, rerun with `npm test -- --maxWorkers=2`. This limits test-process contention without changing production renderer concurrency.

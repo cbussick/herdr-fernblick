@@ -177,13 +177,24 @@ it("reconciles a confirmed stale save with new strokes made during the reconcili
   const { owner, api } = setup();
   await owner.start();
   const human = {
-    ...scene().elements[0],
+    x: 0,
+    y: 0,
+    width: 100,
+    height: 80,
+    version: 1,
     id: "human",
-    type: "freedraw" as const,
-    points: [
-      [0, 0],
-      [10, 10],
-    ],
+    type: "ink" as const,
+    props: {
+      points: [
+        [0, 0, 0.5],
+        [10, 10, 0.5],
+      ],
+      color: "#243044",
+      size: 5,
+      pressure: true,
+      w: 100,
+      h: 80,
+    },
   };
   const agent = { ...scene().elements[0], id: "agent" };
   owner.change({ ...scene(), elements: [...scene().elements, human] });

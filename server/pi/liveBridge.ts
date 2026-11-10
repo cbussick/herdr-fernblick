@@ -56,6 +56,22 @@ interface Peer {
   boardRequests: number;
   boardRun?: { id: string; revoked: boolean; expiresAt: number | null };
 }
+// Every non-ACK response confirms exactly one command. Keep this exhaustive so
+// new protocol responses cannot silently fall through to navigation validation.
+const responseActions = {
+  "shutdown-requested": "shutdown",
+  "default-saved": "save-default",
+  "tree-page": "tree-page",
+  tree: "tree",
+  skills: "skills",
+  "thinking-levels": "thinking-levels",
+  "thinking-level-changed": "set-thinking-level",
+  models: "models",
+  "model-changed": "set-model",
+  compacted: "compact",
+  navigated: "navigate",
+} satisfies Record<Exclude<BridgeResponse["type"], "ack">, Command["action"]>;
+
 interface Pending {
   peer: Peer;
   resolve: (response: BridgeResponse) => void;
@@ -237,11 +253,7 @@ export class LiveBridge {
           }).toString();
           url.hash = "";
         }
-        const state = await this.boards!.open(
-          boardSessionKey(peer.snapshot!),
-          validate,
-          "react-flow",
-        );
+        const state = await this.boards!.open(boardSessionKey(peer.snapshot!), validate);
         validate();
         if (url) data = { url: url.toString() };
         else {
@@ -410,27 +422,7 @@ export class LiveBridge {
               ? response.outcome === "rejected" ||
                 pending.command.action === "send" ||
                 pending.command.action === "stop"
-              : response.type === "shutdown-requested"
-                ? pending.command.action === "shutdown"
-                : response.type === "default-saved"
-                  ? pending.command.action === "save-default"
-                  : response.type === "tree-page"
-                    ? pending.command.action === "tree-page"
-                    : response.type === "tree"
-                      ? pending.command.action === "tree"
-                      : response.type === "skills"
-                        ? pending.command.action === "skills"
-                        : response.type === "thinking-levels"
-                          ? pending.command.action === "thinking-levels"
-                          : response.type === "thinking-level-changed"
-                            ? pending.command.action === "set-thinking-level"
-                            : response.type === "models"
-                              ? pending.command.action === "models"
-                              : response.type === "model-changed"
-                                ? pending.command.action === "set-model"
-                                : response.type === "compacted"
-                                  ? pending.command.action === "compact"
-                                  : pending.command.action === "navigate";
+              : pending.command.action === responseActions[response.type];
           const validTarget =
             response.type === "ack" ||
             (response.target.runtime === pending.command.target.runtime &&

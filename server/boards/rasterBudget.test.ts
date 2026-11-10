@@ -50,7 +50,18 @@ function webp(width: number, height: number, kind: "VP8X" | "VP8L" | "VP8 ") {
 }
 function scene(bytes: Buffer, mimeType: BoardScene["files"][string]["mimeType"]): BoardScene {
   return {
-    elements: [{ id: "image", type: "image", x: 0, y: 0, width: 10, height: 10, fileId: "asset" }],
+    engine: "react-flow",
+    elements: [
+      {
+        id: "image",
+        type: "component",
+        x: 0,
+        y: 0,
+        width: 10,
+        height: 10,
+        props: { imageId: "asset" },
+      },
+    ],
     files: {
       asset: {
         id: "asset",
@@ -85,7 +96,7 @@ it("budgets unique referenced assets cumulatively and ignores deleted/unused ass
   value.elements.push({ ...value.elements[0], id: "copy" });
   expect(() => validateRasterBudget(value)).not.toThrow();
   value.files.other = { ...value.files.asset, id: "other" };
-  value.elements.push({ ...value.elements[0], id: "other-image", fileId: "other" });
+  value.elements.push({ ...value.elements[0], id: "other-image", props: { imageId: "other" } });
   expect(() => validateRasterBudget(value)).toThrow("pre-decode");
   value.elements.at(-1)!.isDeleted = true;
   expect(() => validateRasterBudget(value)).not.toThrow();

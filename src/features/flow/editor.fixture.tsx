@@ -2,7 +2,7 @@ import { useCallback, useState } from "react";
 import { createRoot } from "react-dom/client";
 import FlowBoardEditor from "./FlowBoardEditor";
 import type { BoardScene } from "../../../packages/pi-live-chat/boardProtocol";
-import type { EditorHandle } from "../whiteboard/BoardEditor";
+import type { EditorHandle } from "../whiteboard/editorTypes";
 const empty: BoardScene = { engine: "react-flow", elements: [], files: {}, background: "#ffffff" };
 const test = {
   changes: [] as BoardScene[],

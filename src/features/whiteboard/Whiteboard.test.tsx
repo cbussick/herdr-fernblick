@@ -2,7 +2,7 @@ import { act, type ReactNode } from "react";
 import { create, type ReactTestRenderer } from "react-test-renderer";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
 import { Whiteboard, type WhiteboardProps } from "./Whiteboard";
-import type { BoardEditorProps } from "./BoardEditor";
+import type { BoardEditorProps } from "./editorTypes";
 import type { BoardState } from "../../../packages/pi-live-chat/boardProtocol";
 import { board, deferred, target } from "./testFixtures";
 
@@ -23,7 +23,7 @@ vi.mock("./draftStore", () => ({
   draftStore: { read: async () => undefined, write: async () => {} },
 }));
 vi.mock("../../shared/api/apiClient", () => ({ uploadImage: mocks.upload }));
-vi.mock("./BoardEditor", async () => {
+vi.mock("../flow/FlowBoardEditor", async () => {
   const { useEffect, useState } = await import("react");
   return {
     default: function MockEditor(props: BoardEditorProps) {

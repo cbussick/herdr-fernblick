@@ -2,6 +2,7 @@ import type { Browser, Request, Route } from "playwright";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { BoardRenderer } from "./renderer.js";
 import { emptyScene } from "./scene.js";
+import { defaultFlowProps } from "../../packages/pi-live-chat/flowProtocol.js";
 
 const { launch } = vi.hoisted(() => ({ launch: vi.fn() }));
 vi.mock("playwright", () => ({ chromium: { launch } }));
@@ -29,7 +30,7 @@ function fakeBrowser() {
     mainFrame: () => "main-frame",
     goto: vi.fn().mockResolvedValue({ ok: () => true }),
     waitForFunction: vi.fn().mockResolvedValue(undefined),
-    evaluate: vi.fn().mockResolvedValue(png().toString("base64")),
+    evaluate: vi.fn().mockResolvedValue({ width: 100, height: 100 }),
     setViewportSize: vi.fn().mockResolvedValue(undefined),
     screenshot: vi.fn().mockResolvedValue(png()),
   };
@@ -61,7 +62,8 @@ afterEach(async () => {
 describe("BoardRenderer", () => {
   it("keeps download pixel budgets separate from agent snapshots", async () => {
     const { page } = fakeBrowser();
-    page.evaluate.mockResolvedValue(png(3000, 2000).toString("base64"));
+    page.evaluate.mockResolvedValue({ width: 3000, height: 2000 });
+    page.screenshot.mockResolvedValue(png(3000, 2000));
     const value = renderer();
     await expect(value.render(emptyScene(), "high")).resolves.toEqual(png(3000, 2000));
     await expect(value.render(emptyScene())).rejects.toThrow("pixel limit");
@@ -87,12 +89,15 @@ describe("BoardRenderer", () => {
     const scene = emptyScene();
     scene.elements.push({
       id: "image",
-      type: "image",
+      type: "component",
+      kind: "card",
+      parentId: null,
+      version: 1,
       x: 0,
       y: 0,
       width: 10,
       height: 10,
-      fileId: "asset",
+      props: { ...defaultFlowProps("card"), imageId: "asset" },
     });
     scene.files.asset = {
       id: "asset",
@@ -112,7 +117,7 @@ describe("BoardRenderer", () => {
     scene.background = "#ff0000";
     expect(await result).toEqual(png());
     await value.close();
-    expect(page.evaluate.mock.calls[0][1]).toContain('"background":"#ffffff"');
+    expect(page.evaluate.mock.calls[0][1].json).toContain('"background":"#ffffff"');
     expect(context.routeWebSocket).toHaveBeenCalled();
     expect(browser.newContext).toHaveBeenCalledWith(
       expect.objectContaining({ serviceWorkers: "block", acceptDownloads: false, permissions: [] }),
@@ -124,7 +129,7 @@ describe("BoardRenderer", () => {
     const { page } = fakeBrowser();
     page.evaluate.mockResolvedValue({ width: 100, height: 100 });
     page.screenshot.mockResolvedValueOnce(Buffer.alloc(2 * 1024 * 1024 + 1));
-    const result = await renderer().render(emptyScene("react-flow"));
+    const result = await renderer().render(emptyScene());
     expect(result).toEqual(png());
     expect(page.goto).toHaveBeenCalledWith(
       "http://127.0.0.1:9191/flow-board-render.html",
@@ -141,12 +146,12 @@ describe("BoardRenderer", () => {
   it("fails explicitly for oversized prepared flow dimensions and PNGs that cannot fit", async () => {
     const { page, browser } = fakeBrowser();
     page.evaluate.mockResolvedValueOnce({ width: 2049, height: 1 });
-    await expect(renderer().render(emptyScene("react-flow"))).rejects.toThrow(/pixel limit/);
+    await expect(renderer().render(emptyScene())).rejects.toThrow(/pixel limit/);
     expect(page.screenshot).not.toHaveBeenCalled();
     expect(browser.close).toHaveBeenCalled();
     page.evaluate.mockResolvedValue({ width: 100, height: 100 });
     page.screenshot.mockResolvedValue(Buffer.alloc(2 * 1024 * 1024 + 1));
-    await expect(renderer().render(emptyScene("react-flow"))).rejects.toThrow(/could not fit/);
+    await expect(renderer().render(emptyScene())).rejects.toThrow(/could not fit/);
     expect(page.screenshot).toHaveBeenCalledTimes(8);
   });
 
@@ -175,7 +180,7 @@ describe("BoardRenderer", () => {
     ["arbitrary output", "not PNG"],
   ])("rejects %s output and cleans up", async (_name, output) => {
     const { page, browser } = fakeBrowser();
-    page.evaluate.mockResolvedValue(output);
+    page.screenshot.mockResolvedValue(Buffer.from(output, "base64"));
     const value = renderer();
     await expect(value.render(emptyScene())).rejects.toThrow(/PNG|pixel/);
     await value.close();
@@ -209,16 +214,15 @@ describe("BoardRenderer", () => {
     }
     const base = "http://127.0.0.1:9191";
     expect(
-      (await request(`${base}/whiteboard-render.html`, "document", true)).fulfill,
+      (await request(`${base}/flow-board-render.html`, "document", true)).fulfill,
     ).toHaveBeenCalled();
     expect(
-      (await request(`${base}/whiteboard-render.html`, "document", true)).abort,
+      (await request(`${base}/flow-board-render.html`, "document", true)).abort,
     ).toHaveBeenCalled();
     for (const [path, type] of [
       ["/assets/chunk-abc.js", "script"],
       ["/assets/flow-abc.css", "stylesheet"],
       ["/assets/Manrope-abc.woff2", "font"],
-      ["/excalidraw/fonts/Virgil/Virgil-Regular.woff2", "font"],
     ])
       expect((await request(`${base}${path}`, type)).fulfill).toHaveBeenCalled();
     const redirected = await request(`${base}/assets/redirect.js`);
@@ -285,7 +289,7 @@ describe("BoardRenderer", () => {
       ),
     ).toBe(true);
     expect(browser.close).toHaveBeenCalled();
-    page.evaluate.mockResolvedValue(png().toString("base64"));
+    page.evaluate.mockResolvedValue({ width: 100, height: 100 });
     expect(await value.render(emptyScene())).toEqual(png());
   });
 

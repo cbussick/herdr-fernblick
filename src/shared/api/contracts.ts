@@ -136,11 +136,7 @@ export const createWorkspaceResponseSchema = z.object({ workspace: workspaceSche
 
 export const createTabRequestSchema = z.object({
   label: createAgentRequestSchema.shape.tabLabel,
-  workspaceId: z
-    .string()
-    .min(1)
-    .max(128)
-    .regex(/^[A-Za-z0-9:_-]+$/),
+  workspaceId: createAgentRequestSchema.shape.workspaceId,
 });
 
 export const createTabResponseSchema = z.object({ tab: shellTabSchema });

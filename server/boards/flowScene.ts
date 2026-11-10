@@ -18,7 +18,6 @@ import {
  * New endpoints must already have been read; same-batch creation is deliberately not supported.
  */
 export function flowDependencies(scene: BoardScene, op: BoardOperation): string[] {
-  if (scene.engine !== "react-flow") return [];
   const ids = new Set<string>();
   const relation = (e: Record<string, unknown>) => {
     for (const key of ["parentId", "source", "target"])
@@ -101,11 +100,6 @@ export function applyFlowOperations(scene: BoardScene, operations: BoardOperatio
       element.isDeleted = true;
       continue;
     }
-    requireBoard(
-      [op.text, op.fontSize, op.endX, op.endY, op.background].every((v) => v === undefined),
-      400,
-      "Native fields are not supported on flow elements",
-    );
     requireBoard(
       element.type === "primitive" || op.drawing === undefined,
       400,

@@ -4,7 +4,7 @@ import { primitiveKinds } from "../../packages/pi-live-chat/primitiveProtocol.js
 import { applyOperations, emptyScene, summarize, validateScene } from "./scene.js";
 
 it("creates, reads, edits, transforms and deletes SVG primitives without losing components/ink", () => {
-  let scene = emptyScene("react-flow");
+  let scene = emptyScene();
   scene = applyOperations(scene, [
     { op: "create", id: "card", kind: "card", x: 0, y: 0 },
     ...primitiveKinds.map(
@@ -59,8 +59,7 @@ it("fails closed for cross-engine primitives and incompatible props/relationship
     y: 0,
     drawing: { fill: "#123456" },
   };
-  expect(() => applyOperations(emptyScene(), [primitive])).toThrow();
-  const scene = applyOperations(emptyScene("react-flow"), [primitive]);
+  const scene = applyOperations(emptyScene(), [primitive]);
   expect(() => validateScene({ ...scene, engine: "excalidraw" })).toThrow();
   for (const operation of [
     { op: "update", id: "p", props: { title: "not a component" } },

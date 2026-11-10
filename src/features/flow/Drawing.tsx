@@ -2,6 +2,7 @@ import {
   createContext,
   useContext,
   useEffect,
+  useEffectEvent,
   useRef,
   useState,
   type PointerEvent as ReactPointerEvent,
@@ -224,10 +225,9 @@ export function InkSurface({
     multi.current = false;
     pinch.current = null;
   };
-  const cancelRef = useRef(cancel);
-  cancelRef.current = cancel;
+  const cancelGesture = useEffectEvent(cancel);
   useEffect(() => {
-    const blur = () => cancelRef.current();
+    const blur = () => cancelGesture();
     const visibility = () => {
       if (document.hidden) blur();
     };

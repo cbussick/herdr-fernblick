@@ -9,10 +9,6 @@
     "dev": "concurrently -k -n api,web \"npm:dev:api\" \"npm:dev:web\"",
     "dev:api": "tsx watch server/index.ts",
     "dev:web": "vite",
-    "prepare:whiteboard": "node tools/prepare-whiteboard-assets.mjs",
-    "predev:web": "npm run prepare:whiteboard",
-    "prebuild": "npm run prepare:whiteboard",
-    "prebuild:storybook": "npm run prepare:whiteboard",
     "build": "tsc -b && vite build && tsc -p tsconfig.server.json",
     "build:storybook": "storybook build",
     "storybook": "storybook dev -p 6006",
@@ -30,7 +26,6 @@
   "dependencies": {
     "@dnd-kit/core": "^6.3.1",
     "@dnd-kit/sortable": "^10.0.0",
-    "@excalidraw/excalidraw": "0.18.1",
     "@fontsource/nunito": "5.3.0",
     "@tanstack/react-query": "^5.90.21",
     "@xyflow/react": "12.12.0",
@@ -79,12 +74,6 @@
     "workbox-routing": "^7.4.1"
   },
   "overrides": {
-    "@excalidraw/excalidraw": {
-      "nanoid": "3.3.19"
-    },
-    "@excalidraw/mermaid-to-excalidraw": {
-      "nanoid": "5.1.16"
-    },
     "lodash-es": "4.18.1"
   },
   "engines": {

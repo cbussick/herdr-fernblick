@@ -1,4 +1,4 @@
-import type { BoardEditorProps } from "../whiteboard/BoardEditor";
+import type { BoardEditorProps } from "../whiteboard/editorTypes";
 import type { BoardScene } from "../../../packages/pi-live-chat/boardProtocol";
 import {
   toDiagram,

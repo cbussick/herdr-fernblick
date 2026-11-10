@@ -1,5 +1,6 @@
 import { randomUUID } from "node:crypto";
-import { mkdtemp, rm, writeFile, readdir } from "node:fs/promises";
+import { defaultPrimitiveProps } from "../../packages/pi-live-chat/primitiveProtocol.js";
+import { mkdtemp, rm, writeFile, readFile, readdir } from "node:fs/promises";
 import { connect, type Socket } from "node:net";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -127,8 +128,7 @@ async function post(action = "", extra: Record<string, unknown> = {}, origin = b
   });
 }
 async function open() {
-  // These legacy route fixtures intentionally exercise native Excalidraw records.
-  const response = await post("", { engine: "excalidraw" });
+  const response = await post();
   expect(response.status).toBe(200);
   return (await response.json()) as BoardState;
 }
@@ -206,7 +206,7 @@ it("defaults new conversations to React Flow without converting an existing boar
   expect(created.status).toBe(200);
   const flow = (await created.json()) as BoardState;
   expect(flow.scene).toMatchObject({ engine: "react-flow", elements: [] });
-  const reopened = await post("", { engine: "excalidraw" });
+  const reopened = await post();
   expect((await reopened.json()).scene.engine).toBe("react-flow");
 });
 
@@ -216,7 +216,19 @@ it("exports unsynced drafts as a PNG without saving, granting tools or sending a
   bridge.setBoardRenderer(render);
   const draft = {
     ...state.scene,
-    elements: [{ id: "draft", type: "rectangle", x: 25, y: 30, width: 150, height: 100 }],
+    elements: [
+      {
+        id: "draft",
+        type: "primitive",
+        kind: "rectangle",
+        version: 1,
+        props: defaultPrimitiveProps(),
+        x: 25,
+        y: 30,
+        width: 150,
+        height: 100,
+      },
+    ],
   };
   const response = await post("export", { boardId: state.id, scene: draft, quality: "high" });
   expect(response.status).toBe(200);
@@ -237,7 +249,7 @@ it("enforces export ownership, origin, quality, scene and engine validation", as
   expect((await post("export", input, "https://evil.test")).status).toBe(403);
   expect((await post("export", { ...input, quality: "ultra" })).status).toBe(400);
   expect(
-    (await post("export", { ...input, scene: { ...state.scene, engine: "react-flow" } })).status,
+    (await post("export", { ...input, scene: { ...state.scene, engine: "excalidraw" } })).status,
   ).toBe(400);
   expect(
     (
@@ -263,13 +275,19 @@ it("revalidates export identity after rendering and rejects a stale session", as
   expect((await boards.read(state.id)).revision).toBe(0);
 });
 
-it("keeps legacy Excalidraw conversations in their original engine", async () => {
-  // Simulate a board persisted before engine markers existed.
-  const legacy = await boards.open(boardSessionKey(snapshot));
-  expect(legacy.scene.engine).toBeUndefined();
-  const reopened = await post("", { engine: "react-flow" });
-  expect((await reopened.json()).scene).toEqual(legacy.scene);
-});
+it.each([undefined, "excalidraw"])(
+  "rejects legacy engine %s with an actionable error and retains the file",
+  async (engine) => {
+    const state = await boards.open(boardSessionKey(snapshot));
+    const path = join(directory, "boards", `${state.id}.json`);
+    const bytes = JSON.stringify({ ...state, scene: { ...state.scene, engine } });
+    await writeFile(path, bytes, { mode: 0o600 });
+    const response = await post();
+    expect(response.status).toBe(410);
+    expect((await response.json()).error).toContain("no longer supported");
+    expect(await readFile(path, "utf8")).toBe(bytes);
+  },
+);
 
 it("discovers components and creates, edits and connects them through terminal tools without a browser", async () => {
   const run = randomUUID();
@@ -646,15 +664,23 @@ it("allows a nonempty-board prompt without automatic browser PNG", async () => {
     elements: [
       {
         id: "ink",
-        type: "freedraw",
+        type: "ink",
         x: 0,
         y: 0,
         width: 30,
         height: 20,
-        points: [
-          [0, 0],
-          [30, 20],
-        ],
+        version: 1,
+        props: {
+          points: [
+            [0, 0, 0.5],
+            [30, 20, 0.5],
+          ],
+          color: "#243044",
+          size: 5,
+          pressure: true,
+          w: 30,
+          h: 20,
+        },
       },
     ],
   });
@@ -734,15 +760,23 @@ it("forwards a board PNG together with editing access, without creating a saved 
     elements: [
       {
         id: "handwriting",
-        type: "freedraw",
+        type: "ink",
         x: 0,
         y: 0,
         width: 30,
         height: 20,
-        points: [
-          [0, 0],
-          [30, 20],
-        ],
+        version: 1,
+        props: {
+          points: [
+            [0, 0, 0.5],
+            [30, 20, 0.5],
+          ],
+          color: "#243044",
+          size: 5,
+          pressure: true,
+          w: 30,
+          h: 20,
+        },
       },
     ],
   });
@@ -767,7 +801,7 @@ it("forwards a board PNG together with editing access, without creating a saved 
   expect(await rpc(grant, "activate")).toMatchObject({ ok: true });
   expect(await rpc(grant, "read")).toMatchObject({
     ok: true,
-    data: { elements: [{ type: "freedraw" }] },
+    data: { elements: [{ type: "ink" }] },
   });
   expect((await open()).snapshots).toHaveLength(0);
 });
@@ -780,15 +814,23 @@ it.each(["non-PNG", "unknown", "corrupt"])(
       elements: [
         {
           id: "ink",
-          type: "freedraw",
+          type: "ink",
           x: 0,
           y: 0,
           width: 30,
           height: 20,
-          points: [
-            [0, 0],
-            [30, 20],
-          ],
+          version: 1,
+          props: {
+            points: [
+              [0, 0, 0.5],
+              [30, 20, 0.5],
+            ],
+            color: "#243044",
+            size: 5,
+            pressure: true,
+            w: 30,
+            h: 20,
+          },
         },
       ],
     });
@@ -914,9 +956,9 @@ it("image sends retain immutable snapshots without granting tools", async () => 
     scene: { ...state.scene, background: "#123456" },
   });
   const json = (await (await fetch(base + url + ".json")).json()) as {
-    appState: { viewBackgroundColor: string };
+    scene: { background: string };
   };
-  expect(json.appState.viewBackgroundColor).toBe("#ffffff");
+  expect(json.scene.background).toBe("#ffffff");
   const forged = {
     boardId: state.id,
     grantId: randomUUID(),
@@ -985,7 +1027,10 @@ it("merges agent additions and unchanged-target edits after human saves, but rej
           elements: [
             {
               id: "human-box",
-              type: "rectangle",
+              type: "primitive",
+              kind: "rectangle",
+              version: 1,
+              props: defaultPrimitiveProps(),
               x: 0,
               y: 0,
               width: 30,
@@ -1012,15 +1057,23 @@ it("merges agent additions and unchanged-target edits after human saves, but rej
             ...before.scene.elements,
             {
               id: "handwriting",
-              type: "freedraw",
+              type: "ink",
               x: 10,
               y: 10,
               width: 10,
               height: 10,
-              points: [
-                [0, 0],
-                [10, 10],
-              ],
+              version: 1,
+              props: {
+                points: [
+                  [0, 0, 0.5],
+                  [10, 10, 0.5],
+                ],
+                color: "#243044",
+                size: 5,
+                pressure: true,
+                w: 10,
+                h: 10,
+              },
             },
           ],
         },

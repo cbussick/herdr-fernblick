@@ -2,8 +2,7 @@ import { z } from "zod";
 import { flowComponentPropsSchema, flowIdSchema, flowKinds } from "./flowProtocol.js";
 import { primitivePropsSchema } from "./primitiveProtocol.js";
 
-// Browser documents use the native Excalidraw format; the agent gets only a
-// bounded summary and a deliberately small operation vocabulary, never JS.
+// Boards contain structured React Flow records; tools receive bounded data, never JS.
 export const MAX_BOARD_BYTES = 12 * 1024 * 1024;
 export const boardIdSchema = z.string().regex(/^[a-f0-9]{64}$/);
 const elementIdSchema = z
@@ -16,21 +15,7 @@ const dimension = z.number().finite().min(0).max(100_000);
 const boardElementSchema = z
   .object({
     id: elementIdSchema,
-    type: z.enum([
-      "rectangle",
-      "ellipse",
-      "diamond",
-      "text",
-      "arrow",
-      "line",
-      "freedraw",
-      "image",
-      "frame",
-      "component",
-      "primitive",
-      "ink",
-      "connection",
-    ]),
+    type: z.enum(["component", "primitive", "ink", "connection"]),
     x: coordinate,
     y: coordinate,
     width: dimension,
@@ -54,8 +39,8 @@ export const boardSceneSchema = z.object({
     .record(z.string().max(128), boardFileSchema)
     .refine((v) => Object.keys(v).length <= 32, "Too many board images"),
   background: z.string().regex(/^#[a-fA-F0-9]{6}$/),
-  // Absent on every pre-existing board: never reinterpret an Excalidraw scene.
-  engine: z.enum(["excalidraw", "react-flow"]).optional(),
+  // Required: legacy scenes must not be reinterpreted as structured boards.
+  engine: z.literal("react-flow"),
 });
 export type BoardScene = z.infer<typeof boardSceneSchema>;
 export type BoardElement = z.infer<typeof boardElementSchema>;
@@ -77,23 +62,14 @@ const operationContext = {
   dependsOn: z.array(elementIdSchema).max(50).optional(),
   groupId: elementIdSchema.optional(),
 };
-const boardOperationSchema = z.discriminatedUnion("op", [
+export const boardOperationSchema = z.discriminatedUnion("op", [
   z
     .object({
       ...operationContext,
       op: z.literal("create"),
       id: elementIdSchema,
       drawing: primitivePropsSchema.partial().optional(),
-      kind: z.enum([
-        "rectangle",
-        "text",
-        "arrow",
-        "line",
-        "ellipse",
-        "path",
-        ...flowKinds,
-        "connection",
-      ]),
+      kind: z.enum(["rectangle", "text", "line", "ellipse", "path", ...flowKinds, "connection"]),
       props: flowComponentPropsSchema.partial().optional(),
       parentId: flowIdSchema.nullable().optional(),
       source: flowIdSchema.optional(),
@@ -105,12 +81,7 @@ const boardOperationSchema = z.discriminatedUnion("op", [
       y: coordinate,
       width: dimension.optional(),
       height: dimension.optional(),
-      text: z.string().max(4000).optional(),
-      endX: coordinate.optional(),
-      endY: coordinate.optional(),
       color: color.optional(),
-      background: color.optional(),
-      fontSize: z.number().int().min(12).max(96).optional(),
     })
     .strict(),
   z
@@ -130,12 +101,7 @@ const boardOperationSchema = z.discriminatedUnion("op", [
       y: coordinate.optional(),
       width: dimension.optional(),
       height: dimension.optional(),
-      text: z.string().max(4000).optional(),
-      endX: coordinate.optional(),
-      endY: coordinate.optional(),
       color: color.optional(),
-      background: color.optional(),
-      fontSize: z.number().int().min(12).max(96).optional(),
     })
     .strict(),
   z.object({ ...operationContext, op: z.literal("delete"), id: elementIdSchema }).strict(),

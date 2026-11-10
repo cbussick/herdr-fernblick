@@ -22,9 +22,10 @@ it.each(flowKinds)("validates bounded default props for %s", (kind) => {
     }),
   ).toHaveLength(1);
 });
-it("leaves the legacy scene shape intact and accepts an explicit flow engine", () => {
+it("rejects legacy scenes and requires an explicit flow engine", () => {
   const legacy = { elements: [], files: {}, background: "#ffffff" };
-  expect(boardSceneSchema.parse(legacy)).toEqual(legacy);
+  expect(boardSceneSchema.safeParse(legacy).success).toBe(false);
+  expect(boardSceneSchema.safeParse({ ...legacy, engine: "excalidraw" }).success).toBe(false);
   expect(boardSceneSchema.parse({ ...legacy, engine: "react-flow" }).engine).toBe("react-flow");
 });
 it("rejects arbitrary markup/URLs as rendering properties instead of accepting custom code", () => {

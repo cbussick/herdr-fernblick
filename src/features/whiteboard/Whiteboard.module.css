@@ -134,34 +134,6 @@
   background: #fff;
 }
 
-.editor {
-  width: 100%;
-  height: 100%;
-  min-height: 0;
-  overscroll-behavior: contain;
-}
-
-/* Vendor DOM is contained by this module; application controls remain scoped. */
-.editor :global(.excalidraw.theme--light) {
-  --color-primary: #14669f;
-  --color-primary-darker: #0d4f80;
-  --color-primary-light: #dceefc;
-  --color-primary-light-darker: #b6cfdf;
-  --ui-font: var(--font-sans);
-}
-
-.editor :global(.excalidraw) [class~="default-sidebar-trigger"],
-.editor :global(.excalidraw) [class~="help-icon"] {
-  display: none;
-}
-
-@media (width >= 768px) {
-  .editor :global(.excalidraw) :is(button, [class~="ToolIcon__icon"]) {
-    min-width: 44px;
-    min-height: 44px;
-  }
-}
-
 .notice {
   flex: 0 0 auto;
   padding: 0.5rem 1rem;

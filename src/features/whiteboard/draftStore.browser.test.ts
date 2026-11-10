@@ -144,7 +144,9 @@ describe.each(["chromium", "webkit"])(
         };
         await seed(page, records);
         await page.evaluate(() => localStorage.setItem("chat-draft", "Do not erase"));
-        expect(await page.evaluate(() => window.draftTest.read("old"))).toEqual(records.old);
+        await expect(page.evaluate(() => window.draftTest.read("old"))).rejects.toThrow(
+          "unreadable",
+        );
         expect(await rawRecords(page)).toEqual(records);
         expect(await page.evaluate(() => localStorage.getItem("chat-draft"))).toBe("Do not erase");
       } finally {
@@ -239,40 +241,26 @@ describe.each(["chromium", "webkit"])(
         await context.close();
       }
     });
-    it("keeps database version two but removes destructive read/write filtering", async () => {
+    it("refuses legacy reads and writes without deleting stored recovery data", async () => {
       const { page, context } = await pageFor(browser);
       try {
         await seed(page, { old: draft(native) });
-        await page.evaluate(() => (window as Harness).draftTest.read("old"));
-        const oldVersion = await page.evaluate(
-          () =>
-            new Promise<string>((resolve) => {
-              const request = indexedDB.open("fernblick-whiteboards", 1);
-              request.onerror = () => resolve(request.error!.name);
-              request.onsuccess = () => {
-                request.result.close();
-                resolve("opened");
-              };
-            }),
-        );
-        expect(oldVersion).toBe("VersionError");
-        await page.evaluate(
-          (raw) => (window as Harness).draftTest.write("old", JSON.parse(raw)),
-          JSON.stringify(draft(native)),
-        );
-        await page.evaluate(
-          (raw) => (window as Harness).draftTest.write("flow", JSON.parse(raw)),
-          JSON.stringify(draft(flow, { recovery: native })),
+        await expect(page.evaluate(() => window.draftTest.read("old"))).rejects.toThrow(
+          "unreadable",
         );
         await expect(
-          page.evaluate(() => window.draftTest.write("flow", undefined)),
+          page.evaluate(
+            (raw) => (window as Harness).draftTest.write("old", JSON.parse(raw)),
+            JSON.stringify(draft(native)),
+          ),
         ).rejects.toThrow();
-        await seed(page, { injected: draft(native) }, 2);
-        expect(await page.evaluate(() => window.draftTest.read("injected"))).toEqual(draft(native));
-        const records = await rawRecords(page);
-        expect(records.old).toEqual(draft(native));
-        expect(records.injected).toEqual(draft(native));
-        expect(records.flow).toEqual(draft(flow, { recovery: native }));
+        await expect(
+          page.evaluate(
+            (raw) => (window as Harness).draftTest.write("flow", JSON.parse(raw)),
+            JSON.stringify(draft(flow, { recovery: native })),
+          ),
+        ).rejects.toThrow();
+        expect(await rawRecords(page)).toEqual({ old: draft(native) });
       } finally {
         await context.close();
       }

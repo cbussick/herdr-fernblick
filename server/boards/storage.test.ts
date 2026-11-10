@@ -1,4 +1,5 @@
-import { chmod, link, mkdtemp, readdir, rm, symlink, writeFile } from "node:fs/promises";
+import { defaultPrimitiveProps } from "../../packages/pi-live-chat/primitiveProtocol.js";
+import { chmod, link, mkdtemp, readFile, readdir, rm, symlink, writeFile } from "node:fs/promises";
 import { randomUUID } from "node:crypto";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -15,16 +16,22 @@ import { BoardDisk } from "./disk.js";
 import { BoardError, BoardStore } from "./storage.js";
 
 const png = Buffer.from([137, 80, 78, 71, 13, 10, 26, 10]);
-const blank = (): BoardScene => ({ elements: [], files: {}, background: "#ffffff" });
+const blank = (): BoardScene => ({
+  engine: "react-flow",
+  elements: [],
+  files: {},
+  background: "#ffffff",
+});
 const rectangle = (id = "rect"): BoardElement => ({
   id,
-  type: "rectangle",
+  type: "primitive",
+  kind: "rectangle",
+  props: defaultPrimitiveProps(),
   x: 1,
   y: 2,
   width: 30,
   height: 40,
   version: 1,
-  versionNonce: 42,
 });
 const target = (): BoardTarget => ({
   runtime: randomUUID(),
@@ -87,25 +94,25 @@ afterEach(async () => {
   await rm(directory, { recursive: true, force: true });
 });
 
-it("chooses an engine only for new boards and never converts even empty stored boards", async () => {
-  expect((await store.open("session-key", validate, "react-flow")).scene.engine).toBeUndefined();
-  const flow = await store.open("new-flow", validate, "react-flow");
-  expect(flow.scene.engine).toBe("react-flow");
-  expect((await store.open("new-flow")).scene.engine).toBe("react-flow");
-  await expect(store.save(flow.id, 0, blank())).rejects.toThrow(/engine/);
-  await expect(store.save(boardId, 0, { ...blank(), engine: "react-flow" })).rejects.toThrow(
-    /engine/,
-  );
-  await expect(store.save(boardId, 0, { ...blank(), engine: "excalidraw" })).resolves.toMatchObject(
-    { revision: 1 },
-  );
-});
+it.each([undefined, "excalidraw"])(
+  "refuses stored legacy engine %s without overwriting data",
+  async (engine) => {
+    const state = await store.read(boardId);
+    expect(state.scene.engine).toBe("react-flow");
+    const path = join(directory, `${boardId}.json`);
+    const bytes = JSON.stringify({ ...state, scene: { ...state.scene, engine } });
+    await writeFile(path, bytes, { mode: 0o600 });
+    await expect(store.open("session-key")).rejects.toMatchObject({ status: 410 });
+    await expect(store.save(boardId, 0, blank())).rejects.toMatchObject({ status: 410 });
+    expect(await readFile(path, "utf8")).toBe(bytes);
+  },
+);
 
-it("serves an authorized catalog with read-only legacy grants", async () => {
+it("serves an authorized catalog with read-only grants", async () => {
   const grant = await active("read");
   const result = await store.handle(request(grant, "catalog"), validate);
   expect(result).toMatchObject({
-    engine: "excalidraw",
+    engine: "react-flow",
     components: expect.arrayContaining([expect.objectContaining({ id: "card" })]),
     propsSchema: { type: "object" },
   });
@@ -114,7 +121,7 @@ it("serves an authorized catalog with read-only legacy grants", async () => {
 });
 
 it("authorizes primitive discovery/edits, preserves stale human edits, and persists/replays safely", async () => {
-  boardId = (await store.open("primitive-flow", validate, "react-flow")).id;
+  boardId = (await store.open("primitive-flow", validate)).id;
   const readOnly = await active("read");
   expect(await store.handle(request(readOnly, "catalog"), validate)).toMatchObject({
     primitives: {
@@ -179,7 +186,7 @@ it("authorizes primitive discovery/edits, preserves stale human edits, and persi
 });
 
 it("requires automatic flow relation observations, keeps independent groups and validates final graphs", async () => {
-  boardId = (await store.open("flow", validate, "react-flow")).id;
+  boardId = (await store.open("flow", validate)).id;
   const grant = await active();
   const nodes: BoardOperation[] = ["a", "b"].map((id) => ({
     op: "create",
@@ -243,7 +250,7 @@ it("requires automatic flow relation observations, keeps independent groups and 
 });
 
 it("does not connect newly created endpoints without a prior read", async () => {
-  boardId = (await store.open("atomic-flow", validate, "react-flow")).id;
+  boardId = (await store.open("atomic-flow", validate)).id;
   const grant = await active();
   const operations: BoardOperation[] = [
     { op: "create", id: "a", kind: "card", x: 0, y: 0, groupId: "g" },
@@ -307,43 +314,21 @@ it("serializes same-revision human saves, and never silently overwrites stale wo
   await expect(store.save(boardId, 0, blank())).rejects.toMatchObject({ status: 409 });
 });
 
-it("validates operation batches atomically and emits native basic shape records", async () => {
+it("validates grouped operations atomically and emits structured records", async () => {
   const grant = await active();
   await store.handle(
     apply(grant, [
       create("box"),
-      { op: "create", id: "label", kind: "text", x: 5, y: 6, text: "hello\nworld" },
-      { op: "create", id: "arrow", kind: "arrow", x: 10, y: 20, endX: -10, endY: 50 },
+      { op: "create", id: "label", kind: "text", x: 5, y: 6, drawing: { text: "hello" } },
     ]),
     validate,
   );
   const first = await store.read(boardId);
   expect(first).toMatchObject({ revision: 1, lastAuthor: "agent" });
   expect(first.scene.elements[0]).toMatchObject({
-    seed: expect.any(Number),
+    type: "primitive",
+    kind: "rectangle",
     version: 1,
-    versionNonce: expect.any(Number),
-    strokeWidth: 2,
-    groupIds: [],
-    frameId: null,
-  });
-  expect(first.scene.elements[1]).toMatchObject({
-    type: "text",
-    containerId: null,
-    originalText: "hello\nworld",
-    fontFamily: 6,
-    lineHeight: 1.25,
-    autoResize: true,
-  });
-  expect(first.scene.elements[2]).toMatchObject({
-    points: [
-      [0, 0],
-      [-20, 30],
-    ],
-    width: 20,
-    height: 30,
-    startBinding: null,
-    endBinding: null,
   });
   await store.handle(request(grant, "read"), validate);
   expect(
@@ -364,7 +349,7 @@ it("validates operation batches atomically and emits native basic shape records"
     apply(
       grant,
       [
-        { op: "update", id: "label", text: "new label", fontSize: 30 },
+        { op: "update", id: "label", drawing: { text: "new label", fontSize: 30 } },
         { op: "delete", id: "box" },
       ],
       1,
@@ -374,11 +359,9 @@ it("validates operation batches atomically and emits native basic shape records"
   const second = await store.read(boardId);
   expect(second.scene.elements[0]).toMatchObject({ isDeleted: true, version: 2 });
   expect(second.scene.elements[1]).toMatchObject({
-    originalText: "new label",
     version: 2,
-    fontSize: 30,
+    props: { text: "new label", fontSize: 30 },
   });
-  expect(second.scene.elements[1].versionNonce).not.toBe(first.scene.elements[1].versionNonce);
 });
 
 it("serializes concurrent additions onto the latest board without losing human work", async () => {
@@ -821,109 +804,44 @@ it("revalidates human saves and captures before commit, with no published snapsh
   expect((await readdir(directory)).filter((name) => name.includes("snapshot"))).toEqual([]);
 });
 
-it.each([
-  { type: "ellipse" },
-  {
-    type: "freedraw",
-    points: [
-      [0, 0],
-      [1, 1],
-    ],
-  },
-  { type: "frame" },
-  { groupIds: ["group"] },
-  { frameId: "frame" },
-  { boundElements: [{ id: "label", type: "text" }] },
-  { containerId: "container" },
-  { startBinding: { elementId: "target" } },
-  { endBinding: { elementId: "target" } },
-  { locked: true },
-])(
-  "preserves arbitrary human shapes and explicitly rejects unsafe basic edits: %j",
-  async (patch) => {
-    const human = { ...rectangle(), ...patch } as BoardElement;
-    await store.save(boardId, 0, { ...blank(), elements: [human] });
-    const grant = await active();
-    await expect(
-      store.handle(apply(grant, [{ op: "update", id: "rect", x: 500 }], 1), validate),
-    ).rejects.toMatchObject({ status: 400 });
-    await expect(
-      store.handle(apply(grant, [{ op: "delete", id: "rect" }], 1), validate),
-    ).rejects.toMatchObject({ status: 400 });
-    expect((await store.read(boardId)).scene.elements).toEqual([human]);
-    await store.handle(apply(grant, [create()], 1), validate);
-    expect((await store.read(boardId)).scene.elements[0]).toEqual(human);
-  },
-);
-
-it("rejects inbound bindings even if the selected shape has incomplete binding metadata", async () => {
+it("returns bounded live summaries without full ink paths", async () => {
   await store.save(boardId, 0, {
     ...blank(),
-    elements: [
-      rectangle(),
-      {
-        ...rectangle("arrow"),
-        type: "arrow",
-        startBinding: { elementId: "rect" },
-        points: [
-          [0, 0],
-          [10, 10],
-        ],
-      },
-    ],
-  });
-  const grant = await active();
-  await expect(
-    store.handle(apply(grant, [{ op: "delete", id: "rect" }], 1), validate),
-  ).rejects.toMatchObject({ status: 400 });
-});
-
-it("returns bounded live summaries without files, custom data, or full freehand paths", async () => {
-  const imageData = `data:image/png;base64,${png.toString("base64")}`;
-  const scene: BoardScene = {
-    ...blank(),
-    files: { asset: { id: "asset", dataURL: imageData, mimeType: "image/png", created: 1 } },
     elements: [
       ...Array.from({ length: 110 }, (_, i) => rectangle(`shape${i}`)),
       { ...rectangle("deleted"), isDeleted: true },
       {
-        ...rectangle("free"),
-        type: "freedraw",
-        points: [
-          [1, 2],
-          [3, 4],
-        ],
-        customData: { secret: "hidden" },
+        id: "ink",
+        type: "ink",
+        x: 0,
+        y: 0,
+        width: 20,
+        height: 20,
+        version: 1,
+        props: {
+          points: [
+            [0, 0, 0.5],
+            [20, 20, 0.5],
+          ],
+          color: "#243044",
+          size: 5,
+          pressure: true,
+          w: 20,
+          h: 20,
+        },
       },
-      {
-        ...rectangle("arrow"),
-        type: "arrow",
-        points: [
-          [0, 0],
-          [10, 10],
-        ],
-      },
-      { ...rectangle("image"), type: "image", fileId: "asset" },
     ],
-  };
-  await store.save(boardId, 0, scene);
+  });
   const grant = await active("read");
-  const first = (await store.handle(request(grant, "read"), validate)) as {
-    elements: unknown[];
-    nextOffset: number;
-  };
-  expect(first).toMatchObject({ revision: 1, total: 113, offset: 0, nextOffset: 100 });
-  expect(first.elements).toHaveLength(100);
-  const second = (await store.handle(request(grant, "read", { offset: 100 }), validate)) as {
-    elements: Record<string, unknown>[];
-  };
+  expect(await store.handle(request(grant, "read"), validate)).toMatchObject({
+    revision: 1,
+    total: 111,
+    offset: 0,
+    nextOffset: 100,
+  });
+  const second = await store.handle(request(grant, "read", { offset: 100 }), validate);
   expect(second).toMatchObject({ nextOffset: null });
-  expect(second.elements.find((e) => e.id === "free")).not.toHaveProperty("points");
-  expect(second.elements.find((e) => e.id === "arrow")).toHaveProperty("points", [
-    [0, 0],
-    [10, 10],
-  ]);
-  expect(JSON.stringify(second)).not.toMatch(/data:image|hidden|fileId/);
+  expect(JSON.stringify(second)).not.toContain('"points":');
   await expect(
     store.handle(request(grant, "read", { limit: 101 }), validate),
   ).rejects.toMatchObject({ status: 400 });
@@ -962,33 +880,6 @@ it("rejects embeddables, URL injection, malformed raster files, missing assets, 
   expect((await store.read(boardId)).revision).toBe(0);
 });
 
-it("keeps ordinary web links and existing text layout when only moving or recoloring a shape", async () => {
-  const human: BoardElement = {
-    ...rectangle("text"),
-    type: "text",
-    text: "wrapped\\ntext",
-    originalText: "wrapped text",
-    width: 81,
-    height: 52,
-    fontSize: 21,
-    autoResize: false,
-    link: "https://example.com/notes",
-  };
-  await store.save(boardId, 0, { ...blank(), elements: [human] });
-  const grant = await active();
-  await store.handle(
-    apply(grant, [{ op: "update", id: "text", x: 50, color: "#ff0000" }], 1),
-    validate,
-  );
-  expect((await store.read(boardId)).scene.elements[0]).toMatchObject({
-    ...human,
-    x: 50,
-    strokeColor: "#ff0000",
-    version: 2,
-    versionNonce: expect.any(Number),
-  });
-});
-
 it("detaches save and capture inputs before any asynchronous work", async () => {
   const scene = { ...blank(), elements: [rectangle()] };
   const saving = store.save(boardId, 0, scene);
@@ -1020,9 +911,8 @@ it("reports unsupported and malformed operations rather than ignoring fields", a
   for (const operations of [
     [{ op: "create", id: "bad", kind: "image", x: 0, y: 0 }],
     [{ ...create(), link: "https://example.com" }],
-    [{ ...create(), text: "not bound text" }],
     [{ op: "create", id: "bad", kind: "arrow", x: 0, y: 0 }],
-    [{ op: "create", id: "bad", kind: "text", x: 0, y: 0, text: "hi", width: 100 }],
+    [{ op: "create", id: "bad", kind: "connection", x: 0, y: 0 }],
   ]) {
     await expect(
       store.handle(apply(grant, operations as BoardOperation[]), validate),

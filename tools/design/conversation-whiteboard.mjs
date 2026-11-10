@@ -50,27 +50,6 @@ const snapshot = {
   ],
   status: { cwd: "/fixture", totalTokens: 0, cost: 0 },
 };
-const common = {
-  angle: 0,
-  strokeColor: "#183B50",
-  backgroundColor: "transparent",
-  fillStyle: "solid",
-  strokeWidth: 1,
-  strokeStyle: "solid",
-  roughness: 0,
-  opacity: 100,
-  groupIds: [],
-  frameId: null,
-  roundness: null,
-  seed: 1,
-  version: 1,
-  versionNonce: 1,
-  isDeleted: false,
-  boundElements: [],
-  updated: 1,
-  link: null,
-  locked: false,
-};
 const board = {
   id: "a".repeat(64),
   revision: 1,
@@ -79,36 +58,31 @@ const board = {
   snapshots: [],
   access: null,
   scene: {
+    engine: "react-flow",
     background: "#ffffff",
     files: {},
     elements: [
       {
-        ...common,
         id: "box",
-        type: "rectangle",
+        type: "component",
+        kind: "card",
+        version: 1,
+        parentId: null,
         x: 0,
         y: 0,
         width: 300,
         height: 330,
-        backgroundColor: "#E7F2FA",
-      },
-      {
-        ...common,
-        id: "text",
-        type: "text",
-        x: 20,
-        y: 20,
-        width: 250,
-        height: 280,
-        text: "FeBO-monorepo\n\nOrchestrator\nTab · 2 agents\n\nPlanner\nBackend",
-        originalText: "FeBO-monorepo\n\nOrchestrator\nTab · 2 agents\n\nPlanner\nBackend",
-        fontSize: 22,
-        fontFamily: 5,
-        textAlign: "left",
-        verticalAlign: "top",
-        containerId: null,
-        autoResize: true,
-        lineHeight: 1.25,
+        props: {
+          title: "FeBO-monorepo",
+          subtitle: "Orchestrator",
+          body: "Tab · 2 agents\nPlanner\nBackend",
+          color: "#E7F2FA",
+          icon: "",
+          imageId: null,
+          fields: [],
+          columns: ["Column"],
+          rows: [],
+        },
       },
     ],
   },
@@ -191,11 +165,10 @@ try {
         await page.goto(origin + "/?pane=w1%3Ap1&session=board-fixture&whiteboard=1");
         const dialog = page.getByTestId("whiteboard");
         await dialog.waitFor();
-        await dialog.locator("canvas").first().waitFor();
+        await dialog.getByTestId("flow-board-editor").waitFor();
         await dialog.getByRole("button", { name: "Fit drawing", exact: true }).click();
         assert.equal(await dialog.getByRole("button", { name: "Export", exact: true }).count(), 0);
-        await dialog.getByTestId("main-menu-trigger").click();
-        await dialog.getByText("Download", { exact: true }).click();
+        await dialog.getByRole("button", { name: "Download", exact: true }).click();
         const downloads = page.getByRole("menu", { name: "Download board", exact: true });
         await downloads.waitFor();
         assert.equal(
@@ -232,7 +205,7 @@ try {
         assert.equal(requests[0].body.text, "Move Planner above Backend on the whiteboard.");
         await page.getByRole("button", { name: "Open whiteboard", exact: true }).click();
         await dialog.waitFor();
-        await dialog.locator("canvas").first().waitFor();
+        await dialog.getByTestId("flow-board-editor").waitFor();
         await input.fill("Add an arrow.");
         await dialog.getByRole("button", { name: "Send", exact: true }).click();
         await page.waitForTimeout(100);

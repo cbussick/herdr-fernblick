@@ -15,7 +15,6 @@ dist-ssr/
 storybook-static/
 coverage/
 design-gallery/
-public/excalidraw/fonts/
 .runtime/
 *.tsbuildinfo
 *.local

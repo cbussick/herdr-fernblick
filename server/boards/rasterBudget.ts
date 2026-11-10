@@ -60,16 +60,14 @@ function dimensions(bytes: Buffer, mime: string): [number, number] {
 export function validateRasterBudget(scene: BoardScene): void {
   const used = new Set(
     scene.elements.flatMap((element) =>
-      element.type === "image" && !element.isDeleted && typeof element.fileId === "string"
-        ? [element.fileId]
-        : element.type === "component" &&
-            !element.isDeleted &&
-            element.props &&
-            typeof element.props === "object" &&
-            !Array.isArray(element.props) &&
-            typeof element.props.imageId === "string"
-          ? [element.props.imageId]
-          : [],
+      element.type === "component" &&
+      !element.isDeleted &&
+      element.props &&
+      typeof element.props === "object" &&
+      !Array.isArray(element.props) &&
+      typeof element.props.imageId === "string"
+        ? [element.props.imageId]
+        : [],
     ),
   );
   let pixels = 0;

@@ -1,3 +1,4 @@
+import { defaultPrimitiveProps } from "../../../packages/pi-live-chat/primitiveProtocol";
 import type {
   BoardScene,
   BoardState,
@@ -11,16 +12,18 @@ export const target: BoardTarget = {
 };
 export function scene(version = 1): BoardScene {
   return {
+    engine: "react-flow",
     elements: [
       {
         id: "box",
-        type: "rectangle",
+        type: "primitive",
+        kind: "rectangle",
+        props: defaultPrimitiveProps(),
         x: version * 10,
         y: 10,
         width: 100,
         height: 80,
         version,
-        versionNonce: version,
         isDeleted: false,
       },
     ],

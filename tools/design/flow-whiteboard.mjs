@@ -216,7 +216,6 @@ try {
         await page.goto(origin + "/?pane=w1%3Ap1&session=flow-fixture&whiteboard=1");
         const whiteboard = page.getByTestId("whiteboard");
         await page.getByTestId("flow-board-editor").waitFor();
-        assert.equal(await page.locator(".excalidraw").count(), 0);
         // Manual edit is durably saved before a prompt is forwarded.
         await page.getByTestId("component-service").dblclick({ position: { x: 100, y: 25 } });
         let editor = page.getByRole("dialog", { name: "Edit Card", exact: true });

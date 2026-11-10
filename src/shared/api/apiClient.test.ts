@@ -14,7 +14,49 @@ import {
   getAgentOutput,
   getPaneOutput,
   ApiError,
+  getAgents,
+  restartAgent,
 } from "./apiClient";
+it.each([502, 503])("preserves HTTP %i for non-JSON error pages", async (status) => {
+  fetchMock.mockResolvedValueOnce(new Response("<html>Unavailable</html>", { status }));
+  await expect(getAgents()).rejects.toMatchObject({
+    name: "ApiError",
+    status,
+    message: "Request failed",
+  });
+  expect(fetchMock).toHaveBeenCalledOnce();
+});
+
+it("preserves structured backend error codes", async () => {
+  fetchMock.mockResolvedValueOnce(
+    Response.json({ error: "Herdr unavailable", code: "unavailable" }, { status: 503 }),
+  );
+  await expect(getAgents()).rejects.toMatchObject({
+    status: 503,
+    code: "unavailable",
+    message: "Herdr unavailable",
+  });
+});
+
+it("rejects malformed successful responses rather than treating them as HTTP failures", async () => {
+  fetchMock.mockResolvedValueOnce(new Response("not json"));
+  await expect(getAgents()).rejects.toBeInstanceOf(SyntaxError);
+});
+
+it("validates restart responses instead of trusting a type assertion", async () => {
+  fetchMock.mockResolvedValueOnce(Response.json({ agent: { pane_id: "w1:p1" } }));
+  await expect(restartAgent("w1:p1")).rejects.toThrow();
+  expect(fetchMock.mock.calls[0][0]).toBe("/api/agents/w1%3Ap1/restart");
+  expect(fetchMock).toHaveBeenCalledOnce();
+});
+
+it("preserves non-JSON read-receipt rejection status", async () => {
+  fetchMock.mockResolvedValueOnce(new Response("Gone", { status: 404 }));
+  await expect(
+    markAgentRead({ paneId: "w1:p1", completionId: "a".repeat(64) }),
+  ).rejects.toMatchObject({ name: "ApiError", status: 404 });
+});
+
 it("posts a validated relative workspace move and preserves API failures", async () => {
   const input = { workspaceId: "w3", beforeWorkspaceId: "w1" };
   fetchMock.mockResolvedValueOnce(Response.json({ ok: true }));

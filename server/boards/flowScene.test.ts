@@ -15,7 +15,7 @@ const create = (
   y: 20,
 });
 const fixture = () =>
-  applyOperations(emptyScene("react-flow"), [
+  applyOperations(emptyScene(), [
     create("boundary", "boundary"),
     { ...create("child"), parentId: "boundary" },
     create("other"),
@@ -86,7 +86,6 @@ describe("flow scene boundary", () => {
     ] as BoardOperation[][])
       expect(() => applyOperations(scene, ops)).toThrow();
     expect(() => validateScene({ ...scene, engine: undefined })).toThrow();
-    expect(() => applyOperations(emptyScene(), [create("a")])).toThrow();
     expect(() =>
       applyOperations(emptyScene(), [
         { op: "create", id: "a", kind: "rectangle", x: 0, y: 0, parentId: null },
@@ -128,10 +127,7 @@ describe("flow scene boundary", () => {
       columns: Array.from({ length: 20 }, () => control.slice(0, 256)),
       rows: Array.from({ length: 20 }, () => Array.from({ length: 20 }, () => control)),
     };
-    const scene = applyOperations(emptyScene("react-flow"), [
-      { ...create("large"), props },
-      create("next"),
-    ]);
+    const scene = applyOperations(emptyScene(), [{ ...create("large"), props }, create("next")]);
     const summary = summarize(scene, 1);
     expect(summary.elements[0].id).toBe("large");
     expect(Buffer.byteLength(JSON.stringify(summary))).toBeLessThan(128 * 1024 + 1024);
@@ -146,9 +142,7 @@ describe("flow scene boundary", () => {
         "Existing value that must survive edits",
       ]),
     };
-    const scene = applyOperations(emptyScene("react-flow"), [
-      { ...create("table"), kind: "table", props },
-    ]);
+    const scene = applyOperations(emptyScene(), [{ ...create("table"), kind: "table", props }]);
     expect(summarize(scene, 1).elements[0]).toMatchObject({ props, propsTruncated: false });
   });
 
@@ -173,7 +167,7 @@ describe("flow scene boundary", () => {
 
   it("edits existing ink without exposing raw points and enforces count limits", () => {
     const scene: BoardScene = {
-      ...emptyScene("react-flow"),
+      ...emptyScene(),
       elements: [
         {
           id: "ink",
@@ -213,7 +207,7 @@ describe("flow scene boundary", () => {
     expect(applyOperations(next, [{ op: "delete", id: "ink" }]).elements[0].isDeleted).toBe(true);
     expect(() =>
       applyOperations(
-        emptyScene("react-flow"),
+        emptyScene(),
         Array.from({ length: 301 }, (_, i) => create(`n${i}`)),
       ),
     ).toThrow();

@@ -1,7 +1,6 @@
 import react from "@vitejs/plugin-react";
 import { defineConfig } from "vite";
 import { VitePWA } from "vite-plugin-pwa";
-import { localExcalidrawFonts } from "./tools/local-excalidraw-fonts.js";
 import { buildInfoPlugin } from "./tools/build-info.js";
 
 // https://vite.dev/config/
@@ -9,7 +8,6 @@ export default defineConfig({
   plugins: [
     react(),
     buildInfoPlugin(),
-    localExcalidrawFonts(),
     VitePWA({
       strategies: "injectManifest",
       srcDir: "src/pwa",
@@ -48,12 +46,10 @@ export default defineConfig({
     rolldownOptions: {
       input: {
         app: "index.html",
-        whiteboardRender: "whiteboard-render.html",
         flowBoardRender: "flow-board-render.html",
       },
     },
   },
-  optimizeDeps: { rolldownOptions: { plugins: [localExcalidrawFonts()] } },
   server: {
     strictPort: true,
     proxy: {
