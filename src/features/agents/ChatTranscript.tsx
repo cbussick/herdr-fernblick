@@ -11,6 +11,7 @@ import type { ChatMessage } from "../../../packages/pi-live-chat/protocol";
 import { ImageIcon, LightbulbIcon } from "../../shared/ui/Icons";
 import { StateIcon, StateNotice } from "../../shared/ui/StateFeedback";
 import { ChatMessageText } from "./ChatMessageText";
+import { ChatMessageCopyButton } from "./ChatMessageCopyButton";
 import { ImageLightbox } from "./ImageLightbox";
 import { annotationHighlights, type Annotation, type AnnotationEditHandler } from "./annotations";
 import styles from "./Console.module.css";
@@ -267,14 +268,17 @@ export function ChatTranscript({
                   <ChatTimestamp timestamp={message.timestamp} />
                 </header>
                 {message.text ? (
-                  <ChatMessageText
-                    text={message.text}
-                    cwd={cwd}
-                    annotationSource={message.role === "assistant" ? message.id : undefined}
-                    annotationFeedback={message.role === "user"}
-                    highlights={annotationHighlights(message, annotations)}
-                    onAnnotationEdit={onAnnotationEdit}
-                  />
+                  <div className={styles["chat-message__bubble"]} data-ui="chat-message-bubble">
+                    <ChatMessageText
+                      text={message.text}
+                      cwd={cwd}
+                      annotationSource={message.role === "assistant" ? message.id : undefined}
+                      annotationFeedback={message.role === "user"}
+                      highlights={annotationHighlights(message, annotations)}
+                      onAnnotationEdit={onAnnotationEdit}
+                    />
+                    <ChatMessageCopyButton text={message.text} />
+                  </div>
                 ) : null}
                 {message.attachments?.length ? (
                   <div className={styles["chat-message__attachments"]}>

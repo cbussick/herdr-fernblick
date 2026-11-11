@@ -20,6 +20,8 @@ Raw HTML, reference-style links, vault-note wikilinks, strikethrough and horizon
 
 ## Copying and safety
 
+Each non-empty user and assistant message has a keyboard-accessible copy icon inside its top-right corner, in both chat and whiteboard transcripts. A dedicated right-hand column keeps all message content clear of the icon without adding an action row. It copies the complete original Markdown, including code fences, but not sender names, timestamps or attachment files. A checkmark briefly confirms success; failures expose a retry action and an announced error. Streaming text changes clear stale confirmation.
+
 Each code block has a keyboard-accessible copy button. It copies the parser's code payload, including indentation and blank lines, without fences, the language label, toolbar text or annotation controls. Success and failure are announced; failures offer retry and manual selection. If the payload changes during streaming, an old success indication is not shown for the new payload.
 
 The Clipboard API is preferred. An HTTP-compatible textarea/`execCommand` fallback handles deployments on non-secure tailnet URLs and restores the prior focus/selection. Browser policy may still prevent copying; the UI does not claim success on failure. Physical iPadOS clipboard behavior requires device testing.
@@ -38,5 +40,7 @@ Tests cover raw-source coverage, every streaming prefix of a mixed block fixture
 PLAYWRIGHT_MODULE=/tmp/fernblick-design-tools/node_modules/playwright/index.mjs \
   node tools/design/verify-annotations.mjs http://127.0.0.1:<static-preview-port>
 ```
+
+After building, `node tools/design/message-copy.mjs` runs isolated Chromium/WebKit checks at phone, tablet and desktop widths for the reserved copy column, exact full-message copying and layout-stable confirmation. All agent traffic is synthetic.
 
 See [annotation mode](annotation-mode.md) for the surrounding comment workflow.

@@ -87,6 +87,22 @@ it("labels replies Agent and user messages You", () => {
   ]);
 });
 
+it("places copy controls inside each text bubble, never in metadata or attachment-only messages", async () => {
+  for (const article of renderer.root.findAllByType("article")) {
+    expect(article.findByType("header").findAllByType("button")).toHaveLength(0);
+    const bubble = article.findByProps({ "data-ui": "chat-message-bubble" });
+    expect(bubble.findByProps({ "aria-label": "Copy message" })).toBeDefined();
+    expect(bubble.findByProps({ "data-ui": "chat-message-text" })).toBeDefined();
+  }
+  props = {
+    ...props,
+    messages: [{ id: "image", role: "user", text: "", attachments: ["/api/uploads/image.png"] }],
+  };
+  await act(async () => renderer.update(<ChatTranscript {...props} />));
+  expect(renderer.root.findAllByProps({ "aria-label": "Copy message" })).toHaveLength(0);
+  expect(renderer.root.findByProps({ "aria-label": "Open attached image" })).toBeDefined();
+});
+
 it("renders all turns, status, tool errors and images with the shared thinking preference", async () => {
   let text = JSON.stringify(renderer.toJSON());
   for (const value of [
