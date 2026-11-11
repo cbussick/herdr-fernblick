@@ -119,8 +119,12 @@ try {
             const t = text.getBoundingClientRect();
             const e = bubble.getBoundingClientRect();
             const date = time?.getBoundingClientRect();
+            const sender = element
+              .querySelector('[data-ui="chat-message-sender"]')
+              .getBoundingClientRect();
             return {
               right: b.right - e.right,
+              neighborGap: b.left - (date ?? sender).right,
               above: e.top - b.bottom,
               inset: e.right - t.right,
               leftInset: t.left - e.left,
@@ -129,7 +133,13 @@ try {
               bubbleControls: bubble.querySelectorAll('[aria-label="Copy message"]').length,
             };
           });
-          assert.ok(Math.abs(geometry.right) <= 1, "Copy aligns with the message right edge");
+          if (id === "u") {
+            assert.ok(Math.abs(geometry.right) <= 1, "User copy remains right-aligned");
+          }
+          assert.ok(
+            Math.abs(geometry.neighborGap - 8) <= 1,
+            "Copy sits directly after the timestamp, or sender when no timestamp exists",
+          );
           assert.ok(geometry.above >= 7, "Copy stays above the bubble");
           assert.ok(geometry.sameRow <= 1, "Copy and timestamp share a row");
           assert.ok(
@@ -148,7 +158,7 @@ try {
         assert.deepEqual(await bubble.boundingBox(), before, "Confirmation must not shift layout");
         assert.deepEqual(errors, []);
         console.log(
-          `${engineName} ${width}px: right-aligned metadata copy, full text width, stable confirmation passed`,
+          `${engineName} ${width}px: copy beside timestamp, unchanged user alignment, full text width, stable confirmation passed`,
         );
         await page.close();
       }

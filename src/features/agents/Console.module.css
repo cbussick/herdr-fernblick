@@ -272,7 +272,6 @@
   flex: 0 0 auto;
   width: 1.5rem;
   height: 1.5rem;
-  margin-inline-start: auto;
   padding: var(--space-1);
   color: var(--color-text-tertiary);
   cursor: pointer;
@@ -329,10 +328,6 @@
 .chat-message--user > .chat-message__meta {
   justify-content: flex-end;
   text-align: right;
-}
-
-.chat-message--user .chat-message__copy {
-  margin-inline-start: 0;
 }
 
 .chat-message--user > .chat-message__bubble {
