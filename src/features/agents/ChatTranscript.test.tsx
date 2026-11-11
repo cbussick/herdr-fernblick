@@ -87,11 +87,13 @@ it("labels replies Agent and user messages You", () => {
   ]);
 });
 
-it("places copy controls inside each text bubble, never in metadata or attachment-only messages", async () => {
+it("places copy controls in metadata, leaving bubbles and attachment-only messages clear", async () => {
   for (const article of renderer.root.findAllByType("article")) {
-    expect(article.findByType("header").findAllByType("button")).toHaveLength(0);
+    expect(
+      article.findByType("header").findByProps({ "aria-label": "Copy message" }),
+    ).toBeDefined();
     const bubble = article.findByProps({ "data-ui": "chat-message-bubble" });
-    expect(bubble.findByProps({ "aria-label": "Copy message" })).toBeDefined();
+    expect(bubble.findAllByProps({ "aria-label": "Copy message" })).toHaveLength(0);
     expect(bubble.findByProps({ "data-ui": "chat-message-text" })).toBeDefined();
   }
   props = {
@@ -137,7 +139,9 @@ it.each(["chat-transcript", "whiteboard-transcript"])(
     const articles = renderer.root.findAllByType("article");
     for (const [index, article] of articles.entries()) {
       const header = article.findByType("header");
-      expect(header.findByType("span").children).toEqual([index === 0 ? "You" : "Agent"]);
+      expect(header.findByProps({ "data-ui": "chat-message-sender" }).children).toEqual([
+        index === 0 ? "You" : "Agent",
+      ]);
       const time = header.findByType("time");
       const date = new Date(timestamp + index * 60_000);
       const fullDate = date.toLocaleString(undefined, {
@@ -182,7 +186,9 @@ it.each([undefined, NaN, Infinity, -Infinity, 8.64e15 + 1])(
     await act(async () => renderer.update(<ChatTranscript {...props} />));
     expect(renderer.root.findAllByType("time")).toHaveLength(0);
     expect(JSON.stringify(renderer.toJSON())).toContain("Still visible");
-    expect(renderer.root.findByType("header").findByType("span").children).toEqual(["Agent"]);
+    expect(renderer.root.findByProps({ "data-ui": "chat-message-sender" }).children).toEqual([
+      "Agent",
+    ]);
   },
 );
 it("preserves the recorded timestamp, including zero, during streaming updates", async () => {

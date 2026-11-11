@@ -264,8 +264,11 @@ export function ChatTranscript({
                 data-role={message.role}
               >
                 <header className={styles["chat-message__meta"]}>
-                  <span>{message.role === "user" ? "You" : "Agent"}</span>
+                  <span data-ui="chat-message-sender">
+                    {message.role === "user" ? "You" : "Agent"}
+                  </span>
                   <ChatTimestamp timestamp={message.timestamp} />
+                  {message.text ? <ChatMessageCopyButton text={message.text} /> : null}
                 </header>
                 {message.text ? (
                   <div className={styles["chat-message__bubble"]} data-ui="chat-message-bubble">
@@ -277,7 +280,6 @@ export function ChatTranscript({
                       highlights={annotationHighlights(message, annotations)}
                       onAnnotationEdit={onAnnotationEdit}
                     />
-                    <ChatMessageCopyButton text={message.text} />
                   </div>
                 ) : null}
                 {message.attachments?.length ? (

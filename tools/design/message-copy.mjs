@@ -19,7 +19,7 @@ const agent = {
 };
 const text =
   "Here is the plan:\n\n" +
-  "Reserve the right side on every line. ".repeat(8) +
+  "Use the full message width on every line. ".repeat(8) +
   "\n\n```js\nconst copied = true;\n```";
 const snapshot = {
   type: "snapshot",
@@ -42,6 +42,7 @@ const snapshot = {
   messages: [
     { id: "u", role: "user", text: "Summarize the plan.", timestamp: 0 },
     { id: "a", role: "assistant", text, timestamp: 0 },
+    { id: "short", role: "assistant", text: "OK" },
   ],
 };
 const server = createHttpServer(
@@ -104,38 +105,50 @@ try {
         await page.getByTestId("pane-row").click();
         const article = page.locator('[data-message-id="a"]');
         const bubble = article.locator('[data-ui="chat-message-bubble"]');
-        const copy = bubble.getByRole("button", { name: "Copy message", exact: true });
+        const copy = article
+          .locator("header")
+          .getByRole("button", { name: "Copy message", exact: true });
         await copy.waitFor();
-        assert.equal(await article.locator("header button").count(), 0);
-        const geometry = await bubble.evaluate((element) => {
-          const text = element.querySelector('[data-ui="chat-message-text"]');
-          const button = element.querySelector('[aria-label="Copy message"]');
-          const b = button.getBoundingClientRect();
-          const t = text.getBoundingClientRect();
-          const e = element.getBoundingClientRect();
-          return {
-            gap: b.left - t.right,
-            inset: e.right - b.right,
-            overflow: element.scrollWidth - element.clientWidth,
-            top: b.top - e.top,
-            textHeight: t.height,
-            buttonHeight: b.height,
-          };
-        });
-        assert.ok(geometry.gap >= 7, "Entire text column must clear the copy strip");
-        assert.ok(geometry.inset >= 10, "Icon stays inside the bubble");
-        assert.ok(geometry.top >= 10 && geometry.top <= 20, "Icon sits at the top");
-        assert.ok(geometry.textHeight > geometry.buttonHeight * 2, "Exercise multiline content");
-        assert.ok(geometry.overflow <= 1, "Bubble must not overflow on narrow phones");
+        for (const id of ["a", "u", "short"]) {
+          const geometry = await page.locator(`[data-message-id="${id}"]`).evaluate((element) => {
+            const bubble = element.querySelector('[data-ui="chat-message-bubble"]');
+            const text = bubble.querySelector('[data-ui="chat-message-text"]');
+            const button = element.querySelector('header [aria-label="Copy message"]');
+            const time = element.querySelector("time");
+            const b = button.getBoundingClientRect();
+            const t = text.getBoundingClientRect();
+            const e = bubble.getBoundingClientRect();
+            const date = time?.getBoundingClientRect();
+            return {
+              right: b.right - e.right,
+              above: e.top - b.bottom,
+              inset: e.right - t.right,
+              leftInset: t.left - e.left,
+              overflow: element.scrollWidth - element.clientWidth,
+              sameRow: date ? Math.abs((b.top + b.bottom - date.top - date.bottom) / 2) : 0,
+              bubbleControls: bubble.querySelectorAll('[aria-label="Copy message"]').length,
+            };
+          });
+          assert.ok(Math.abs(geometry.right) <= 1, "Copy aligns with the message right edge");
+          assert.ok(geometry.above >= 7, "Copy stays above the bubble");
+          assert.ok(geometry.sameRow <= 1, "Copy and timestamp share a row");
+          assert.ok(
+            Math.abs(geometry.inset - geometry.leftInset) <= 1,
+            "Text has equal padding; no reserved strip",
+          );
+          assert.ok(geometry.inset <= 17, "Only normal bubble padding remains");
+          assert.equal(geometry.bubbleControls, 0);
+          assert.ok(geometry.overflow <= 1, "Messages must not overflow on narrow phones");
+        }
         await copy.click();
-        await bubble.getByRole("button", { name: "Message copied", exact: true }).waitFor();
+        await article.getByRole("button", { name: "Message copied", exact: true }).waitFor();
         assert.equal(await page.evaluate(() => window.copiedText), text);
         const before = await bubble.boundingBox();
-        await bubble.getByRole("button", { name: "Copy message", exact: true }).waitFor();
+        await article.getByRole("button", { name: "Copy message", exact: true }).waitFor();
         assert.deepEqual(await bubble.boundingBox(), before, "Confirmation must not shift layout");
         assert.deepEqual(errors, []);
         console.log(
-          `${engineName} ${width}px: reserved strip, exact copy, stable confirmation passed`,
+          `${engineName} ${width}px: right-aligned metadata copy, full text width, stable confirmation passed`,
         );
         await page.close();
       }
