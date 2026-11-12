@@ -34,6 +34,23 @@ function setup(local?: LocalDraft) {
   owners.push(owner);
   return { owner, api, store, close, emit: (value: BoardEvent) => event(value) };
 }
+it("reports initial read progress, ends it on failure, and retries without writing", async () => {
+  const { owner, api } = setup();
+  const pending = deferred<ReturnType<typeof board>>();
+  api.open.mockReturnValueOnce(pending.promise);
+  const started = owner.start();
+  expect(owner.state.loading).toBe(true);
+  pending.reject(new Error("offline fixture"));
+  await started;
+  expect(owner.state.loading).toBe(false);
+  expect(owner.state.connected).toBe(false);
+  expect(owner.state.error).toBe("offline fixture");
+  await owner.refresh();
+  expect(owner.state.loading).toBe(false);
+  expect(owner.state.connected).toBe(true);
+  expect(api.save).not.toHaveBeenCalled();
+});
+
 it("exports an unsynced draft without saving or clearing dirty state and cancels on disposal", async () => {
   const { owner, api } = setup();
   await owner.start();

@@ -6,6 +6,7 @@ import { CloseIcon, ImageIcon, SendIcon } from "../../shared/ui/Icons";
 import a11y from "../../styles/accessibility.module.css";
 import styles from "./SkillComposer.module.css";
 import { useSkillPickerOverlay } from "./useSkillPickerOverlay";
+import { SearchEmptyState } from "../../shared/ui/SearchEmptyState";
 import { WhiteboardButton } from "../whiteboard/WhiteboardButton";
 
 function insertSkill(text: string, name: string) {
@@ -197,11 +198,23 @@ export function SkillComposer(props: Props) {
           : null}
       </div>
       {ready && !skills.length ? (
-        <p className={styles.notice} role="status">
-          {catalog.data?.skills.length
-            ? "No matching skills. Try a name or description."
-            : "No skills loaded. Add a skill to Pi, then run /reload."}
-        </p>
+        <SearchEmptyState
+          className={styles["empty-results"]}
+          message={
+            catalog.data?.skills.length
+              ? "No matching skills. Try a name or description."
+              : "No skills loaded. Add a skill to Pi, then run /reload."
+          }
+          onClear={
+            search
+              ? () => {
+                  setSearch("");
+                  setActive(0);
+                  searchInput.current?.focus();
+                }
+              : undefined
+          }
+        />
       ) : null}
       {ready && catalog.data?.truncated ? (
         <p className={styles.notice}>

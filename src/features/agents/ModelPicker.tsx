@@ -6,6 +6,7 @@ import { GlobalDefaultAction, GlobalDefaultsNotice } from "./GlobalDefaultAction
 import a11y from "../../styles/accessibility.module.css";
 import { CloseIcon } from "../../shared/ui/Icons";
 import styles from "./SessionSettingsPicker.module.css";
+import { SearchEmptyState } from "../../shared/ui/SearchEmptyState";
 
 interface Props {
   pane: string;
@@ -216,11 +217,22 @@ export function ModelPicker({
                   );
                 })}
                 {!models.length ? (
-                  <p className={styles.notice}>
-                    {catalog.data?.models.length
-                      ? "No matching models."
-                      : "No models available. Configure a provider in Pi first."}
-                  </p>
+                  <SearchEmptyState
+                    className={styles["empty-results"]}
+                    message={
+                      catalog.data?.models.length
+                        ? "No matching models."
+                        : "No models available. Configure a provider in Pi first."
+                    }
+                    onClear={
+                      search
+                        ? () => {
+                            setSearch("");
+                            searchInput.current?.focus();
+                          }
+                        : undefined
+                    }
+                  />
                 ) : null}
               </div>
             </>

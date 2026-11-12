@@ -111,7 +111,9 @@ export function ComponentContent({ data }: { data: ComponentData }) {
         </div>
       )}
       {data.kind === "table" && (
-        <div className={styles["table-wrap"]}>
+        <div
+          className={`${styles["table-wrap"]} ${styles["no-drag"]} ${styles["no-pan"]} ${styles["no-wheel"]}`}
+        >
           <table className={styles["node-table"]}>
             <thead>
               <tr>

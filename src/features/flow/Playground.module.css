@@ -485,7 +485,9 @@
 
 .table-wrap {
   margin-top: 16px;
-  overflow-x: auto;
+  max-height: 24rem;
+  overflow: auto;
+  overscroll-behavior: contain;
 }
 
 .node-table {
@@ -503,6 +505,8 @@
 
 .node-table th,
 .node-table td {
+  min-width: 8rem;
+  max-width: 18rem;
   padding: 9px;
   border-bottom: 1px solid #e8ecf2;
   white-space: pre-wrap;
@@ -597,7 +601,8 @@
   display: flex;
   align-items: center;
   gap: 3px;
-  max-width: calc(100% - 150px);
+  max-width: calc(100% - 32px);
+  flex-wrap: wrap;
   padding: 5px;
   border: 1px solid #dce3ed;
   border-radius: 10px;
@@ -624,7 +629,18 @@
 }
 
 .drawing-toolbar .add-component {
-  display: none;
+  display: inline-flex;
+}
+
+.add-component > :where(span) {
+  display: inline;
+}
+
+.tool-group {
+  display: flex;
+  align-items: center;
+  gap: 3px;
+  flex: none;
 }
 
 .component-picker {
@@ -632,7 +648,8 @@
   overflow-y: auto;
 }
 
-.drawing-toolbar button[aria-pressed="true"] {
+.drawing-toolbar button[aria-pressed="true"],
+.drawing-toolbar button[aria-expanded="true"] {
   background: #eaf1ff;
   color: #315fae;
 }
@@ -723,11 +740,30 @@
   max-width: 170px;
 }
 
-.minimap {
+.canvas-navigation {
+  display: flex;
+  align-items: flex-end;
+  gap: 12px;
+}
+
+.fit-drawing {
+  min-height: 44px;
+  padding: 8px 14px;
+  border: 1px solid #bfd7e8;
+  border-radius: 9px;
+  background: #fff;
+  color: #17374f;
+  font-weight: 650;
+}
+
+.canvas .canvas-navigation .minimap {
+  position: relative;
+  margin: 0;
+  right: auto;
   border: 1px solid #dce3ed;
   border-radius: 10px;
   overflow: hidden;
-  bottom: 30px;
+  bottom: auto;
 }
 
 .status {
@@ -1160,7 +1196,7 @@
   }
 
   :where(.header-actions .secondary) span {
-    display: none;
+    display: inline;
   }
 
   .workspace {

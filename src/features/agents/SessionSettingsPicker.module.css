@@ -67,6 +67,10 @@
   overscroll-behavior: contain;
 }
 
+.dialog .empty-results {
+  min-height: min(280px, 45dvh);
+}
+
 .row {
   display: flex;
   align-items: center;

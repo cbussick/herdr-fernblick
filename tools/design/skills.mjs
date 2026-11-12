@@ -1,6 +1,7 @@
 // Synthetic browser regression checks. Every API request is intercepted; no live agent is controlled.
 // PLAYWRIGHT_MODULE=/absolute/path/to/playwright/index.mjs node tools/design/skills.mjs URL
 import assert from "node:assert/strict";
+import { verifyEmptySearch } from "./search-empty-state.mjs";
 import fs from "node:fs/promises";
 const { chromium, webkit } = await import(process.env.PLAYWRIGHT_MODULE || "playwright");
 const base = process.argv[2] || "http://127.0.0.1:5185";
@@ -291,6 +292,13 @@ for (const [engine, browserType] of [
       await page.getByRole("combobox").press("Enter");
       assert.equal(sends, 0, "search Enter with no results must not submit the draft");
       assert.equal(await prompt.inputValue(), "Review the mobile layout");
+      await verifyEmptySearch(
+        page,
+        page.getByRole("combobox"),
+        `${output}/${engine}-${name}-empty-search.png`,
+      );
+      await page.getByRole("option").first().waitFor();
+      assert.equal(sends, 0);
       await page.getByRole("combobox").fill("standards");
       assert.equal(await page.getByRole("option").count(), 1);
       assert.equal(calls, 1, "search filters locally");

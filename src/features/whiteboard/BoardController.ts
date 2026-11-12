@@ -10,6 +10,7 @@ import { draftStore, type DraftStore, type LocalDraft } from "./draftStore";
 import { canonical, mergeScene } from "./mergeScene";
 
 export interface BoardView {
+  loading: boolean;
   board?: BoardState;
   scene?: BoardScene;
   recovery?: BoardScene;
@@ -28,6 +29,7 @@ const message = (error: unknown) =>
 /** One owner per target. Only explicit pre-write CAS rejection permits reconciliation. */
 export class BoardController {
   state: BoardView = {
+    loading: true,
     instruction: "",
     generation: 0,
     dirty: false,
@@ -203,6 +205,7 @@ export class BoardController {
   async refresh() {
     if (this.pendingRead) return this.pendingRead;
     const run = async () => {
+      if (!this.initialized || !this.state.scene) this.patch({ loading: true });
       await this.pendingSave?.catch(() => {});
       if (this.disposed) return;
       try {
@@ -220,6 +223,7 @@ export class BoardController {
       }
     };
     this.pendingRead = run().finally(() => {
+      this.patch({ loading: false });
       this.pendingRead = undefined;
       if (this.readAgain && !this.disposed) {
         this.readAgain = false;

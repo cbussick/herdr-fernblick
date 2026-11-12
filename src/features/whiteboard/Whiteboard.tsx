@@ -18,10 +18,17 @@ import { BoardExport } from "./BoardExport";
 import { downloadScene } from "./scene";
 import type { EditorHandle } from "./editorTypes";
 import { ConversationDock, type WhiteboardConversation } from "./ConversationDock";
+import { ScoutLogo } from "../../shared/ui/ScoutLogo";
 import styles from "./Whiteboard.module.css";
 
 const ActiveEditor = lazy(() => import("../flow/FlowBoardEditor"));
-class EditorBoundary extends Component<{ children: ReactNode }, { error: boolean }> {
+class EditorBoundary extends Component<
+  { children: ReactNode; onError: () => void },
+  { error: boolean }
+> {
+  componentDidCatch() {
+    this.props.onError();
+  }
   state = { error: false };
   static getDerivedStateFromError() {
     return { error: true };
@@ -75,11 +82,11 @@ function WhiteboardSession({
   const state = useSyncExternalStore(controller.subscribe, controller.getSnapshot);
   const available = agentState === "ready";
   const dialog = useRef<HTMLDialogElement>(null);
-  const editor = useRef<EditorHandle | null>(null);
   const active = useRef(false);
   const [working, setWorking] = useState(false);
   const [error, setError] = useState("");
   const [editorError, setEditorError] = useState("");
+  const [editorFailed, setEditorFailed] = useState(false);
   const current = useRef({ available, structured, target, editorError });
   useLayoutEffect(() => {
     current.current = { available, structured, target, editorError };
@@ -89,8 +96,8 @@ function WhiteboardSession({
   const closeDownloads = useCallback(() => setDownloadAnchor(null), []);
   const [revoking, setRevoking] = useState(false);
   const [ready, setReady] = useState(false);
+  const [headerActions, setHeaderActions] = useState<HTMLDivElement | null>(null);
   const onEditorReady = useCallback((handle: EditorHandle | null) => {
-    editor.current = handle;
     setReady(Boolean(handle));
   }, []);
   const operation = useRef(false);
@@ -223,6 +230,20 @@ function WhiteboardSession({
               : "";
   const problem = conversation.error || error || editorError || state.error;
   const status = problem || activity;
+  const loading = state.loading || Boolean(state.scene && !ready && !editorFailed);
+  const saveStatus = loading
+    ? ""
+    : editorFailed
+      ? "Unavailable"
+      : state.conflict || editorError
+        ? "Unsynced"
+        : !state.connected
+          ? "Offline"
+          : state.saving
+            ? "Saving…"
+            : state.dirty
+              ? "Unsynced"
+              : "Saved";
   const warning = Boolean(
     problem || state.storageError || disconnected || agentState === "unsupported",
   );
@@ -337,42 +358,56 @@ function WhiteboardSession({
               {agentContext ? ` · ${agentContext}` : ""}
             </span>
           </div>
-          <span className={styles["save-status"]} role="status">
-            {state.saving ? "Saving…" : state.dirty ? "Unsynced" : "Saved"}
-          </span>
+          <div className={styles.actions}>
+            <span className={styles["save-status"]} role="status">
+              {saveStatus}
+            </span>
+            <div ref={setHeaderActions} />
+          </div>
         </header>
         <div className={styles.workspace} data-testid="whiteboard-workspace">
-          <div className={styles.canvas} inert={working || undefined}>
-            {state.scene ? (
-              <EditorBoundary>
-                <Suspense fallback={<p className={styles.notice}>Loading drawing tools…</p>}>
-                  <ActiveEditor
-                    scene={state.scene}
-                    generation={state.generation}
-                    locked={working}
-                    onChange={(scene) => controller.change(scene)}
-                    onError={setEditorError}
-                    onInteraction={controller.interaction}
-                    onBeforeReplace={() => controller.checkpoint()}
-                    onDownload={(anchor) =>
-                      setDownloadAnchor((current) => (current === anchor ? null : anchor))
-                    }
-                    downloadMenuOpen={!!downloadAnchor}
-                    onReady={onEditorReady}
-                  />
-                </Suspense>
-              </EditorBoundary>
-            ) : (
-              <p className={styles.notice}>Opening saved whiteboard…</p>
-            )}
-            <button
-              className={styles.fit}
-              type="button"
-              disabled={!ready || working}
-              onClick={() => editor.current?.fit()}
+          <div className={styles.canvas}>
+            <div
+              className={styles["editor-frame"]}
+              inert={working || loading || undefined}
+              aria-busy={loading}
             >
-              Fit drawing
-            </button>
+              {state.scene ? (
+                <EditorBoundary onError={() => setEditorFailed(true)}>
+                  <Suspense fallback={null}>
+                    <ActiveEditor
+                      scene={state.scene}
+                      generation={state.generation}
+                      locked={working || loading}
+                      headerActions={headerActions}
+                      onChange={(scene) => controller.change(scene)}
+                      onError={setEditorError}
+                      onInteraction={controller.interaction}
+                      onBeforeReplace={() => controller.checkpoint()}
+                      onDownload={(anchor) =>
+                        setDownloadAnchor((current) => (current === anchor ? null : anchor))
+                      }
+                      downloadMenuOpen={!!downloadAnchor}
+                      onReady={onEditorReady}
+                    />
+                  </Suspense>
+                </EditorBoundary>
+              ) : (
+                !loading && (
+                  <p className={styles.notice} role="alert">
+                    Whiteboard unavailable. Reconnect to try again.
+                  </p>
+                )
+              )}
+            </div>
+            {loading && (
+              <div className={styles.loading} role="status">
+                <div className={styles.scout} aria-hidden="true">
+                  <ScoutLogo animated />
+                </div>
+                <p>Loading whiteboard</p>
+              </div>
+            )}
           </div>
           <ConversationDock
             conversation={{
@@ -470,7 +505,7 @@ function WhiteboardSession({
                     ) : null}
                   </div>
                 ) : null}
-                {!state.connected && !state.conflict ? (
+                {!state.connected && !state.conflict && !state.loading ? (
                   <div className={styles.recovery}>
                     <button type="button" onClick={() => void controller.refresh()}>
                       Reconnect board

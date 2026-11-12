@@ -1,6 +1,7 @@
 // All API/SSE traffic is intercepted. Never controls existing agents.
 // PLAYWRIGHT_MODULE=/path/to/playwright/index.mjs node tools/design/model-picker.mjs URL
 import assert from "node:assert/strict";
+import { verifyEmptySearch } from "./search-empty-state.mjs";
 import fs from "node:fs/promises";
 const { chromium, webkit } = await import(process.env.PLAYWRIGHT_MODULE || "playwright");
 const base = process.argv[2] || "http://127.0.0.1:5197";
@@ -116,6 +117,22 @@ for (const [engine, type] of [
                 tabs: [],
               },
             });
+          if (path === "/api/chats")
+            return route.fulfill({
+              json: {
+                chats: [
+                  {
+                    id: "a".repeat(64),
+                    title: "Saved fixture",
+                    preview: "Synthetic session",
+                    cwd: "/fixture",
+                    updatedAt: "2026-11-09T14:30:00Z",
+                    activePaneId: null,
+                  },
+                ],
+                indexing: false,
+              },
+            });
           if (path.endsWith("/save-default")) {
             const body = route.request().postDataJSON();
             assert.deepEqual(body.target, target);
@@ -213,6 +230,26 @@ for (const [engine, type] of [
         },
       );
       await page.goto(base);
+      for (const [tab, label] of [
+        ["Workspaces", "Search workspaces"],
+        ["Agents", "Search agents"],
+        ["Past sessions", "Search past sessions"],
+      ]) {
+        await page.getByRole("tab", { name: tab, exact: true }).click();
+        const search = page.getByRole("searchbox", { name: label, exact: true });
+        await search.fill("not-a-real-match");
+        await verifyEmptySearch(
+          page,
+          search,
+          `${output}/${engine}-${name}-${tab.replaceAll(" ", "-")}-empty.png`,
+        );
+        assert.equal(
+          await page.getByRole("tab", { name: tab, exact: true }).getAttribute("aria-selected"),
+          "true",
+          "Clearing must retain the selected overview",
+        );
+        await page.locator('[data-ui="search-empty-state"]').waitFor({ state: "detached" });
+      }
       await page.getByRole("tab", { name: "Agents", exact: true }).click();
       await page.getByTestId("pane-row").click();
       const draft = page.locator("#agent-prompt");
@@ -272,6 +309,9 @@ for (const [engine, type] of [
       await page.getByText("No matching models.", { exact: true }).waitFor();
       await search.press("Enter");
       assert.equal(changes, 0);
+      await verifyEmptySearch(page, search, `${output}/${engine}-${name}-empty.png`);
+      assert.equal(await dialog.locator('[data-testid="model-row"]').count(), models.length);
+      assert.equal(await draft.inputValue(), "Keep this draft");
       await search.fill("openai");
       assert.equal(await dialog.locator("[aria-pressed]").count(), 1);
       await search.press("ArrowDown");

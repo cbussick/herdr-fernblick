@@ -12,6 +12,7 @@ import {
   groupPanesByTab,
 } from "./agentPresentation";
 import { PaneContextActions } from "./PaneContextActions";
+import { SearchEmptyState } from "../../shared/ui/SearchEmptyState";
 import { WorkspaceReorder } from "./WorkspaceReorder";
 
 const priority: Record<AgentStatus, number> = {
@@ -246,6 +247,7 @@ export function WorkspaceList({
   onSelectTab,
   onCreateAgent,
   query,
+  onClearSearch,
 }: {
   agents: Agent[];
   tabs: ShellTab[];
@@ -255,6 +257,7 @@ export function WorkspaceList({
   onSelectTab: (tab: ShellTab) => void;
   onCreateAgent: (workspaceId: string) => void;
   query: string;
+  onClearSearch?: () => void;
 }) {
   const normalized = query.trim().toLowerCase();
   const groups = groupAgentsByWorkspace(agents, tabs, workspaces)
@@ -271,6 +274,8 @@ export function WorkspaceList({
       return { ...group, visibleTabs, workspaceMatches };
     })
     .filter((group) => group.workspaceMatches || group.visibleTabs.length > 0);
+  if (groups.length === 0 && normalized)
+    return <SearchEmptyState message="No workspaces found." onClear={onClearSearch} />;
   if (groups.length === 0)
     return (
       <div className={overviewStyles["overview-empty"]} data-testid="overview-empty">
@@ -319,11 +324,13 @@ export function FlatAgentList({
   selectedPaneId,
   onSelect,
   query,
+  onClearSearch,
 }: {
   agents: Agent[];
   selectedPaneId: string | null;
   onSelect: (agent: Agent) => void;
   query: string;
+  onClearSearch?: () => void;
 }) {
   const normalized = query.trim().toLowerCase();
   const visible = agents.filter(
@@ -350,6 +357,8 @@ export function FlatAgentList({
             onClick={() => onSelect(agent)}
           />
         ))
+      ) : normalized ? (
+        <SearchEmptyState message="No agents found." onClear={onClearSearch} />
       ) : (
         <div className={overviewStyles["overview-empty"]} data-testid="overview-empty">
           <span className={uiStyles["empty-state-icon"]} data-testid="empty-state-icon">

@@ -1,3 +1,4 @@
+import { createPortal } from "react-dom";
 import type { BoardEditorProps } from "../whiteboard/editorTypes";
 import type { BoardScene } from "../../../packages/pi-live-chat/boardProtocol";
 import {
@@ -24,6 +25,7 @@ import {
   Controls,
   MarkerType,
   MiniMap,
+  Panel,
   ReactFlow,
   ReactFlowProvider,
   useReactFlow,
@@ -454,6 +456,55 @@ function Playground(props: BoardEditorProps) {
       </div>
     </>
   );
+  const headerActions = (
+    <div className={styles["header-actions"]}>
+      <label className={styles["upload"]}>
+        Import
+        <input
+          disabled={locked}
+          type="file"
+          aria-label="Import flow JSON"
+          accept=".json,application/json"
+          onChange={async (e) => {
+            const file = e.target.files?.[0];
+            e.target.value = "";
+            if (!file) return;
+            try {
+              if (file.size > MAX_FLOW_BACKUP_BYTES) throw new Error("Import exceeds 12 MiB");
+              const next = importFlowScene(await file.text());
+              await verifySceneImages(next);
+              if (!callbacks.current.locked) setPendingImport(next);
+            } catch (error) {
+              onError(String(error));
+            }
+          }}
+        />
+      </label>
+      <button
+        className={styles["secondary"]}
+        disabled={locked}
+        aria-label="Download"
+        title="Download"
+        aria-haspopup={props.onDownload ? "menu" : undefined}
+        aria-expanded={props.onDownload ? !!props.downloadMenuOpen : undefined}
+        aria-controls={props.downloadMenuOpen ? "board-download-menu" : undefined}
+        onClick={(event) => (props.onDownload ? props.onDownload(event.currentTarget) : download())}
+      >
+        <Download size={16} />
+        <span>Download</span>
+      </button>
+      <button
+        disabled={locked}
+        className={styles["secondary"]}
+        aria-label="Clear canvas"
+        title="Clear canvas"
+        onClick={() => setResetting(true)}
+      >
+        <RotateCcw size={16} />
+        <span>Clear</span>
+      </button>
+    </div>
+  );
   return (
     <div
       className={styles["app"]}
@@ -501,82 +552,15 @@ function Playground(props: BoardEditorProps) {
         }
       }}
     >
-      <header className={styles["app-header"]}>
-        <div className={styles["brand"]}>
-          <span className={styles["brand-mark"]}>
-            <Icon name="layout" size={24} />
-          </span>
-          <div>
-            <h1>Component canvas</h1>
-            <p>Conversation whiteboard</p>
-          </div>
-        </div>
-        <div className={styles["header-actions"]}>
-          <label className={styles["upload"]}>
-            Import
-            <input
-              disabled={locked}
-              type="file"
-              aria-label="Import flow JSON"
-              accept=".json,application/json"
-              onChange={async (e) => {
-                const file = e.target.files?.[0];
-                e.target.value = "";
-                if (!file) return;
-                try {
-                  if (file.size > MAX_FLOW_BACKUP_BYTES) throw new Error("Import exceeds 12 MiB");
-                  const next = importFlowScene(await file.text());
-                  await verifySceneImages(next);
-                  if (!callbacks.current.locked) setPendingImport(next);
-                } catch (error) {
-                  onError(String(error));
-                }
-              }}
-            />
-          </label>
-          <button
-            className={styles["secondary"]}
-            aria-label="Download"
-            title="Download"
-            aria-haspopup={props.onDownload ? "menu" : undefined}
-            aria-expanded={props.onDownload ? !!props.downloadMenuOpen : undefined}
-            aria-controls={props.downloadMenuOpen ? "board-download-menu" : undefined}
-            onClick={(event) =>
-              props.onDownload ? props.onDownload(event.currentTarget) : download()
-            }
-          >
-            <Download size={16} />
-            <span>Download</span>
-          </button>
-          <button
-            disabled={locked}
-            className={styles["secondary"]}
-            onClick={() => setResetting(true)}
-          >
-            <RotateCcw size={16} />
-            <span>Clear</span>
-          </button>
-        </div>
-      </header>
+      {props.headerActions === undefined ? (
+        <header className={styles["app-header"]}>
+          <h1>Component canvas</h1>
+          {headerActions}
+        </header>
+      ) : props.headerActions ? (
+        createPortal(headerActions, props.headerActions)
+      ) : null}
       <div className={styles["workspace"]}>
-        <aside className={styles["library"]} aria-label="Component library">
-          <h2>Add a component</h2>
-          {libraryContent}
-          <div className={styles["library-help"]}>
-            <strong>Make it yours</strong>
-            <p>Select a component, then choose Edit. Or double-click it.</p>
-            <p>
-              Drag between dots to connect. Shift-click to select more. Delete removes the
-              selection.
-            </p>
-            <p>Select a boundary before adding to place a component inside it.</p>
-            <p>
-              Choose Draw to sketch over the canvas. Eraser removes whole strokes. Use Pan or two
-              fingers to navigate.
-            </p>
-            <small>Undo/redo your edits with Ctrl/Cmd+Z and Ctrl/Cmd+Shift+Z.</small>
-          </div>
-        </aside>
         <main
           ref={canvas}
           className={styles["canvas"]}
@@ -654,16 +638,26 @@ function Playground(props: BoardEditorProps) {
                   />
                 )}
                 <Controls showInteractive={false} />
-                <MiniMap<CanvasNode>
-                  className={styles["minimap"]}
-                  nodeColor={(node) =>
-                    node.type === "primitive"
-                      ? node.data.drawing.stroke
-                      : node.data.color || "#cbd5e1"
-                  }
-                  pannable
-                  zoomable
-                />
+                <Panel position="bottom-right" className={styles["canvas-navigation"]}>
+                  <button
+                    type="button"
+                    className={styles["fit-drawing"]}
+                    disabled={locked}
+                    onClick={() => void flow.fitView({ padding: 0.18 })}
+                  >
+                    Fit drawing
+                  </button>
+                  <MiniMap<CanvasNode>
+                    className={styles["minimap"]}
+                    nodeColor={(node) =>
+                      node.type === "primitive"
+                        ? node.data.drawing.stroke
+                        : node.data.color || "#cbd5e1"
+                    }
+                    pannable
+                    zoomable
+                  />
+                </Panel>
               </ReactFlow>
               <DrawingTools
                 tool={tool}
@@ -674,6 +668,7 @@ function Playground(props: BoardEditorProps) {
                 setSize={setPenSize}
                 history={history}
                 disabled={locked || modal}
+                picking={picking}
                 onAddComponent={() => {
                   pickerTrigger.current =
                     document.activeElement instanceof HTMLElement ? document.activeElement : null;
@@ -747,7 +742,7 @@ function Playground(props: BoardEditorProps) {
                 <div className={styles["empty"]}>
                   <Icon name="layout" size={34} />
                   <h2>Your canvas is ready</h2>
-                  <p>Add a component from the library to get started.</p>
+                  <p>Choose Add component to get started.</p>
                 </div>
               )}
               <div className={styles["status"]} role="status">

@@ -76,10 +76,12 @@ async function draw() {
 describe("isolated production editor and DOM renderer", { timeout: 30_000 }, () => {
   it("edits/cancels components, reports change before idle, clears undo on external generation and honors lock", async () => {
     await loadEditor();
+    await page.getByRole("button", { name: "Add a component", exact: true }).click();
     await page.getByRole("button", { name: "Add Card", exact: true }).click();
     await page.getByLabel("Title", { exact: true }).fill("Cancelled");
     await page.getByRole("button", { name: "Cancel", exact: true }).click();
     expect(await page.evaluate(() => window.flowTest.changes.length)).toBe(0);
+    await page.getByRole("button", { name: "Add a component", exact: true }).click();
     await page.getByRole("button", { name: "Add Card", exact: true }).click();
     await page.getByLabel("Title", { exact: true }).fill("Production card");
     await page.getByRole("button", { name: "Add component", exact: true }).click();
@@ -110,13 +112,13 @@ describe("isolated production editor and DOM renderer", { timeout: 30_000 }, () 
     expect(await page.evaluate(() => window.flowTest.changes.length)).toBe(count);
     expect(await page.getByRole("button", { name: "Undo", exact: true }).isDisabled()).toBe(true);
     await page.evaluate(() => window.flowTest.setLocked(true));
-    expect(await page.getByRole("button", { name: "Add Card", exact: true }).isDisabled()).toBe(
-      true,
-    );
+    expect(
+      await page.getByRole("button", { name: "Add a component", exact: true }).isDisabled(),
+    ).toBe(true);
     expect(await page.getByRole("button", { name: "Draw", exact: true }).isDisabled()).toBe(true);
     expect(await page.evaluate(() => window.flowTest.errors)).toEqual([]);
   });
-  it("uses a searchable toolbar picker on mobile without changing the desktop library", async () => {
+  it("uses the searchable toolbar picker at both mobile and desktop widths", async () => {
     try {
       await page.setViewportSize({ width: 390, height: 844 });
       await loadEditor();
@@ -149,8 +151,8 @@ describe("isolated production editor and DOM renderer", { timeout: 30_000 }, () 
       await picker.waitFor({ state: "detached" });
       expect(await trigger.isDisabled()).toBe(true);
       await page.setViewportSize({ width: 1280, height: 900 });
-      expect(await library.isVisible()).toBe(true);
-      expect(await trigger.isVisible()).toBe(false);
+      expect(await library.count()).toBe(0);
+      expect(await trigger.isVisible()).toBe(true);
     } finally {
       await page.setViewportSize({ width: 1280, height: 900 });
     }
@@ -380,6 +382,7 @@ describe("isolated production editor and DOM renderer", { timeout: 30_000 }, () 
 
   it("keeps component-editor copy minimal, uses an icon-only circular custom color picker and fixes textarea size", async () => {
     await loadEditor();
+    await page.getByRole("button", { name: "Add a component", exact: true }).click();
     await page.getByRole("button", { name: "Add Card", exact: true }).click();
     const dialog = page.getByRole("dialog", { name: "Add Card", exact: true });
     await dialog.waitFor();
@@ -467,8 +470,9 @@ describe("isolated production editor and DOM renderer", { timeout: 30_000 }, () 
       window.flowTest.setScene(JSON.parse(raw));
       window.flowTest.checkpointError = "Recovery storage unavailable";
     }, JSON.stringify(first));
-    await page.getByRole("button", { name: "Clear", exact: true }).click();
     await page.getByRole("button", { name: "Clear canvas", exact: true }).click();
+    const confirmation = page.getByRole("dialog", { name: "Clear the canvas?", exact: true });
+    await confirmation.getByRole("button", { name: "Clear canvas", exact: true }).click();
     await page.waitForFunction(() =>
       window.flowTest.errors.includes("Recovery storage unavailable"),
     );
@@ -477,7 +481,7 @@ describe("isolated production editor and DOM renderer", { timeout: 30_000 }, () 
     await page.evaluate(() => {
       window.flowTest.checkpointError = "";
     });
-    await page.getByRole("button", { name: "Clear canvas", exact: true }).click();
+    await confirmation.getByRole("button", { name: "Clear canvas", exact: true }).click();
     await page.waitForFunction(() => window.flowTest.changes.length === 1);
     expect(
       await page.evaluate(() => window.flowTest.changes[0]!.elements.every((e) => e.isDeleted)),

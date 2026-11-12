@@ -1,3 +1,4 @@
+import { PanelRightClose, PanelRightOpen, PanelBottomClose, PanelBottomOpen } from "lucide-react";
 import { useRef, useState, type ReactNode } from "react";
 import type { Snapshot } from "../../../packages/pi-live-chat/protocol";
 import { ChatTranscript } from "../agents/ChatTranscript";
@@ -51,13 +52,6 @@ export function ConversationDock({
     setRetained(conversation.snapshot);
   const snapshot = conversation.snapshot ?? retained;
   const messages = snapshot?.messages ?? [];
-  const lastUser = messages.findLastIndex((message) => message.role === "user");
-  // Latest-turn detection is only for status, never for filtering the transcript.
-  const hasReply = messages
-    .slice(lastUser + 1)
-    .some(
-      (message) => message.role === "assistant" && (message.text || message.attachments?.length),
-    );
   const expandButton = useRef<HTMLButtonElement>(null);
   const blocked = disabled || inert || conversation.sending || !conversation.draft.trim();
   function submit() {
@@ -90,27 +84,34 @@ export function ConversationDock({
         data-testid="whiteboard-activity"
         data-warning={activity.warning || undefined}
       >
-        <div className={styles["activity__text"]} role={activity.warning ? "alert" : "status"}>
-          <p>
-            {activity.working && !activity.warning ? (
-              <StatusIndicator status="working" label="Working" />
-            ) : (
-              activity.message || (hasReply ? "Reply ready" : "Conversation")
-            )}
-          </p>
-          {activity.detail}
-        </div>
-        {activity.action}
         <button
           ref={expandButton}
+          className={styles.toggle}
+          title={expanded ? "Collapse conversation" : "Expand conversation"}
           type="button"
           aria-expanded={expanded}
           aria-controls="whiteboard-conversation-messages"
           aria-label={expanded ? "Collapse conversation" : "Expand conversation"}
           onClick={() => setExpanded(!expanded)}
         >
-          {expanded ? "Collapse" : "Expand"}
+          <span className={styles["side-icon"]} aria-hidden="true">
+            {expanded ? <PanelRightClose size={20} /> : <PanelRightOpen size={20} />}
+          </span>
+          <span className={styles["bottom-icon"]} aria-hidden="true">
+            {expanded ? <PanelBottomClose size={20} /> : <PanelBottomOpen size={20} />}
+          </span>
         </button>
+        <div className={styles["activity__text"]} role={activity.warning ? "alert" : "status"}>
+          <p>
+            {activity.working && !activity.warning ? (
+              <StatusIndicator status="working" label="Working" />
+            ) : (
+              activity.message || null
+            )}
+          </p>
+          {activity.detail}
+        </div>
+        {activity.action}
       </header>
       {recovery}
       <ChatTranscript

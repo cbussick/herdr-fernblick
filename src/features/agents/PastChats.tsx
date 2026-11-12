@@ -8,17 +8,20 @@ import { removeWhiteboardDrafts } from "../whiteboard/draftStore";
 import { StateIcon } from "../../shared/ui/StateFeedback";
 import overviewStyles from "./agentOverview.module.css";
 import styles from "./PastChats.module.css";
+import { SearchEmptyState } from "../../shared/ui/SearchEmptyState";
 
 export function PastChats({
   query,
   workspaces,
   onResumed,
   onRemoved,
+  onClearSearch,
 }: {
   query: string;
   workspaces: Workspace[];
   onResumed: (agent: Agent) => void;
   onRemoved: () => void;
+  onClearSearch?: () => void;
 }) {
   const client = useQueryClient();
   const [selectedChat, setSelectedChat] = useState<SavedChat | null>(null);
@@ -110,13 +113,15 @@ export function PastChats({
             </button>
           </div>
         )}
-        {chats.isSuccess && !chats.data.indexing && !chats.data.indexError && !filtered.length && (
-          <p>
-            {search
-              ? "No sessions match your search."
-              : "No past sessions yet. Saved sessions appear here after they close."}
-          </p>
-        )}
+        {chats.isSuccess &&
+          !chats.data.indexing &&
+          !chats.data.indexError &&
+          !filtered.length &&
+          (search ? (
+            <SearchEmptyState message="No sessions match your search." onClear={onClearSearch} />
+          ) : (
+            <p>No past sessions yet. Saved sessions appear here after they close.</p>
+          ))}
         <ul className={styles.list}>
           {filtered.map((chat) => (
             <li key={chat.id} className={styles.chat} data-testid="saved-chat">

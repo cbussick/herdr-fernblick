@@ -14,6 +14,7 @@ const mocks = vi.hoisted(() => ({
   events: vi.fn(),
   upload: vi.fn(),
   fit: vi.fn(),
+  failEditor: false,
 }));
 vi.mock("react-dom", () => ({ createPortal: (children: ReactNode) => children }));
 vi.mock("./boardApi", () => ({
@@ -27,6 +28,7 @@ vi.mock("../flow/FlowBoardEditor", async () => {
   const { useEffect, useState } = await import("react");
   return {
     default: function MockEditor(props: BoardEditorProps) {
+      if (mocks.failEditor) throw new Error("Fixture editor failed");
       const [onReady] = useState(() => props.onReady);
       useEffect(() => {
         onReady({ fit: mocks.fit });
@@ -67,6 +69,7 @@ beforeEach(async () => {
   vi.stubGlobal("document", { activeElement: null });
   vi.stubGlobal("HTMLElement", class {});
   vi.clearAllMocks();
+  mocks.failEditor = false;
   mocks.open.mockResolvedValue(board());
   mocks.events.mockReturnValue(mocks.close);
   mocks.save.mockResolvedValue(board(2));
@@ -117,10 +120,50 @@ it("uses Working without repeating the agent name", async () => {
   expect(activity.findByProps({ label: "Working" })).toBeDefined();
   expect(JSON.stringify(renderer.toJSON())).not.toContain("Planner working");
 });
-it("fits the drawing only when requested", async () => {
+it("leaves canvas navigation to the editor rather than overlaying its minimap", () => {
   expect(mocks.fit).not.toHaveBeenCalled();
-  await act(async () => button("Fit drawing").props.onClick());
-  expect(mocks.fit).toHaveBeenCalledOnce();
+  expect(button("Fit drawing")).toBeUndefined();
+  expect(editor().props).toHaveProperty("headerActions");
+});
+
+it("replaces initial loading with actionable failure, never a Saved label", async () => {
+  const pending = deferred<BoardState>();
+  mocks.open.mockReturnValue(pending.promise);
+  await act(async () =>
+    renderer.update(<Whiteboard {...props} target={{ ...target, sessionId: "pending" }} />),
+  );
+  expect(JSON.stringify(renderer.toJSON())).toContain("Loading whiteboard");
+  expect(JSON.stringify(renderer.toJSON())).not.toContain('"Saved"');
+  expect(button("Reconnect board")).toBeUndefined();
+  expect(button("← Back").props.disabled).toBe(false);
+  await act(async () => pending.reject(new Error("Fixture unavailable")));
+  await flush();
+  expect(JSON.stringify(renderer.toJSON())).not.toContain("Loading whiteboard");
+  expect(JSON.stringify(renderer.toJSON())).toContain("Offline");
+  expect(button("Reconnect board")).toBeDefined();
+  mocks.open.mockResolvedValue(board());
+  await act(async () => button("Reconnect board").props.onClick());
+  await flush();
+  expect(JSON.stringify(renderer.toJSON())).toContain('"Saved"');
+});
+it("ends the loader on editor failure and permits Back without an unsaved-change warning", async () => {
+  mocks.failEditor = true;
+  const report = vi.spyOn(console, "error").mockImplementation(() => {});
+  try {
+    await act(async () =>
+      renderer.update(<Whiteboard {...props} target={{ ...target, sessionId: "editor-failed" }} />),
+    );
+    await flush();
+    const output = JSON.stringify(renderer.toJSON());
+    expect(output).toContain("The drawing editor could not load.");
+    expect(output).not.toContain("Loading whiteboard");
+    expect(output).not.toContain('"Saved"');
+    await act(async () => button("← Back").props.onClick());
+    expect(props.onClose).toHaveBeenCalledOnce();
+  } finally {
+    report.mockRestore();
+    mocks.failEditor = false;
+  }
 });
 it("resolves dock images against the retained Pi cwd while live chat reconnects", async () => {
   props.conversation.snapshot = {

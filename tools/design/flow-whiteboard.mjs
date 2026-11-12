@@ -100,7 +100,8 @@ try {
     try {
       for (const [layout, viewport] of [
         ["desktop", { width: 1440, height: 1000 }],
-        ["portrait", { width: 820, height: 1180 }],
+        ["landscape", { width: 1194, height: 834 }],
+        ["portrait", { width: 834, height: 1194 }],
         ["phone", { width: 390, height: 844 }],
       ]) {
         const context = await browser.newContext({
@@ -113,6 +114,11 @@ try {
         const errors = [];
         page.on("pageerror", (e) => errors.push(e.message));
         let board = initial();
+        let releaseOpen;
+        const initialOpen = new Promise((resolve) => {
+          releaseOpen = resolve;
+        });
+        let failOpen = true;
         const saves = [];
         const prompts = [];
         let failSaves = false;
@@ -165,7 +171,12 @@ try {
                 workspaces: [{ workspace_id: "w1", label: "Flow fixture" }],
               },
             });
-          if (url.pathname.endsWith("/board")) return route.fulfill({ json: board });
+          if (url.pathname.endsWith("/board")) {
+            await initialOpen;
+            return failOpen
+              ? route.fulfill({ status: 503, json: { error: "Fixture unavailable" } })
+              : route.fulfill({ json: board });
+          }
           if (url.pathname.endsWith("/board/save")) {
             const input = request.postDataJSON();
             saves.push(input);
@@ -215,7 +226,91 @@ try {
         });
         await page.goto(origin + "/?pane=w1%3Ap1&session=flow-fixture&whiteboard=1");
         const whiteboard = page.getByTestId("whiteboard");
+        await whiteboard.getByText("Loading whiteboard", { exact: true }).waitFor();
+        assert.equal(await whiteboard.getByText("Saved", { exact: true }).count(), 0);
+        assert(await whiteboard.getByRole("button", { name: "← Back", exact: true }).isEnabled());
+        await page.screenshot({
+          path: `.runtime/flow-board-evidence/loading-${name}-${layout}.png`,
+        });
+        releaseOpen();
+        await whiteboard.getByText("Offline", { exact: true }).waitFor();
+        assert.equal(await whiteboard.getByText("Loading whiteboard", { exact: true }).count(), 0);
+        failOpen = false;
+        await whiteboard.getByRole("button", { name: "Reconnect board", exact: true }).click();
         await page.getByTestId("flow-board-editor").waitFor();
+        await whiteboard.getByText("Saved", { exact: true }).waitFor();
+        assert.equal(
+          await page.getByTestId("flow-board-editor").locator(":scope > header").count(),
+          0,
+        );
+        assert.equal(
+          await whiteboard.getByRole("complementary", { name: "Component library" }).count(),
+          0,
+        );
+        const toggle = whiteboard.getByRole("button", { name: "Expand conversation", exact: true });
+        assert(
+          await toggle.evaluate((button) => {
+            const header = button.parentElement,
+              box = button.getBoundingClientRect();
+            return (
+              Math.abs(
+                box.left -
+                  header.getBoundingClientRect().left -
+                  parseFloat(getComputedStyle(header).paddingLeft),
+              ) < 2 &&
+              box.width >= 44 &&
+              box.height >= 44
+            );
+          }),
+        );
+        assert.equal(await whiteboard.getByText("Reply ready", { exact: true }).count(), 0);
+        await toggle.click();
+        await whiteboard
+          .getByRole("button", { name: "Collapse conversation", exact: true })
+          .click();
+        const fit = whiteboard.getByRole("button", { name: "Fit drawing", exact: true });
+        const map = whiteboard.locator(".react-flow__minimap");
+        if (await map.isVisible()) {
+          const m = await map.boundingBox(),
+            f = await fit.boundingBox();
+          assert(
+            Math.abs(m.x - f.x - f.width - 12) < 2 && Math.abs(m.y + m.height - f.y - f.height) < 2,
+            `Fit drawing is bottom-aligned 12px left of minimap: ${JSON.stringify({ m, f, css: await map.evaluate((el) => ({ position: getComputedStyle(el).position, bottom: getComputedStyle(el).bottom, margin: getComputedStyle(el).margin })) })}`,
+          );
+        }
+        const add = whiteboard.getByRole("button", { name: "Add a component", exact: true });
+        assert.equal(
+          await add.evaluate((el) => getComputedStyle(el).backgroundColor),
+          "rgb(255, 255, 255)",
+        );
+        assert(
+          await add.evaluate((el) =>
+            Boolean(
+              document.querySelector('[aria-label="Pen width"]').compareDocumentPosition(el) &
+              Node.DOCUMENT_POSITION_FOLLOWING,
+            ),
+          ),
+        );
+        await add.click();
+        const picker = page.getByRole("dialog", { name: "Add a component", exact: true });
+        await picker.waitFor();
+        assert.equal(await add.getAttribute("aria-expanded"), "true");
+        assert.equal(
+          await add.evaluate((el) => getComputedStyle(el).backgroundColor),
+          await whiteboard
+            .getByRole("button", { name: "Select", exact: true })
+            .evaluate((el) => getComputedStyle(el).backgroundColor),
+        );
+        await page.screenshot({
+          path: `.runtime/flow-board-evidence/picker-${name}-${layout}.png`,
+        });
+        await picker.getByRole("textbox", { name: "Find a component" }).fill("card");
+        await picker.getByRole("button", { name: "Add Card", exact: true }).click();
+        await page.getByRole("dialog", { name: "Add Card", exact: true }).waitFor();
+        await page.keyboard.press("Escape");
+        await page.waitForFunction(
+          () => document.activeElement?.getAttribute("aria-label") === "Add a component",
+        );
         // Manual edit is durably saved before a prompt is forwarded.
         await page.getByTestId("component-service").dblclick({ position: { x: 100, y: 25 } });
         let editor = page.getByRole("dialog", { name: "Edit Card", exact: true });
@@ -347,9 +442,78 @@ try {
         );
         await page.getByRole("button", { name: "Select", exact: true }).click();
         await page.screenshot({ path: `.runtime/flow-board-evidence/${name}-${layout}.png` });
+        // Max-sized tables stay inside their editor; cancel preserves the board.
+        const table = {
+          ...component("large-table", "Large table", 1800),
+          kind: "table",
+          width: 500,
+          height: 300,
+          props: {
+            ...defaultFlowProps("table"),
+            title: "Large table",
+            columns: Array.from({ length: 20 }, (_, i) => `Column ${i + 1}`),
+            rows: Array.from({ length: 100 }, () =>
+              Array(20).fill("Long cell content ".repeat(12)),
+            ),
+          },
+        };
+        board = {
+          ...board,
+          revision: board.revision + 1,
+          scene: { ...board.scene, elements: [...board.scene.elements, table] },
+        };
+        await page.evaluate((revision) => window.flowChanged(revision), board.revision);
+        await page.getByTestId("component-large-table").waitFor();
+        await fit.click();
+        await page.screenshot({
+          path: `.runtime/flow-board-evidence/table-canvas-${name}-${layout}.png`,
+        });
+        await page.getByTestId("component-large-table").dblclick({ position: { x: 30, y: 15 } });
+        const tableEditor = page.getByRole("dialog", { name: "Edit Table Node", exact: true });
+        await tableEditor.waitFor();
+        assert.equal(
+          await tableEditor
+            .getByRole("textbox", { name: "Row 100 column 20", exact: true })
+            .count(),
+          1,
+        );
+        assert(
+          await tableEditor.evaluate((el) => {
+            const table = el.querySelector("table"),
+              region = table.parentElement;
+            return (
+              region.scrollWidth > region.clientWidth &&
+              el.getBoundingClientRect().right <= innerWidth &&
+              document.documentElement.scrollWidth <= innerWidth
+            );
+          }),
+          "Large table overflow stays inside the editor",
+        );
+        for (const label of ["Cancel", "Save changes"]) {
+          const button = tableEditor.getByRole("button", { name: label, exact: true });
+          await button.scrollIntoViewIfNeeded();
+          const box = await button.boundingBox();
+          assert(
+            box.y >= 0 && box.y + box.height <= viewport.height,
+            "Editor actions stay reachable",
+          );
+        }
+        await page.screenshot({ path: `.runtime/flow-board-evidence/table-${name}-${layout}.png` });
+        await tableEditor.getByRole("button", { name: "Cancel", exact: true }).click();
+        board = {
+          ...board,
+          revision: board.revision + 1,
+          scene: {
+            ...board.scene,
+            elements: board.scene.elements.filter((e) => e.id !== "large-table"),
+          },
+        };
+        await page.evaluate((revision) => window.flowChanged(revision), board.revision);
+        await page.getByTestId("component-large-table").waitFor({ state: "detached" });
+        await fit.click();
         // A failed/uncertain write retains a recoverable local draft across reload.
         failSaves = true;
-        await page.getByTestId("component-service").dblclick({ position: { x: 100, y: 25 } });
+        await page.getByTestId("component-service").dblclick({ position: { x: 30, y: 15 } });
         editor = page.getByRole("dialog", { name: "Edit Card", exact: true });
         await editor.getByLabel("Title", { exact: true }).fill("Unsynced local title");
         await editor.getByRole("button", { name: "Save changes", exact: true }).click();
@@ -357,6 +521,8 @@ try {
           .getByText(/Autosave paused/)
           .first()
           .waitFor();
+        assert.equal(await whiteboard.getByText("Saved", { exact: true }).count(), 0);
+        await whiteboard.getByText("Unsynced", { exact: true }).waitFor();
         const count = saves.length;
         await page.reload();
         // The one-shot deep link is consumed; reopen normally, like a user.

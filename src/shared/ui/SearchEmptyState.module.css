@@ -1,0 +1,43 @@
+.state {
+  display: flex;
+  align-items: safe center;
+  justify-content: safe center;
+  min-height: 240px;
+  padding: 24px 16px;
+  overflow: auto;
+  box-sizing: border-box;
+}
+
+.group {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 16px;
+  width: 100%;
+  text-align: center;
+}
+
+.state .group p {
+  margin: 0;
+  padding: 0;
+  max-width: 32ch;
+  color: var(--color-text-secondary);
+  font-size: 13px;
+  line-height: 1.6;
+}
+
+.state button.action {
+  display: block;
+  width: max-content;
+  max-width: 100%;
+  height: auto;
+  min-height: 44px;
+  padding: 10px 18px;
+  border: 1px solid var(--color-accent);
+  border-radius: var(--radius-sm);
+  color: var(--color-accent);
+  background: var(--color-surface);
+  font: inherit;
+  font-size: 14px;
+  font-weight: 600;
+}

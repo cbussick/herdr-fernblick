@@ -1,6 +1,6 @@
 import overviewStyles from "./agentOverview.module.css";
 import a11yStyles from "../../styles/accessibility.module.css";
-import { useCallback, useState } from "react";
+import { useCallback, useRef, useState } from "react";
 import type { Agent, ShellTab, Workspace } from "../../shared/api/contracts";
 import { IconButton, SearchField, SegmentedTabs, SpeedDial } from "../../shared/ui";
 import { SettingsIcon } from "../../shared/ui/Icons";
@@ -47,6 +47,11 @@ export function AgentList({
 }: AgentListProps) {
   const [view, setView] = useState<OverviewView>("workspaces");
   const [query, setQuery] = useState("");
+  const header = useRef<HTMLElement>(null);
+  function clearSearch() {
+    setQuery("");
+    header.current?.querySelector("input")?.focus();
+  }
   const [removalNotice, setRemovalNotice] = useState(0);
   const dismissNotice = useCallback(() => setRemovalNotice(0), []);
   const actions = [
@@ -79,7 +84,11 @@ export function AgentList({
       data-ui="agent-list"
       aria-label="Herdr Web overview"
     >
-      <header className={overviewStyles["overview-header"]} data-testid="overview-header">
+      <header
+        ref={header}
+        className={overviewStyles["overview-header"]}
+        data-testid="overview-header"
+      >
         <div className={overviewStyles["overview-header__title"]}>
           <div className={overviewStyles["overview-brand"]}>
             <FernblickMark />
@@ -139,6 +148,7 @@ export function AgentList({
         {view === "history" ? (
           <PastChats
             query={query}
+            onClearSearch={clearSearch}
             workspaces={workspaces}
             onResumed={onResumed}
             onRemoved={() => setRemovalNotice((notice) => notice + 1)}
@@ -153,6 +163,7 @@ export function AgentList({
             onSelectAgent={onSelect}
             onSelectTab={onSelectTab}
             query={query}
+            onClearSearch={clearSearch}
           />
         ) : (
           <FlatAgentList
@@ -160,6 +171,7 @@ export function AgentList({
             selectedPaneId={selectedPaneId}
             onSelect={onSelect}
             query={query}
+            onClearSearch={clearSearch}
           />
         )}
       </div>

@@ -77,6 +77,7 @@ export function DrawingTools({
   history,
   disabled,
   onAddComponent,
+  picking = false,
 }: {
   tool: Tool;
   setTool: (t: Tool) => void;
@@ -87,22 +88,10 @@ export function DrawingTools({
   history: { undo: () => void; redo: () => void; canUndo: boolean; canRedo: boolean };
   disabled: boolean;
   onAddComponent?: () => void;
+  picking?: boolean;
 }) {
   return (
     <div className={styles["drawing-toolbar"]} aria-label="Drawing tools">
-      {onAddComponent && (
-        <button
-          type="button"
-          className={styles["add-component"]}
-          aria-label="Add a component"
-          title="Add a component"
-          aria-haspopup="dialog"
-          disabled={disabled}
-          onClick={onAddComponent}
-        >
-          <Blocks size={17} />
-        </button>
-      )}
       {(
         [
           { tool: "select", label: "Select", icon: MousePointer2 },
@@ -148,6 +137,24 @@ export function DrawingTools({
           <option value={18}>Thick</option>
         </select>
       </label>
+      {onAddComponent && (
+        <div className={styles["tool-group"]}>
+          <span className={styles["tool-divider"]} />
+          <button
+            type="button"
+            className={styles["add-component"]}
+            aria-label="Add a component"
+            title="Add a component"
+            aria-haspopup="dialog"
+            aria-expanded={picking}
+            disabled={disabled}
+            onClick={onAddComponent}
+          >
+            <Blocks size={17} />
+            <span>Add component</span>
+          </button>
+        </div>
+      )}
       <span className={styles["tool-divider"]} />
       <button
         type="button"

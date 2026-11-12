@@ -178,6 +178,17 @@
   font-size: 0.8125rem;
 }
 
+.picker .empty-results {
+  height: min(240px, 28dvh);
+  min-height: 0;
+  flex: 0 1 auto;
+}
+
+.picker.modal .empty-results {
+  flex: 1;
+  height: auto;
+}
+
 .hint {
   flex: none;
   padding: var(--space-2) var(--space-4);

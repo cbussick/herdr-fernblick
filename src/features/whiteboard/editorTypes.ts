@@ -15,4 +15,6 @@ export interface BoardEditorProps {
   onBeforeReplace?: () => Promise<void>;
   onDownload?: (anchor: HTMLElement) => void;
   downloadMenuOpen?: boolean;
+  /** Shared whiteboard header slot; undefined retains a standalone editor header. */
+  headerActions?: HTMLElement | null;
 }
