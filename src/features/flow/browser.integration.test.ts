@@ -74,6 +74,23 @@ async function draw() {
   await page.mouse.up();
 }
 describe("isolated production editor and DOM renderer", { timeout: 30_000 }, () => {
+  it("shows pen settings only for Draw and preserves them across tool changes", async () => {
+    await loadEditor();
+    const settings = page.getByRole("group", { name: "Freehand pen settings" });
+    expect(await settings.count()).toBe(0);
+    await page.getByRole("button", { name: "Draw", exact: true }).click();
+    expect(await settings.isVisible()).toBe(true);
+    await page.getByLabel("Pen color", { exact: true }).fill("#22cc44");
+    await page.getByLabel("Pen width", { exact: true }).selectOption("10");
+    for (const name of ["Select", "Eraser", "Pan"]) {
+      await page.getByRole("button", { name, exact: true }).click();
+      expect(await settings.count()).toBe(0);
+    }
+    await page.getByRole("button", { name: "Draw", exact: true }).click();
+    expect(await page.getByLabel("Pen color", { exact: true }).inputValue()).toBe("#22cc44");
+    expect(await page.getByLabel("Pen width", { exact: true }).inputValue()).toBe("10");
+  });
+
   it("edits/cancels components, reports change before idle, clears undo on external generation and honors lock", async () => {
     await loadEditor();
     await page.getByRole("button", { name: "Add a component", exact: true }).click();

@@ -113,30 +113,35 @@ export function DrawingTools({
           <span>{item.label}</span>
         </button>
       ))}
-      <span className={styles["tool-divider"]} />
-      <label className={styles["pen-color"]} title="Pen color">
-        <input
-          aria-label="Pen color"
-          type="color"
-          value={color}
-          disabled={disabled}
-          onChange={(e) => setColor(e.target.value)}
-        />
-      </label>
-      <label className={styles["pen-width"]}>
-        Pen width
-        <select
-          aria-label="Pen width"
-          value={size}
-          disabled={disabled}
-          onChange={(e) => setSize(Number(e.target.value))}
-        >
-          <option value={2}>Fine</option>
-          <option value={5}>Medium</option>
-          <option value={10}>Bold</option>
-          <option value={18}>Thick</option>
-        </select>
-      </label>
+      {tool === "draw" && (
+        <div className={styles["pen-settings"]} role="group" aria-label="Freehand pen settings">
+          <span className={styles["tool-divider"]} />
+          <span className={styles["pen-label"]}>Pen</span>
+          <label className={styles["pen-color"]} title="Color for new freehand strokes">
+            <input
+              aria-label="Pen color"
+              type="color"
+              value={color}
+              disabled={disabled}
+              onChange={(e) => setColor(e.target.value)}
+            />
+          </label>
+          <label className={styles["pen-width"]}>
+            Pen width
+            <select
+              aria-label="Pen width"
+              value={size}
+              disabled={disabled}
+              onChange={(e) => setSize(Number(e.target.value))}
+            >
+              <option value={2}>Fine</option>
+              <option value={5}>Medium</option>
+              <option value={10}>Bold</option>
+              <option value={18}>Thick</option>
+            </select>
+          </label>
+        </div>
+      )}
       {onAddComponent && (
         <div className={styles["tool-group"]}>
           <span className={styles["tool-divider"]} />

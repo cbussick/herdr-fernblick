@@ -666,6 +666,17 @@
   flex-shrink: 0;
 }
 
+.pen-settings {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.pen-label {
+  font-size: 11px;
+  color: #596b85;
+}
+
 .pen-color {
   display: flex;
   align-items: center;
