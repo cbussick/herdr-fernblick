@@ -1,10 +1,15 @@
 .dock {
+  position: absolute;
+  inset: auto 0 0;
+  z-index: 4;
   display: flex;
-  flex: 0 1 auto;
+  flex: none;
+  height: clamp(11rem, var(--conversation-height, 25%), 100%);
   flex-direction: column;
   min-width: 0;
-  min-height: 0;
-  max-height: 45%;
+  min-height: min(11rem, 100%);
+  max-height: 100%;
+  border-radius: 1.25rem 1.25rem 0 0;
   border-top: 1px solid var(--color-border-strong);
   background: var(--color-surface);
   font-size: 0.875rem;
@@ -27,13 +32,65 @@
   display: flex;
   flex: 0 0 auto;
   align-items: center;
-  gap: 0.5rem;
+  flex-wrap: wrap;
+  gap: 0 0.5rem;
   min-height: 2.75rem;
+  border-radius: inherit;
   padding: 0.125rem 1rem;
   background: var(--color-surface);
   border-bottom: 1px solid var(--color-border);
   font-size: 0.8125rem;
   line-height: 1.5;
+}
+
+.resize-row {
+  position: relative;
+  display: flex;
+  align-items: center;
+  flex: 0 0 100%;
+  height: 44px;
+}
+
+.resize {
+  position: absolute;
+  top: 0;
+  left: 50%;
+  z-index: 5;
+  display: grid;
+  place-items: center;
+  width: min(45%, 180px);
+  height: 44px;
+  transform: translateX(-50%);
+  cursor: ns-resize;
+  touch-action: none;
+  user-select: none;
+  border-radius: var(--radius-sm);
+}
+
+.grip {
+  width: 56px;
+  height: 5px;
+  border-radius: 4px;
+  background: var(--color-border-strong);
+}
+
+.resize:hover .grip,
+.resize:focus-visible .grip,
+.dock[data-resizing="true"] .grip {
+  background: var(--color-accent);
+}
+
+.resize:focus-visible {
+  outline: none;
+}
+
+.resize:focus-visible .grip {
+  outline: 2px solid var(--color-accent);
+  outline-offset: 3px;
+}
+
+.dock[data-resizing="true"] {
+  user-select: none;
 }
 
 .activity .toggle {
@@ -70,6 +127,10 @@
 
 .activity__text p {
   margin: 0;
+}
+
+.activity__text:has(> p:only-child:empty) {
+  display: none;
 }
 
 /* Size the shared chat viewport, never change its message rendering. */
@@ -140,9 +201,52 @@
   }
 
   .dock {
+    position: relative;
+    inset: auto;
+    height: auto;
+    min-height: 0;
     max-height: none;
     border-top: 0;
     border-left: 1px solid var(--color-border-strong);
+    border-radius: 0;
+  }
+
+  .resize-row {
+    position: static;
+  }
+
+  .resize {
+    top: 0;
+    bottom: 0;
+    left: 0;
+    width: 12px;
+    height: auto;
+    cursor: ew-resize;
+  }
+
+  .resize::before {
+    position: absolute;
+    top: 0;
+    bottom: 0;
+    left: 50%;
+    width: 2px;
+    content: "";
+    background: transparent;
+  }
+
+  .resize:hover::before,
+  .resize:focus-visible::before,
+  .dock[data-resizing="true"] .resize::before {
+    background: var(--color-accent);
+  }
+
+  .grip {
+    z-index: 1;
+    width: 10px;
+    height: 36px;
+    border: 3px solid var(--color-surface);
+    border-radius: 8px;
+    box-shadow: 0 0 0 1px var(--color-border-strong);
   }
 
   .dock > [data-ui="chat-transcript"] {

@@ -3,6 +3,7 @@ import { useRef, useState, type ReactNode } from "react";
 import type { Snapshot } from "../../../packages/pi-live-chat/protocol";
 import { ChatTranscript } from "../agents/ChatTranscript";
 import { StatusIndicator } from "../../shared/ui";
+import { useConversationSize } from "./useConversationSize";
 import styles from "./ConversationDock.module.css";
 
 /** A view of the existing chat. The console retains ownership of drafts and sends. */
@@ -44,7 +45,9 @@ export function ConversationDock({
   activity,
   recovery,
 }: ConversationDockProps) {
-  const [expanded, setExpanded] = useState(false);
+  const dock = useRef<HTMLElement>(null);
+  const size = useConversationSize(dock);
+  const { expanded } = size;
   // An unavailable chat frame is not a new conversation. The enclosing board
   // unmounts on confirmed identity replacement, so this cache cannot cross targets.
   const [retained, setRetained] = useState(conversation.snapshot);
@@ -59,7 +62,11 @@ export function ConversationDock({
   }
   return (
     <section
+      ref={dock}
+      id="whiteboard-conversation-panel"
       className={styles.dock}
+      style={size.style}
+      data-resizing={size.dragging || undefined}
       data-ui="conversation-dock"
       data-testid="whiteboard-conversation"
       data-expanded={expanded || undefined}
@@ -74,7 +81,7 @@ export function ConversationDock({
         ) {
           event.preventDefault();
           event.stopPropagation();
-          setExpanded(false);
+          size.collapse();
           expandButton.current?.focus();
         }
       }}
@@ -84,23 +91,33 @@ export function ConversationDock({
         data-testid="whiteboard-activity"
         data-warning={activity.warning || undefined}
       >
-        <button
-          ref={expandButton}
-          className={styles.toggle}
-          title={expanded ? "Collapse conversation" : "Expand conversation"}
-          type="button"
-          aria-expanded={expanded}
-          aria-controls="whiteboard-conversation-messages"
-          aria-label={expanded ? "Collapse conversation" : "Expand conversation"}
-          onClick={() => setExpanded(!expanded)}
-        >
-          <span className={styles["side-icon"]} aria-hidden="true">
-            {expanded ? <PanelRightClose size={20} /> : <PanelRightOpen size={20} />}
-          </span>
-          <span className={styles["bottom-icon"]} aria-hidden="true">
-            {expanded ? <PanelBottomClose size={20} /> : <PanelBottomOpen size={20} />}
-          </span>
-        </button>
+        <div className={styles["resize-row"]}>
+          <button
+            ref={expandButton}
+            className={styles.toggle}
+            title={expanded ? "Collapse conversation" : "Expand conversation"}
+            type="button"
+            aria-expanded={expanded}
+            aria-controls="whiteboard-conversation-messages"
+            aria-label={expanded ? "Collapse conversation" : "Expand conversation"}
+            onClick={size.toggle}
+          >
+            <span className={styles["side-icon"]} aria-hidden="true">
+              {expanded ? <PanelRightClose size={20} /> : <PanelRightOpen size={20} />}
+            </span>
+            <span className={styles["bottom-icon"]} aria-hidden="true">
+              {expanded ? <PanelBottomClose size={20} /> : <PanelBottomOpen size={20} />}
+            </span>
+          </button>
+          <div
+            {...size.separator}
+            className={styles.resize}
+            data-testid="whiteboard-conversation-resize"
+            title="Drag or use arrow keys to resize conversation"
+          >
+            <span className={styles.grip} aria-hidden="true" />
+          </div>
+        </div>
         <div className={styles["activity__text"]} role={activity.warning ? "alert" : "status"}>
           <p>
             {activity.working && !activity.warning ? (

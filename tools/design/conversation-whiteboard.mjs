@@ -100,6 +100,7 @@ try {
     ["chromium", chromium],
     ["webkit", webkit],
   ]) {
+    if (process.env.WHITEBOARD_BROWSER && process.env.WHITEBOARD_BROWSER !== name) continue;
     const browser = await engine.launch({ headless: true });
     try {
       for (const [layout, viewport] of [
@@ -107,6 +108,7 @@ try {
         ["portrait", { width: 820, height: 1180 }],
         ["desktop", { width: 1440, height: 900 }],
       ]) {
+        if (process.env.WHITEBOARD_LAYOUT && process.env.WHITEBOARD_LAYOUT !== layout) continue;
         const page = await browser.newPage({
           viewport,
           serviceWorkers: "block",
@@ -188,6 +190,101 @@ try {
         );
         const input = dialog.getByRole("textbox", { name: "Message the agent" });
         await input.fill("Keep this draft");
+        const dock = dialog.getByTestId("whiteboard-conversation");
+        const splitter = dialog.getByTestId("whiteboard-conversation-resize");
+        const isDesktop = layout === "desktop";
+        await splitter.waitFor();
+        assert.equal(
+          await splitter.getAttribute("aria-orientation"),
+          isDesktop ? "vertical" : "horizontal",
+        );
+        const workspaceBox = await dialog.getByTestId("whiteboard-workspace").boundingBox();
+        const headerBox = await dialog.locator("header").first().boundingBox();
+        assert.ok(Math.abs(headerBox.width - viewport.width) < 2, "one shared full-width header");
+        const startDock = await dock.boundingBox();
+        const startHandle = await splitter.boundingBox();
+        const toggleBox = await dock
+          .getByRole("button", { name: "Expand conversation" })
+          .boundingBox();
+        if (isDesktop) {
+          assert.ok(
+            Math.abs(startDock.y - workspaceBox.y) < 2,
+            "sidebar starts below shared header",
+          );
+          assert.ok(
+            startHandle.y >= headerBox.y + headerBox.height - 1,
+            "divider never crosses header",
+          );
+        } else {
+          assert.ok(
+            Math.abs(startHandle.y + startHandle.height / 2 - toggleBox.y - toggleBox.height / 2) <
+              2,
+            "mobile icon and drag handle share one row",
+          );
+        }
+        const from = {
+          x: startHandle.x + startHandle.width / 2,
+          y: startHandle.y + startHandle.height / 2,
+        };
+        const delta = isDesktop
+          ? 600 - startDock.width
+          : workspaceBox.height / 2 - startDock.height;
+        const to = { x: from.x - (isDesktop ? delta : 0), y: from.y - (isDesktop ? 0 : delta) };
+        if (name === "chromium" && !isDesktop) {
+          // Real touch input exercises pointer capture and touch-action, not synthetic DOM events.
+          const cdp = await page.context().newCDPSession(page);
+          await cdp.send("Input.dispatchTouchEvent", { type: "touchStart", touchPoints: [from] });
+          for (let step = 1; step <= 8; step++)
+            await cdp.send("Input.dispatchTouchEvent", {
+              type: "touchMove",
+              touchPoints: [{ x: from.x, y: from.y + ((to.y - from.y) * step) / 8 }],
+            });
+          await cdp.send("Input.dispatchTouchEvent", { type: "touchEnd", touchPoints: [] });
+          await cdp.detach();
+        } else {
+          await page.mouse.move(from.x, from.y);
+          await page.mouse.down();
+          await page.mouse.move(to.x, to.y, { steps: 8 });
+          await page.mouse.up();
+        }
+        await page.waitForTimeout(50);
+        assert.equal(Number(await splitter.getAttribute("aria-valuenow")), isDesktop ? 600 : 50);
+        assert.equal(await input.inputValue(), "Keep this draft");
+        assert.equal(await dialog.getByTestId("flow-board-editor").count(), 1);
+        await page.screenshot({ path: `.runtime/her-21-evidence/${name}-${layout}-resized.png` });
+        if (isDesktop) {
+          assert.equal(
+            await page.evaluate(() =>
+              localStorage.getItem("fernblick:whiteboard-conversation-width"),
+            ),
+            "600",
+          );
+          // Keyboard bounds and Escape cancellation do not dismiss the board.
+          await splitter.focus();
+          await page.keyboard.press("Home");
+          assert.equal(Number(await splitter.getAttribute("aria-valuenow")), 320);
+          const box = await splitter.boundingBox();
+          await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2);
+          await page.mouse.down();
+          await page.mouse.move(box.x - 120, box.y + box.height / 2, { steps: 5 });
+          await page.keyboard.press("Escape");
+          await page.mouse.up();
+          assert.equal(Number(await splitter.getAttribute("aria-valuenow")), 320);
+          await dialog.waitFor();
+          await splitter.focus();
+          await page.keyboard.press("End");
+          const resized = await dock.boundingBox();
+          assert.ok(resized.width <= viewport.width * 0.65 + 1);
+          await page.keyboard.press("Home");
+          for (let i = 0; i < 5; i++) await page.keyboard.press("Shift+ArrowLeft");
+          assert.equal(Number(await splitter.getAttribute("aria-valuenow")), 640);
+        } else {
+          await splitter.focus();
+          await page.keyboard.press("ArrowUp");
+          assert.equal(await dock.getAttribute("data-expanded"), "true");
+          await page.keyboard.press("ArrowDown");
+          assert.equal(Number(await splitter.getAttribute("aria-valuenow")), 50);
+        }
         await dialog.getByRole("button", { name: "Expand conversation" }).click();
         await dialog.getByText("Show the agent hierarchy.", { exact: true }).waitFor();
         await dialog.getByRole("button", { name: "Collapse conversation" }).click();
@@ -206,6 +303,13 @@ try {
         await page.getByRole("button", { name: "Open whiteboard", exact: true }).click();
         await dialog.waitFor();
         await dialog.getByTestId("flow-board-editor").waitFor();
+        if (isDesktop) {
+          assert.equal(
+            Number(await splitter.getAttribute("aria-valuenow")),
+            640,
+            "desktop preference survives closing/reopening the board",
+          );
+        }
         await input.fill("Add an arrow.");
         await dialog.getByRole("button", { name: "Send", exact: true }).click();
         await page.waitForTimeout(100);

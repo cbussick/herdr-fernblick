@@ -142,6 +142,7 @@
 }
 
 .workspace {
+  position: relative;
   container-name: whiteboard-workspace;
   container-type: size;
   display: flex;
@@ -154,6 +155,12 @@
 
 /* Expand changes space, not conversation. Keep the editor mounted for return. */
 @media (width < 64rem), (orientation: portrait) {
+  /* Reserve compact-sheet space; larger snaps overlay rather than repeatedly
+     resizing/reframing the drawing during a touch gesture. */
+  .workspace > .canvas {
+    margin-bottom: clamp(11rem, 25cqh, 100cqh);
+  }
+
   .workspace:has(> [data-ui="conversation-dock"][data-expanded="true"]) > .canvas {
     display: none;
   }
@@ -165,11 +172,7 @@
   }
 
   .workspace > [data-ui="conversation-dock"] {
-    flex: 0 0 clamp(20rem, 34%, 28rem);
-  }
-
-  .workspace > [data-ui="conversation-dock"][data-expanded="true"] {
-    flex-basis: 50%;
+    flex: 0 0 var(--conversation-width, clamp(20rem, 34%, 28rem));
   }
 }
 
