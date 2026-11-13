@@ -105,22 +105,32 @@ it("bounds desktop dragging, persists only the completed gesture and restores wi
   await press("End");
   expect(size.separator["aria-valuenow"]).toBe(936);
   await press("Home");
-  expect(size.separator["aria-valuenow"]).toBe(320);
+  expect(size.separator["aria-valuenow"]).toBe(448);
+  await act(async () => size.separator.onPointerDown(pointer(992, 400)));
+  await act(async () => size.separator.onPointerUp(pointer(1400, 400)));
+  expect(size.separator["aria-valuenow"]).toBe(448);
 });
-it("supports keyboard sizing, expand/restore and viewport clamping without overwriting the preference", async () => {
+it("reacts to actual desktop size and collapses any enlarged pane to the default minimum", async () => {
   storage.set(key, "700");
   await mount();
   await press("ArrowLeft");
   expect(size.separator["aria-valuenow"]).toBe(716);
+  expect(size.expanded).toBe(true);
+  await act(async () => size.toggle());
+  expect(size.expanded).toBe(false);
+  expect(size.separator["aria-valuenow"]).toBe(448);
+  expect(storage.get(key)).toBe("448");
   await act(async () => size.toggle());
   expect(size.expanded).toBe(true);
   expect(size.separator["aria-valuenow"]).toBe(720);
+  await press("End");
+  expect(size.separator["aria-valuenow"]).toBe(936);
+  await act(async () => size.toggle());
+  expect(size.separator["aria-valuenow"]).toBe(448);
+  await press("ArrowLeft");
+  expect(size.expanded).toBe(true);
   await act(async () => size.collapse());
-  expect(size.separator["aria-valuenow"]).toBe(716);
-  box.width = 1024;
-  await act(async () => measure());
-  expect(size.separator["aria-valuenow"]).toBe(666);
-  expect(storage.get(key)).toBe("716");
+  expect(size.separator["aria-valuenow"]).toBe(448);
 });
 it("restores cancelled drags and ignores other pointers and orientation changes mid-gesture", async () => {
   await mount();
@@ -150,10 +160,16 @@ it("snaps the mobile sheet to compact, half and full height, independently of de
   expect(size.separator["aria-valuenow"]).toBe(47);
   await act(async () => size.separator.onPointerUp(pointer(195, 380)));
   expect(size.separator["aria-valuenow"]).toBe(50);
-  await press("ArrowUp");
   expect(size.expanded).toBe(true);
+  expect(size.fullHeight).toBe(false);
+  await act(async () => size.toggle());
+  expect(size.separator["aria-valuenow"]).toBe(25);
+  await act(async () => size.toggle());
+  expect(size.fullHeight).toBe(true);
   await press("ArrowDown");
   expect(size.separator["aria-valuenow"]).toBe(50);
+  expect(size.expanded).toBe(true);
+  expect(size.fullHeight).toBe(false);
   await press("Home");
   expect(size.separator["aria-valuenow"]).toBe(25);
   expect(storage.has(key)).toBe(false);
@@ -162,6 +178,40 @@ it("snaps the mobile sheet to compact, half and full height, independently of de
     measure();
   });
   expect(size.separator["aria-valuenow"]).toBe(100);
+});
+it("clamps older saved widths to the default and adapts the minimum to viewport changes", async () => {
+  storage.set(key, "320");
+  await mount();
+  expect(size.separator["aria-valuemin"]).toBe(448);
+  expect(size.separator["aria-valuenow"]).toBe(448);
+  expect(size.expanded).toBe(false);
+  await press("End");
+  box.width = 1024;
+  await act(async () => measure());
+  expect(size.separator["aria-valuemin"]).toBe(348);
+  expect(size.separator["aria-valuenow"]).toBe(666);
+  expect(storage.get(key)).toBe("936");
+  await act(async () => size.toggle());
+  expect(size.separator["aria-valuenow"]).toBe(348);
+});
+it("prevents shrinking mobile below default and handles keyboard-sized viewports", async () => {
+  desktop = false;
+  box = { width: 390, height: 800 };
+  await mount();
+  expect(size.separator["aria-valuemin"]).toBe(25);
+  await act(async () => size.separator.onPointerDown(pointer(195, 600)));
+  await act(async () => size.separator.onPointerMove(pointer(195, 790)));
+  expect(size.separator["aria-valuenow"]).toBe(25);
+  await act(async () => size.separator.onPointerUp(pointer(195, 790)));
+  expect(size.expanded).toBe(false);
+  box.height = 220;
+  await act(async () => measure());
+  expect(size.separator["aria-valuenow"]).toBe(80);
+  expect(size.expanded).toBe(false);
+  await press("ArrowUp");
+  expect(size.fullHeight).toBe(true);
+  await act(async () => size.toggle());
+  expect(size.separator["aria-valuenow"]).toBe(80);
 });
 it("ignores invalid stored widths and still resizes with blocked storage", async () => {
   storage.set(key, "NaN");
@@ -176,5 +226,5 @@ it("ignores invalid stored widths and still resizes with blocked storage", async
     },
   });
   await press("ArrowRight");
-  expect(size.separator["aria-valuenow"]).toBe(432);
+  expect(size.separator["aria-valuenow"]).toBe(448);
 });

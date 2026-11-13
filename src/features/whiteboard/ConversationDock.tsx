@@ -69,7 +69,7 @@ export function ConversationDock({
       data-resizing={size.dragging || undefined}
       data-ui="conversation-dock"
       data-testid="whiteboard-conversation"
-      data-expanded={expanded || undefined}
+      data-expanded={size.fullHeight || undefined}
       aria-label="Whiteboard conversation"
       inert={inert || undefined}
       onKeyDown={(event) => {
