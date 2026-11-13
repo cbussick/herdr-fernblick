@@ -35,7 +35,6 @@ export function useConversationSize(dock: RefObject<HTMLElement | null>) {
   const [viewport, setViewport] = useState({ width: 0, height: 0, desktop: false });
   const [width, setWidth] = useState(savedWidth);
   const [fraction, setFraction] = useState(0.25);
-  const [wide, setWide] = useState(false);
   const [dragging, setDragging] = useState(false);
   const dragFrame = useRef(0);
   useEffect(
@@ -51,7 +50,6 @@ export function useConversationSize(dock: RefObject<HTMLElement | null>) {
     size: number;
     width: number | null;
     fraction: number;
-    wide: boolean;
   } | null>(null);
 
   useEffect(() => {
@@ -86,15 +84,14 @@ export function useConversationSize(dock: RefObject<HTMLElement | null>) {
   }, [dock]);
 
   const desktop = viewport.desktop;
-  const maxWidth = Math.max(320, Math.min(viewport.width - 320, viewport.width * 0.65));
-  const actualWidth = clamp(
-    wide ? viewport.width / 2 : (width ?? clamp(viewport.width * 0.34, 320, 448)),
-    320,
-    maxWidth,
-  );
-  const minFraction = Math.min(1, 176 / (viewport.height || 704));
+  const minWidth = clamp(viewport.width * 0.34, 320, 448);
+  const maxWidth = Math.max(minWidth, Math.min(viewport.width - 320, viewport.width * 0.65));
+  const actualWidth = clamp(width ?? minWidth, minWidth, maxWidth);
+  const minFraction = Math.min(1, Math.max(snaps[0], 176 / (viewport.height || 704)));
+  const mobileSnaps = snaps.map((snap) => Math.max(snap, minFraction));
   const actualFraction = clamp(fraction, minFraction, 1);
-  const expanded = desktop ? wide : fraction === 1;
+  const expanded = desktop ? actualWidth > minWidth + 0.5 : actualFraction > minFraction + 0.001;
+  const fullHeight = !desktop && actualFraction === 1;
 
   function cancel() {
     const start = gesture.current;
@@ -103,7 +100,6 @@ export function useConversationSize(dock: RefObject<HTMLElement | null>) {
     cancelAnimationFrame(dragFrame.current);
     setWidth(start.width);
     setFraction(start.fraction);
-    setWide(start.wide);
     setDragging(false);
   }
   function onPointerDown(event: PointerEvent<HTMLDivElement>) {
@@ -118,7 +114,6 @@ export function useConversationSize(dock: RefObject<HTMLElement | null>) {
       size: desktop ? actualWidth : actualFraction * viewport.height,
       width,
       fraction,
-      wide,
     };
     setDragging(true);
   }
@@ -140,8 +135,7 @@ export function useConversationSize(dock: RefObject<HTMLElement | null>) {
         // Commit before observer delivery, not in a later concurrent render.
         flushSync(() => {
           if (desktop) {
-            setWide(false);
-            setWidth(clamp(size, 320, maxWidth));
+            setWidth(clamp(size, minWidth, maxWidth));
           } else {
             setFraction(clamp(size / (viewport.height || 1), minFraction, 1));
           }
@@ -150,14 +144,15 @@ export function useConversationSize(dock: RefObject<HTMLElement | null>) {
       return;
     }
     if (desktop) {
-      const next = clamp(size, 320, maxWidth);
-      setWide(false);
+      const next = clamp(size, minWidth, maxWidth);
       setWidth(next);
       persistWidth(next);
     } else {
       const next = clamp(size / (viewport.height || 1), minFraction, 1);
       setFraction(
-        snaps.reduce((best, snap) => (Math.abs(snap - next) < Math.abs(best - next) ? snap : best)),
+        mobileSnaps.reduce((best, snap) =>
+          Math.abs(snap - next) < Math.abs(best - next) ? snap : best,
+        ),
       );
     }
     gesture.current = null;
@@ -179,37 +174,50 @@ export function useConversationSize(dock: RefObject<HTMLElement | null>) {
     if (desktop) {
       const next =
         event.key === "Home"
-          ? 320
+          ? minWidth
           : event.key === "End"
             ? maxWidth
             : clamp(
                 actualWidth + (event.key === grow ? 1 : -1) * (event.shiftKey ? 64 : 16),
-                320,
+                minWidth,
                 maxWidth,
               );
-      setWide(false);
       setWidth(next);
       persistWidth(next);
     } else {
       const next =
         event.key === "Home"
-          ? snaps[0]
+          ? minFraction
           : event.key === "End"
             ? 1
             : event.key === grow
-              ? (snaps.find((snap) => snap > fraction + 0.01) ?? 1)
-              : (snaps.findLast((snap) => snap < fraction - 0.01) ?? snaps[0]);
+              ? (mobileSnaps.find((snap) => snap > actualFraction + 0.01) ?? 1)
+              : (mobileSnaps.findLast((snap) => snap < actualFraction - 0.01) ?? minFraction);
       setFraction(next);
     }
   }
+  function collapse() {
+    if (desktop) {
+      setWidth(minWidth);
+      persistWidth(minWidth);
+    } else {
+      setFraction(minFraction);
+    }
+  }
+  function toggle() {
+    if (expanded) collapse();
+    else if (desktop) {
+      const next = clamp(viewport.width / 2, minWidth, maxWidth);
+      setWidth(next);
+      persistWidth(next);
+    } else setFraction(1);
+  }
   return {
     expanded,
+    fullHeight,
     dragging,
-    toggle: () => (desktop ? setWide(!wide) : setFraction(expanded ? 0.25 : 1)),
-    collapse: () => {
-      setWide(false);
-      setFraction(0.25);
-    },
+    toggle,
+    collapse,
     style: {
       "--conversation-width": viewport.width ? `${actualWidth}px` : undefined,
       "--conversation-height": `${actualFraction * 100}%`,
@@ -220,7 +228,7 @@ export function useConversationSize(dock: RefObject<HTMLElement | null>) {
       "aria-label": desktop ? "Resize conversation width" : "Resize conversation height",
       "aria-orientation": desktop ? ("vertical" as const) : ("horizontal" as const),
       "aria-controls": "whiteboard-conversation-panel",
-      "aria-valuemin": desktop ? 320 : Math.round(minFraction * 100),
+      "aria-valuemin": desktop ? Math.round(minWidth) : Math.round(minFraction * 100),
       "aria-valuemax": desktop ? Math.round(maxWidth) : 100,
       "aria-valuenow": Math.round(desktop ? actualWidth : actualFraction * 100),
       "aria-valuetext": desktop

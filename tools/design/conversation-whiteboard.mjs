@@ -201,6 +201,12 @@ try {
         const workspaceBox = await dialog.getByTestId("whiteboard-workspace").boundingBox();
         const headerBox = await dialog.locator("header").first().boundingBox();
         assert.ok(Math.abs(headerBox.width - viewport.width) < 2, "one shared full-width header");
+        const minimum = Number(await splitter.getAttribute("aria-valuemin"));
+        assert.equal(
+          Number(await splitter.getAttribute("aria-valuenow")),
+          minimum,
+          "default is the lower bound",
+        );
         const startDock = await dock.boundingBox();
         const startHandle = await splitter.boundingBox();
         const toggleBox = await dock
@@ -262,21 +268,29 @@ try {
           // Keyboard bounds and Escape cancellation do not dismiss the board.
           await splitter.focus();
           await page.keyboard.press("Home");
-          assert.equal(Number(await splitter.getAttribute("aria-valuenow")), 320);
+          assert.equal(Number(await splitter.getAttribute("aria-valuenow")), minimum);
+          await page.keyboard.press("ArrowRight");
+          assert.equal(Number(await splitter.getAttribute("aria-valuenow")), minimum);
           const box = await splitter.boundingBox();
           await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2);
           await page.mouse.down();
           await page.mouse.move(box.x - 120, box.y + box.height / 2, { steps: 5 });
           await page.keyboard.press("Escape");
           await page.mouse.up();
-          assert.equal(Number(await splitter.getAttribute("aria-valuenow")), 320);
+          assert.equal(Number(await splitter.getAttribute("aria-valuenow")), minimum);
           await dialog.waitFor();
           await splitter.focus();
           await page.keyboard.press("End");
           const resized = await dock.boundingBox();
           assert.ok(resized.width <= viewport.width * 0.65 + 1);
-          await page.keyboard.press("Home");
-          for (let i = 0; i < 5; i++) await page.keyboard.press("Shift+ArrowLeft");
+          await dock.getByRole("button", { name: "Collapse conversation" }).click();
+          assert.equal(
+            Number(await splitter.getAttribute("aria-valuenow")),
+            minimum,
+            "toggle above the expanded preset returns to default",
+          );
+          await splitter.focus();
+          for (let i = 0; i < 3; i++) await page.keyboard.press("Shift+ArrowLeft");
           assert.equal(Number(await splitter.getAttribute("aria-valuenow")), 640);
         } else {
           await splitter.focus();
@@ -285,6 +299,12 @@ try {
           await page.keyboard.press("ArrowDown");
           assert.equal(Number(await splitter.getAttribute("aria-valuenow")), 50);
         }
+        await dialog.getByRole("button", { name: "Collapse conversation" }).click();
+        assert.equal(
+          Number(await splitter.getAttribute("aria-valuenow")),
+          minimum,
+          "toggle reacts to any manually enlarged size",
+        );
         await dialog.getByRole("button", { name: "Expand conversation" }).click();
         await dialog.getByText("Show the agent hierarchy.", { exact: true }).waitFor();
         await dialog.getByRole("button", { name: "Collapse conversation" }).click();
@@ -306,8 +326,8 @@ try {
         if (isDesktop) {
           assert.equal(
             Number(await splitter.getAttribute("aria-valuenow")),
-            640,
-            "desktop preference survives closing/reopening the board",
+            minimum,
+            "collapsed default survives closing/reopening the board",
           );
         }
         await input.fill("Add an arrow.");
