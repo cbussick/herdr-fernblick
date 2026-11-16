@@ -2,6 +2,9 @@
 /* stylelint-disable no-descending-specificity */
 
 .console {
+  --chat-content-max-width: 68.75rem;
+  --chat-composer-padding: var(--space-4);
+
   display: flex;
   min-width: 0;
   min-height: 0;
@@ -206,6 +209,14 @@
   overscroll-behavior: contain;
   overflow-anchor: none;
   scrollbar-gutter: stable;
+}
+
+/* Keep the scroll area full-width; only its content forms a centered column.
+   Scope this to the main chat so the whiteboard conversation dock is unchanged. */
+.output-panel--chat > .chat-transcript {
+  grid-template-columns: minmax(0, var(--chat-content-max-width));
+  justify-content: center;
+  scrollbar-gutter: stable both-edges;
 }
 
 .chat-transcript[data-empty] {
@@ -566,6 +577,11 @@
   flex-direction: column;
 }
 
+.composer-dock .prompt-composer {
+  max-width: calc(var(--chat-content-max-width) + 2 * var(--chat-composer-padding));
+  padding-inline: var(--chat-composer-padding);
+}
+
 .prompt-composer {
   width: 100%;
   align-self: center;
@@ -727,6 +743,8 @@
 
 @media (width < 48rem), (width < 75rem) and (orientation: portrait) {
   .console {
+    --chat-composer-padding: var(--space-3);
+
     height: 100%;
   }
 
@@ -749,6 +767,10 @@
 }
 
 @media (width >= 72rem) {
+  .console {
+    --chat-composer-padding: var(--space-6);
+  }
+
   .console-header {
     min-height: 5.5rem;
     grid-template-columns: 2.75rem 2.5rem minmax(0, 1fr) auto auto auto;

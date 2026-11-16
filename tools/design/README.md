@@ -61,6 +61,15 @@ node tools/design/verify.mjs http://100.71.229.1:5197 http://127.0.0.1:5198
 
 The gallery server exposes only static synthetic artifacts and binds to the Tailnet interface, not a public interface. A separate loopback listener can serve the same directory with `python3 -m http.server 5197 --bind 127.0.0.1 --directory design-gallery`; this supports standard localhost forwarding. Restrict access in the Tailnet policy if needed. After editing `gallery.html`, copy it to `design-gallery/index.html` or recapture.
 
+## Chat max-width regression
+
+The main chat keeps messages, tool output and the composer in a centered 1100px
+maximum-width column, without a new card, border or contrasting background. The
+scroll area and header remain full-width; terminal and whiteboard dock sizing are
+unchanged. After building, run `node tools/design/chat-max-width.mjs` for synthetic
+Chromium/WebKit checks at 320–2560px, including long code/tool output, streaming
+follow and paused reading. Screenshots go to `design-gallery/chat-max-width/`.
+
 ## Workspace/tab grouping regression
 
 After `npm run check`, serve this worktree's `dist/` on an unused loopback port:
