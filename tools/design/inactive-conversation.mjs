@@ -52,6 +52,8 @@ try {
           if (pathname === "/api/agents") await route.fulfill({ json: dashboard });
           else if (pathname === "/api/sessions/inactive-session")
             await route.fulfill({ json: { agent: null, chat } });
+          else if (pathname === "/api/sessions/missing-session")
+            await route.fulfill({ json: { agent: null, chat: null } });
           else {
             errors.push(`Unexpected API call: ${pathname}`);
             await route.fulfill({ status: 500, json: { error: "Unexpected fixture request" } });
@@ -89,6 +91,31 @@ try {
         assert(await resume.evaluate((node) => node === document.activeElement));
         await back.click();
         await page.waitForURL((url) => url.pathname === "/");
+        for (const [path, heading, screenshot] of [
+          ["/sessions/missing-session/chat", "Conversation or pane unavailable", "unavailable"],
+          ["/unknown", "Page not found", "not-found"],
+        ]) {
+          await page.goto(`http://127.0.0.1:${server.address().port}${path}`);
+          const title = page.getByRole("heading", { name: heading, exact: true });
+          await title.waitFor();
+          const recovery = page.getByRole("button", { name: "Back to overview", exact: true });
+          const box = await recovery.boundingBox();
+          assert(box.height >= 44 && box.x >= 0 && box.x + box.width <= width);
+          assert.notEqual(
+            await recovery.evaluate((node) => getComputedStyle(node).backgroundColor),
+            "rgba(0, 0, 0, 0)",
+          );
+          const titleBox = await title.boundingBox();
+          assert(
+            titleBox.y > 100 && titleBox.y < 650,
+            "Recovery content should be vertically centered",
+          );
+          assert(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth));
+          await page.screenshot({ path: `${output}/${name}-${width}-${screenshot}.png` });
+          await recovery.focus();
+          await page.keyboard.press("Enter");
+          await page.waitForURL((url) => url.pathname === "/");
+        }
         assert.deepEqual(errors, []);
         await page.close();
       }
@@ -97,7 +124,7 @@ try {
     }
   }
   console.log(
-    "PASS: inactive conversation layout, shared actions, keyboard resume/cancel and overview navigation across five widths in Chromium and WebKit.",
+    "PASS: inactive/unavailable conversation and 404 layouts, shared actions, keyboard recovery and overview navigation across five widths in Chromium and WebKit.",
   );
 } finally {
   await new Promise((done) => server.close(done));

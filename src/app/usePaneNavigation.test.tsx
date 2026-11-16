@@ -5,6 +5,8 @@ import { createMemoryHistory, RouterProvider } from "@tanstack/react-router";
 import { afterEach, expect, it, vi } from "vitest";
 import { createAppRouter } from "./router";
 import type { usePaneNavigation } from "./usePaneNavigation";
+import { Button } from "../shared/ui";
+import { StateIcon } from "../shared/ui/StateFeedback";
 
 vi.mock("./App", () => ({
   App: ({ navigation: n }: { navigation: ReturnType<typeof usePaneNavigation> }) => (
@@ -98,7 +100,16 @@ it("converts legacy terminal whiteboard links to session URLs", async () => {
   expect(router.state.location.pathname).toBe("/sessions/s/whiteboard");
   expect(router.state.location.searchStr).toBe("");
 });
-it("shows a not-found page for unknown routes", async () => {
-  await start("/unknown");
-  expect(JSON.stringify(renderer.toJSON())).toContain("Page not found");
-});
+it.each(["/unknown", "/sessions/s/unknown", "/panes/w1%3Ap1/unknown"])(
+  "shows a styled not-found page with overview navigation for %s",
+  async (path) => {
+    await start(path);
+    expect(renderer.root.findByType("h1").children).toEqual(["Page not found"]);
+    expect(renderer.root.findByType(StateIcon).props.kind).toBe("unavailable");
+    expect(renderer.root.findByType(Button).props.children).toBe("Back to overview");
+    expect(renderer.root.findByType("main").props.className).toBeTruthy();
+    await click("Back to overview");
+    expect(router.state.location.pathname).toBe("/");
+    expect(renderer.root.findAllByType("h1")).toHaveLength(0);
+  },
+);

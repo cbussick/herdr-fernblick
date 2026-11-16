@@ -7,10 +7,31 @@ import {
   type RouterHistory,
 } from "@tanstack/react-router";
 import { useEffect, useState } from "react";
-import { RouterProvider, useRouterState } from "@tanstack/react-router";
+import { RouterProvider, useNavigate, useRouterState } from "@tanstack/react-router";
 import { App } from "./App";
 import { usePaneNavigation } from "./usePaneNavigation";
 import { readWhiteboardLink } from "../features/whiteboard/boardLink";
+import { Button } from "../shared/ui";
+import { StateIcon } from "../shared/ui/StateFeedback";
+import appStyles from "./App.module.css";
+
+function NotFoundPage() {
+  const navigate = useNavigate();
+  return (
+    <main id="main-content" className={`${appStyles["app-shell"]} ${appStyles["console-empty"]}`}>
+      <section className={appStyles["conversation-state"]} aria-labelledby="not-found-title">
+        <StateIcon kind="unavailable" />
+        <h1 id="not-found-title">Page not found</h1>
+        <p>This page may have moved, or the address is incorrect.</p>
+        <div className={appStyles["conversation-state__actions"]}>
+          <Button type="button" onClick={() => void navigate({ to: "/" })}>
+            Back to overview
+          </Button>
+        </div>
+      </section>
+    </main>
+  );
+}
 
 function RouteShell() {
   const navigation = usePaneNavigation();
@@ -22,14 +43,7 @@ function RouteShell() {
     select: (state) =>
       state.matches.some((match) => match._notFound || match.status === "notFound"),
   });
-  return notFound ? (
-    <main id="main-content">
-      <h1>Page not found</h1>
-      <a href="/">Back to overview</a>
-    </main>
-  ) : (
-    <App navigation={navigation} />
-  );
+  return notFound ? <NotFoundPage /> : <App navigation={navigation} />;
 }
 
 export function RoutedApp({ history }: { history?: RouterHistory } = {}) {
@@ -73,11 +87,6 @@ export function createAppRouter(history?: RouterHistory) {
       (typeof window === "undefined"
         ? createMemoryHistory({ initialEntries: ["/"] })
         : createBrowserHistory()),
-    defaultNotFoundComponent: () => (
-      <main id="main-content">
-        <h1>Page not found</h1>
-        <a href="/">Back to overview</a>
-      </main>
-    ),
+    defaultNotFoundComponent: NotFoundPage,
   });
 }

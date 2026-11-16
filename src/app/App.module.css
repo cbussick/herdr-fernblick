@@ -159,7 +159,10 @@
   min-width: 0;
 }
 
+.conversation-state h1,
 .conversation-state h2 {
+  color: var(--color-text);
+  letter-spacing: -0.04em;
   font-size: clamp(1.375rem, 2vw, 1.625rem);
   line-height: 1.3;
 }
