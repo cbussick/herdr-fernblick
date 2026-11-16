@@ -49,6 +49,7 @@ vi.mock("../features/agents/ShellConsole", () => ({
 }));
 const agent: Agent = {
   agent: "pi",
+  pi_session_id: "s1",
   agent_status: "idle",
   focused: false,
   pane_id: "w1:p1",
@@ -56,7 +57,7 @@ const agent: Agent = {
   workspace_id: "w1",
   revision: 1,
 };
-const other = { ...agent, pane_id: "w1:p2", tab_id: "w1:t2" };
+const other = { ...agent, pi_session_id: "s2", pane_id: "w1:p2", tab_id: "w1:t2" };
 let renderer: ReactTestRenderer;
 let client: QueryClient;
 let router: ReturnType<typeof createAppRouter>;
@@ -105,6 +106,42 @@ afterEach(async () => {
   await act(async () => renderer?.unmount());
   client.clear();
   vi.unstubAllGlobals();
+});
+
+it("opens an agent directly at its session URL without visiting a pane route", async () => {
+  await start();
+  const visited: string[] = [];
+  const unsubscribe = router.history.subscribe(() =>
+    visited.push(router.history.location.pathname),
+  );
+  await open();
+  unsubscribe();
+  expect(visited).toEqual(["/sessions/s1/chat"]);
+});
+
+it("waits for a starting agent's session ID without exposing a pane URL", async () => {
+  const starting = { ...agent, pi_session_id: undefined };
+  const response = { agents: [starting], tabs: [], workspaces: [] };
+  client.setQueryData(["agents"], response);
+  vi.mocked(getAgents).mockResolvedValue(response);
+  await start();
+  const visited: string[] = [];
+  const unsubscribe = router.history.subscribe(() =>
+    visited.push(router.history.location.pathname),
+  );
+  // Use the flat Agents view because the fixture has no workspaces.
+  await act(async () =>
+    renderer.root.findByProps({ role: "tab", children: "Agents" }).props.onClick(),
+  );
+  await open();
+  expect(visited).toEqual([]);
+  expect(JSON.stringify(renderer.toJSON())).toContain("Waiting for this agent");
+  await act(async () => client.setQueryData(["agents"], { ...response, agents: [agent] }));
+  await act(async () => {
+    await new Promise((resolve) => setTimeout(resolve, 10));
+  });
+  unsubscribe();
+  expect(visited).toEqual(["/sessions/s1/chat"]);
 });
 
 it("gives live chats a session URL and restores them with Forward", async () => {

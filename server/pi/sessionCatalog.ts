@@ -62,6 +62,32 @@ export class SessionCatalog {
     ),
   ) {}
 
+  // Dashboard polling only needs the bounded header, not the growing transcript.
+  // As with readActive, the path comes from Herdr rather than the browser.
+  async readActiveId(path: string): Promise<string | null> {
+    const file = await open(
+      resolve(path),
+      constants.O_RDONLY | constants.O_NOFOLLOW | constants.O_NONBLOCK,
+    ).catch(() => null);
+    if (!file) return null;
+    try {
+      if (!(await file.stat()).isFile()) return null;
+      const buffer = Buffer.alloc(16 * 1024);
+      const { bytesRead } = await file.read(buffer, 0, buffer.length, 0);
+      const header = headerSchema.safeParse(
+        JSON.parse(buffer.subarray(0, bytesRead).toString("utf8").split("\n", 1)[0]),
+      );
+      return header.success && /^[A-Za-z0-9_-]{1,200}$/.test(header.data.id)
+        ? header.data.id
+        : null;
+    } catch {
+      // Missing, changing or unreadable sessions must not hide the dashboard.
+      return null;
+    } finally {
+      await file.close();
+    }
+  }
+
   // The path comes only from Herdr, never from a browser URL.
   readActive(path: string): Promise<CatalogChat | null> {
     return this.read(resolve(path));
