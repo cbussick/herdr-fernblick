@@ -7,11 +7,15 @@ declare const self: ServiceWorkerGlobalScope & {
 };
 
 precacheAndRoute(self.__WB_MANIFEST);
-// The app has no server-side page routes. Do not turn API/image requests or
-// unknown paths into successful HTML responses, even when offline.
+// Serve the shell for known client routes only, never API/image requests.
 registerRoute(
   new NavigationRoute(createHandlerBoundToURL("/index.html"), {
-    allowlist: [/^\/(?:\?.*)?$/, /^\/index\.html(?:\?.*)?$/],
+    allowlist: [
+      /^\/(?:\?.*)?$/,
+      /^\/index\.html(?:\?.*)?$/,
+      /^\/sessions\/[^/]+\/(?:chat|terminal|whiteboard)\/?(?:\?.*)?$/,
+      /^\/panes\/[^/]+\/(?:chat|terminal)\/?(?:\?.*)?$/,
+    ],
   }),
 );
 

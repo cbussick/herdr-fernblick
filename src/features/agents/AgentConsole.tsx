@@ -1,6 +1,13 @@
 import a11yStyles from "../../styles/accessibility.module.css";
 import consoleStyles from "./Console.module.css";
-import { useEffect, useLayoutEffect, useRef, useState, type FormEvent } from "react";
+import {
+  useEffect,
+  useEffectEvent,
+  useLayoutEffect,
+  useRef,
+  useState,
+  type FormEvent,
+} from "react";
 import { useMutation } from "@tanstack/react-query";
 import type { Agent, KeyName } from "../../shared/api/contracts";
 import {
@@ -43,6 +50,10 @@ import { Snackbar } from "../../shared/ui/Snackbar";
 interface AgentConsoleProps {
   agent: Agent;
   onBack: () => void;
+  expectedSessionId?: string;
+  routeView?: "chat" | "terminal" | "whiteboard";
+  onSession?: (sessionId: string) => void;
+  onViewChange?: (view: "chat" | "terminal" | "whiteboard", sessionId?: string) => void;
 }
 type AgentView = "chat" | "terminal";
 type Attachment = { file?: File; id?: string; previewUrl: string };
@@ -81,7 +92,8 @@ const keyControls: { key: KeyName; label: string }[] = [
   { key: "enter", label: "Enter" },
 ];
 
-export function AgentConsole({ agent, onBack }: AgentConsoleProps) {
+export function AgentConsole(props: AgentConsoleProps) {
+  const { agent, onBack } = props;
   // Native chat is a Pi-only protocol. Other CLIs remain usable as terminals,
   // including when Herdr detects an agent started inside an ordinary shell tab.
   if (agent.agent !== "pi") {
@@ -100,10 +112,17 @@ export function AgentConsole({ agent, onBack }: AgentConsoleProps) {
       />
     );
   }
-  return <PiAgentConsole agent={agent} onBack={onBack} />;
+  return <PiAgentConsole {...props} />;
 }
 
-function PiAgentConsole({ agent, onBack }: AgentConsoleProps) {
+function PiAgentConsole({
+  agent,
+  onBack,
+  expectedSessionId,
+  routeView,
+  onSession,
+  onViewChange,
+}: AgentConsoleProps) {
   const target = getAgentTarget(agent);
   const [prompt, setPrompt] = useState("");
   const [attachments, setAttachments] = useState<Attachment[]>([]);
@@ -122,11 +141,33 @@ function PiAgentConsole({ agent, onBack }: AgentConsoleProps) {
   const fileInputRef = useRef<HTMLInputElement>(null);
   const uploadedIds = useRef(new Map<File, string>());
   const previews = useRef(new Set<string>());
-  const [view, setView] = useState<AgentView>("chat");
+  const [localView, setLocalView] = useState<AgentView>("chat");
+  const view = routeView ? (routeView === "terminal" ? "terminal" : "chat") : localView;
+  function setView(next: AgentView) {
+    if (onViewChange) onViewChange(next, snapshot?.identity.sessionId);
+    else setLocalView(next);
+  }
   const [showThinking, setShowThinking] = useState(initialShowThinking);
   const outputRef = useRef<HTMLElement>(null);
-  const live = useLiveChat(agent.pane_id, view === "chat", agent.agent_session?.value);
-  const snapshot = live.snapshot;
+  const live = useLiveChat(
+    agent.pane_id,
+    view === "chat" || Boolean(expectedSessionId),
+    agent.agent_session?.value,
+  );
+  const sessionMismatch = Boolean(
+    expectedSessionId && live.snapshot && live.snapshot.identity.sessionId !== expectedSessionId,
+  );
+  const snapshot = sessionMismatch ? undefined : live.snapshot;
+  const reportSession = useEffectEvent((id: string) => onSession?.(id));
+  const liveSessionId = snapshot?.identity.sessionId;
+  useEffect(() => {
+    if (liveSessionId) reportSession(liveSessionId);
+  }, [liveSessionId]);
+  useEffect(() => {
+    if (!onViewChange) return;
+    if (routeView === "whiteboard" && snapshot && !boardTarget) setBoardTarget(targetOf(snapshot));
+    else if (routeView !== "whiteboard" && boardTarget) setBoardTarget(null);
+  }, [routeView, snapshot, boardTarget, onViewChange]);
   useEffect(() => {
     if (!boardLink || boardLink.pane !== agent.pane_id || !snapshot) return;
     // A terminal URL is only a viewing hint: never open a reused pane's new board.
@@ -386,6 +427,20 @@ function PiAgentConsole({ agent, onBack }: AgentConsoleProps) {
     // Queued ordinary-chat attachments stay with their composer.
     sendDraft({ text: board.text, attachments: [], target: expected, board });
   }
+  if (sessionMismatch || (expectedSessionId && view === "terminal" && !snapshot)) {
+    return (
+      <main className={consoleStyles["console"]} id="main-content">
+        <button type="button" onClick={onBack}>
+          Back to overview
+        </button>
+        <p role="status">
+          {sessionMismatch
+            ? "This pane is now running a different conversation."
+            : live.error || "Checking conversation…"}
+        </p>
+      </main>
+    );
+  }
   return (
     <main className={consoleStyles["console"]} data-testid="console" id="main-content">
       <header className={consoleStyles["console-header"]} data-testid="console-header">
@@ -423,7 +478,7 @@ function PiAgentConsole({ agent, onBack }: AgentConsoleProps) {
           type="button"
           className={consoleStyles["agent-view-toggle"]}
           aria-label={`Switch to ${view === "chat" ? "Terminal" : "Chat"} view`}
-          onClick={() => setView((current) => (current === "chat" ? "terminal" : "chat"))}
+          onClick={() => setView(view === "chat" ? "terminal" : "chat")}
         >
           {view === "chat" ? "Terminal" : "Chat"}
         </button>
@@ -712,7 +767,11 @@ function PiAgentConsole({ agent, onBack }: AgentConsoleProps) {
                       !annotations.editor &&
                       !compact.pending,
                     )}
-                    onOpenBoard={() => snapshot && setBoardTarget(targetOf(snapshot))}
+                    onOpenBoard={() => {
+                      if (!snapshot) return;
+                      if (onViewChange) onViewChange("whiteboard", snapshot.identity.sessionId);
+                      else setBoardTarget(targetOf(snapshot));
+                    }}
                     conversationAction={action}
                   />
                 )}
@@ -862,7 +921,10 @@ function PiAgentConsole({ agent, onBack }: AgentConsoleProps) {
             onDraftChange: changePrompt,
             onSend: (board) => submitBoardPrompt(boardTarget, board),
           }}
-          onClose={() => setBoardTarget(null)}
+          onClose={() => {
+            if (onViewChange) onViewChange("chat", boardTarget.sessionId);
+            else setBoardTarget(null);
+          }}
         />
       ) : null}
     </main>

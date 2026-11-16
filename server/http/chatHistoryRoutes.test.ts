@@ -114,6 +114,78 @@ const resume = (chatId = id, workspaceId = "w1", origin = base) =>
     body: JSON.stringify({ workspaceId }),
   });
 
+it("resolves the same Pi ID while inactive and after resuming", async () => {
+  const inactive = await fetch(`${base}/api/sessions/pi-session`);
+  expect(inactive.headers.get("cache-control")).toBe("no-store");
+  expect(await inactive.json()).toMatchObject({
+    agent: null,
+    chat: { id, sessionId: "pi-session", activePaneId: null },
+  });
+  expect(request).not.toHaveBeenCalledWith("agent.start", expect.anything(), expect.anything());
+  await resume();
+  const live = await fetch(`${base}/api/sessions/pi-session`);
+  expect(await live.json()).toMatchObject({ agent, chat: { id, activePaneId: agent.pane_id } });
+});
+
+it("resolves a live session file outside the history directory", async () => {
+  const path = join(directory, "not-indexed", "deeper", "active.jsonl");
+  await import("node:fs/promises").then(({ mkdir }) =>
+    mkdir(join(directory, "not-indexed", "deeper"), { recursive: true }),
+  );
+  await writeFile(path, JSON.stringify({ type: "session", id: "outside", cwd: directory }) + "\n");
+  active = [{ ...agent, agent_session: { agent: "pi", kind: "path", value: path, source: "pi" } }];
+  const response = await fetch(`${base}/api/sessions/outside`);
+  expect(await response.json()).toMatchObject({
+    agent: { pane_id: agent.pane_id },
+    chat: { sessionId: "outside" },
+  });
+});
+
+it("does not treat a reused pane as the old conversation", async () => {
+  active = [
+    {
+      ...agent,
+      agent_session: {
+        agent: "pi",
+        kind: "path",
+        value: join(directory, "other.jsonl"),
+        source: "pi",
+      },
+    },
+  ];
+  const response = await fetch(`${base}/api/sessions/pi-session`);
+  expect(await response.json()).toMatchObject({ agent: null, chat: { sessionId: "pi-session" } });
+});
+
+it("reports ambiguous copied session IDs instead of choosing a file", async () => {
+  await writeFile(join(directory, "copy.jsonl"), await readFile(sessionPath));
+  const response = await fetch(`${base}/api/sessions/pi-session`);
+  expect(response.status).toBe(409);
+  expect(await response.json()).toMatchObject({
+    error: expect.stringContaining("More than one session file"),
+  });
+});
+
+it("reports the same session running in multiple panes", async () => {
+  active = ["w1:p1", "w1:p2"].map((pane_id) => ({
+    ...agent,
+    pane_id,
+    agent_session: { agent: "pi", kind: "path" as const, value: sessionPath, source: "pi" },
+  }));
+  expect((await fetch(`${base}/api/sessions/pi-session`)).status).toBe(409);
+});
+
+it("returns a missing result and rejects cross-origin session requests", async () => {
+  expect(await (await fetch(`${base}/api/sessions/missing`)).json()).toEqual({
+    agent: null,
+    chat: null,
+  });
+  expect(
+    (await fetch(`${base}/api/sessions/pi-session`, { headers: { Origin: "https://other.test" } }))
+      .status,
+  ).toBe(403);
+});
+
 it("lists metadata without file paths, and resumes the saved session in its original directory", async () => {
   const list = await fetch(`${base}/api/chats`);
   expect(list.headers.get("cache-control")).toBe("no-store");
@@ -122,6 +194,7 @@ it("lists metadata without file paths, and resumes the saved session in its orig
     chats: [
       {
         id,
+        sessionId: "pi-session",
         title: "Saved work",
         preview: "",
         cwd: directory,

@@ -3,6 +3,7 @@ import {
   markAgentReadRequestSchema,
   markAgentReadResponseSchema,
   savedChatsResponseSchema,
+  sessionResponseSchema,
   deleteChatResponseSchema,
   resumeChatRequestSchema,
   imageUploadSchema,
@@ -132,6 +133,12 @@ export async function markAgentRead(input: { paneId: string; completionId: strin
 
 export async function getSavedChats() {
   return savedChatsResponseSchema.parse(await request("/api/chats"));
+}
+
+export async function getSession(sessionId: string) {
+  return sessionResponseSchema.parse(
+    await request(`/api/sessions/${encodeURIComponent(sessionId)}`),
+  );
 }
 
 export async function deleteChat(id: string) {

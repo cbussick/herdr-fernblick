@@ -1,67 +1,104 @@
+// @vitest-environment happy-dom
 import { act } from "react";
 import { create, type ReactTestRenderer } from "react-test-renderer";
+import { createMemoryHistory, RouterProvider } from "@tanstack/react-router";
 import { afterEach, expect, it, vi } from "vitest";
-import { usePaneNavigation } from "./usePaneNavigation";
+import { createAppRouter } from "./router";
+import type { usePaneNavigation } from "./usePaneNavigation";
 
+vi.mock("./App", () => ({
+  App: ({ navigation: n }: { navigation: ReturnType<typeof usePaneNavigation> }) => (
+    <main data-pane={n.paneId} data-session={n.sessionId} data-view={n.view}>
+      <button onClick={() => n.selectPane("w1:p1")}>First</button>
+      <button onClick={() => n.selectPane("w1:p2")}>Second</button>
+      <button onClick={() => n.selectSession("s", "chat", true)}>Canonical</button>
+      <button onClick={() => n.selectSession("s", "whiteboard")}>Board</button>
+      <button onClick={() => n.selectSession("s", "chat")}>Chat</button>
+      <button onClick={() => n.selectPane(null)}>Overview</button>
+    </main>
+  ),
+}));
 let renderer: ReactTestRenderer;
+let router: ReturnType<typeof createAppRouter>;
 afterEach(async () => {
   await act(async () => renderer?.unmount());
   vi.unstubAllGlobals();
 });
-function Navigation() {
-  const [pane, navigate] = usePaneNavigation();
-  return (
-    <button data-pane={pane} onClick={() => navigate(null)}>
-      Back
-    </button>
-  );
-}
-it("gives a direct terminal link a local overview history entry", async () => {
+async function start(path = "/") {
   vi.stubGlobal("IS_REACT_ACT_ENVIRONMENT", true);
-  const browser = new EventTarget();
-  let url = new URL("https://fernblick.example/?pane=w1%3Ap2&session=s&whiteboard=1");
-  const entries: { state: unknown; url: string }[] = [
-    { state: null, url: "https://external.example/" },
-    { state: null, url: url.href },
-  ];
-  let index = 1;
-  const location = {
-    get href() {
-      return url.href;
-    },
-    get search() {
-      return url.search;
-    },
-  };
-  const history = {
-    get state() {
-      return entries[index].state;
-    },
-    replaceState(state: unknown, _title: string, next?: string) {
-      if (next) url = new URL(next, url);
-      entries[index] = { state, url: url.href };
-    },
-    pushState(state: unknown, _title: string, next?: string) {
-      if (next) url = new URL(next, url);
-      entries.splice(index + 1, Infinity, { state, url: url.href });
-      index++;
-    },
-    back() {
-      index--;
-      url = new URL(entries[index].url);
-      browser.dispatchEvent(Object.assign(new Event("popstate"), { state: entries[index].state }));
-    },
-  };
-  Object.assign(browser, { location, history });
-  vi.stubGlobal("window", browser);
+  router = createAppRouter(createMemoryHistory({ initialEntries: [path] }));
+  await router.load();
   await act(async () => {
-    renderer = create(<Navigation />);
+    renderer = create(<RouterProvider router={router} />);
   });
-  expect(renderer.root.findByType("button").props["data-pane"]).toBe("w1:p2");
-  expect(entries).toHaveLength(3);
-  expect(entries[1].url).toBe("https://fernblick.example/");
-  await act(async () => renderer.root.findByType("button").props.onClick());
-  expect(index).toBe(1);
-  expect(renderer.root.findByType("button").props["data-pane"]).toBeNull();
-  expect(url.origin).toBe("https://fernblick.example");
+}
+async function click(label: string) {
+  await act(async () => {
+    renderer.root
+      .findAllByType("button")
+      .find((b) => b.children.includes(label))!
+      .props.onClick();
+  });
+}
+async function go(delta: number) {
+  await act(async () => {
+    router.history.go(delta);
+  });
+}
+
+it("opens panes, replaces switches, and restores detail on Forward", async () => {
+  await start();
+  await click("First");
+  expect(router.state.location.pathname).toBe("/panes/w1%3Ap1/chat");
+  await click("Second");
+  await go(-1);
+  expect(router.state.location.pathname).toBe("/");
+  await go(1);
+  expect(renderer.root.findByType("main").props["data-pane"]).toBe("w1:p2");
+});
+it("canonicalizes a live pane without adding a history entry", async () => {
+  await start();
+  await click("First");
+  await click("Canonical");
+  expect(router.state.location.pathname).toBe("/sessions/s/chat");
+  await click("Overview");
+  expect(router.state.location.pathname).toBe("/");
+  await go(1);
+  expect(router.state.location.pathname).toBe("/sessions/s/chat");
+});
+it("Back closes a whiteboard and preserves the session", async () => {
+  await start("/sessions/s/chat");
+  await click("Board");
+  expect(router.state.location.pathname).toBe("/sessions/s/whiteboard");
+  await go(-1);
+  expect(renderer.root.findByType("main").props["data-view"]).toBe("chat");
+  expect(renderer.root.findByType("main").props["data-session"]).toBe("s");
+});
+it("closing a board returns to the existing chat entry", async () => {
+  await start("/sessions/s/chat");
+  await click("Board");
+  await click("Chat");
+  expect(router.state.location.pathname).toBe("/sessions/s/chat");
+  await go(1);
+  expect(router.state.location.pathname).toBe("/sessions/s/whiteboard");
+});
+it("recognizes views on links with a trailing slash", async () => {
+  await start("/sessions/s/whiteboard/");
+  expect(renderer.root.findByType("main").props["data-view"]).toBe("whiteboard");
+  expect(renderer.root.findByType("main").props["data-session"]).toBe("s");
+});
+
+it("direct links have an explicit local overview destination", async () => {
+  await start("/sessions/s/whiteboard");
+  await click("Overview");
+  expect(router.state.location.pathname).toBe("/");
+});
+it("converts legacy terminal whiteboard links to session URLs", async () => {
+  await start("/?pane=w1%3Ap1&session=s&whiteboard=1");
+  expect(router.state.location.pathname).toBe("/sessions/s/whiteboard");
+  expect(router.state.location.searchStr).toBe("");
+});
+it("shows a not-found page for unknown routes", async () => {
+  await start("/unknown");
+  expect(JSON.stringify(renderer.toJSON())).toContain("Page not found");
 });

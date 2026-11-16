@@ -1519,6 +1519,62 @@ it("shows startup and failure states while keeping send disabled", async () => {
   expect(renderer.root.findByProps({ "aria-label": "Send message" }).props.disabled).toBe(true);
 });
 
+it("uses routed board views without losing the shared draft", async () => {
+  const onViewChange = vi.fn();
+  const routed = (routeView: "chat" | "whiteboard") => (
+    <QueryClientProvider client={client}>
+      <AgentConsole
+        agent={agent}
+        onBack={() => {}}
+        expectedSessionId="s"
+        routeView={routeView}
+        onViewChange={onViewChange}
+      />
+    </QueryClientProvider>
+  );
+  await act(async () => renderer.update(routed("chat")));
+  await act(async () =>
+    renderer.root.findByType("textarea").props.onChange({ target: { value: "Keep my draft" } }),
+  );
+  await act(async () =>
+    renderer.root.findByProps({ "aria-label": "Open whiteboard" }).props.onClick(),
+  );
+  expect(onViewChange).toHaveBeenCalledWith("whiteboard", "s");
+  await act(async () => renderer.update(routed("whiteboard")));
+  const board = renderer.root.findByType(Whiteboard);
+  expect(board.props.conversation.draft).toBe("Keep my draft");
+  await act(async () => board.props.onClose());
+  expect(onViewChange).toHaveBeenCalledWith("chat", "s");
+  await act(async () => renderer.update(routed("chat")));
+  expect(renderer.root.findAllByType(Whiteboard)).toHaveLength(0);
+  expect(renderer.root.findByType("textarea").props.value).toBe("Keep my draft");
+});
+
+it.each(["chat", "whiteboard", "terminal"] as const)(
+  "never exposes commands for a reused pane on a %s session link",
+  async (routeView) => {
+    await act(async () =>
+      renderer.update(
+        <QueryClientProvider client={client}>
+          <AgentConsole
+            agent={agent}
+            onBack={() => {}}
+            expectedSessionId="old"
+            routeView={routeView}
+            onViewChange={vi.fn()}
+          />
+        </QueryClientProvider>,
+      ),
+    );
+    expect(JSON.stringify(renderer.toJSON())).toContain("different conversation");
+    expect(renderer.root.findAllByType("textarea")).toHaveLength(0);
+    expect(renderer.root.findAllByType(Whiteboard)).toHaveLength(0);
+    expect(mocks.command).not.toHaveBeenCalled();
+    expect(mocks.boardPrompt).not.toHaveBeenCalled();
+    expect(mocks.paneInput).not.toHaveBeenCalled();
+  },
+);
+
 it.each([true, false])(
   "opens a terminal whiteboard link only for the matching live conversation (%s)",
   async (matching) => {

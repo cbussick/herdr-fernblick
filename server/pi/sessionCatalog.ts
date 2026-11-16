@@ -62,6 +62,11 @@ export class SessionCatalog {
     ),
   ) {}
 
+  // The path comes only from Herdr, never from a browser URL.
+  readActive(path: string): Promise<CatalogChat | null> {
+    return this.read(resolve(path));
+  }
+
   list(strict = false): Promise<CatalogChat[]> {
     return this.scan(strict);
   }
