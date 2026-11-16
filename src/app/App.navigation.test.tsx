@@ -7,6 +7,7 @@ import { afterEach, beforeEach, expect, it, vi } from "vitest";
 import { createAppRouter } from "./router";
 import { getAgents, getSession, resumeChat } from "../shared/api/apiClient";
 import type { Agent } from "../shared/api/contracts";
+import { Button } from "../shared/ui";
 
 vi.mock("../shared/api/apiClient", async (original) => ({
   ...(await original<typeof import("../shared/api/apiClient")>()),
@@ -233,7 +234,23 @@ it("does not resume an inactive conversation just by opening a link", async () =
     await new Promise((r) => setTimeout(r, 10));
   });
   expect(JSON.stringify(renderer.toJSON())).toContain("This conversation is inactive");
+  expect(renderer.root.findByProps({ id: "conversation-state-title" }).children).toEqual([
+    "This conversation is inactive",
+  ]);
+  const actions = renderer.root.findAllByType(Button);
+  expect(
+    actions.map((button) => [button.props.children, button.props.variant ?? "primary"]),
+  ).toEqual([
+    ["Resume conversation", "primary"],
+    ["Back to overview", "secondary"],
+  ]);
   expect(resumeChat).not.toHaveBeenCalled();
+  await click("Resume conversation");
+  expect(renderer.root.findByProps({ "data-testid": "resume-chat-dialog" })).toBeDefined();
+  expect(resumeChat).not.toHaveBeenCalled();
+  await click("Cancel");
+  await click("Back to overview");
+  expect(router.state.location.pathname).toBe("/");
 });
 it("shows missing conversations without falling back to another pane", async () => {
   vi.mocked(getSession).mockResolvedValue({ agent: null, chat: null });
@@ -243,6 +260,28 @@ it("shows missing conversations without falling back to another pane", async () 
   });
   expect(chat()).toHaveLength(0);
   expect(JSON.stringify(renderer.toJSON())).toContain("Conversation or pane unavailable");
+  expect(renderer.root.findAllByType(Button).map((button) => button.props.children)).toEqual([
+    "Back to overview",
+  ]);
+});
+it("uses shared primary and secondary buttons for a failed session lookup", async () => {
+  vi.mocked(getSession).mockRejectedValue(new Error("Session lookup unavailable"));
+  await start("/sessions/s1/chat");
+  await act(async () => {
+    await new Promise((resolve) => setTimeout(resolve, 10));
+  });
+  expect(JSON.stringify(renderer.toJSON())).toContain("Cannot open conversation");
+  expect(
+    renderer.root
+      .findAllByType(Button)
+      .map((button) => [button.props.children, button.props.variant ?? "primary"]),
+  ).toEqual([
+    ["Try again", "primary"],
+    ["Back to overview", "secondary"],
+  ]);
+  const requests = vi.mocked(getSession).mock.calls.length;
+  await click("Try again");
+  expect(vi.mocked(getSession).mock.calls.length).toBeGreaterThan(requests);
 });
 it("uses pane URLs for shell terminals", async () => {
   const response = {

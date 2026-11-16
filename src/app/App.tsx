@@ -13,6 +13,7 @@ import { ShellConsole } from "../features/agents/ShellConsole";
 import { FernblickMark } from "../shared/ui/FernblickMark";
 import { LoadingBrand } from "../shared/ui/LoadingBrand";
 import { StateIcon } from "../shared/ui/StateFeedback";
+import { Button } from "../shared/ui";
 import { useSinglePaneLayout } from "./useSinglePaneLayout";
 import { useReadAgentStatuses } from "./useReadAgentStatuses";
 import type { usePaneNavigation } from "./usePaneNavigation";
@@ -288,40 +289,64 @@ export function App({
             <ShellConsole tab={selectedTab} onBack={() => setSelectedPaneId(null)} />
           ) : sessionId || navigation.paneId ? (
             <main className={appStyles["console-empty"]} id="main-content">
-              <h2>
-                {sessionId && sessionQuery.isPending
-                  ? "Loading conversation…"
-                  : sessionQuery.isError
-                    ? "Cannot open conversation"
-                    : sessionQuery.data?.chat
-                      ? "This conversation is inactive"
-                      : "Conversation or pane unavailable"}
-              </h2>
-              <p>
-                {sessionQuery.error?.message ??
-                  (sessionQuery.data?.chat
-                    ? sessionQuery.data.chat.title
-                    : "It may have closed or been removed.")}
-              </p>
-              {sessionQuery.isError && (
-                <button type="button" onClick={() => void sessionQuery.refetch()}>
-                  Try again
-                </button>
-              )}
-              {sessionQuery.data?.chat && (
-                <button
-                  type="button"
-                  onClick={() => {
-                    setResumeError("");
-                    setResumeOpen(true);
-                  }}
-                >
-                  Resume conversation
-                </button>
-              )}
-              <button type="button" onClick={() => setSelectedPaneId(null)}>
-                Back to overview
-              </button>
+              <section
+                className={appStyles["conversation-state"]}
+                aria-labelledby="conversation-state-title"
+              >
+                <StateIcon
+                  kind={
+                    sessionId && sessionQuery.isPending
+                      ? "loading"
+                      : sessionQuery.isError || !sessionQuery.data?.chat
+                        ? "unavailable"
+                        : "empty"
+                  }
+                  spinning={Boolean(sessionId && sessionQuery.isPending)}
+                />
+                <h2 id="conversation-state-title">
+                  {sessionId && sessionQuery.isPending
+                    ? "Loading conversation…"
+                    : sessionQuery.isError
+                      ? "Cannot open conversation"
+                      : sessionQuery.data?.chat
+                        ? "This conversation is inactive"
+                        : "Conversation or pane unavailable"}
+                </h2>
+                <p>
+                  {sessionQuery.error?.message ??
+                    (sessionId && sessionQuery.isPending
+                      ? "Looking for your conversation…"
+                      : sessionQuery.data?.chat
+                        ? sessionQuery.data.chat.title
+                        : "It may have closed or been removed.")}
+                </p>
+                {sessionQuery.data?.chat && (
+                  <p className={appStyles["conversation-state__hint"]}>
+                    Resume to continue where you left off.
+                  </p>
+                )}
+                <div className={appStyles["conversation-state__actions"]}>
+                  {sessionQuery.isError && (
+                    <Button type="button" onClick={() => void sessionQuery.refetch()}>
+                      Try again
+                    </Button>
+                  )}
+                  {sessionQuery.data?.chat && (
+                    <Button
+                      type="button"
+                      onClick={() => {
+                        setResumeError("");
+                        setResumeOpen(true);
+                      }}
+                    >
+                      Resume conversation
+                    </Button>
+                  )}
+                  <Button type="button" variant="secondary" onClick={() => setSelectedPaneId(null)}>
+                    Back to overview
+                  </Button>
+                </div>
+              </section>
             </main>
           ) : (
             <main className={appStyles["console-empty"]} id="main-content">
