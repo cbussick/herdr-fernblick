@@ -135,6 +135,33 @@ describe("isolated production editor and DOM renderer", { timeout: 30_000 }, () 
     expect(await page.getByRole("button", { name: "Draw", exact: true }).isDisabled()).toBe(true);
     expect(await page.evaluate(() => window.flowTest.errors)).toEqual([]);
   });
+  it("returns from a new component to the picker without changing the board", async () => {
+    for (const width of [390, 1280]) {
+      await page.setViewportSize({ width, height: 900 });
+      await loadEditor();
+      const trigger = page.getByRole("button", { name: "Add a component", exact: true });
+      const picker = page.getByRole("dialog", { name: "Add a component", exact: true });
+      await trigger.click();
+      await picker.getByRole("button", { name: "Add Boundary", exact: true }).click();
+      const boundary = page.getByRole("dialog", { name: "Add Boundary", exact: true });
+      await boundary.getByLabel("Label", { exact: true }).fill("Discarded boundary");
+      await boundary.getByRole("button", { name: "Back", exact: true }).click();
+      await picker.waitFor();
+      expect(await boundary.count()).toBe(0);
+      expect(await page.evaluate(() => window.flowTest.changes.length)).toBe(0);
+      expect(await page.evaluate(() => window.flowTest.events.at(-1))).toBe("active");
+      await picker.getByRole("button", { name: "Add Card", exact: true }).click();
+      const card = page.getByRole("dialog", { name: "Add Card", exact: true });
+      await card.getByLabel("Title", { exact: true }).fill("Different component");
+      await card.getByRole("button", { name: "Add component", exact: true }).click();
+      await page.waitForFunction(() => window.flowTest.changes.length === 1);
+      await page.getByText("Different component", { exact: true }).dblclick();
+      const edit = page.getByRole("dialog", { name: "Edit Card", exact: true });
+      await edit.waitFor();
+      expect(await edit.getByRole("button", { name: "Back", exact: true }).count()).toBe(0);
+      await edit.getByRole("button", { name: "Cancel", exact: true }).click();
+    }
+  });
   it("uses the searchable toolbar picker at both mobile and desktop widths", async () => {
     try {
       await page.setViewportSize({ width: 390, height: 844 });

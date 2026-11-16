@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState, type FormEvent, type ReactNode } from "react";
-import { Palette, Plus, Trash2, Upload, X } from "lucide-react";
+import { ArrowLeft, Palette, Plus, Trash2, Upload, X } from "lucide-react";
 import { ComponentContent, componentStyle, Icon, icons } from "./Components";
 import { catalog, colors, validData, type ComponentData } from "./model";
 import { flowIcons } from "../../../packages/pi-live-chat/flowProtocol";
@@ -9,10 +9,12 @@ export function Modal({
   title,
   children,
   onClose,
+  onBack,
 }: {
   title: string;
   children: ReactNode;
   onClose: () => void;
+  onBack?: () => void;
 }) {
   const ref = useRef<HTMLDialogElement>(null);
   useEffect(() => {
@@ -48,6 +50,11 @@ export function Modal({
       }}
     >
       <header className={styles["dialog-heading"]}>
+        {onBack && (
+          <button type="button" className={styles["secondary"]} onClick={onBack}>
+            <ArrowLeft size={16} aria-hidden="true" /> Back
+          </button>
+        )}
         <h2>{title}</h2>
         <button
           type="button"
@@ -130,11 +137,13 @@ export function ComponentEditor({
   isNew,
   onSave,
   onClose,
+  onBack,
 }: {
   initial: ComponentData;
   isNew: boolean;
   onSave: (data: ComponentData) => void;
   onClose: () => void;
+  onBack?: () => void;
 }) {
   const [draft, setDraft] = useState(() => structuredClone(initial));
   const [query, setQuery] = useState("");
@@ -188,7 +197,7 @@ export function ComponentEditor({
     onSave(draft);
   }
   return (
-    <Modal title={title} onClose={onClose}>
+    <Modal title={title} onClose={onClose} onBack={isNew ? onBack : undefined}>
       <form onSubmit={submit} className={styles["editor-form"]}>
         <div className={styles["editor-body"]}>
           <div className={styles["editor-fields"]}>

@@ -762,6 +762,10 @@ function Playground(props: BoardEditorProps) {
           initial={editing.data}
           isNew={!editing.id}
           onSave={save}
+          onBack={() => {
+            setEditing(null);
+            setPicking(true);
+          }}
           onClose={() => setEditing(null)}
         />
       )}
