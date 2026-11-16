@@ -12,12 +12,14 @@ import { SearchEmptyState } from "../../shared/ui/SearchEmptyState";
 
 export function PastChats({
   query,
+  onOpenSession,
   workspaces,
   onResumed,
   onRemoved,
   onClearSearch,
 }: {
   query: string;
+  onOpenSession?: (sessionId: string) => void;
   workspaces: Workspace[];
   onResumed: (agent: Agent) => void;
   onRemoved: () => void;
@@ -125,7 +127,15 @@ export function PastChats({
         <ul className={styles.list}>
           {filtered.map((chat) => (
             <li key={chat.id} className={styles.chat} data-testid="saved-chat">
-              <h2>{chat.title}</h2>
+              <h2>
+                {chat.sessionId && onOpenSession ? (
+                  <button type="button" onClick={() => onOpenSession(chat.sessionId!)}>
+                    {chat.title}
+                  </button>
+                ) : (
+                  chat.title
+                )}
+              </h2>
               <p className={styles.path} title={chat.cwd}>
                 {chat.cwd}
               </p>

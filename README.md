@@ -258,6 +258,16 @@ refer to the backend VPS, not your phone or another agent machine.
 
 ### Past sessions
 
+Chat and whiteboard links use Pi's conversation ID:
+`/sessions/<sessionId>/chat` and `/sessions/<sessionId>/whiteboard`.
+The same links work while a conversation is running or inactive on this Fernblick
+instance. Inactive links show a Resume option; they do not launch Pi automatically
+or display an archived transcript/board editor. Click a past session's title to
+open its link. Terminal links use `/panes/<paneId>/terminal`; the chat's terminal
+view is also available at `/sessions/<sessionId>/terminal`.
+Old whiteboard query-string links continue to work. Manually copied session files
+with the same Pi ID are reported as ambiguous rather than opening an arbitrary copy.
+
 Open **Past sessions** in the sidebar to search saved Pi conversations by title, first
 message, or project path. Only closed conversations are shown, ordered by most
 recently modified; find open conversations in **Agents** or **Workspaces**. Click a

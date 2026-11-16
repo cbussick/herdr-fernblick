@@ -249,6 +249,22 @@ async function handleApi(
     return true;
   }
 
+  const sessionMatch = url.pathname.match(/^\/api\/sessions\/([^/]+)$/);
+  if (request.method === "GET" && sessionMatch) {
+    if (request.headers.origin) requireSameOrigin(request);
+    if (request.headers["sec-fetch-site"] === "cross-site")
+      throw new HttpError(403, "Cross-origin request rejected");
+    const sessionId = z
+      .string()
+      .min(1)
+      .max(200)
+      .regex(/^[A-Za-z0-9_-]+$/)
+      .parse(decodeURIComponent(sessionMatch[1]));
+    response.setHeader("Cache-Control", "no-store");
+    sendJson(response, 200, await service.getSession(sessionId));
+    return true;
+  }
+
   const deleteChatMatch = url.pathname.match(/^\/api\/chats\/([a-f0-9]{64})$/);
   if (request.method === "DELETE" && deleteChatMatch) {
     requireSameOrigin(request);

@@ -5,7 +5,7 @@ import { AppUpdatesProvider } from "./pwa/AppUpdatesProvider";
 import { createRoot } from "react-dom/client";
 import tokenStyles from "./styles/tokens.module.css";
 import baseStyles from "./styles/base.module.css";
-import { App } from "./app/App";
+import { RoutedApp } from "./app/router";
 import { AppProviders } from "./app/AppProviders";
 
 document.documentElement.classList.add(tokenStyles.theme, baseStyles.document);
@@ -22,7 +22,7 @@ createRoot(rootElement).render(
   <StrictMode>
     <AppProviders>
       <AppUpdatesProvider>
-        <App />
+        <RoutedApp />
         <PwaStatus />
       </AppUpdatesProvider>
     </AppProviders>

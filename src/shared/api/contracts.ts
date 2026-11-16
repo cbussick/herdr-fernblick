@@ -98,12 +98,18 @@ export const savedChatSchema = z.object({
   cwd: z.string(),
   updatedAt: z.string().datetime(),
   activePaneId: z.string().nullable(),
+  sessionId: z.string().min(1).optional(),
 });
 export const savedChatsResponseSchema = z.object({
   chats: z.array(savedChatSchema),
   indexing: z.boolean().optional(),
   indexError: z.string().optional(),
 });
+export const sessionResponseSchema = z.object({
+  agent: agentSchema.nullable(),
+  chat: savedChatSchema.nullable(),
+});
+
 export const deleteChatResponseSchema = z.object({
   ok: z.literal(true),
   sessionId: z.string().min(1).nullable(),

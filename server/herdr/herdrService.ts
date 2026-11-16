@@ -133,6 +133,43 @@ export class HerdrService {
     };
   }
 
+  async getSession(sessionId: string) {
+    // Resolve real files, not the disposable index. Never resume as a side effect of a link.
+    const [chats, dashboard] = await Promise.all([this.sessions.list(), this.getDashboard()]);
+    // Live agents may use --session files outside the saved-session directory.
+    const knownPaths = new Set(chats.map((chat) => resolve(chat.path)));
+    for (const agent of dashboard.agents) {
+      if (agent.agent !== "pi" || agent.agent_session?.kind !== "path") continue;
+      const path = resolve(agent.agent_session.value);
+      if (knownPaths.has(path)) continue;
+      knownPaths.add(path);
+      const active = await this.sessions.readActive(path);
+      if (active) chats.push(active);
+    }
+    const matches = chats.filter((chat) => chat.sessionId === sessionId);
+    if (matches.length > 1)
+      throw new SavedChatError(
+        409,
+        "More than one session file has this ID. Open it from Past sessions instead.",
+      );
+    const chat = matches[0];
+    const agents = dashboard.agents.filter(
+      (agent) =>
+        agent.agent === "pi" &&
+        ((agent.agent_session?.kind === "id" && agent.agent_session.value === sessionId) ||
+          (chat &&
+            agent.agent_session?.kind === "path" &&
+            resolve(agent.agent_session.value) === chat.path)),
+    );
+    if (agents.length > 1)
+      throw new SavedChatError(409, "This conversation is running in more than one pane.");
+    const agent = agents[0] ?? null;
+    return {
+      agent,
+      chat: chat ? savedChatSchema.parse({ ...chat, activePaneId: agent?.pane_id ?? null }) : null,
+    };
+  }
+
   private findActiveChat(path: string, agents: Agent[]) {
     for (const [key, value] of this.recentlyResumed)
       if (value.expires <= Date.now()) this.recentlyResumed.delete(key);
