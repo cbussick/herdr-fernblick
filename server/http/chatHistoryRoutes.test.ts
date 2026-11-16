@@ -114,6 +114,51 @@ const resume = (chatId = id, workspaceId = "w1", origin = base) =>
     body: JSON.stringify({ workspaceId }),
   });
 
+it("includes live Pi conversation IDs in the dashboard before opening chat", async () => {
+  active = [
+    { ...agent, agent_session: { agent: "pi", kind: "path", value: sessionPath, source: "pi" } },
+  ];
+  const response = await fetch(`${base}/api/agents`);
+  expect(await response.json()).toMatchObject({ agents: [{ pi_session_id: "pi-session" }] });
+  await writeFile(
+    sessionPath,
+    JSON.stringify({ type: "session", id: "new-session", cwd: directory }) + "\n",
+  );
+  expect(await (await fetch(`${base}/api/agents`)).json()).toMatchObject({
+    agents: [{ pi_session_id: "new-session" }],
+  });
+});
+
+it("keeps the dashboard available while Pi has not finished saving its header", async () => {
+  active = [
+    { ...agent, agent_session: { agent: "pi", kind: "path", value: sessionPath, source: "pi" } },
+  ];
+  await writeFile(sessionPath, "{");
+  const response = await fetch(`${base}/api/agents`);
+  expect(response.status).toBe(200);
+  const dashboard = await response.json();
+  expect(dashboard.agents[0].pane_id).toBe(agent.pane_id);
+  expect(dashboard.agents[0].pi_session_id).toBeUndefined();
+});
+
+it("uses reported Pi IDs directly and does not attach them to other CLIs", async () => {
+  active = [
+    {
+      ...agent,
+      agent_session: { agent: "pi", kind: "id", value: "reported-session", source: "pi" },
+    },
+    {
+      ...agent,
+      agent: "other",
+      pane_id: "w1:p3",
+      agent_session: { agent: "other", kind: "id", value: "not-pi", source: "other" },
+    },
+  ];
+  const dashboard = await (await fetch(`${base}/api/agents`)).json();
+  expect(dashboard.agents[0].pi_session_id).toBe("reported-session");
+  expect(dashboard.agents[1].pi_session_id).toBeUndefined();
+});
+
 it("resolves the same Pi ID while inactive and after resuming", async () => {
   const inactive = await fetch(`${base}/api/sessions/pi-session`);
   expect(inactive.headers.get("cache-control")).toBe("no-store");

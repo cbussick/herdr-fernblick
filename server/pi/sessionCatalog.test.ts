@@ -28,6 +28,36 @@ afterEach(async () => {
   await rm(root, { recursive: true, force: true });
 });
 
+it("reads the active conversation ID from the header without requiring a valid transcript", async () => {
+  const path = join(root, "active.jsonl");
+  await writeFile(path, JSON.stringify(header) + "\n" + "x".repeat(1024 * 1024));
+  expect(await catalog.readActiveId(path)).toBe("saved-session");
+  await writeFile(path, JSON.stringify({ ...header, id: "replacement" }) + "\n");
+  expect(await catalog.readActiveId(path)).toBe("replacement");
+});
+
+it("does not follow symlinks or read non-files for active conversation IDs", async () => {
+  const path = join(root, "active.jsonl");
+  await save(path, [header]);
+  await symlink(path, join(root, "link.jsonl"));
+  expect(await catalog.readActiveId(join(root, "link.jsonl"))).toBeNull();
+  expect(await catalog.readActiveId(root)).toBeNull();
+  expect(await catalog.readActiveId(join(root, "missing"))).toBeNull();
+});
+
+it.each([
+  "",
+  "{",
+  JSON.stringify({ ...header, type: "message" }),
+  JSON.stringify({ ...header, id: "../bad" }),
+  JSON.stringify({ ...header, id: "x".repeat(201) }),
+  JSON.stringify({ ...header, cwd: "/" + "x".repeat(20_000) }),
+])("ignores incomplete, invalid or oversized active session headers (%#)", async (contents) => {
+  const path = join(root, "active.jsonl");
+  await writeFile(path, contents);
+  expect(await catalog.readActiveId(path)).toBeNull();
+});
+
 it("discovers flat and grouped sessions, uses latest names and sorts by modification time", async () => {
   await mkdir(join(root, "project"));
   await save(join(root, "project", "old.jsonl"), [

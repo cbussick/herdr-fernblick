@@ -35,6 +35,8 @@ export const agentSchema = z.object({
   foreground_cwd: z.string().nullable().optional(),
   interactive_ready: z.boolean().optional(),
   name: z.string().nullable().optional(),
+  // Pi conversation identity for navigation; never authorization.
+  pi_session_id: z.string().min(1).optional(),
   pane_id: z.string(),
   revision: z.number(),
   state_change_seq: z.number().optional(),

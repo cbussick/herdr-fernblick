@@ -249,7 +249,7 @@ export class HerdrService {
     const chat = await this.sessions.get(id);
     const dashboard = await this.getDashboard();
     const active = this.findActiveChat(chat.path, dashboard.agents);
-    if (active) return active;
+    if (active) return { ...active, pi_session_id: chat.sessionId };
     if (!dashboard.workspaces.some((workspace) => workspace.workspace_id === workspaceId))
       throw new SavedChatError(404, "Workspace no longer exists. Choose another workspace.");
     const directory = await stat(chat.cwd).catch(() => null);
@@ -263,7 +263,18 @@ export class HerdrService {
       cwd: chat.cwd,
     });
     this.recentlyResumed.set(chat.path, { paneId: agent.pane_id, expires: Date.now() + 30_000 });
-    return agent;
+    return { ...agent, pi_session_id: chat.sessionId };
+  }
+
+  private async withPiSessionId(agent: Agent): Promise<Agent> {
+    const session = agent.agent_session;
+    const id =
+      agent.agent === "pi" && session
+        ? session.kind === "id"
+          ? session.value
+          : await this.sessions.readActiveId(session.value)
+        : null;
+    return { ...agent, pi_session_id: id ?? undefined };
   }
 
   async getDashboard() {
@@ -274,11 +285,13 @@ export class HerdrService {
     );
 
     return {
-      agents: result.snapshot.agents.map((agent) => ({
-        ...agent,
-        tab_label: tabLabels.get(agent.tab_id),
-        workspace_label: workspaceLabels.get(agent.workspace_id),
-      })),
+      agents: await Promise.all(
+        result.snapshot.agents.map(async (agent) => ({
+          ...(await this.withPiSessionId(agent)),
+          tab_label: tabLabels.get(agent.tab_id),
+          workspace_label: workspaceLabels.get(agent.workspace_id),
+        })),
+      ),
       workspaces: result.snapshot.workspaces,
       // Include every shell pane, including splits beside agents in the same tab.
       tabs: result.snapshot.tabs.flatMap((tab) =>
@@ -331,7 +344,11 @@ export class HerdrService {
       agentStartedResultSchema,
     );
 
-    return { ...startedAgent.agent, agent: "pi", tab_label: createdTab.tab.label };
+    return this.withPiSessionId({
+      ...startedAgent.agent,
+      agent: "pi",
+      tab_label: createdTab.tab.label,
+    });
   }
 
   async moveWorkspace(workspaceId: string, beforeWorkspaceId: string | null) {

@@ -1,5 +1,5 @@
 import appStyles from "./App.module.css";
-import { useEffect, useState } from "react";
+import { useEffect, useEffectEvent, useState } from "react";
 import { ResumeChatDialog } from "../features/agents/ResumeChatDialog";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import type { Agent, ShellTab, Workspace } from "../shared/api/contracts";
@@ -37,8 +37,16 @@ export function App({
   useHeaderDiagnostics();
   const singlePane = useSinglePaneLayout();
   const queryClient = useQueryClient();
-  const { sessionId, view, selectPane: setSelectedPaneId } = navigation;
+  const { sessionId, view, selectPane: navigateToPane } = navigation;
   const location = navigation.location;
+  const [pendingPaneId, setPendingPaneId] = useState<string | null>(null);
+  function setSelectedPaneId(paneId: string | null, terminal = false) {
+    setPendingPaneId(null);
+    navigateToPane(paneId, terminal);
+  }
+  useEffect(() => {
+    setPendingPaneId(null);
+  }, [location.pathname]);
   const sessionQuery = useQuery({
     queryKey: ["session", sessionId],
     queryFn: () => getSession(sessionId!),
@@ -87,6 +95,33 @@ export function App({
     : (tabs.find((tab) => tab.pane_id === selectedPaneId) ?? null);
   const detailOpen = selectedAgent || selectedTab || sessionId || navigation.paneId;
 
+  function openAgent(agent: Agent) {
+    if (routeNavigation && agent.agent === "pi" && !agent.pi_session_id) {
+      // Do not expose a temporary pane URL while Pi is still starting.
+      setPendingPaneId(agent.pane_id);
+      return;
+    }
+    setPendingPaneId(null);
+    if (routeNavigation && agent.agent === "pi" && agent.pi_session_id) {
+      queryClient.setQueryData(
+        ["session", agent.pi_session_id],
+        (current: Awaited<ReturnType<typeof getSession>> | undefined) => ({
+          agent,
+          chat: current?.chat ?? null,
+        }),
+      );
+      navigation.selectSession(agent.pi_session_id, "chat", location.pathname !== "/");
+    } else {
+      setSelectedPaneId(agent.pane_id, agent.agent !== "pi");
+    }
+  }
+
+  const openPendingAgent = useEffectEvent(openAgent);
+  useEffect(() => {
+    const ready = agents.find((agent) => agent.pane_id === pendingPaneId && agent.pi_session_id);
+    if (ready) openPendingAgent(ready);
+  }, [agents, pendingPaneId]);
+
   function handleWorkspaceCreated(workspace: Workspace) {
     queryClient.setQueryData(
       ["agents"],
@@ -117,6 +152,17 @@ export function App({
         Skip to content
       </a>
 
+      {pendingPaneId && (
+        <div className={appStyles["read-error"]} role="status">
+          <p>Waiting for this agent’s conversation…</p>
+          <button type="button" onClick={() => setSelectedPaneId(pendingPaneId, true)}>
+            Open terminal
+          </button>
+          <button type="button" onClick={() => setPendingPaneId(null)}>
+            Cancel
+          </button>
+        </div>
+      )}
       {sessionQuery.isError && sessionQuery.data?.agent && (
         <div className={appStyles["read-error"]} role="status">
           <p>Could not refresh this conversation. Your draft is retained.</p>
@@ -172,7 +218,10 @@ export function App({
         <div className={appStyles["workspace"]}>
           <AgentList
             onOpenSettings={() => setSettingsOpen(true)}
-            onOpenSession={(id) => navigation.selectSession(id, "chat", location.pathname !== "/")}
+            onOpenSession={(id) => {
+              setPendingPaneId(null);
+              navigation.selectSession(id, "chat", location.pathname !== "/");
+            }}
             agents={agents}
             connected={!agentsQuery.isError && !agentsQuery.isPaused}
             tabs={tabs}
@@ -181,7 +230,7 @@ export function App({
             onCreateWorkspace={() => setWorkspaceDialogOpen(true)}
             selectedPaneId={selectedPaneId}
             workspaces={workspaces}
-            onSelect={(agent: Agent) => setSelectedPaneId(agent.pane_id, agent.agent !== "pi")}
+            onSelect={openAgent}
             onResumed={(agent) => {
               queryClient.setQueryData(
                 ["agents"],
@@ -197,7 +246,7 @@ export function App({
                       }
                     : current,
               );
-              setSelectedPaneId(agent.pane_id);
+              openAgent(agent);
               void agentsQuery.refetch();
             }}
             onSelectTab={(tab: ShellTab) => setSelectedPaneId(tab.pane_id, true)}
@@ -317,7 +366,7 @@ export function App({
           onClose={() => setCreateDialog(null)}
           onWorkspaceCreated={handleWorkspaceCreated}
           onCreated={(agent) => {
-            setSelectedPaneId(agent.pane_id);
+            openAgent(agent);
             setCreateDialog(null);
             void agentsQuery.refetch();
           }}
