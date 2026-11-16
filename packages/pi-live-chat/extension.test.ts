@@ -218,12 +218,15 @@ async function setup(
     });
     return id;
   };
-  const ack = async (id: string) => {
+  const ack = async (id: string, timeout = 1000) => {
     let found: unknown;
-    await vi.waitFor(() => {
-      found = frames.find((v) => typeof v === "object" && v && "id" in v && v.id === id);
-      expect(found).toBeDefined();
-    });
+    await vi.waitFor(
+      () => {
+        found = frames.find((v) => typeof v === "object" && v && "id" in v && v.id === id);
+        expect(found).toBeDefined();
+      },
+      { timeout },
+    );
     return found;
   };
   return { ...pi, latest, command, ack, connections, frames, server, dir };
@@ -1352,7 +1355,10 @@ it("sends ten 10 MiB image-only uploads as Pi ImageContent without putting base6
   };
   expect(Buffer.byteLength(JSON.stringify(command))).toBeLessThan(1000);
   writeFrame(t.connections[0], command);
-  await vi.waitFor(() => expect(t.pi.sendUserMessage).toHaveBeenCalledOnce());
+  // Preparing 100 MiB from disk can exceed the default one-second wait under suite load.
+  // Wait for the actual command outcome before inspecting Pi's image content.
+  expect(await t.ack(id, 10_000)).toMatchObject({ outcome: "invoked" });
+  expect(t.pi.sendUserMessage).toHaveBeenCalledOnce();
   const content = t.pi.sendUserMessage.mock.calls[0][0] as {
     type: string;
     data: string;
@@ -1363,7 +1369,6 @@ it("sends ten 10 MiB image-only uploads as Pi ImageContent without putting base6
     expect(image.mimeType).toBe("image/png");
     expect(Buffer.from(image.data, "base64").length).toBe(10 * 1024 * 1024);
   }
-  expect(await t.ack(id)).toMatchObject({ outcome: "invoked" });
   expect(boardRequests(t)).toEqual([]);
   expect(t.pi.getActiveTools()).not.toContain("board_read");
   const message = { role: "user", timestamp: 55, content };
