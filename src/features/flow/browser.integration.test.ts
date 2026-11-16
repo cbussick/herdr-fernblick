@@ -504,7 +504,88 @@ describe("isolated production editor and DOM renderer", { timeout: 30_000 }, () 
     expect(parsed.elements.filter((e) => !e.isDeleted)[0]!.id).not.toBe("imported");
     expect(await page.evaluate(() => window.flowTest.errors)).toEqual([]);
   });
-  it("cancels clear if recovery fails and checkpoints before publishing replacement", async () => {
+  it("clears without a recovery checkpoint and supports undo/redo on desktop and mobile", async () => {
+    const card = makeNode("card", 300, 100, defaults("card"), "card");
+    card.data.image =
+      "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+a9l8AAAAASUVORK5CYII=";
+    const first = fromDiagram(
+      {
+        nodes: [
+          card,
+          makeNode("comment", 100, 100, defaults("comment"), "comment"),
+          makeInk(
+            "ink",
+            [
+              [100, 300, 0.5],
+              [200, 350, 0.8],
+            ],
+            "#243044",
+            5,
+            true,
+          ),
+        ],
+        edges: [{ ...edgeOptions, id: "edge", source: "card", target: "comment" }],
+      },
+      empty,
+    );
+    try {
+      for (const width of [1280, 390]) {
+        await page.setViewportSize({ width, height: 900 });
+        await loadEditor();
+        await page.evaluate((raw) => {
+          window.flowTest.setScene(JSON.parse(raw));
+          window.flowTest.checkpointError = "Recovery storage unavailable";
+        }, JSON.stringify(first));
+        const open = page.getByRole("button", { name: "Clear canvas", exact: true });
+        const confirmation = page.getByRole("dialog", { name: "Clear canvas?", exact: true });
+        await open.click();
+        await confirmation.waitFor();
+        const box = (await confirmation.boundingBox())!;
+        expect(box.width).toBeLessThanOrEqual(440);
+        expect(box.x).toBeGreaterThanOrEqual(0);
+        expect(box.x + box.width).toBeLessThanOrEqual(width);
+        expect(
+          await confirmation.getByText("Remove all elements. You can undo this.").count(),
+        ).toBe(1);
+        const cancel = confirmation.getByRole("button", { name: "Cancel", exact: true });
+        expect(await cancel.evaluate((element) => element === document.activeElement)).toBe(true);
+        await cancel.click();
+        expect(await page.evaluate(() => window.flowTest.changes.length)).toBe(0);
+        await open.click();
+        await page.keyboard.press("Escape");
+        expect(await confirmation.count()).toBe(0);
+        expect(await page.evaluate(() => window.flowTest.changes.length)).toBe(0);
+        await open.click();
+        await confirmation.getByRole("button", { name: "Clear canvas", exact: true }).click();
+        await page.waitForFunction(() => window.flowTest.changes.length === 1);
+        expect(await confirmation.count()).toBe(0);
+        expect(
+          await page.evaluate(() => window.flowTest.changes[0]!.elements.every((e) => e.isDeleted)),
+        ).toBe(true);
+        expect(await page.evaluate(() => window.flowTest.changes[0]!.files)).toEqual({});
+        expect(await page.evaluate(() => window.flowTest.events)).not.toContain("checkpoint");
+        const events = await page.evaluate(() => window.flowTest.events);
+        expect(events.lastIndexOf("change")).toBeLessThan(events.lastIndexOf("idle"));
+        await page.getByRole("button", { name: "Undo", exact: true }).click();
+        await page.waitForFunction(() => window.flowTest.changes.length === 2);
+        const restored = await page.evaluate(() => window.flowTest.changes[1]!);
+        expect(restored.elements.filter((e) => !e.isDeleted)).toHaveLength(first.elements.length);
+        expect(
+          restored.elements.map(({ version: _version, isDeleted: _deleted, ...e }) => e),
+        ).toEqual(first.elements.map(({ version: _version, isDeleted: _deleted, ...e }) => e));
+        expect(restored.files).toEqual(first.files);
+        await page.getByRole("button", { name: "Redo", exact: true }).click();
+        await page.waitForFunction(() => window.flowTest.changes.length === 3);
+        expect(
+          await page.evaluate(() => window.flowTest.changes[2]!.elements.every((e) => e.isDeleted)),
+        ).toBe(true);
+        expect(await page.evaluate(() => window.flowTest.errors)).toEqual([]);
+      }
+    } finally {
+      await page.setViewportSize({ width: 1280, height: 900 });
+    }
+  });
+  it("cancels import if recovery fails and checkpoints before publishing replacement", async () => {
     await loadEditor();
     const first = fromDiagram(
       { nodes: [makeNode("card", 0, 0, defaults("card"), "retained")], edges: [] },
@@ -514,9 +595,13 @@ describe("isolated production editor and DOM renderer", { timeout: 30_000 }, () 
       window.flowTest.setScene(JSON.parse(raw));
       window.flowTest.checkpointError = "Recovery storage unavailable";
     }, JSON.stringify(first));
-    await page.getByRole("button", { name: "Clear canvas", exact: true }).click();
-    const confirmation = page.getByRole("dialog", { name: "Clear the canvas?", exact: true });
-    await confirmation.getByRole("button", { name: "Clear canvas", exact: true }).click();
+    await page.getByLabel("Import flow JSON").setInputFiles({
+      name: "empty.flow.json",
+      mimeType: "application/json",
+      buffer: Buffer.from(exportFlowScene(empty)),
+    });
+    const confirmation = page.getByRole("dialog", { name: "Replace this drawing?", exact: true });
+    await confirmation.getByRole("button", { name: "Replace drawing", exact: true }).click();
     await page.waitForFunction(() =>
       window.flowTest.errors.includes("Recovery storage unavailable"),
     );
@@ -525,7 +610,7 @@ describe("isolated production editor and DOM renderer", { timeout: 30_000 }, () 
     await page.evaluate(() => {
       window.flowTest.checkpointError = "";
     });
-    await confirmation.getByRole("button", { name: "Clear canvas", exact: true }).click();
+    await confirmation.getByRole("button", { name: "Replace drawing", exact: true }).click();
     await page.waitForFunction(() => window.flowTest.changes.length === 1);
     expect(
       await page.evaluate(() => window.flowTest.changes[0]!.elements.every((e) => e.isDeleted)),

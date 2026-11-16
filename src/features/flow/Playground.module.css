@@ -88,6 +88,7 @@
 
 .primary,
 .secondary,
+.danger,
 .icon-button,
 .text-button {
   display: inline-flex;
@@ -120,6 +121,17 @@
 
 .primary:hover {
   background: #335aa7;
+}
+
+.danger {
+  background: #b83a3a;
+  border-color: #b83a3a;
+  color: white;
+}
+
+.danger:hover {
+  background: #9f2f2f;
+  border-color: #9f2f2f;
 }
 
 .secondary:hover,
@@ -827,6 +839,18 @@
   flex-direction: column;
 }
 
+.dialog[data-size="compact"] {
+  width: min(440px, calc(100vw - 32px));
+}
+
+.confirmation-body > p {
+  margin: 0;
+  padding: 12px 24px 24px;
+  font-size: 14px;
+  line-height: 1.6;
+  color: #52627a;
+}
+
 .dialog::backdrop {
   background: #23334766;
 }
@@ -1146,6 +1170,17 @@
 
 .connection-form .dialog-footer {
   margin: 0 -24px;
+}
+
+.dialog[data-size="compact"] .dialog-heading {
+  padding: 20px 24px 0;
+  border-bottom: 0;
+}
+
+.confirmation-body .dialog-footer {
+  padding: 0 24px 24px;
+  border-top: 0;
+  background: transparent;
 }
 
 .reset-body > p {

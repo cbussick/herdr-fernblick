@@ -377,6 +377,14 @@ function Playground(props: BoardEditorProps) {
     );
     touch();
   }
+  function clearDrawing() {
+    if (locked || replacementInFlight.current) return;
+    chooseTool("select");
+    setNodes([]);
+    setEdges([]);
+    touch();
+    setResetting(false);
+  }
   async function replaceDrawing(source: BoardScene) {
     if (locked || replacementInFlight.current) return;
     const before = base.current;
@@ -851,36 +859,23 @@ function Playground(props: BoardEditorProps) {
       )}
       {resetting && (
         <Modal
-          title="Clear the canvas?"
+          title="Clear canvas?"
+          size="compact"
           onClose={() => {
             if (!replacementInFlight.current) setResetting(false);
           }}
         >
-          <div className={styles["reset-body"]}>
-            <p>
-              This removes all live elements. A local recovery copy is saved first; download a
-              backup for longer-term storage.
-            </p>
+          <div className={styles["confirmation-body"]}>
+            <p>Remove all elements. You can undo this.</p>
             <footer className={styles["dialog-footer"]}>
               <button
                 className={styles["secondary"]}
-                disabled={replacementBusy}
+                data-autofocus
                 onClick={() => setResetting(false)}
               >
                 Cancel
               </button>
-              <button
-                className={styles["primary"]}
-                disabled={locked || replacementBusy}
-                onClick={() =>
-                  void replaceDrawing({
-                    engine: "react-flow",
-                    elements: [],
-                    files: {},
-                    background: base.current.background,
-                  })
-                }
-              >
+              <button className={styles["danger"]} disabled={locked} onClick={clearDrawing}>
                 Clear canvas
               </button>
             </footer>
