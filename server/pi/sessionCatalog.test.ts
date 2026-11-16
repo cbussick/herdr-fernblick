@@ -28,6 +28,16 @@ afterEach(async () => {
   await rm(root, { recursive: true, force: true });
 });
 
+it("cannot discover a real fresh Pi session ID until its first message is persisted", async () => {
+  const { SessionManager } = await import("@earendil-works/pi-coding-agent");
+  const session = SessionManager.create(root, root);
+  const path = session.getSessionFile()!;
+  expect(session.getSessionId()).toBeTruthy();
+  expect(await catalog.readActiveId(path)).toBeNull();
+  session.appendMessage({ role: "user", content: "First prompt", timestamp: Date.now() });
+  expect(await catalog.readActiveId(path)).toBe(session.getSessionId());
+});
+
 it("reads the active conversation ID from the header without requiring a valid transcript", async () => {
   const path = join(root, "active.jsonl");
   await writeFile(path, JSON.stringify(header) + "\n" + "x".repeat(1024 * 1024));

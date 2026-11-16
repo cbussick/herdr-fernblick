@@ -1,5 +1,5 @@
 import appStyles from "./App.module.css";
-import { useEffect, useEffectEvent, useState } from "react";
+import { useEffect, useEffectEvent, useRef, useState } from "react";
 import { ResumeChatDialog } from "../features/agents/ResumeChatDialog";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import type { Agent, ShellTab, Workspace } from "../shared/api/contracts";
@@ -41,20 +41,22 @@ export function App({
   const { sessionId, view, selectPane: navigateToPane } = navigation;
   const location = navigation.location;
   const [pendingPaneId, setPendingPaneId] = useState<string | null>(null);
+  const promotingPaneId = useRef<string | null>(null);
   function setSelectedPaneId(paneId: string | null, terminal = false) {
     setPendingPaneId(null);
     navigateToPane(paneId, terminal);
   }
   useEffect(() => {
     setPendingPaneId(null);
-  }, [location.pathname]);
+  }, [sessionId, navigation.paneId]);
   const sessionQuery = useQuery({
     queryKey: ["session", sessionId],
     queryFn: () => getSession(sessionId!),
     enabled: Boolean(sessionId),
     refetchInterval: 2_000,
   });
-  const selectedPaneId = navigation.paneId ?? sessionQuery.data?.agent?.pane_id ?? null;
+  const selectedPaneId =
+    pendingPaneId ?? navigation.paneId ?? sessionQuery.data?.agent?.pane_id ?? null;
   const [resumeOpen, setResumeOpen] = useState(false);
   const [resumeError, setResumeError] = useState("");
   const [resuming, setResuming] = useState(false);
@@ -88,22 +90,27 @@ export function App({
   );
   const tabs = agentsQuery.data?.tabs ?? [];
   const workspaces = agentsQuery.data?.workspaces ?? [];
-  const selectedAgent = sessionId
-    ? (sessionQuery.data?.agent ?? null)
-    : (agents.find((agent) => agent.pane_id === selectedPaneId) ?? null);
-  const selectedTab = sessionId
-    ? null
-    : (tabs.find((tab) => tab.pane_id === selectedPaneId) ?? null);
+  const selectedAgent =
+    sessionId && !pendingPaneId
+      ? (sessionQuery.data?.agent ?? null)
+      : (agents.find((agent) => agent.pane_id === selectedPaneId) ?? null);
+  const selectedTab =
+    sessionId || pendingPaneId
+      ? null
+      : (tabs.find((tab) => tab.pane_id === selectedPaneId) ?? null);
   const detailOpen = selectedAgent || selectedTab || sessionId || navigation.paneId;
 
   function openAgent(agent: Agent) {
     if (routeNavigation && agent.agent === "pi" && !agent.pi_session_id) {
-      // Do not expose a temporary pane URL while Pi is still starting.
+      // Fresh Pi sessions are only persisted after the conversation starts.
+      // Mount chat now; promote to a session URL once polling finds its saved ID.
+      promotingPaneId.current = null;
       setPendingPaneId(agent.pane_id);
       return;
     }
-    setPendingPaneId(null);
     if (routeNavigation && agent.agent === "pi" && agent.pi_session_id) {
+      // Keep the pending console mounted until the new location takes over,
+      // otherwise a draft can be lost between scheduling and completing navigation.
       queryClient.setQueryData(
         ["session", agent.pi_session_id],
         (current: Awaited<ReturnType<typeof getSession>> | undefined) => ({
@@ -120,7 +127,10 @@ export function App({
   const openPendingAgent = useEffectEvent(openAgent);
   useEffect(() => {
     const ready = agents.find((agent) => agent.pane_id === pendingPaneId && agent.pi_session_id);
-    if (ready) openPendingAgent(ready);
+    if (ready && promotingPaneId.current !== ready.pane_id) {
+      promotingPaneId.current = ready.pane_id;
+      openPendingAgent(ready);
+    }
   }, [agents, pendingPaneId]);
 
   function handleWorkspaceCreated(workspace: Workspace) {
@@ -153,7 +163,7 @@ export function App({
         Skip to content
       </a>
 
-      {pendingPaneId && (
+      {pendingPaneId && !selectedAgent && (
         <div className={appStyles["read-error"]} role="status">
           <p>Waiting for this agent’s conversation…</p>
           <button type="button" onClick={() => setSelectedPaneId(pendingPaneId, true)}>
@@ -256,12 +266,12 @@ export function App({
             <AgentConsole
               key={selectedAgent.pane_id}
               agent={selectedAgent}
-              expectedSessionId={sessionId ?? undefined}
-              routeView={routeNavigation ? view : undefined}
+              expectedSessionId={pendingPaneId ? undefined : (sessionId ?? undefined)}
+              routeView={routeNavigation ? (pendingPaneId ? "chat" : view) : undefined}
               onSession={
                 routeNavigation
                   ? (id) => {
-                      if (!sessionId) {
+                      if (!sessionId && !pendingPaneId) {
                         queryClient.setQueryData(["session", id], {
                           agent: selectedAgent,
                           chat: null,

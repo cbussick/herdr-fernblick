@@ -120,7 +120,7 @@ it("opens an agent directly at its session URL without visiting a pane route", a
   expect(visited).toEqual(["/sessions/s1/chat"]);
 });
 
-it("waits for a starting agent's session ID without exposing a pane URL", async () => {
+it("opens a fresh agent from its live session even when Herdr has no saved session ID", async () => {
   const starting = { ...agent, pi_session_id: undefined };
   const response = { agents: [starting], tabs: [], workspaces: [] };
   client.setQueryData(["agents"], response);
@@ -135,14 +135,47 @@ it("waits for a starting agent's session ID without exposing a pane URL", async 
     renderer.root.findByProps({ role: "tab", children: "Agents" }).props.onClick(),
   );
   await open();
+  await act(async () => {
+    await new Promise((resolve) => setTimeout(resolve, 10));
+  });
+  expect(chat()).toHaveLength(1);
+  expect(JSON.stringify(renderer.toJSON())).not.toContain("Waiting for this agent");
   expect(visited).toEqual([]);
-  expect(JSON.stringify(renderer.toJSON())).toContain("Waiting for this agent");
+  await act(async () =>
+    renderer.root
+      .findByProps({ "aria-label": "Draft" })
+      .props.onChange({ target: { value: "My first prompt" } }),
+  );
+  // Pi has an in-memory ID, but session URLs cannot resolve it until it is saved.
   await act(async () => client.setQueryData(["agents"], { ...response, agents: [agent] }));
   await act(async () => {
     await new Promise((resolve) => setTimeout(resolve, 10));
   });
   unsubscribe();
   expect(visited).toEqual(["/sessions/s1/chat"]);
+  expect(renderer.root.findByProps({ "aria-label": "Draft" }).props.value).toBe("My first prompt");
+});
+
+it("opens a fresh agent while another session is selected and can return to overview", async () => {
+  const starting = { ...other, pi_session_id: undefined };
+  const response = {
+    agents: [agent, starting],
+    tabs: [],
+    workspaces: [{ workspace_id: "w1", label: "Project" }],
+  };
+  client.setQueryData(["agents"], response);
+  vi.mocked(getAgents).mockResolvedValue(response);
+  await start("/sessions/s1/terminal");
+  await act(async () => {
+    await new Promise((resolve) => setTimeout(resolve, 10));
+  });
+  await open(1);
+  expect(chat()).toHaveLength(1);
+  expect(chat()[0].props["data-view"]).toBe("chat");
+  expect(JSON.stringify(renderer.toJSON())).not.toContain("Waiting for this agent");
+  await click("Back to overview");
+  expect(chat()).toHaveLength(0);
+  expect(router.state.location.pathname).toBe("/");
 });
 
 it("gives live chats a session URL and restores them with Forward", async () => {
