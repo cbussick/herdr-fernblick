@@ -153,10 +153,14 @@ export class HerdrService {
         "More than one session file has this ID. Open it from Past sessions instead.",
       );
     const chat = matches[0];
+    // A resumed pane exists before Pi reports its session. Use the same bounded
+    // startup tracking as the history list so polling does not flash "inactive".
+    const activeChat = chat ? this.findActiveChat(chat.path, dashboard.agents) : null;
     const agents = dashboard.agents.filter(
       (agent) =>
         agent.agent === "pi" &&
-        ((agent.agent_session?.kind === "id" && agent.agent_session.value === sessionId) ||
+        (agent === activeChat ||
+          (agent.agent_session?.kind === "id" && agent.agent_session.value === sessionId) ||
           (chat &&
             agent.agent_session?.kind === "path" &&
             resolve(agent.agent_session.value) === chat.path)),
