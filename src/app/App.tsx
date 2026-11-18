@@ -139,6 +139,20 @@ export function App({
     }
   }, [agents, pendingPaneId]);
 
+  const closeMissingPendingAgent = useEffectEvent(() => setSelectedPaneId(null));
+  useEffect(() => {
+    // A pending selection refers to a live, unsaved agent, not the older session
+    // URL beneath it. Once a successful dashboard refresh removes that agent,
+    // leave the detail view instead of waiting forever or showing the old chat.
+    if (
+      pendingPaneId &&
+      agentsQuery.isSuccess &&
+      !agents.some((agent) => agent.pane_id === pendingPaneId)
+    ) {
+      closeMissingPendingAgent();
+    }
+  }, [agents, agentsQuery.isSuccess, pendingPaneId]);
+
   function handleWorkspaceCreated(workspace: Workspace) {
     queryClient.setQueryData(
       ["agents"],
@@ -175,7 +189,7 @@ export function App({
           <button type="button" onClick={() => setSelectedPaneId(pendingPaneId, true)}>
             Open terminal
           </button>
-          <button type="button" onClick={() => setPendingPaneId(null)}>
+          <button type="button" onClick={() => setSelectedPaneId(null)}>
             Cancel
           </button>
         </div>
@@ -306,7 +320,7 @@ export function App({
             />
           ) : selectedTab ? (
             <ShellConsole tab={selectedTab} onBack={() => setSelectedPaneId(null)} />
-          ) : sessionId || navigation.paneId ? (
+          ) : !pendingPaneId && (sessionId || navigation.paneId) ? (
             <main className={appStyles["console-empty"]} id="main-content">
               <section
                 className={appStyles["conversation-state"]}

@@ -234,6 +234,77 @@ it("opens a fresh agent while another session is selected and can return to over
   expect(router.state.location.pathname).toBe("/");
 });
 
+it.each(["/", "/sessions/s1/chat"])(
+  "returns to overview when a pending fresh agent closes from %s",
+  async (path) => {
+    const starting = { ...other, pi_session_id: undefined };
+    const response = {
+      agents: [agent, starting],
+      tabs: [],
+      workspaces: [{ workspace_id: "w1", label: "Project" }],
+    };
+    client.setQueryData(["agents"], response);
+    vi.mocked(getAgents).mockResolvedValue(response);
+    await start(path);
+    await open(1);
+    expect(chat()).toHaveLength(1);
+
+    // The new unsaved agent disappears and the previous URL's conversation is inactive.
+    await act(async () => {
+      client.setQueryData(["session", "s1"], {
+        agent: null,
+        chat: { title: "Previous conversation" },
+      });
+      client.setQueryData(["agents"], { ...response, agents: [] });
+      await new Promise((resolve) => setTimeout(resolve, 10));
+    });
+    expect(JSON.stringify(renderer.toJSON())).not.toContain("Waiting for this agent");
+    expect(JSON.stringify(renderer.toJSON())).not.toContain("This conversation is inactive");
+    expect(router.state.location.pathname).toBe("/");
+    expect(chat()).toHaveLength(0);
+  },
+);
+
+it("keeps a pending fresh chat mounted when dashboard refresh fails", async () => {
+  const starting = { ...agent, pi_session_id: undefined };
+  const response = {
+    agents: [starting],
+    tabs: [],
+    workspaces: [{ workspace_id: "w1", label: "Project" }],
+  };
+  client.setQueryData(["agents"], response);
+  vi.mocked(getAgents).mockResolvedValue(response);
+  await start();
+  await open();
+  await act(async () =>
+    renderer.root
+      .findByProps({ "aria-label": "Draft" })
+      .props.onChange({ target: { value: "Keep my draft" } }),
+  );
+  vi.mocked(getAgents).mockRejectedValue(new Error("Disconnected"));
+  await act(async () => {
+    await client.refetchQueries({ queryKey: ["agents"] });
+  });
+  expect(chat()).toHaveLength(1);
+  expect(renderer.root.findByProps({ "aria-label": "Draft" }).props.value).toBe("Keep my draft");
+});
+
+it("keeps the saved conversation URL when its agent stops externally without showing a waiting banner", async () => {
+  await start();
+  await open();
+  await act(async () => {
+    client.setQueryData(["agents"], { agents: [], tabs: [], workspaces: [] });
+    client.setQueryData(["session", "s1"], {
+      agent: null,
+      chat: { title: "Saved conversation" },
+    });
+    await new Promise((resolve) => setTimeout(resolve, 10));
+  });
+  expect(router.state.location.pathname).toBe("/sessions/s1/chat");
+  expect(JSON.stringify(renderer.toJSON())).toContain("This conversation is inactive");
+  expect(JSON.stringify(renderer.toJSON())).not.toContain("Waiting for this agent");
+});
+
 it("gives live chats a session URL and restores them with Forward", async () => {
   await start();
   await open();
