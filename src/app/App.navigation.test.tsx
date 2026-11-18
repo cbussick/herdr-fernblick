@@ -8,6 +8,8 @@ import { createAppRouter } from "./router";
 import { getAgents, getSession, resumeChat } from "../shared/api/apiClient";
 import type { Agent } from "../shared/api/contracts";
 import { Button } from "../shared/ui";
+import { AgentList } from "../features/agents/AgentList";
+import { NewAgentDialog } from "../features/agents/NewAgentDialog";
 
 vi.mock("../shared/api/apiClient", async (original) => ({
   ...(await original<typeof import("../shared/api/apiClient")>()),
@@ -192,6 +194,18 @@ it("keeps a fresh unsaved conversation and draft when opening its whiteboard", a
   expect(router.state.location.pathname).toBe("/sessions/s1/whiteboard");
   expect(chat()[0].props["data-view"]).toBe("whiteboard");
   expect(renderer.root.findByProps({ "aria-label": "Draft" }).props.value).toBe("My first prompt");
+});
+
+it("opens a newly created agent without flashing the waiting snackbar before dashboard refresh", async () => {
+  // Hold the refresh so the create response is the only source of the new agent.
+  vi.mocked(getAgents).mockImplementation(() => new Promise(() => {}));
+  await start();
+  await act(async () => renderer.root.findByType(AgentList).props.onCreate());
+  const created = { ...other, pane_id: "w1:p3", pi_session_id: undefined };
+  await act(async () => renderer.root.findByType(NewAgentDialog).props.onCreated(created));
+  expect(JSON.stringify(renderer.toJSON())).not.toContain("Waiting for this agent");
+  expect(chat()).toHaveLength(1);
+  expect(client.getQueryData<{ agents: Agent[] }>(["agents"])?.agents).toContainEqual(created);
 });
 
 it("opens a fresh agent while another session is selected and can return to overview", async () => {

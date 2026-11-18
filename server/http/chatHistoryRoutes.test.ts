@@ -172,6 +172,36 @@ it("resolves the same Pi ID while inactive and after resuming", async () => {
   expect(await live.json()).toMatchObject({ agent, chat: { id, activePaneId: agent.pane_id } });
 });
 
+it("keeps a resumed conversation active while Pi is still registering its session", async () => {
+  const resumed = await resume();
+  expect(resumed.status).toBe(200);
+  // Herdr can report the pane before Pi publishes its session metadata.
+  active = [{ ...agent }];
+  const live = await fetch(`${base}/api/sessions/pi-session`);
+  expect(await live.json()).toMatchObject({
+    agent,
+    chat: { id, activePaneId: agent.pane_id },
+  });
+
+  // Explicit session metadata must still win if the pane is reused.
+  active = [
+    {
+      ...agent,
+      agent_session: { agent: "pi", kind: "id", value: "another-session", source: "pi" },
+    },
+  ];
+  expect(await (await fetch(`${base}/api/sessions/pi-session`)).json()).toMatchObject({
+    agent: null,
+    chat: { activePaneId: null },
+  });
+
+  active = [];
+  expect(await (await fetch(`${base}/api/sessions/pi-session`)).json()).toMatchObject({
+    agent: null,
+    chat: { activePaneId: null },
+  });
+});
+
 it("resolves a live session file outside the history directory", async () => {
   const path = join(directory, "not-indexed", "deeper", "active.jsonl");
   await import("node:fs/promises").then(({ mkdir }) =>

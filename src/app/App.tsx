@@ -410,6 +410,20 @@ export function App({
           onClose={() => setCreateDialog(null)}
           onWorkspaceCreated={handleWorkspaceCreated}
           onCreated={(agent) => {
+            queryClient.setQueryData(
+              ["agents"],
+              (current: Awaited<ReturnType<typeof getAgents>> | undefined) =>
+                current
+                  ? {
+                      ...current,
+                      agents: [
+                        ...current.agents.filter((item) => item.pane_id !== agent.pane_id),
+                        agent,
+                      ],
+                      tabs: current.tabs.filter((tab) => tab.tab_id !== agent.tab_id),
+                    }
+                  : current,
+            );
             openAgent(agent);
             setCreateDialog(null);
             void agentsQuery.refetch();
