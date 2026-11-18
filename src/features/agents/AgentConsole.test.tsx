@@ -6,6 +6,7 @@ import { randomUUID } from "node:crypto";
 import type { Agent } from "../../shared/api/contracts";
 import type { Snapshot } from "../../../packages/pi-live-chat/protocol";
 import { AgentConsole } from "./AgentConsole";
+import { MessageBranchDialog } from "./MessageBranchDialog";
 import { ConversationTreeDialog } from "./ConversationTreeDialog";
 import { Whiteboard } from "../whiteboard/Whiteboard";
 import type { WhiteboardConversation } from "../whiteboard/ConversationDock";
@@ -13,6 +14,7 @@ const mocks = vi.hoisted(() => ({
   live: {} as { snapshot?: Snapshot; error?: string },
   command: vi.fn(),
   compact: vi.fn(),
+  navigate: vi.fn(),
   boardPrompt: vi.fn(),
   upload: vi.fn(),
   skills: vi.fn(),
@@ -30,6 +32,7 @@ vi.mock("../whiteboard/Whiteboard", () => ({ Whiteboard: () => null }));
 vi.mock("../../shared/api/apiClient", () => ({
   chatCommand: mocks.command,
   compactAgentConversation: mocks.compact,
+  navigateAgentTree: mocks.navigate,
   uploadImage: mocks.upload,
   getAgentSkills: mocks.skills,
   getAgentOutput: mocks.output,
@@ -96,6 +99,7 @@ beforeEach(async () => {
     outcome: "invoked",
   }));
   mocks.compact.mockReset().mockResolvedValue({ type: "compacted" });
+  mocks.navigate.mockReset();
   mocks.boardPrompt.mockReset().mockResolvedValue({ type: "ack", outcome: "invoked" });
   mocks.upload.mockReset().mockResolvedValue({ id: `${randomUUID()}.png` });
   mocks.skills.mockReset().mockResolvedValue({
@@ -145,6 +149,68 @@ it.each([
     expect(textarea.props.rows).toBe(1);
     expect(renderer.root.findByType("label").children.join("")).toBe(`Message ${title}`);
   }
+});
+
+it("confirms before branching and restores the prompt after an epoch-changing snapshot", async () => {
+  const original = mocks.live.snapshot!;
+  mocks.live.snapshot = {
+    ...original,
+    messages: [{ id: "saved", role: "user", text: "Original prompt" }],
+  };
+  await act(async () => renderer.update(render()));
+  await act(async () =>
+    renderer.root.findByProps({ "aria-label": "Jump back here" }).props.onClick(),
+  );
+  expect(mocks.navigate).not.toHaveBeenCalled();
+  await act(async () => renderer.root.findByType(MessageBranchDialog).props.onClose());
+  expect(mocks.navigate).not.toHaveBeenCalled();
+  await act(async () =>
+    renderer.root.findByProps({ "aria-label": "Jump back here" }).props.onClick(),
+  );
+  let finish!: (value: unknown) => void;
+  mocks.navigate.mockImplementation(
+    () =>
+      new Promise((resolve) => {
+        finish = resolve;
+      }),
+  );
+  await act(async () => renderer.root.findByType(MessageBranchDialog).props.onConfirm());
+  expect(mocks.navigate).toHaveBeenCalledWith(
+    "w1:p1",
+    {
+      runtime: original.identity.runtime,
+      epoch: original.epoch,
+      sessionId: original.identity.sessionId,
+    },
+    "saved",
+  );
+  const epoch = randomUUID();
+  mocks.live.snapshot = { ...original, epoch, messages: [] };
+  await act(async () => renderer.update(render()));
+  expect(renderer.root.findAllByType(MessageBranchDialog)).toHaveLength(0);
+  await act(async () =>
+    finish({
+      target: { runtime: original.identity.runtime, epoch, sessionId: original.identity.sessionId },
+      prompt: { text: "Original prompt", attachments: [] },
+    }),
+  );
+  await flush();
+  expect(renderer.root.findByType("textarea").props.value).toBe("Original prompt");
+});
+
+it("disables branching while busy and never offers live message IDs", async () => {
+  mocks.live.snapshot = {
+    ...mocks.live.snapshot!,
+    busy: true,
+    messages: [
+      { id: "saved", role: "assistant", text: "Saved reply" },
+      { id: "live:assistant:1", role: "assistant", text: "Streaming reply" },
+    ],
+  };
+  await act(async () => renderer.update(render()));
+  const buttons = renderer.root.findAllByProps({ "aria-label": "Jump back here" });
+  expect(buttons).toHaveLength(1);
+  expect(buttons[0].props.disabled).toBe(true);
 });
 
 // Guards the workaround, not Android’s native keyboard/popup behavior.

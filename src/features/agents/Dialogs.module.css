@@ -105,6 +105,20 @@
   border-color: var(--color-danger);
 }
 
+.confirm-dialog__actions .confirm-dialog__primary {
+  color: var(--color-on-accent);
+  background: var(--color-accent);
+  border-color: var(--color-accent);
+}
+
+.confirm-dialog .branch-preview {
+  max-height: 7rem;
+  overflow: auto;
+  padding: var(--space-3);
+  border-left: 3px solid var(--color-accent);
+  background: var(--color-surface-subtle);
+}
+
 .edit-tab-dialog label {
   display: grid;
   gap: var(--space-2);

@@ -307,6 +307,11 @@
   outline-offset: 2px;
 }
 
+.chat-message__copy:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
 .chat-message__copy[data-copy-status="copied"] {
   color: var(--color-success);
 }

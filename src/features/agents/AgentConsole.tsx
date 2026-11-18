@@ -16,6 +16,7 @@ import {
   matchesTarget,
   targetOf,
   type Target,
+  type ChatMessage,
 } from "../../../packages/pi-live-chat/protocol";
 import {
   getAgentLabel,
@@ -23,7 +24,13 @@ import {
   getAgentTarget,
   getStatusLabel,
 } from "./agentPresentation";
-import { getAgentOutput, sendAgentKey, chatCommand, uploadImage } from "../../shared/api/apiClient";
+import {
+  getAgentOutput,
+  sendAgentKey,
+  chatCommand,
+  uploadImage,
+  navigateAgentTree,
+} from "../../shared/api/apiClient";
 import { useLiveChat } from "./useLiveChat";
 import { ChatTranscript } from "./ChatTranscript";
 import { ImageLightbox } from "./ImageLightbox";
@@ -35,6 +42,7 @@ import { AnnotationPopover, AnnotationSelectionAction, AnnotationTray } from "./
 import { annotationPrompt } from "./annotations";
 import { CloseTabButton } from "./CloseTabButton";
 import { ConversationTreeDialog } from "./ConversationTreeDialog";
+import { MessageBranchDialog } from "./MessageBranchDialog";
 import { SkillComposer } from "./SkillComposer";
 import { ConversationCompaction } from "./ConversationCompaction";
 import { useConversationCompaction } from "./useConversationCompaction";
@@ -132,6 +140,9 @@ function PiAgentConsole({
   );
   const [attachmentError, setAttachmentError] = useState("");
   const [treeTarget, setTreeTarget] = useState<Target | null>(null);
+  const [branchPoint, setBranchPoint] = useState<{ identity: Target; message: ChatMessage } | null>(
+    null,
+  );
   const [boardTarget, setBoardTarget] = useState<Target | null>(null);
   const [boardLink, setBoardLink] = useState(() =>
     typeof window === "undefined" ? null : readWhiteboardLink(window.location?.search ?? ""),
@@ -205,6 +216,34 @@ function PiAgentConsole({
       error: live.error,
     };
   });
+  const branch = useMutation({
+    mutationFn: (point: { identity: Target; message: ChatMessage }) =>
+      navigateAgentTree(agent.pane_id, point.identity, point.message.id),
+    retry: false,
+    onSuccess: (result) => {
+      // Navigation can publish a new epoch before its HTTP response. Keep the
+      // mutation here, not in the dialog that the snapshot may already close.
+      const latest = liveContext.current.lastSnapshot;
+      if (
+        !latest ||
+        latest.identity.runtime !== result.target.runtime ||
+        latest.identity.sessionId !== result.target.sessionId
+      )
+        return;
+      if (result.prompt) {
+        clearAttachments();
+        setPrompt(result.prompt.text);
+        setAttachments(
+          result.prompt.attachments.map((id) => ({ id, previewUrl: `/api/uploads/${id}` })),
+        );
+        send.reset();
+      }
+      setBranchPoint(null);
+    },
+  });
+  if (branchPoint && (!snapshot || !matchesTarget(snapshot, branchPoint.identity))) {
+    setBranchPoint(null);
+  }
   const initializing = view === "chat" && !snapshot && !live.error;
   const starting = initializing && !agent.agent_session;
   // Discard a captured tree target before rendering commands for a replacement session.
@@ -291,7 +330,12 @@ function PiAgentConsole({
   const resetSend = send.reset;
   const annotations = useChatAnnotations(
     snapshot,
-    view === "chat" && !treeTarget && !boardTarget && !chatImageOpen && attachmentPreviewIndex < 0,
+    view === "chat" &&
+      !treeTarget &&
+      !branchPoint &&
+      !boardTarget &&
+      !chatImageOpen &&
+      attachmentPreviewIndex < 0,
     outputRef,
     send.isPending,
   );
@@ -340,7 +384,9 @@ function PiAgentConsole({
     !snapshot.busy &&
     !snapshot.sendPending &&
     !send.isPending &&
-    !compact.pending,
+    !compact.pending &&
+    !branch.isPending &&
+    !branchPoint,
   );
   const canSend =
     canForward &&
@@ -559,6 +605,15 @@ function PiAgentConsole({
                 : undefined
             }
             onImageOpenChange={setChatImageOpen}
+            onBranch={
+              snapshot.version === 2
+                ? (message) => {
+                    branch.reset();
+                    setBranchPoint({ identity: targetOf(snapshot), message });
+                  }
+                : undefined
+            }
+            branchDisabled={!canForward || Boolean(annotations.editor) || stop.isPending}
             before={
               <>
                 {live.error ? <StateNotice kind="unavailable">{live.error}</StateNotice> : null}
@@ -858,6 +913,26 @@ function PiAgentConsole({
           index={attachmentPreviewIndex}
           onIndexChange={(index) => setAttachmentPreview(attachments[index].previewUrl)}
           onClose={() => setAttachmentPreview(null)}
+        />
+      ) : null}
+      {branchPoint ? (
+        <MessageBranchDialog
+          message={branchPoint.message}
+          pending={branch.isPending}
+          disabled={
+            Boolean(live.error) ||
+            !snapshot ||
+            snapshot.busy ||
+            snapshot.sendPending ||
+            compact.pending ||
+            composerSending
+          }
+          error={branch.isError ? branch.error.message : undefined}
+          replacesDraft={Boolean(prompt || attachments.length)}
+          onClose={() => setBranchPoint(null)}
+          onConfirm={() => {
+            if (!branch.isPending) branch.mutate(branchPoint);
+          }}
         />
       ) : null}
       {treeTarget ? (

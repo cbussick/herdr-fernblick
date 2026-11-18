@@ -8,7 +8,7 @@ import {
   type RefObject,
 } from "react";
 import type { ChatMessage } from "../../../packages/pi-live-chat/protocol";
-import { ImageIcon, LightbulbIcon } from "../../shared/ui/Icons";
+import { BranchIcon, ImageIcon, LightbulbIcon } from "../../shared/ui/Icons";
 import { StateIcon, StateNotice } from "../../shared/ui/StateFeedback";
 import { ChatMessageText } from "./ChatMessageText";
 import { ChatMessageCopyButton } from "./ChatMessageCopyButton";
@@ -33,6 +33,8 @@ export interface ChatTranscriptProps {
   /** Increment for an explicit local send, never for streaming or snapshot updates. */
   followRequest?: number;
   onImageOpenChange?: (open: boolean) => void;
+  onBranch?: (message: ChatMessage) => void;
+  branchDisabled?: boolean;
 }
 function ChatAttachment({ url, onOpen }: { url: string; onOpen: () => void }) {
   const [unavailable, setUnavailable] = useState(false);
@@ -95,6 +97,8 @@ export function ChatTranscript({
   interacting = false,
   followRequest = 0,
   onImageOpenChange,
+  onBranch,
+  branchDisabled = false,
 }: ChatTranscriptProps) {
   const output = useRef<HTMLDivElement>(null);
   const following = useRef(true);
@@ -269,6 +273,19 @@ export function ChatTranscript({
                   </span>
                   <ChatTimestamp timestamp={message.timestamp} />
                   {message.text ? <ChatMessageCopyButton text={message.text} /> : null}
+                  {onBranch && !message.id.startsWith("live:") ? (
+                    <button
+                      type="button"
+                      className={styles["chat-message__copy"]}
+                      data-message-control
+                      aria-label="Jump back here"
+                      title="Jump back here"
+                      disabled={branchDisabled}
+                      onClick={() => onBranch(message)}
+                    >
+                      <BranchIcon />
+                    </button>
+                  ) : null}
                 </header>
                 {message.text ? (
                   <div className={styles["chat-message__bubble"]} data-ui="chat-message-bubble">
