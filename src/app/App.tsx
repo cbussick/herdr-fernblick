@@ -16,7 +16,7 @@ import { StateIcon } from "../shared/ui/StateFeedback";
 import { Button } from "../shared/ui";
 import { useSinglePaneLayout } from "./useSinglePaneLayout";
 import { useReadAgentStatuses } from "./useReadAgentStatuses";
-import type { usePaneNavigation } from "./usePaneNavigation";
+import type { ConsoleView, usePaneNavigation } from "./usePaneNavigation";
 import { SettingsDialog } from "./SettingsDialog";
 import { useVisualViewport } from "./useVisualViewport";
 import { useHeaderDiagnostics } from "./useHeaderDiagnostics";
@@ -41,6 +41,7 @@ export function App({
   const { sessionId, view, selectPane: navigateToPane } = navigation;
   const location = navigation.location;
   const [pendingPaneId, setPendingPaneId] = useState<string | null>(null);
+  const [pendingView, setPendingView] = useState<ConsoleView>("chat");
   const promotingPaneId = useRef<string | null>(null);
   function setSelectedPaneId(paneId: string | null, terminal = false) {
     setPendingPaneId(null);
@@ -105,6 +106,7 @@ export function App({
       // Fresh Pi sessions are only persisted after the conversation starts.
       // Mount chat now; promote to a session URL once polling finds its saved ID.
       promotingPaneId.current = null;
+      setPendingView("chat");
       setPendingPaneId(agent.pane_id);
       return;
     }
@@ -118,7 +120,11 @@ export function App({
           chat: current?.chat ?? null,
         }),
       );
-      navigation.selectSession(agent.pi_session_id, "chat", location.pathname !== "/");
+      navigation.selectSession(
+        agent.pi_session_id,
+        pendingPaneId === agent.pane_id ? pendingView : "chat",
+        location.pathname !== "/",
+      );
     } else {
       setSelectedPaneId(agent.pane_id, agent.agent !== "pi");
     }
@@ -132,6 +138,20 @@ export function App({
       openPendingAgent(ready);
     }
   }, [agents, pendingPaneId]);
+
+  const closeMissingPendingAgent = useEffectEvent(() => setSelectedPaneId(null));
+  useEffect(() => {
+    // A pending selection refers to a live, unsaved agent, not the older session
+    // URL beneath it. Once a successful dashboard refresh removes that agent,
+    // leave the detail view instead of waiting forever or showing the old chat.
+    if (
+      pendingPaneId &&
+      agentsQuery.isSuccess &&
+      !agents.some((agent) => agent.pane_id === pendingPaneId)
+    ) {
+      closeMissingPendingAgent();
+    }
+  }, [agents, agentsQuery.isSuccess, pendingPaneId]);
 
   function handleWorkspaceCreated(workspace: Workspace) {
     queryClient.setQueryData(
@@ -169,7 +189,7 @@ export function App({
           <button type="button" onClick={() => setSelectedPaneId(pendingPaneId, true)}>
             Open terminal
           </button>
-          <button type="button" onClick={() => setPendingPaneId(null)}>
+          <button type="button" onClick={() => setSelectedPaneId(null)}>
             Cancel
           </button>
         </div>
@@ -267,7 +287,7 @@ export function App({
               key={selectedAgent.pane_id}
               agent={selectedAgent}
               expectedSessionId={pendingPaneId ? undefined : (sessionId ?? undefined)}
-              routeView={routeNavigation ? (pendingPaneId ? "chat" : view) : undefined}
+              routeView={routeNavigation ? (pendingPaneId ? pendingView : view) : undefined}
               onSession={
                 routeNavigation
                   ? (id) => {
@@ -288,7 +308,10 @@ export function App({
               onViewChange={
                 routeNavigation
                   ? (next, id) => {
-                      if (id) navigation.selectSession(id, next);
+                      // An in-memory Pi ID is not resolvable by session routes yet.
+                      // Keep the live console (and its draft) mounted until promotion.
+                      if (pendingPaneId) setPendingView(next);
+                      else if (id) navigation.selectSession(id, next);
                       else setSelectedPaneId(selectedAgent.pane_id, next === "terminal");
                     }
                   : undefined
@@ -297,7 +320,7 @@ export function App({
             />
           ) : selectedTab ? (
             <ShellConsole tab={selectedTab} onBack={() => setSelectedPaneId(null)} />
-          ) : sessionId || navigation.paneId ? (
+          ) : !pendingPaneId && (sessionId || navigation.paneId) ? (
             <main className={appStyles["console-empty"]} id="main-content">
               <section
                 className={appStyles["conversation-state"]}
