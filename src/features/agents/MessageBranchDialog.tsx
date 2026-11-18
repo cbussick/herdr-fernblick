@@ -52,7 +52,7 @@ export function MessageBranchDialog({
         }}
       >
         <h2 id="message-branch-heading">Jump back to this point?</h2>
-        <p className={styles["branch-preview"]}>
+        <p>
           {message.text.slice(0, 240) || "Image attachment"}
           {message.text.length > 240 ? "…" : ""}
         </p>
