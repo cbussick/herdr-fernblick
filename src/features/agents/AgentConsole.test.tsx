@@ -1690,6 +1690,23 @@ it("shows startup and failure states while keeping send disabled", async () => {
   expect(renderer.root.findByProps({ "aria-label": "Send message" }).props.disabled).toBe(true);
 });
 
+// Known unfixed routed-board identity bug; see docs/session-navigation-audit.md.
+it.fails("audit: an unsaved routed board does not silently follow a replacement conversation", async () => {
+  const routed = () => (
+    <QueryClientProvider client={client}>
+      <AgentConsole agent={agent} onBack={() => {}} routeView="whiteboard" onViewChange={vi.fn()} />
+    </QueryClientProvider>
+  );
+  await act(async () => renderer.update(routed()));
+  expect(renderer.root.findAllByType(Whiteboard)).toHaveLength(1);
+  const initial = mocks.live.snapshot!;
+  mocks.live = {
+    snapshot: { ...initial, identity: { ...initial.identity, sessionId: "replacement" } },
+  };
+  await act(async () => renderer.update(routed()));
+  expect(renderer.root.findAllByType(Whiteboard)).toHaveLength(0);
+});
+
 it("uses routed board views without losing the shared draft", async () => {
   const onViewChange = vi.fn();
   const routed = (routeView: "chat" | "whiteboard") => (

@@ -5,17 +5,30 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { createMemoryHistory, RouterProvider } from "@tanstack/react-router";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
 import { createAppRouter } from "./router";
-import { getAgents, getSession, resumeChat } from "../shared/api/apiClient";
+import {
+  closeTab,
+  createAgent,
+  exitAgentSession,
+  getAgents,
+  getSession,
+  resumeChat,
+} from "../shared/api/apiClient";
 import type { Agent } from "../shared/api/contracts";
 import { Button } from "../shared/ui";
 import { AgentList } from "../features/agents/AgentList";
 import { NewAgentDialog } from "../features/agents/NewAgentDialog";
+import { CloseTabButton } from "../features/agents/CloseTabButton";
+import { NewTabDialog } from "../features/agents/NewTabDialog";
+import { ResumeChatDialog } from "../features/agents/ResumeChatDialog";
 
 vi.mock("../shared/api/apiClient", async (original) => ({
   ...(await original<typeof import("../shared/api/apiClient")>()),
   getAgents: vi.fn(),
   getSession: vi.fn(),
   resumeChat: vi.fn(),
+  closeTab: vi.fn(),
+  createAgent: vi.fn(),
+  exitAgentSession: vi.fn(),
   markAgentRead: vi.fn(),
 }));
 vi.mock("./useSinglePaneLayout", () => ({ useSinglePaneLayout: () => true }));
@@ -30,7 +43,7 @@ vi.mock("../features/agents/AgentConsole", () => ({
     agent: Agent;
     onBack: () => void;
     onSession: (id: string) => void;
-    onViewChange: (view: "chat" | "whiteboard", id: string) => void;
+    onViewChange: (view: "chat" | "terminal" | "whiteboard", id?: string) => void;
     routeView: string;
   }) => {
     const [draft, setDraft] = useState("");
@@ -38,11 +51,21 @@ vi.mock("../features/agents/AgentConsole", () => ({
     const reportSession = useEffectEvent(() => onSession(id));
     useEffect(() => reportSession(), [id]);
     return (
-      <main data-testid="chat" data-view={routeView}>
+      <main data-testid="chat" data-pane={agent.pane_id} data-view={routeView}>
         <input aria-label="Draft" value={draft} onChange={(e) => setDraft(e.target.value)} />
         <button onClick={onBack}>Back to overview</button>
         <button onClick={() => onViewChange("whiteboard", id)}>Open board</button>
         <button onClick={() => onViewChange("chat", id)}>Close board</button>
+        <button onClick={() => onViewChange("terminal", id)}>Terminal</button>
+        <button onClick={() => onViewChange("terminal")}>Terminal before live snapshot</button>
+        <CloseTabButton
+          agentRunning
+          label={agent.pane_id}
+          tabId={agent.tab_id}
+          agentTarget={agent.pane_id}
+          agentStatus="idle"
+          onClosed={onBack}
+        />
       </main>
     );
   },
@@ -303,6 +326,288 @@ it("keeps the saved conversation URL when its agent stops externally without sho
   expect(router.state.location.pathname).toBe("/sessions/s1/chat");
   expect(JSON.stringify(renderer.toJSON())).toContain("This conversation is inactive");
   expect(JSON.stringify(renderer.toJSON())).not.toContain("Waiting for this agent");
+});
+
+// Audit-only: expected failures are confirmed open bugs, not fixed behavior.
+// See docs/session-navigation-audit.md; convert each it.fails to it when fixed.
+it.fails("audit: selecting the underlying saved session clears the pending fresh agent", async () => {
+  const response = {
+    agents: [agent, { ...other, pi_session_id: undefined }],
+    tabs: [],
+    workspaces: [{ workspace_id: "w1", label: "Project" }],
+  };
+  client.setQueryData(["agents"], response);
+  vi.mocked(getAgents).mockResolvedValue(response);
+  await start("/sessions/s1/chat");
+  await open(1);
+  expect(chat()[0].props["data-pane"]).toBe("w1:p2");
+  await open(0);
+  expect(router.state.location.pathname).toBe("/sessions/s1/chat");
+  expect(chat()[0].props["data-pane"]).toBe("w1:p1");
+});
+
+it.fails("audit: a direct pane link does not canonicalize an unsaved live ID", async () => {
+  const starting = { ...agent, pi_session_id: undefined };
+  const response = { agents: [starting], tabs: [], workspaces: [] };
+  client.setQueryData(["agents"], response);
+  vi.mocked(getAgents).mockResolvedValue(response);
+  vi.mocked(getSession).mockResolvedValue({ agent: null, chat: null });
+  await start("/panes/w1%3Ap1/chat");
+  await act(async () => {
+    await new Promise((resolve) => setTimeout(resolve, 10));
+  });
+  expect(chat()).toHaveLength(1);
+  expect(router.state.location.pathname).toBe("/panes/w1%3Ap1/chat");
+  expect(getSession).not.toHaveBeenCalled();
+});
+
+it.fails("audit: switching modes before a live snapshot keeps the session URL", async () => {
+  await start("/sessions/s1/chat");
+  await act(async () => {
+    await new Promise((resolve) => setTimeout(resolve, 10));
+  });
+  await click("Terminal before live snapshot");
+  expect(router.state.location.pathname).toBe("/sessions/s1/terminal");
+});
+
+it.fails("audit: Back to another mode of the underlying session clears a pending selection", async () => {
+  const response = {
+    agents: [agent, { ...other, pi_session_id: undefined }],
+    tabs: [],
+    workspaces: [{ workspace_id: "w1", label: "Project" }],
+  };
+  client.setQueryData(["agents"], response);
+  vi.mocked(getAgents).mockResolvedValue(response);
+  await start("/sessions/s1/chat");
+  await act(async () => {
+    await new Promise((resolve) => setTimeout(resolve, 10));
+  });
+  await click("Terminal");
+  await open(1);
+  expect(chat()[0].props["data-pane"]).toBe("w1:p2");
+  await act(async () => router.history.back());
+  expect(router.state.location.pathname).toBe("/sessions/s1/chat");
+  expect(chat()[0].props["data-pane"]).toBe("w1:p1");
+});
+
+it.fails("audit: whiteboard promotion followed by close preserves the new session", async () => {
+  const response = {
+    agents: [agent, { ...other, pi_session_id: undefined }],
+    tabs: [],
+    workspaces: [{ workspace_id: "w1", label: "Project" }],
+  };
+  client.setQueryData(["agents"], response);
+  vi.mocked(getAgents).mockResolvedValue(response);
+  await start("/sessions/s1/chat");
+  await open(1);
+  await click("Open board");
+  await act(async () => {
+    client.setQueryData(["agents"], { ...response, agents: [agent, other] });
+    await new Promise((resolve) => setTimeout(resolve, 10));
+  });
+  expect(router.state.location.pathname).toBe("/sessions/s2/whiteboard");
+  await click("Close board");
+  expect(router.state.location.pathname).toBe("/sessions/s2/chat");
+});
+
+it.fails("audit: a late tab-close response cannot dismiss another selected agent", async () => {
+  let finish!: () => void;
+  vi.mocked(closeTab).mockImplementation(
+    () =>
+      new Promise<void>((resolve) => {
+        finish = resolve;
+      }),
+  );
+  await start();
+  await open();
+  await click("Close this tab");
+  await act(async () => {
+    renderer.root
+      .findByType(CloseTabButton)
+      .findByType("form")
+      .props.onSubmit({ preventDefault() {} });
+  });
+  expect(closeTab).toHaveBeenCalledWith("w1:t1");
+  await open(1);
+  expect(router.state.location.pathname).toBe("/sessions/s2/chat");
+  await act(async () => {
+    finish();
+    await new Promise((resolve) => setTimeout(resolve, 10));
+  });
+  expect(router.state.location.pathname).toBe("/sessions/s2/chat");
+  expect(chat()).toHaveLength(1);
+});
+
+it.fails("audit: a dismissed agent creation cannot steal navigation when it completes", async () => {
+  let finish!: (agent: Agent) => void;
+  vi.mocked(createAgent).mockImplementation(
+    () =>
+      new Promise<Agent>((resolve) => {
+        finish = resolve;
+      }),
+  );
+  await start();
+  await act(async () => renderer.root.findByType(AgentList).props.onCreate());
+  await act(async () => {
+    renderer.root
+      .findByType(NewAgentDialog)
+      .findAllByType("form")[0]
+      .props.onSubmit({ preventDefault() {} });
+  });
+  expect(createAgent).toHaveBeenCalled();
+  await act(async () => renderer.root.findByType(NewAgentDialog).props.onClose());
+  await open();
+  await act(async () => {
+    finish(other);
+    await new Promise((resolve) => setTimeout(resolve, 10));
+  });
+  expect(router.state.location.pathname).toBe("/sessions/s1/chat");
+});
+
+it.fails("audit: creating a shell uses its terminal URL immediately", async () => {
+  vi.mocked(getAgents).mockImplementation(() => new Promise(() => {}));
+  await start();
+  await act(async () => renderer.root.findByType(AgentList).props.onCreateTab());
+  await act(async () =>
+    renderer.root.findByType(NewTabDialog).props.onCreated({
+      label: "New shell",
+      pane_id: "w1:p3",
+      tab_id: "w1:t3",
+      workspace_id: "w1",
+      revision: 1,
+    }),
+  );
+  expect(renderer.root.findAllByProps({ "data-testid": "shell" })).toHaveLength(1);
+  expect(router.state.location.pathname).toBe("/panes/w1%3Ap3/terminal");
+});
+
+it("audit: a late direct-link resume cannot overwrite a different session", async () => {
+  client.setQueryData(["session", "s1"], {
+    agent: null,
+    chat: {
+      id: "a".repeat(64),
+      sessionId: "s1",
+      title: "Saved A",
+      cwd: "/fixture",
+      preview: "",
+      updatedAt: new Date().toISOString(),
+      activePaneId: null,
+    },
+  });
+  let finish!: (agent: Agent) => void;
+  vi.mocked(resumeChat).mockImplementation(
+    () =>
+      new Promise<Agent>((resolve) => {
+        finish = resolve;
+      }),
+  );
+  await start("/sessions/s1/chat");
+  await click("Resume conversation");
+  await act(async () => {
+    void renderer.root.findByType(ResumeChatDialog).props.onConfirm("w1");
+  });
+  await open(1);
+  await act(async () => {
+    finish(agent);
+    await new Promise((resolve) => setTimeout(resolve, 10));
+  });
+  expect(router.state.location.pathname).toBe("/sessions/s2/chat");
+  expect(chat()[0].props["data-pane"]).toBe("w1:p2");
+  expect(client.getQueryData<{ agent: Agent }>(["session", "s2"])?.agent.pane_id).toBe("w1:p2");
+});
+
+it.fails("audit: a same-session restart preserves the draft across a temporary inactive poll", async () => {
+  await start();
+  await open();
+  await act(async () =>
+    renderer.root
+      .findByProps({ "aria-label": "Draft" })
+      .props.onChange({ target: { value: "Keep through restart" } }),
+  );
+  await act(async () => {
+    client.setQueryData(["session", "s1"], { agent: null, chat: { title: "Restarting session" } });
+    await new Promise((resolve) => setTimeout(resolve, 10));
+  });
+  expect(JSON.stringify(renderer.toJSON())).toContain("This conversation is inactive");
+  await act(async () => {
+    client.setQueryData(["session", "s1"], { agent, chat: null });
+    await new Promise((resolve) => setTimeout(resolve, 10));
+  });
+  expect(router.state.location.pathname).toBe("/sessions/s1/chat");
+  expect(renderer.root.findByProps({ "aria-label": "Draft" }).props.value).toBe(
+    "Keep through restart",
+  );
+});
+
+it("audit: exiting a saved session intentionally keeps its URL and offers resume", async () => {
+  vi.mocked(exitAgentSession).mockResolvedValue(undefined);
+  await start();
+  await open();
+  await click("Exit agent session");
+  await act(async () => {
+    renderer.root
+      .findByType(CloseTabButton)
+      .findByType("form")
+      .props.onSubmit({ preventDefault() {} });
+    await new Promise((resolve) => setTimeout(resolve, 10));
+  });
+  expect(exitAgentSession).toHaveBeenCalledWith("w1:p1");
+  expect(router.state.location.pathname).toBe("/sessions/s1/chat");
+  await act(async () => {
+    client.setQueryData(["session", "s1"], { agent: null, chat: { title: "Saved A" } });
+    await new Promise((resolve) => setTimeout(resolve, 10));
+  });
+  expect(router.state.location.pathname).toBe("/sessions/s1/chat");
+  expect(JSON.stringify(renderer.toJSON())).toContain("This conversation is inactive");
+  expect(JSON.stringify(renderer.toJSON())).not.toContain("Waiting for this agent");
+});
+
+it("audit: closing the current tab returns to overview", async () => {
+  vi.mocked(closeTab).mockResolvedValue(undefined);
+  await start();
+  await open();
+  await click("Close this tab");
+  await act(async () => {
+    renderer.root
+      .findByType(CloseTabButton)
+      .findByType("form")
+      .props.onSubmit({ preventDefault() {} });
+    await new Promise((resolve) => setTimeout(resolve, 10));
+  });
+  expect(router.state.location.pathname).toBe("/");
+});
+
+it("audit: a late session lookup cannot select a previously viewed agent", async () => {
+  let finish!: (value: Awaited<ReturnType<typeof getSession>>) => void;
+  vi.mocked(getSession).mockImplementation((id) =>
+    id === "s1"
+      ? new Promise((resolve) => {
+          finish = resolve;
+        })
+      : Promise.resolve({ agent: other, chat: null }),
+  );
+  await start("/sessions/s1/chat");
+  await open(1);
+  await act(async () => {
+    finish({ agent, chat: null });
+    await new Promise((resolve) => setTimeout(resolve, 10));
+  });
+  expect(router.state.location.pathname).toBe("/sessions/s2/chat");
+  expect(chat()[0].props["data-pane"]).toBe("w1:p2");
+});
+
+it("audit: switching modes on the same pane preserves the draft", async () => {
+  await start();
+  await open();
+  await act(async () =>
+    renderer.root
+      .findByProps({ "aria-label": "Draft" })
+      .props.onChange({ target: { value: "Audit draft" } }),
+  );
+  for (const action of ["Terminal", "Close board", "Open board", "Close board"]) {
+    await click(action);
+    expect(renderer.root.findByProps({ "aria-label": "Draft" }).props.value).toBe("Audit draft");
+  }
 });
 
 it("gives live chats a session URL and restores them with Forward", async () => {
