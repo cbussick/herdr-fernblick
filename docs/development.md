@@ -10,6 +10,23 @@ Modules are grouped by responsibility: application layout, overview, console, di
 
 Manrope is locally bundled under the SIL OFL 1.1. Preserve the full notice in both `src/styles/fonts/Manrope-LICENSE.txt` and the distributed `public/licenses/Manrope-OFL.txt`; see [font provenance](../src/styles/fonts/README.md).
 
+## Type-aware linting
+
+`npm run lint` runs Oxlint with the `tsrs` type-aware backend, including error-level
+`typescript/no-floating-promises` and `typescript/no-misused-promises`. The existing
+React, TypeScript and Oxc plugins and default warnings remain enabled.
+
+React event handlers and Node request listeners do not await returned promises.
+Dispatch asynchronous work explicitly from a synchronous callback, and handle failures
+inside that work. `void` documents deliberate fire-and-forget work; it does not catch
+rejections. Do not use it to hide missing error handling.
+
+Keep the existing `npm run typecheck` and build-time `tsc` checks. Oxlint's optional
+`--type-check` only checks linted files, not the whole TypeScript project. The app,
+server, server/extension tests and Vite configs are compatible with `tsrs`; no TS
+config migration is required. Files outside those projects can use inferred programs,
+so lint coverage does not imply full project-level type-check coverage.
+
 ## Worktree runtime
 
 Each worktree has its own dependencies, Vitest invocation and ignored build outputs. Run `npm ci` and `npm run check` from inside each worktree. Avoid simultaneous test commands in the **same** worktree.

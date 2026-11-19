@@ -36,49 +36,51 @@ beforeAll(async () => {
       },
     },
   });
-  server = createServer(async (request, response) => {
-    const path = new URL(request.url!, "http://localhost").pathname;
-    requests.push(path);
-    if (path.endsWith(".woff2")) {
-      fontPaths.push(path);
-      if (denyFonts) {
-        response.writeHead(404).end();
+  server = createServer((request, response) => {
+    void (async () => {
+      const path = new URL(request.url!, "http://localhost").pathname;
+      requests.push(path);
+      if (path.endsWith(".woff2")) {
+        fontPaths.push(path);
+        if (denyFonts) {
+          response.writeHead(404).end();
+          return;
+        }
+      }
+      if (path === "/flow-board-render.html" && redirectEntry) {
+        response.writeHead(302, { Location: redirectEntry }).end();
         return;
       }
-    }
-    if (path === "/flow-board-render.html" && redirectEntry) {
-      response.writeHead(302, { Location: redirectEntry }).end();
-      return;
-    }
-    if (path === "/flow-board-render.html" && hostileScript) {
-      response.writeHead(200, { "Content-Type": "text/html" });
-      response.end('<script type="module" src="/assets/probe.js"></script>');
-      return;
-    }
-    if (path === "/assets/probe.js" && hostileScript) {
-      response.writeHead(200, { "Content-Type": "text/javascript" }).end(hostileScript);
-      return;
-    }
-    if (path === "/assets/redirect.js" && redirectAsset) {
-      response.writeHead(302, { Location: redirectAsset }).end();
-      return;
-    }
-    try {
-      if (path.includes("..")) throw new Error("Invalid path");
-      const data = await readFile(join(directory, path));
-      const mime: Record<string, string> = {
-        ".html": "text/html",
-        ".js": "text/javascript",
-        ".css": "text/css",
-        ".woff2": "font/woff2",
-      };
-      response.writeHead(200, {
-        "Content-Type": mime[extname(path)] ?? "application/octet-stream",
-      });
-      response.end(data);
-    } catch {
-      response.writeHead(404).end();
-    }
+      if (path === "/flow-board-render.html" && hostileScript) {
+        response.writeHead(200, { "Content-Type": "text/html" });
+        response.end('<script type="module" src="/assets/probe.js"></script>');
+        return;
+      }
+      if (path === "/assets/probe.js" && hostileScript) {
+        response.writeHead(200, { "Content-Type": "text/javascript" }).end(hostileScript);
+        return;
+      }
+      if (path === "/assets/redirect.js" && redirectAsset) {
+        response.writeHead(302, { Location: redirectAsset }).end();
+        return;
+      }
+      try {
+        if (path.includes("..")) throw new Error("Invalid path");
+        const data = await readFile(join(directory, path));
+        const mime: Record<string, string> = {
+          ".html": "text/html",
+          ".js": "text/javascript",
+          ".css": "text/css",
+          ".woff2": "font/woff2",
+        };
+        response.writeHead(200, {
+          "Content-Type": mime[extname(path)] ?? "application/octet-stream",
+        });
+        response.end(data);
+      } catch {
+        response.writeHead(404).end();
+      }
+    })();
   });
   await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));
   const address = server.address();

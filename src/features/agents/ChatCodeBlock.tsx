@@ -27,13 +27,15 @@ export function ChatCodeBlock({
         <button
           type="button"
           aria-label="Copy code"
-          onClick={async () => {
-            try {
-              await copyCodeText(value);
-              setResult({ value, status: "copied" });
-            } catch {
-              setResult({ value, status: "failed" });
-            }
+          onClick={() => {
+            void (async () => {
+              try {
+                await copyCodeText(value);
+                setResult({ value, status: "copied" });
+              } catch {
+                setResult({ value, status: "failed" });
+              }
+            })();
           }}
         >
           {status === "copied" ? "Copied" : status === "failed" ? "Retry copy" : "Copy"}

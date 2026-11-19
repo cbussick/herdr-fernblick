@@ -51,20 +51,22 @@ export function ReadReceiptLogs() {
         </button>
         <button
           type="button"
-          onClick={async () => {
-            const history = refresh();
-            if (!history.available) {
-              setOpen(true);
-              return;
-            }
-            try {
-              if (!navigator.clipboard?.writeText) throw new Error("Unavailable");
-              await navigator.clipboard.writeText(history.text);
-              setNotice("Logs copied.");
-            } catch {
-              setOpen(true);
-              setNotice("Copy failed. Select the text below to copy manually.");
-            }
+          onClick={() => {
+            void (async () => {
+              const history = refresh();
+              if (!history.available) {
+                setOpen(true);
+                return;
+              }
+              try {
+                if (!navigator.clipboard?.writeText) throw new Error("Unavailable");
+                await navigator.clipboard.writeText(history.text);
+                setNotice("Logs copied.");
+              } catch {
+                setOpen(true);
+                setNotice("Copy failed. Select the text below to copy manually.");
+              }
+            })();
           }}
         >
           Copy logs

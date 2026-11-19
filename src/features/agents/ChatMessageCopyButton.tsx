@@ -27,13 +27,15 @@ export function ChatMessageCopyButton({ text }: { text: string }) {
         data-copy-status={status}
         aria-label={label}
         title={label}
-        onClick={async () => {
-          try {
-            await copyCodeText(text);
-            setResult({ text, status: "copied" });
-          } catch {
-            setResult({ text, status: "failed" });
-          }
+        onClick={() => {
+          void (async () => {
+            try {
+              await copyCodeText(text);
+              setResult({ text, status: "copied" });
+            } catch {
+              setResult({ text, status: "failed" });
+            }
+          })();
         }}
       >
         {status === "copied" ? <Check /> : status === "failed" ? <CircleAlert /> : <Copy />}

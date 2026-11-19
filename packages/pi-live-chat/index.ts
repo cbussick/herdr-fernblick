@@ -299,7 +299,8 @@ export default function liveChat(pi: ExtensionAPI) {
   }
   function writeSnapshot(client: Socket, value: Snapshot) {
     if (!writeFrame(client, value)) return;
-    boards?.connected();
+    // Connection setup handles RPC failures internally; publishing must not wait for it.
+    void boards?.connected();
     if (!client.writableNeedDrain || publishStallTimer) return;
     // Brief stalls coalesce; a permanently stalled backend still loses its peer.
     publishStallTimer = setTimeout(() => {
