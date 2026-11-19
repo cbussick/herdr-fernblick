@@ -5,11 +5,10 @@ import { useQuery, useQueryClient } from "@tanstack/react-query";
 import type { Agent, ShellTab, Workspace } from "../shared/api/contracts";
 import { getAgents, getSession, resumeChat } from "../shared/api/apiClient";
 import { AgentList } from "../features/agents/AgentList";
-import { AgentConsole } from "../features/agents/AgentConsole";
+import { PaneConsole } from "../features/agents/PaneConsole";
 import { NewAgentDialog } from "../features/agents/NewAgentDialog";
 import { NewWorkspaceDialog } from "../features/agents/NewWorkspaceDialog";
 import { NewTabDialog } from "../features/agents/NewTabDialog";
-import { ShellConsole } from "../features/agents/ShellConsole";
 import { FernblickMark } from "../shared/ui/FernblickMark";
 import { LoadingBrand } from "../shared/ui/LoadingBrand";
 import { StateIcon } from "../shared/ui/StateFeedback";
@@ -282,16 +281,17 @@ export function App({
             }}
             onSelectTab={(tab: ShellTab) => setSelectedPaneId(tab.pane_id, true)}
           />
-          {selectedAgent ? (
-            <AgentConsole
-              key={selectedAgent.pane_id}
-              agent={selectedAgent}
+          {selectedAgent || selectedTab ? (
+            <PaneConsole
+              key={selectedPaneId}
+              agent={selectedAgent ?? undefined}
+              tab={selectedTab}
               expectedSessionId={pendingPaneId ? undefined : (sessionId ?? undefined)}
               routeView={routeNavigation ? (pendingPaneId ? pendingView : view) : undefined}
               onSession={
                 routeNavigation
                   ? (id) => {
-                      if (!sessionId && !pendingPaneId) {
+                      if (selectedAgent && !sessionId && !pendingPaneId) {
                         queryClient.setQueryData(["session", id], {
                           agent: selectedAgent,
                           chat: null,
@@ -312,14 +312,13 @@ export function App({
                       // Keep the live console (and its draft) mounted until promotion.
                       if (pendingPaneId) setPendingView(next);
                       else if (id) navigation.selectSession(id, next);
-                      else setSelectedPaneId(selectedAgent.pane_id, next === "terminal");
+                      else if (selectedAgent)
+                        setSelectedPaneId(selectedAgent.pane_id, next === "terminal");
                     }
                   : undefined
               }
               onBack={() => setSelectedPaneId(null)}
             />
-          ) : selectedTab ? (
-            <ShellConsole tab={selectedTab} onBack={() => setSelectedPaneId(null)} />
           ) : !pendingPaneId && (sessionId || navigation.paneId) ? (
             <main className={appStyles["console-empty"]} id="main-content">
               <section

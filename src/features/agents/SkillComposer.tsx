@@ -1,4 +1,13 @@
-import { useEffect, useId, useRef, useState, type KeyboardEvent, type ReactNode } from "react";
+import {
+  useCallback,
+  useEffect,
+  useId,
+  useRef,
+  useState,
+  type KeyboardEvent,
+  type ReactNode,
+  type RefCallback,
+} from "react";
 import { useQuery } from "@tanstack/react-query";
 import { getAgentSkills } from "../../shared/api/apiClient";
 import type { AgentSkill, Target } from "../../../packages/pi-live-chat/protocol";
@@ -21,6 +30,7 @@ interface Props {
   available: boolean;
   connected: boolean;
   prompt: string;
+  inputRef?: RefCallback<HTMLTextAreaElement>;
   onChange: (text: string) => void;
   label: string;
   sending: boolean;
@@ -39,6 +49,14 @@ export function SkillComposer(props: Props) {
   const [search, setSearch] = useState("");
   const [active, setActive] = useState(0);
   const textarea = useRef<HTMLTextAreaElement>(null);
+  const { inputRef } = props;
+  const bindTextarea = useCallback<RefCallback<HTMLTextAreaElement>>(
+    (node) => {
+      textarea.current = node;
+      return inputRef?.(node);
+    },
+    [inputRef],
+  );
   const searchInput = useRef<HTMLInputElement>(null);
   const selected = useRef<HTMLButtonElement>(null);
   const listId = useId();
@@ -262,7 +280,7 @@ export function SkillComposer(props: Props) {
         Message {props.label}
       </label>
       <textarea
-        ref={textarea}
+        ref={bindTextarea}
         id="agent-prompt"
         // Chrome’s spelling popup can dismiss Gboard when moving the caret (shelf f9eb91b).
         spellCheck={false}

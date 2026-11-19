@@ -55,7 +55,10 @@ import { IconButton, StatusIndicator, TabKindIcon } from "../../shared/ui";
 import { StateIcon, StateNotice } from "../../shared/ui/StateFeedback";
 import { Snackbar } from "../../shared/ui/Snackbar";
 
+import type { PaneComposer } from "./PaneConsole";
+
 interface AgentConsoleProps {
+  composer?: PaneComposer;
   agent: Agent;
   onBack: () => void;
   expectedSessionId?: string;
@@ -116,6 +119,7 @@ export function AgentConsole(props: AgentConsoleProps) {
           revision: agent.revision,
         }}
         agent={agent}
+        composer={props.composer}
         onBack={onBack}
       />
     );
@@ -130,9 +134,12 @@ function PiAgentConsole({
   routeView,
   onSession,
   onViewChange,
+  composer,
 }: AgentConsoleProps) {
   const target = getAgentTarget(agent);
-  const [prompt, setPrompt] = useState("");
+  const [localPrompt, setLocalPrompt] = useState("");
+  const prompt = composer?.text ?? localPrompt;
+  const setPrompt = composer?.setText ?? setLocalPrompt;
   const [attachments, setAttachments] = useState<Attachment[]>([]);
   const [attachmentPreview, setAttachmentPreview] = useState<string | null>(null);
   const attachmentPreviewIndex = attachments.findIndex(
@@ -809,6 +816,7 @@ function PiAgentConsole({
                     available={Boolean(snapshot?.capabilities?.skills)}
                     connected={Boolean(snapshot && !live.error)}
                     prompt={prompt}
+                    inputRef={composer?.inputRef}
                     onChange={changePrompt}
                     label={getAgentTabLabel(agent)}
                     sending={composerSending}
