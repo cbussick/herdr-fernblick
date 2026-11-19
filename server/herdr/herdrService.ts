@@ -336,17 +336,33 @@ export class HerdrService {
       tabCreatedResultSchema,
     );
     const agentName = name ?? getDefaultPiAgentName(createdTab.root_pane.pane_id);
-    const startedAgent = await this.client.request(
-      "agent.start",
-      {
-        name: agentName,
-        kind: "pi",
-        pane_id: createdTab.root_pane.pane_id,
-        timeout_ms: 30_000,
-        args: [...(session ? ["--session", session.path] : []), ...extensionArgs()],
-      },
-      agentStartedResultSchema,
-    );
+    const startParams = {
+      name: agentName,
+      kind: "pi",
+      pane_id: createdTab.root_pane.pane_id,
+      timeout_ms: 30_000,
+      args: [...(session ? ["--session", session.path] : []), ...extensionArgs()],
+    };
+    const startedAgent = await (async () => {
+      // tab.create can return while shell initialization still owns the foreground.
+      // Herdr rejects this before sending input, so only this rejection is safe to
+      // retry. Never replay a timeout/disconnect: Pi may already have launched.
+      const deadline = Date.now() + 5_000;
+      while (true) {
+        try {
+          return await this.client.request("agent.start", startParams, agentStartedResultSchema);
+        } catch (error) {
+          if (
+            !(error instanceof HerdrRequestError) ||
+            error.code !== "agent_pane_busy" ||
+            Date.now() >= deadline
+          ) {
+            throw error;
+          }
+          await delay(100);
+        }
+      }
+    })();
 
     return this.withPiSessionId({
       ...startedAgent.agent,

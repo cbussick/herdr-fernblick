@@ -2,6 +2,7 @@ import { expect, it, vi } from "vitest";
 import type { z } from "zod";
 import type { HerdrClient } from "./HerdrClient.js";
 import { HerdrService } from "./herdrService.js";
+import { HerdrRequestError } from "./HerdrClient.js";
 
 const agent = {
   agent: "pi",
@@ -123,6 +124,65 @@ it("creates a tab before starting Pi in its root pane", async () => {
     tab_label: "Authentication",
   });
 });
+
+it("waits for a newly created shell without creating another tab", async () => {
+  vi.useFakeTimers();
+  try {
+    let starts = 0;
+    const request = vi.fn(async <T>(method: string, _params: unknown, schema: z.ZodType<T>) => {
+      if (method === "tab.create")
+        return schema.parse({
+          type: "tab_created",
+          tab: { label: "5", tab_id: "w1:t2", workspace_id: "w1" },
+          root_pane: { pane_id: "w1:p2", revision: 0 },
+        });
+      if (++starts <= 3)
+        throw new HerdrRequestError(
+          "agent_pane_busy",
+          "agent target pane w1:p2 is not an available shell",
+        );
+      return schema.parse({ type: "agent_started", agent });
+    });
+    const result = new HerdrService({ request } as unknown as HerdrClient).createPiAgent("w1");
+    const assertion = expect(result).resolves.toMatchObject({ pane_id: "w1:p2", tab_label: "5" });
+    await vi.advanceTimersByTimeAsync(500);
+    await assertion;
+    expect(request.mock.calls.filter(([method]) => method === "tab.create")).toHaveLength(1);
+    const startsCalls = request.mock.calls.filter(([method]) => method === "agent.start");
+    expect(startsCalls).toHaveLength(4);
+    for (const call of startsCalls) expect(call[1]).toEqual(startsCalls[0][1]);
+  } finally {
+    vi.useRealTimers();
+  }
+});
+
+it.each(["agent_pane_busy", "timeout", "disconnected", "agent_name_taken"])(
+  "bounds shell startup retries and preserves %s errors",
+  async (code) => {
+    vi.useFakeTimers();
+    try {
+      const error = new HerdrRequestError(code, "start failed");
+      const request = vi.fn(async <T>(method: string, _params: unknown, schema: z.ZodType<T>) => {
+        if (method === "tab.create")
+          return schema.parse({
+            type: "tab_created",
+            tab: { label: "5", tab_id: "w1:t2", workspace_id: "w1" },
+            root_pane: { pane_id: "w1:p2", revision: 0 },
+          });
+        throw error;
+      });
+      const result = new HerdrService({ request } as unknown as HerdrClient).createPiAgent("w1");
+      const assertion = expect(result).rejects.toBe(error);
+      await vi.advanceTimersByTimeAsync(10_000);
+      await assertion;
+      const starts = request.mock.calls.filter(([method]) => method === "agent.start");
+      expect(starts).toHaveLength(code === "agent_pane_busy" ? 51 : 1);
+      expect(request.mock.calls.filter(([method]) => method === "tab.create")).toHaveLength(1);
+    } finally {
+      vi.useRealTimers();
+    }
+  },
+);
 
 it("isolates development extensions while explicitly retaining Herdr session reporting", async () => {
   vi.stubEnv("FERNBLICK_PI_ISOLATED", "1");
