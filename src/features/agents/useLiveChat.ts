@@ -15,6 +15,7 @@ export function useLiveChat(target: string, enabled: boolean, session: string | 
     let connected = false;
     let generation = 0;
     let events: EventSource | undefined;
+    let baselineTimer: ReturnType<typeof setTimeout> | undefined;
     let retry: ReturnType<typeof setTimeout> | undefined;
     let retryDelay = 1000;
     let deadlineTimer: ReturnType<typeof setTimeout> | undefined;
@@ -65,7 +66,8 @@ export function useLiveChat(target: string, enabled: boolean, session: string | 
             ? "Pi is taking too long to reconnect. Check your connection or switch to Terminal."
             : "Reconnecting to Pi…",
         );
-      else if (deadlineExpired) connectionError(reason);
+      else if (deadlineExpired)
+        connectionError(`Pi is taking too long to connect. ${startupReason}`);
       else {
         setState((current) =>
           current.target === target && current.session === session && current.snapshot
@@ -76,6 +78,8 @@ export function useLiveChat(target: string, enabled: boolean, session: string | 
       checkDeadline();
     }
     function retire() {
+      clearTimeout(baselineTimer);
+      baselineTimer = undefined;
       generation++;
       events?.close();
       events = undefined;
@@ -103,6 +107,18 @@ export function useLiveChat(target: string, enabled: boolean, session: string | 
       const source = new EventSource(`/api/agents/${encodeURIComponent(target)}/chat`);
       events = source;
       const isCurrent = () => !disposed && currentGeneration === generation;
+      function awaitBaseline() {
+        if (baselineTimer !== undefined) return;
+        // Neither a silent OPEN stream nor a stuck native CONNECTING retry is
+        // guaranteed to emit another error. Bound the wait for a fresh baseline.
+        baselineTimer = setTimeout(() => {
+          baselineTimer = undefined;
+          if (!isCurrent()) return;
+          checkDeadline();
+          scheduleRetry();
+        }, 30_000);
+      }
+      awaitBaseline();
       source.onmessage = (event) => {
         if (!isCurrent()) return;
         try {
@@ -118,8 +134,12 @@ export function useLiveChat(target: string, enabled: boolean, session: string | 
                 ? value.reason
                 : "Live chat unavailable";
             previous = undefined;
-            if (value.type === "connecting") waitForStartup(reason);
-            else {
+            if (value.type === "connecting") {
+              waitForStartup(reason);
+              awaitBaseline();
+            } else {
+              clearTimeout(baselineTimer);
+              baselineTimer = undefined;
               recoveryRequested = false;
               clearDeadline();
               setState({ target, session, error: reason });
@@ -130,6 +150,8 @@ export function useLiveChat(target: string, enabled: boolean, session: string | 
           if (previous?.epoch === snapshot.epoch && previous.seq > snapshot.seq) return;
           previous = snapshot;
           connected = true;
+          clearTimeout(baselineTimer);
+          baselineTimer = undefined;
           recoveryRequested = false;
           retryDelay = 1000;
           clearDeadline();
@@ -143,6 +165,7 @@ export function useLiveChat(target: string, enabled: boolean, session: string | 
         if (!isCurrent()) return;
         previous = undefined;
         waitForStartup("Could not connect to Pi live chat. Check Pi or switch to Terminal.");
+        awaitBaseline();
         // CONNECTING is retried natively. CLOSED is terminal and needs a new instance.
         if (source.readyState === 2) scheduleRetry();
       };

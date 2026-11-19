@@ -20,7 +20,11 @@
   are coalesced and rapid successful recoveries are rate-limited. EventSource
   handles ordinary reconnects natively; terminal CLOSED streams and malformed
   frames retry with jittered exponential backoff (1 second initially, capped at
-  30 seconds). Superseded connection callbacks cannot update state. EventSource
+  30 seconds). A per-stream 30-second fresh-baseline watchdog also replaces silent
+  startup streams and stuck native reconnects using that same backoff. Connecting
+  notices do not extend this watchdog; valid snapshots and explicit unavailable
+  errors cancel it. Healthy idle streams are not periodically reconnected.
+  Superseded connection callbacks cannot update state. EventSource
   reconnect receives a full fresh snapshot, not a delta replay; stale sequence
   numbers in the same epoch are ignored.
 - Dashboard polling is unchanged. Agent output polling and Herdr key controls

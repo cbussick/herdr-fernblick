@@ -262,6 +262,56 @@ it("caps terminal retry backoff at thirty seconds", async () => {
   }
 });
 
+it("replaces a silent startup stream without needing a browser lifecycle event", async () => {
+  await mount();
+  const stalled = Events.instances[0];
+  // A request can silently hang without ever emitting a message or an error.
+  await advance(31_000);
+  expect(latest.error).toContain("taking too long to connect");
+  expect(stalled.close).toHaveBeenCalledOnce();
+  expect(Events.instances).toHaveLength(2);
+  await message(stalled);
+  expect(latest.snapshot).toBeUndefined();
+  await message(Events.instances[1]);
+  expect(latest.snapshot).toEqual(snapshot);
+  expect(latest.error).toBeUndefined();
+});
+
+it("bounds stuck native reconnects, retaining history until a fresh baseline", async () => {
+  await mount();
+  const stalled = Events.instances[0];
+  await message(stalled);
+  stalled.readyState = 0;
+  await act(async () => stalled.onerror!());
+  await advance(31_000);
+  expect(stalled.close).toHaveBeenCalledOnce();
+  expect(Events.instances).toHaveLength(2);
+  expect(latest.snapshot).toEqual(snapshot);
+  expect(latest.error).toContain("taking too long to reconnect");
+  await message(Events.instances[1], { ...snapshot, busy: false });
+  expect(latest.snapshot?.busy).toBe(false);
+  expect(latest.error).toBeUndefined();
+  await advance(60_000);
+  expect(Events.instances).toHaveLength(2);
+});
+
+it("retries missing baselines with backoff even when connecting notices keep arriving", async () => {
+  await mount();
+  for (const delay of [1000, 2000, 4000]) {
+    const stalled = Events.instances.at(-1)!;
+    const count = Events.instances.length;
+    await advance(20_000);
+    await message(stalled, { type: "connecting", reason: "Waiting for Pi" });
+    await advance(10_000);
+    expect(stalled.close).toHaveBeenCalledOnce();
+    expect(latest.error).toContain("taking too long to connect");
+    await advance(delay);
+    expect(Events.instances).toHaveLength(count + 1);
+  }
+  await message(Events.instances.at(-1)!);
+  expect(latest.error).toBeUndefined();
+});
+
 it("does not reset startup deadlines on resume and permits late recovery", async () => {
   await mount();
   await advance(20_000);
@@ -281,6 +331,8 @@ it("bounds recovery notices without extending the deadline on repeated resume ev
   expect(latest.error).toContain("taking too long to reconnect");
   await resume();
   expect(latest.error).toContain("taking too long to reconnect");
+  // Lifecycle recovery coalesces with the watchdog's already scheduled retry.
+  await advance(1000);
   expect(Events.instances).toHaveLength(3);
   await message(Events.instances[2]);
   expect(latest.error).toBeUndefined();

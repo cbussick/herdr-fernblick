@@ -79,7 +79,8 @@ it("waits quietly for initial registration but reports a bounded startup timeout
   await act(async () => vi.advanceTimersByTimeAsync(10_000));
   expect(latest.error).toContain("Pi live chat extension unavailable");
   const snapshot = readySnapshot();
-  await act(async () => events.onmessage!({ data: JSON.stringify(snapshot) }));
+  await act(async () => vi.advanceTimersByTimeAsync(1250));
+  await act(async () => Events.instances.at(-1)!.onmessage!({ data: JSON.stringify(snapshot) }));
   expect(latest.error).toBeUndefined();
   expect(latest.snapshot).toEqual(snapshot);
   await act(async () => vi.advanceTimersByTimeAsync(60_000));
@@ -92,13 +93,12 @@ it("retains history through bridge loss, but invalidates it on a confirmed ident
   await act(async () => {
     renderer = create(<Probe />);
   });
-  const events = Events.instances[0];
   const snapshot = {
     ...readySnapshot(),
     messages: [{ id: "user", role: "user" as const, text: "hello" }],
   };
   const send = (value: unknown) =>
-    act(async () => events.onmessage!({ data: JSON.stringify(value) }));
+    act(async () => Events.instances.at(-1)!.onmessage!({ data: JSON.stringify(value) }));
   await send(snapshot);
   const loss = { type: "connecting", reason: "Pi live chat extension unavailable" };
   await send(loss);
@@ -109,6 +109,7 @@ it("retains history through bridge loss, but invalidates it on a confirmed ident
   await act(async () => vi.advanceTimersByTimeAsync(10_000));
   expect(latest.snapshot).toEqual(snapshot);
   expect(latest.error).toContain("taking too long to reconnect");
+  await act(async () => vi.advanceTimersByTimeAsync(1250));
   const fresh = { ...snapshot, epoch: randomUUID(), seq: 1 };
   await send(fresh);
   expect(latest.snapshot).toEqual(fresh);
