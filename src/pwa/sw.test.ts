@@ -37,7 +37,7 @@ it("precaches only build assets, handles only app navigation, and waits for expl
   expect(matches("/sessions/s/terminal")).toBe(true);
   expect(matches("/panes/w1%3Ap1/terminal")).toBe(true);
   expect(matches("/sessions/s/uploads")).toBe(false);
-  expect(matches("/panes/p/whiteboard")).toBe(false);
+  expect(matches("/panes/p/whiteboard")).toBe(true);
   for (const path of ["/api/agents", "/api/images/private.png", "/api/live/events", "/unknown"]) {
     expect(matches(path)).toBe(false);
   }

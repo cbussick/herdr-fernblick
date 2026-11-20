@@ -1690,8 +1690,73 @@ it("shows startup and failure states while keeping send disabled", async () => {
   expect(renderer.root.findByProps({ "aria-label": "Send message" }).props.disabled).toBe(true);
 });
 
-// Known unfixed routed-board identity bug; see docs/session-navigation-audit.md.
-it.fails("audit: an unsaved routed board does not silently follow a replacement conversation", async () => {
+it("does not expose pinned terminal controls using a retained reconnecting baseline", async () => {
+  const initial = mocks.live.snapshot!;
+  mocks.live = { snapshot: initial, error: "Reconnecting to Pi…" };
+  const routed = () => (
+    <QueryClientProvider client={client}>
+      <AgentConsole agent={agent} onBack={() => {}} routeView="terminal" expectedSessionId="s" />
+    </QueryClientProvider>
+  );
+  await act(async () => renderer.update(routed()));
+  expect(renderer.root.findAllByProps({ "aria-label": "Terminal controls" })).toHaveLength(0);
+  expect(mocks.paneKey).not.toHaveBeenCalled();
+  expect(mocks.command).not.toHaveBeenCalled();
+  mocks.live = { snapshot: { ...initial, epoch: randomUUID() } };
+  await act(async () => renderer.update(routed()));
+  expect(renderer.root.findAllByProps({ "aria-label": "Terminal controls" })).toHaveLength(1);
+});
+
+it("suspends an inactive conversation without discarding text or attachments", async () => {
+  const file = new File(["image"], "keep.png", { type: "image/png" });
+  await act(async () => {
+    renderer.root.findByType("textarea").props.onChange({ target: { value: "Keep this" } });
+    renderer.root.findByProps({ type: "file" }).props.onChange({ target: { files: [file] } });
+  });
+  const suspended = (value: boolean) => (
+    <QueryClientProvider client={client}>
+      <AgentConsole agent={agent} onBack={() => {}} expectedSessionId="s" suspended={value} />
+    </QueryClientProvider>
+  );
+  await act(async () => renderer.update(suspended(true)));
+  expect(renderer.root.findAllByType("textarea")).toHaveLength(0);
+  expect(mocks.liveChat).toHaveBeenLastCalledWith(agent.pane_id, false, undefined);
+  expect(mocks.command).not.toHaveBeenCalled();
+  await act(async () => renderer.update(suspended(false)));
+  expect(renderer.root.findByType("textarea").props.value).toBe("Keep this");
+  expect(renderer.root.findAllByProps({ "aria-label": "Image attachments" })).toHaveLength(1);
+  expect(mocks.upload).not.toHaveBeenCalled();
+});
+
+it.each(["runtime", "epoch"])(
+  "does not automatically reopen a routed board on confirmed %s replacement",
+  async (field) => {
+    const routed = () => (
+      <QueryClientProvider client={client}>
+        <AgentConsole
+          agent={agent}
+          onBack={() => {}}
+          routeView="whiteboard"
+          onViewChange={vi.fn()}
+        />
+      </QueryClientProvider>
+    );
+    await act(async () => renderer.update(routed()));
+    expect(renderer.root.findAllByType(Whiteboard)).toHaveLength(1);
+    const initial = mocks.live.snapshot!;
+    mocks.live = {
+      snapshot:
+        field === "epoch"
+          ? { ...initial, epoch: randomUUID() }
+          : { ...initial, identity: { ...initial.identity, runtime: randomUUID() } },
+    };
+    await act(async () => renderer.update(routed()));
+    expect(renderer.root.findAllByType(Whiteboard)).toHaveLength(0);
+    expect(mocks.boardPrompt).not.toHaveBeenCalled();
+  },
+);
+
+it("audit: an unsaved routed board does not silently follow a replacement conversation", async () => {
   const routed = () => (
     <QueryClientProvider client={client}>
       <AgentConsole agent={agent} onBack={() => {}} routeView="whiteboard" onViewChange={vi.fn()} />

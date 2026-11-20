@@ -1,6 +1,5 @@
 // @vitest-environment happy-dom
-// Audit-only: it.fails documents confirmed unfixed bugs (see docs/session-navigation-audit.md).
-// Assertions describe intended behavior, NOT the buggy behavior. Convert to it() when fixed.
+// Passing navigation-history regressions from docs/session-navigation-audit.md.
 import { act } from "react";
 import { create, type ReactTestRenderer } from "react-test-renderer";
 import { createMemoryHistory, RouterProvider } from "@tanstack/react-router";
@@ -44,7 +43,7 @@ afterEach(async () => {
   vi.unstubAllGlobals();
 });
 
-it.fails("audit: closing a promoted fresh board returns to that session's chat", async () => {
+it("audit: closing a promoted fresh board returns to that session's chat", async () => {
   await start();
   await click("Open A");
   await click("Promote B board");
@@ -54,7 +53,7 @@ it.fails("audit: closing a promoted fresh board returns to that session's chat",
 });
 
 // Helper-level invariant; the current terminal UI does not expose a Board button.
-it.fails("audit: terminal-to-board after switching sessions cannot return to a different conversation", async () => {
+it("audit: terminal-to-board after switching sessions cannot return to a different conversation", async () => {
   await start();
   await click("Open A");
   await click("Board");
@@ -65,13 +64,30 @@ it.fails("audit: terminal-to-board after switching sessions cannot return to a d
   expect(router.state.location.pathname).toBe("/sessions/b/chat");
 });
 
-it.fails("audit: closing a direct-link board does not make Back reopen it", async () => {
+it("audit: closing a direct-link board does not make Back reopen it", async () => {
   await start("/sessions/a/whiteboard");
   await click("Close board");
   expect(router.state.location.pathname).toBe("/sessions/a/chat");
   await act(async () => router.history.back());
   expect(router.state.location.pathname).not.toBe("/sessions/a/whiteboard");
 });
+
+it.each([-1, 0, 10, Number.NaN])(
+  "replaces a board with chat for invalid or non-older return index %s",
+  async (index) => {
+    await start("/sessions/a/whiteboard");
+    await act(async () =>
+      router.history.replace(router.state.location.href, {
+        ...router.state.location.state,
+        fernblickChatReturn: { kind: "session", id: "a", index },
+      }),
+    );
+    const go = vi.spyOn(router.history, "go");
+    await click("Close board");
+    expect(go).not.toHaveBeenCalled();
+    expect(router.state.location.pathname).toBe("/sessions/a/chat");
+  },
+);
 
 it("audit: overview remains reachable through repeated terminal/chat/board cycles", async () => {
   await start();

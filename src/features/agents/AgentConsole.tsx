@@ -62,6 +62,7 @@ interface AgentConsoleProps {
   agent: Agent;
   onBack: () => void;
   expectedSessionId?: string;
+  suspended?: boolean;
   routeView?: "chat" | "terminal" | "whiteboard";
   onSession?: (sessionId: string) => void;
   onViewChange?: (view: "chat" | "terminal" | "whiteboard", sessionId?: string) => void;
@@ -130,7 +131,8 @@ export function AgentConsole(props: AgentConsoleProps) {
 function PiAgentConsole({
   agent,
   onBack,
-  expectedSessionId,
+  expectedSessionId: requestedSessionId,
+  suspended = false,
   routeView,
   onSession,
   onViewChange,
@@ -151,6 +153,7 @@ function PiAgentConsole({
     null,
   );
   const [boardTarget, setBoardTarget] = useState<Target | null>(null);
+  const [retiredBoardSession, setRetiredBoardSession] = useState<string | null>(null);
   const [boardLink, setBoardLink] = useState(() =>
     typeof window === "undefined" ? null : readWhiteboardLink(window.location?.search ?? ""),
   );
@@ -159,6 +162,12 @@ function PiAgentConsole({
   const fileInputRef = useRef<HTMLInputElement>(null);
   const uploadedIds = useRef(new Map<File, string>());
   const previews = useRef(new Set<string>());
+  // A pane route still belongs to the first live conversation it observed.
+  // Persistence promotion changes the URL, not that identity. Replacements must
+  // not inherit its board or silently receive its unsent message.
+  const [pinnedSession, setPinnedSession] = useState<string>();
+  const expectedSessionId = requestedSessionId ?? pinnedSession;
+  const openedBoard = useRef<string | null>(null);
   const [localView, setLocalView] = useState<AgentView>("chat");
   const view = routeView ? (routeView === "terminal" ? "terminal" : "chat") : localView;
   function setView(next: AgentView) {
@@ -169,9 +178,10 @@ function PiAgentConsole({
   const outputRef = useRef<HTMLElement>(null);
   const live = useLiveChat(
     agent.pane_id,
-    view === "chat" || Boolean(expectedSessionId),
+    !suspended && (view === "chat" || Boolean(expectedSessionId)),
     agent.agent_session?.value,
   );
+  if (!pinnedSession && live.snapshot) setPinnedSession(live.snapshot.identity.sessionId);
   const sessionMismatch = Boolean(
     expectedSessionId && live.snapshot && live.snapshot.identity.sessionId !== expectedSessionId,
   );
@@ -183,9 +193,20 @@ function PiAgentConsole({
   }, [liveSessionId]);
   useEffect(() => {
     if (!onViewChange) return;
-    if (routeView === "whiteboard" && snapshot && !boardTarget) setBoardTarget(targetOf(snapshot));
-    else if (routeView !== "whiteboard" && boardTarget) setBoardTarget(null);
+    if (routeView !== "whiteboard") {
+      openedBoard.current = null;
+      if (boardTarget) setBoardTarget(null);
+    } else if (snapshot && !boardTarget && openedBoard.current !== snapshot.identity.sessionId) {
+      openedBoard.current = snapshot.identity.sessionId;
+      setBoardTarget(targetOf(snapshot));
+    }
   }, [routeView, snapshot, boardTarget, onViewChange]);
+  useEffect(() => {
+    if (retiredBoardSession) {
+      onViewChange?.("chat", retiredBoardSession);
+      setRetiredBoardSession(null);
+    }
+  }, [retiredBoardSession, onViewChange]);
   useEffect(() => {
     if (!boardLink || boardLink.pane !== agent.pane_id || !snapshot) return;
     // A terminal URL is only a viewing hint: never open a reused pane's new board.
@@ -261,6 +282,9 @@ function PiAgentConsole({
     // Missing live state pauses sending; only a confirmed identity change closes
     // the board. Unmount then aborts in-flight work and retains the old draft.
     setBoardTarget(null);
+    if (routeView === "whiteboard" && snapshot.identity.sessionId === boardTarget.sessionId) {
+      setRetiredBoardSession(boardTarget.sessionId);
+    }
   }
   const send = useMutation({
     mutationFn: async (draft: OutgoingDraft) => {
@@ -480,7 +504,8 @@ function PiAgentConsole({
     // Queued ordinary-chat attachments stay with their composer.
     sendDraft({ text: board.text, attachments: [], target: expected, board });
   }
-  if (sessionMismatch || (expectedSessionId && view === "terminal" && !snapshot)) {
+  if (suspended) return null;
+  if (sessionMismatch || (expectedSessionId && view === "terminal" && (!snapshot || live.error))) {
     return (
       <main className={consoleStyles["console"]} id="main-content">
         <button type="button" onClick={onBack}>

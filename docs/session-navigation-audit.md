@@ -1,10 +1,10 @@
-# Session navigation audit
+# Session navigation audit and fixes
 
-Audited baseline: `d2854f0` (`main`, after the two fresh-session fixes). This is an **audit, not a production fix**. No real agents were closed, restarted, resumed or sent prompts; no service was redeployed.
+Audited baseline: `d2854f0`. **All ten findings and the additional history-helper invariant are fixed on `fix/session-navigation`**, based on `4f7e0d1`. The baseline reproduction details below are historical; their old line numbers refer to the audited commit, not the current implementation. The branch is not merged or deployed. No real agents were closed, restarted, resumed or sent prompts.
 
 ## Summary
 
-**Ten user-visible cases reproduced in both Chromium and WebKit**, using the actual production frontend and entirely synthetic HTTP/SSE. One additional cross-session history invariant fails at the navigation-helper level; its exact sequence is not exposed by today's terminal controls.
+Ten user-visible cases were reproduced in both Chromium and WebKit with the actual frontend and synthetic HTTP/SSE. The same scenarios now pass as fixed-behavior acceptance tests, alongside the cross-session history invariant and additional lifecycle/authority regressions.
 
 The two recent patches fix their original cases, but the remaining problems share four causes:
 
@@ -13,7 +13,15 @@ The two recent patches fix their original cases, but the remaining problems shar
 3. Component mounting/lifetime follows temporary agent availability rather than the conversation's lifetime.
 4. Async mutations retain navigation authority after their initiating dialog/selection has gone away.
 
-## Confirmed findings
+## Implemented changes
+
+- **N1/N3/N4/N6:** Removed the local pending-agent overlay. Unsaved agents have `/panes/:paneId/chat|terminal|whiteboard` destinations, including service-worker navigation support. Only persisted dashboard metadata promotes them to session URLs, preserving the mounted composer and current mode. View changes retain the selected route's identity. A pane conversation pins its first live session; replacements cannot inherit its board or commands. Confirmed runtime/epoch changes retire a board instead of reopening it.
+- **N2/N9:** Board return markers are scoped to pane/session identity and must point to an older entry. Promotion and direct links without a valid return replace the board with chat. No zero-delta reloads or cross-conversation returns.
+- **N5:** Keep only the selected conversation's console mounted but suspended during inactive polls. Text, attachments and focus state survive. Retained data is not live-agent authority: SSE is suspended, the console renders no controls, and re-enable requires a fresh baseline before commands become available. Explicitly selecting another saved conversation, even in the same pane, starts a separate composer lifetime. Moving/resuming the same saved conversation into another pane or workspace retains its draft.
+- **N7/N8/N10:** Tab-close completion navigates only if the selected tab is still the closed tab (including sibling panes). Create/new-tab completion always updates data but navigates only while its original dialog and history entry still own that intent. Unmount, dismiss/reopen, and navigation revoke it permanently; Back/Forward returning to the original URL cannot revive that permission. History-list resumes likewise check their initiating destination. New shells are cached before selection and use terminal URLs.
+- An unsaved Pi exit/replacement by a shell or another CLI retires the selection rather than handing its Pi draft to a shell input. Ordinary shell-to-Pi startup draft preservation remains covered.
+
+## Historical baseline findings
 
 ### N1 — Fresh-agent selection can disagree with the URL and ignore navigation (high)
 
@@ -119,7 +127,7 @@ The two recent patches fix their original cases, but the remaining problems shar
 
 ## Additional helper-level risk, not a proven normal UI sequence
 
-`fernblickChatIndex` is carried across session changes without recording which session it belongs to. A helper-level sequence A chat → A board → replace with B chat → B terminal → B board → close returns to **A's chat**. The current terminal UI has no Board button, so this exact sequence is not claimed as a reachable ordinary interaction. It is a real failing helper invariant and should be removed when fixing N2/N9, before another caller/deep-link path exposes it.
+`fernblickChatIndex` is carried across session changes without recording which session it belongs to. A helper-level sequence A chat → A board → replace with B chat → B terminal → B board → close returns to **A's chat**. The current terminal UI has no Board button, so this exact sequence is not claimed as a reachable ordinary interaction. It was a failing helper invariant and is now covered by a passing normal regression test with the N2/N9 fix.
 
 ## Behaviors checked and found correct
 
@@ -137,9 +145,9 @@ Existing tests were also rerun for saved-chat Back/Forward, fresh-session promot
 ## Reproduction and test artifacts
 
 ```sh
-# Worktree: .worktrees/audit-session-navigation
+# Worktree: .worktrees/fix-session-navigation
 npm ci
-npm run check
+VITEST_MAX_WORKERS=2 npm run check
 
 # Focused audit assertions:
 npx vitest run src/app/App.navigation.test.tsx \
@@ -150,17 +158,17 @@ npx vitest run src/app/App.navigation.test.tsx \
 node tools/design/session-navigation-audit.mjs
 ```
 
-The audit assertions were first run as ordinary tests and failed on their intended URL/view/draft assertions. They are now explicitly marked `it.fails` so this **audit-only** branch documents unfixed behavior without presenting it as repaired. Focused result: **6 ordinary passes, 13 expected failures**. These include duplicate tests at different layers and the additional helper-level risk; they are not 13 unique user bugs. Convert each `it.fails` to a normal test when implementing its fix.
+The audit assertions were first run as ordinary tests and failed on their intended URL/view/draft assertions (13 failing assertions covering ten cases plus duplicates and the helper invariant). Every expected failure has been converted to a normal passing regression test. Additional tests cover deferred shell creation, dismiss/reopen and unmounted dialogs, same-tab sibling closing, history-resume races, conversation-specific drafts, suspended attachments, fresh-baseline command gating, and runtime/epoch replacement.
 
-Full `npm run check` result: **124 test files; 1,440 ordinary passes and 13 expected failures**, with formatting, lint, both Knip modes, typechecking and production build passing. This does not mean the documented bugs are fixed.
+Full check result: **124 test files and 1,491 normal passing tests; no expected failures**. Formatting, lint, both Knip modes, typechecking and production build pass. Tests were limited to two workers to avoid the repository's documented large-upload fixture contention; an initial unrestricted run timed out in the unrelated ten-image upload test.
 
-The browser tool asserts the **observed bad behavior** and prints `reproduced`; it is a diagnostic, not a fixed-behavior acceptance test. It runs all ten cases at desktop width in Chromium and WebKit, plus fresh-session reload, early mode switching, direct-board history, and restart-window draft loss at 390 px and 820 px. All **36 browser reproductions** completed. All APIs are intercepted, SSE is synthetic, external requests are blocked, and API/page errors are checked separately. No physical iPad/phone or deployed-session restart was tested.
+The browser tool now asserts **fixed behavior** and prints `PASS`. It covers all ten cases at desktop width in Chromium and WebKit, plus fresh-session reload, early mode switching, direct-board history, and restart-window draft retention at 390 px and 820 px. All **36 browser acceptance cases pass**, including text and attachment preservation through an inactive poll. All APIs are intercepted, SSE is synthetic, external requests are blocked, and API/page errors are checked separately. No physical iPad/phone or deployed-session restart was tested.
 
-## Recommended implementation order
+## Completed implementation groups
 
 1. **Unify destination/identity ownership:** explicit pending pane routes, persistence-aware promotion, pinned mode changes, and same-session selection/Back behavior (N1/N3/N4/N6).
 2. **Repair board history as one change:** session-scoped validated return entries, zero-delta fallback, direct-link replacement, and the cross-session helper invariant (N2/N9).
 3. **Own drafts at conversation lifetime:** preserve through restart/inactive gaps without weakening replacement/exit handling (N5).
 4. **Revoke stale navigation intent:** late close/create/resume/new-tab completion can update data but cannot hijack newer selections (N7/N8); fix shell caching/mode in that pass (N10).
 
-Retest the full transition matrix and real-browser fixtures after each group. Do not patch these solely by adding more special cases to `pendingPaneId` or retaining stale agent objects indefinitely.
+The full transition matrix and real-browser fixtures have been rerun. Draft retention is limited to the selected conversation and is separate from live command authority. Reload-persistent composer drafts and survival across full browser/app unmounts are not added by this change; only the conversation URL survives reload. No physical iPad/phone or production restart was exercised.

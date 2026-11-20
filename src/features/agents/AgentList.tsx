@@ -19,6 +19,7 @@ interface AgentListProps {
   onCreateWorkspace: () => void;
   onSelect: (agent: Agent) => void;
   onOpenSession?: (sessionId: string) => void;
+  navigationKey?: string;
   onResumed: (agent: Agent) => void;
   onSelectTab: (tab: ShellTab) => void;
   selectedPaneId: string | null;
@@ -41,6 +42,7 @@ export function AgentList({
   onCreateWorkspace,
   onSelect,
   onOpenSession,
+  navigationKey,
   onResumed,
   onSelectTab,
   selectedPaneId,
@@ -151,6 +153,7 @@ export function AgentList({
           <PastChats
             query={query}
             onOpenSession={onOpenSession}
+            navigationKey={navigationKey}
             onClearSearch={clearSearch}
             workspaces={workspaces}
             onResumed={onResumed}

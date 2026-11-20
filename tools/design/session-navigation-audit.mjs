@@ -1,4 +1,4 @@
-// Diagnostic reproductions of known URL bugs, NOT a fixed-behavior acceptance test.
+// Session-navigation acceptance tests: assert the fixed URL/view/draft invariants.
 // npm run build && node tools/design/session-navigation-audit.mjs
 // All API/SSE traffic is synthetic. No live Herdr/Pi sessions are contacted.
 import assert from "node:assert/strict";
@@ -198,10 +198,7 @@ async function fixture(browser, { savedB = false, emit = true, width = 1440 } = 
 }
 
 try {
-  for (const [name, engine] of [
-    ["chromium", chromium],
-    ["webkit", webkit],
-  ]) {
+  for (const [name, engine] of Object.entries({ chromium, webkit })) {
     const browser = await engine.launch({ headless: true });
     try {
       {
@@ -216,24 +213,25 @@ try {
           .getByTestId("output-panel")
           .getByText("Conversation 2", { exact: true })
           .waitFor();
-        assert.equal(path(), "/sessions/s1/chat");
+        assert.equal(path(), "/panes/w1%3Ap2/chat");
+        await page.reload();
+        await page
+          .getByTestId("output-panel")
+          .getByText("Conversation 2", { exact: true })
+          .waitFor();
         await openAgent(0);
         assert.equal(path(), "/sessions/s1/chat");
-        assert(
-          await page
-            .getByTestId("output-panel")
-            .getByText("Conversation 2", { exact: true })
-            .isVisible(),
-        );
+        await page
+          .getByTestId("output-panel")
+          .getByText("Conversation 1", { exact: true })
+          .waitFor();
         await page.reload();
         await page
           .getByTestId("output-panel")
           .getByText("Conversation 1", { exact: true })
           .waitFor();
         assert.deepEqual(state.errors, []);
-        console.log(
-          `${name}: reproduced pending selection ignoring saved-agent click; reload opens the old conversation`,
-        );
+        console.log(`${name}: PASS fresh-agent URL/reload and switching back to saved agent`);
         await page.close();
       }
       {
@@ -248,6 +246,10 @@ try {
         await page.getByRole("button", { name: "Open whiteboard", exact: true }).click();
         const drawing = page.getByTestId("whiteboard");
         await drawing.waitFor();
+        assert.equal(path(), "/panes/w1%3Ap2/whiteboard");
+        await page.reload();
+        await drawing.waitFor();
+        assert.equal(path(), "/panes/w1%3Ap2/whiteboard");
         state.savedB = true;
         await page.waitForURL((url) => url.pathname === "/sessions/s2/whiteboard");
         // Promotion reconnects SSE when persisted metadata arrives; wait for that
@@ -255,29 +257,25 @@ try {
         await page.waitForTimeout(250);
         await drawing.waitFor();
         await drawing.getByRole("button", { name: "← Back", exact: true }).click();
-        // Let router/history and React settle, then assert the observed no-op.
-        await page.waitForTimeout(150);
-        assert.equal(path(), "/sessions/s2/whiteboard");
-        // Browser history.go(0) reloads (memory history only no-ops). The board
-        // reappears at the same URL after the reload rather than returning to chat.
-        await drawing.waitFor();
-        assert(await drawing.isVisible());
+        await page.waitForURL((url) => url.pathname === "/sessions/s2/chat");
+        assert.equal(path(), "/sessions/s2/chat");
+        assert.equal(await drawing.count(), 0);
         assert.deepEqual(state.errors, []);
-        console.log(`${name}: reproduced uncloseable board after fresh-session promotion`);
+        console.log(`${name}: PASS closing board after fresh-session promotion`);
         await page.close();
       }
       {
         const { page, state, path } = await fixture(browser);
         await page.goto(origin + "/panes/w1%3Ap2/chat");
-        await page.waitForURL((url) => url.pathname === "/sessions/s2/chat");
         await page
-          .getByRole("heading", { name: "Conversation or pane unavailable", exact: true })
+          .getByTestId("output-panel")
+          .getByText("Conversation 2", { exact: true })
           .waitFor();
-        assert.equal(path(), "/sessions/s2/chat");
+        // Survive a dashboard poll without promoting the in-memory ID.
+        await page.waitForTimeout(2100);
+        assert.equal(path(), "/panes/w1%3Ap2/chat");
         assert.deepEqual(state.errors, []);
-        console.log(
-          `${name}: reproduced unsaved direct-pane canonicalization to an unavailable session URL`,
-        );
+        console.log(`${name}: PASS unsaved direct-pane link stays live and resolvable`);
         await page.close();
       }
       {
@@ -285,13 +283,14 @@ try {
         await page.goto(origin + "/sessions/s1/whiteboard");
         const drawing = page.getByTestId("whiteboard");
         await drawing.waitFor();
+        const entries = await page.evaluate(() => history.length);
         await drawing.getByRole("button", { name: "← Back", exact: true }).click();
         await page.waitForURL((url) => url.pathname === "/sessions/s1/chat");
-        await page.goBack();
-        await drawing.waitFor();
-        assert.equal(path(), "/sessions/s1/whiteboard");
+        assert.equal(await page.evaluate(() => history.length), entries);
+        assert.equal(path(), "/sessions/s1/chat");
+        assert.equal(await drawing.count(), 0);
         assert.deepEqual(state.errors, []);
-        console.log(`${name}: reproduced close-board/Back cycle on a direct board link`);
+        console.log(`${name}: PASS direct board close replaces history without a reopen cycle`);
         await page.close();
       }
       {
@@ -299,18 +298,28 @@ try {
         await page.goto(origin + "/sessions/s1/chat");
         const composer = page.getByPlaceholder("Message…", { exact: true });
         await composer.fill("Keep through restart");
+        await page.locator('input[type="file"]').setInputFiles({
+          name: "draft.png",
+          mimeType: "image/png",
+          buffer: Buffer.from(
+            "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+jR5kAAAAASUVORK5CYII=",
+            "base64",
+          ),
+        });
         state.activeA = false;
         await page
           .getByRole("heading", { name: "This conversation is inactive", exact: true })
           .waitFor();
         state.activeA = true;
         await composer.waitFor();
-        assert.equal(await composer.inputValue(), "");
+        assert.equal(await composer.inputValue(), "Keep through restart");
+        assert.equal(
+          await page.getByRole("button", { name: "Preview image 1", exact: true }).count(),
+          1,
+        );
         assert.equal(path(), "/sessions/s1/chat");
         assert.deepEqual(state.errors, []);
-        console.log(
-          `${name}: reproduced draft loss when an inactive poll interrupts same-session restart`,
-        );
+        console.log(`${name}: PASS text and attachments survive an inactive restart poll`);
         await page.close();
       }
       {
@@ -328,12 +337,6 @@ try {
           epoch: "c0000000-0000-4000-8000-000000000001",
           identity: { ...snapshots[b.pane_id].identity, sessionId: "s3" },
         };
-        const reopened = page.waitForResponse(
-          (response) =>
-            response.url().endsWith("/board") &&
-            response.request().method() === "POST" &&
-            response.request().postDataJSON().target.sessionId === "s3",
-        );
         await page.evaluate(
           ({ replacement, pane }) => {
             for (const source of window.fixtureSources)
@@ -342,13 +345,14 @@ try {
           },
           { replacement, pane: b.pane_id },
         );
-        await reopened;
-        assert(state.boardTargets.includes("s3"));
-        assert.equal(path(), "/sessions/s1/chat");
+        await page
+          .getByText("This pane is now running a different conversation.", { exact: true })
+          .waitFor();
+        assert(!state.boardTargets.includes("s3"));
+        assert.equal(await page.getByTestId("whiteboard").count(), 0);
+        assert.equal(path(), "/panes/w1%3Ap2/whiteboard");
         assert.deepEqual(state.errors, []);
-        console.log(
-          `${name}: reproduced pending board silently reopening for a replacement session`,
-        );
+        console.log(`${name}: PASS replacement cannot inherit the pending conversation's board`);
         await page.close();
       }
       {
@@ -363,13 +367,13 @@ try {
         await dialog.getByRole("button", { name: "Cancel", exact: true }).click();
         await openAgent(1);
         await page.waitForURL((url) => url.pathname === "/sessions/s2/chat");
+        const closed = page.waitForResponse((response) => response.request().method() === "DELETE");
         state.finishClose();
-        await page.waitForURL((url) => url.pathname === "/");
-        assert.equal(path(), "/");
+        await closed;
+        await page.waitForTimeout(150);
+        assert.equal(path(), "/sessions/s2/chat");
         assert.deepEqual(state.errors, []);
-        console.log(
-          `${name}: reproduced late tab-close response dismissing the newly selected session`,
-        );
+        console.log(`${name}: PASS late tab-close cannot dismiss the newly selected session`);
         await page.close();
       }
       {
@@ -383,12 +387,18 @@ try {
         await dialog.getByRole("button", { name: "Cancel", exact: true }).click();
         await openAgent(0);
         await page.waitForURL((url) => url.pathname === "/sessions/s1/chat");
+        const created = page.waitForResponse(
+          (response) =>
+            response.url().endsWith("/api/agents") && response.request().method() === "POST",
+        );
         state.finishCreate();
-        await page.waitForURL((url) => url.pathname === "/sessions/s3/chat");
-        assert.equal(path(), "/sessions/s3/chat");
+        await created;
+        await page.waitForTimeout(150);
+        assert.equal(path(), "/sessions/s1/chat");
+        assert.equal(await page.getByTestId("pane-row").count(), 3);
         assert.deepEqual(state.errors, []);
         console.log(
-          `${name}: reproduced dismissed agent creation stealing navigation on completion`,
+          `${name}: PASS dismissed creation updates dashboard without stealing navigation`,
         );
         await page.close();
       }
@@ -401,21 +411,22 @@ try {
           .locator("dialog[open]")
           .getByRole("button", { name: "Create tab", exact: true })
           .click();
-        await page.waitForURL((url) => url.pathname === "/panes/w1%3Ap4/chat");
-        assert.equal(path(), "/panes/w1%3Ap4/chat");
+        await page.waitForURL((url) => url.pathname === "/panes/w1%3Ap4/terminal");
+        assert.equal(path(), "/panes/w1%3Ap4/terminal");
         assert.deepEqual(state.errors, []);
-        console.log(`${name}: reproduced new shell creation using a chat URL instead of terminal`);
+        console.log(`${name}: PASS new shell opens at its terminal URL`);
         await page.close();
       }
       {
         const { page, state, path } = await fixture(browser, { emit: false });
         await page.goto(origin + "/sessions/s1/chat");
         await page.getByRole("button", { name: "Switch to Terminal view", exact: true }).click();
-        await page.waitForURL((url) => url.pathname === "/panes/w1%3Ap1/terminal");
-        assert.equal(path(), "/panes/w1%3Ap1/terminal");
+        await page.waitForURL((url) => url.pathname === "/sessions/s1/terminal");
+        assert.equal(path(), "/sessions/s1/terminal");
+        await page.getByText("Checking conversation…", { exact: true }).waitFor();
         assert.deepEqual(state.errors, []);
         console.log(
-          `${name}: reproduced chat-to-terminal dropping the pinned session URL before SSE readiness`,
+          `${name}: PASS early terminal switch preserves session identity and readiness gate`,
         );
         await page.close();
       }
@@ -428,22 +439,25 @@ try {
             .getByTestId("output-panel")
             .getByText("Conversation 2", { exact: true })
             .waitFor();
-          assert.equal(path(), "/");
+          assert.equal(path(), "/panes/w1%3Ap2/chat");
           await page.reload();
-          await page.getByRole("tab", { name: "Workspaces", exact: true }).waitFor();
-          assert.equal(await page.getByTestId("console").count(), 0);
+          await page
+            .getByTestId("output-panel")
+            .getByText("Conversation 2", { exact: true })
+            .waitFor();
+          assert.equal(path(), "/panes/w1%3Ap2/chat");
           assert.deepEqual(state.errors, []);
-          console.log(`${name} ${width}px: reproduced fresh-session reload returning to overview`);
+          console.log(`${name} ${width}px: PASS fresh-session reload retains the conversation`);
           await page.close();
         }
         {
           const { page, state, path } = await fixture(browser, { width, emit: false });
           await page.goto(origin + "/sessions/s1/chat");
           await page.getByRole("button", { name: "Switch to Terminal view", exact: true }).click();
-          await page.waitForURL((url) => url.pathname === "/panes/w1%3Ap1/terminal");
-          assert.equal(path(), "/panes/w1%3Ap1/terminal");
+          await page.waitForURL((url) => url.pathname === "/sessions/s1/terminal");
+          assert.equal(path(), "/sessions/s1/terminal");
           assert.deepEqual(state.errors, []);
-          console.log(`${name} ${width}px: reproduced early mode switch dropping the pinned URL`);
+          console.log(`${name} ${width}px: PASS early mode switch keeps the pinned URL`);
           await page.close();
         }
         {
@@ -451,13 +465,13 @@ try {
           await page.goto(origin + "/sessions/s1/whiteboard");
           const drawing = page.getByTestId("whiteboard");
           await drawing.waitFor();
+          const entries = await page.evaluate(() => history.length);
           await drawing.getByRole("button", { name: "← Back", exact: true }).click();
           await page.waitForURL((url) => url.pathname === "/sessions/s1/chat");
-          await page.goBack();
-          await drawing.waitFor();
-          assert.equal(path(), "/sessions/s1/whiteboard");
+          assert.equal(path(), "/sessions/s1/chat");
+          assert.equal(await page.evaluate(() => history.length), entries);
           assert.deepEqual(state.errors, []);
-          console.log(`${name} ${width}px: reproduced close-board/Back cycle`);
+          console.log(`${name} ${width}px: PASS direct board close does not add a history cycle`);
           await page.close();
         }
         {
@@ -471,9 +485,9 @@ try {
             .waitFor();
           state.activeA = true;
           await composer.waitFor();
-          assert.equal(await composer.inputValue(), "");
+          assert.equal(await composer.inputValue(), "Keep through restart");
           assert.deepEqual(state.errors, []);
-          console.log(`${name} ${width}px: reproduced restart-window draft loss`);
+          console.log(`${name} ${width}px: PASS restart-window draft retention`);
           await page.close();
         }
       }

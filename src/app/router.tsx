@@ -9,7 +9,7 @@ import {
 import { useEffect, useState } from "react";
 import { RouterProvider, useNavigate, useRouterState } from "@tanstack/react-router";
 import { App } from "./App";
-import { usePaneNavigation } from "./usePaneNavigation";
+import { usePaneNavigation, type ChatReturn } from "./usePaneNavigation";
 import { readWhiteboardLink } from "../features/whiteboard/boardLink";
 import { Button } from "../shared/ui";
 import { StateIcon } from "../shared/ui/StateFeedback";
@@ -59,7 +59,7 @@ declare module "@tanstack/react-router" {
 declare module "@tanstack/history" {
   interface HistoryState {
     fernblickOverviewIndex?: number;
-    fernblickChatIndex?: number;
+    fernblickChatReturn?: ChatReturn;
   }
 }
 
@@ -76,7 +76,7 @@ export function createAppRouter(history?: RouterHistory) {
         component: empty,
       }),
     ),
-    ...(["chat", "terminal"] as const).map((view) =>
+    ...(["chat", "terminal", "whiteboard"] as const).map((view) =>
       createRoute({ getParentRoute: () => root, path: `/panes/$paneId/${view}`, component: empty }),
     ),
   ];

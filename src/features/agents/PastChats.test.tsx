@@ -71,10 +71,11 @@ async function openAndConfirm() {
   );
   await act(async () => submit());
 }
-function view(query = "", withWorkspaces = true) {
+function view(query = "", withWorkspaces = true, navigationKey?: string) {
   return (
     <QueryClientProvider client={client}>
       <PastChats
+        navigationKey={navigationKey}
         query={query}
         workspaces={
           withWorkspaces
@@ -277,10 +278,7 @@ it("resumes in the chosen workspace, disables duplicate actions and selects the 
   );
   await act(async () => submit());
   await settle();
-  expect(resumeChat).toHaveBeenCalledWith(
-    { id: chats[0].id, workspaceId: "w2" },
-    expect.anything(),
-  );
+  expect(resumeChat).toHaveBeenCalledWith({ id: chats[0].id, workspaceId: "w2" });
   expect(
     rows().every(
       (row) => row.findByProps({ "aria-label": `Resume ${chats[0].title}` }).props.disabled,
@@ -300,6 +298,40 @@ it("resumes in the chosen workspace, disables duplicate actions and selects the 
   expect(renderer.root.findAllByType("dialog")).toHaveLength(0);
   expect(nativeDialog.close).toHaveBeenCalledOnce();
 });
+
+it.each(["navigate", "return", "unmount"])(
+  "does not steal navigation when a history resume finishes after %s",
+  async (action) => {
+    let finish!: (agent: Agent) => void;
+    vi.mocked(resumeChat).mockImplementation(
+      () =>
+        new Promise((resolve) => {
+          finish = resolve;
+        }),
+    );
+    await act(async () => {
+      renderer = create(view("", true, "original"));
+    });
+    await settle();
+    await openAndConfirm();
+    await act(async () =>
+      renderer.update(
+        action !== "unmount" ? (
+          view("", true, "elsewhere")
+        ) : (
+          <QueryClientProvider client={client}>
+            <p>Elsewhere</p>
+          </QueryClientProvider>
+        ),
+      ),
+    );
+    if (action === "return") await act(async () => renderer.update(view("", true, "original")));
+    await act(async () => finish(agent));
+    await settle();
+    expect(onResumed).not.toHaveBeenCalled();
+    expect(resumeChat).toHaveBeenCalledOnce();
+  },
+);
 
 it("keeps active chats hidden and explains how to add a missing workspace", async () => {
   await act(async () => {
@@ -461,10 +493,7 @@ it.each([true, false])(
     expect(resumeChat).not.toHaveBeenCalled();
     await act(async () => submit());
     await settle();
-    expect(resumeChat).toHaveBeenCalledWith(
-      { id: chats[0].id, workspaceId: "w3" },
-      expect.anything(),
-    );
+    expect(resumeChat).toHaveBeenCalledWith({ id: chats[0].id, workspaceId: "w3" });
     expect(createWorkspace).toHaveBeenCalledOnce();
   },
 );
