@@ -64,35 +64,32 @@ export function ConversationActionsMenu({
       return;
     }
     popup.showPopover();
-    function position() {
+    const position = () => {
       const viewport = window.visualViewport;
       const minX = (viewport?.offsetLeft ?? 0) + 8;
       const minY = (viewport?.offsetTop ?? 0) + 8;
       const maxX = minX + (viewport?.width ?? window.innerWidth) - 16;
       const maxY = minY + (viewport?.height ?? window.innerHeight) - 16;
-      const rect = anchor!.getBoundingClientRect();
+      const rect = anchor.getBoundingClientRect();
       const width = Math.min(272, maxX - minX);
-      popup!.style.setProperty("--menu-width", `${width}px`);
-      popup!.style.setProperty("--menu-max-height", `${maxY - minY}px`);
-      const height = popup!.getBoundingClientRect().height;
+      popup.style.setProperty("--menu-width", `${width}px`);
+      popup.style.setProperty("--menu-max-height", `${maxY - minY}px`);
+      const height = popup.getBoundingClientRect().height;
       const above = rect.top - minY - 8;
       const below = maxY - rect.bottom - 8;
       const placeAbove = above >= height || above >= below;
-      popup!.style.setProperty(
-        "--menu-max-height",
-        `${Math.max(44, placeAbove ? above : below)}px`,
-      );
-      const visibleHeight = popup!.getBoundingClientRect().height;
+      popup.style.setProperty("--menu-max-height", `${Math.max(44, placeAbove ? above : below)}px`);
+      const visibleHeight = popup.getBoundingClientRect().height;
       const top = placeAbove ? rect.top - visibleHeight - 8 : rect.bottom + 8;
-      popup!.style.setProperty(
+      popup.style.setProperty(
         "--menu-top",
         `${Math.max(minY, Math.min(top, maxY - visibleHeight))}px`,
       );
-      popup!.style.setProperty(
+      popup.style.setProperty(
         "--menu-left",
         `${Math.max(minX, Math.min(rect.right - width, maxX - width))}px`,
       );
-    }
+    };
     position();
     items.current[openingIndex.current]?.focus({ preventScroll: true });
     window.addEventListener("resize", position);

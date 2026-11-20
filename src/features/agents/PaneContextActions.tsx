@@ -60,34 +60,34 @@ export function PaneContextActions({
     // Manual dismissal keeps the release of the opening long press/right click
     // from immediately light-dismissing a newly opened popover.
     overlay.showPopover();
-    function position() {
+    const position = () => {
       const viewport = window.visualViewport;
       const minX = (viewport?.offsetLeft ?? 0) + 8;
       const minY = (viewport?.offsetTop ?? 0) + 8;
       const maxX = minX + (viewport?.width ?? window.innerWidth) - 16;
       const maxY = minY + (viewport?.height ?? window.innerHeight) - 16;
       const rect = row!.getBoundingClientRect();
-      popup!.style.setProperty("--pane-menu-max-width", `${maxX - minX}px`);
-      popup!.style.setProperty("--pane-menu-max-height", `${maxY - minY}px`);
-      const { width, height } = popup!.getBoundingClientRect();
+      popup.style.setProperty("--pane-menu-max-width", `${maxX - minX}px`);
+      popup.style.setProperty("--pane-menu-max-height", `${maxY - minY}px`);
+      const { width, height } = popup.getBoundingClientRect();
       const above = rect.top - minY - 8;
       const below = maxY - rect.bottom - 8;
       const placeAbove = below < height && above > below;
-      popup!.style.setProperty(
+      popup.style.setProperty(
         "--pane-menu-max-height",
         `${Math.max(0, Math.min(maxY - minY, placeAbove ? above : below))}px`,
       );
-      const visibleHeight = popup!.getBoundingClientRect().height;
+      const visibleHeight = popup.getBoundingClientRect().height;
       const top = placeAbove ? rect.top - visibleHeight - 8 : rect.bottom + 8;
-      popup!.style.setProperty(
+      popup.style.setProperty(
         "--pane-menu-top",
         `${Math.max(minY, Math.min(top, maxY - visibleHeight))}px`,
       );
-      popup!.style.setProperty(
+      popup.style.setProperty(
         "--pane-menu-left",
         `${Math.max(minX, Math.min(rect.right - width - 8, maxX - width))}px`,
       );
-    }
+    };
     position();
     popup.querySelector<HTMLButtonElement>("button")?.focus({ preventScroll: true });
     window.addEventListener("resize", position);
