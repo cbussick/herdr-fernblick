@@ -532,9 +532,11 @@ function PiAgentConsole({
           status={initializing ? "unknown" : agent.agent_status}
           label={
             initializing
-              ? starting
-                ? "Starting"
-                : "Connecting"
+              ? live.reconnecting
+                ? "Reconnecting"
+                : starting
+                  ? "Starting"
+                  : "Connecting"
               : getStatusLabel(agent.agent_status)
           }
         />
@@ -583,7 +585,13 @@ function PiAgentConsole({
             aria-busy="true"
           >
             <StateIcon kind="loading" spinning />
-            <p>{starting ? "Starting Pi…" : "Connecting to Pi live chat…"}</p>
+            <p>
+              {live.reconnecting
+                ? "Reconnecting to Pi…"
+                : starting
+                  ? "Starting Pi…"
+                  : "Connecting to Pi live chat…"}
+            </p>
           </div>
         ) : (
           <ChatTranscript

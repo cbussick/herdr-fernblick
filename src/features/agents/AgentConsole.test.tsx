@@ -11,7 +11,7 @@ import { ConversationTreeDialog } from "./ConversationTreeDialog";
 import { Whiteboard } from "../whiteboard/Whiteboard";
 import type { WhiteboardConversation } from "../whiteboard/ConversationDock";
 const mocks = vi.hoisted(() => ({
-  live: {} as { snapshot?: Snapshot; error?: string },
+  live: {} as { snapshot?: Snapshot; error?: string; reconnecting?: boolean },
   command: vi.fn(),
   compact: vi.fn(),
   navigate: vi.fn(),
@@ -592,6 +592,18 @@ it("keeps a newly started Pi in chat while it waits for its saved session", asyn
     "chat",
   );
   expect(JSON.stringify(renderer.toJSON())).toContain("Starting Pi…");
+});
+
+it("shows retry progress without an error screen and preserves the draft", async () => {
+  await act(async () =>
+    renderer.root.findByType("textarea").props.onChange({ target: { value: "Keep my draft" } }),
+  );
+  mocks.live = { reconnecting: true };
+  await act(async () => renderer.update(render()));
+  expect(JSON.stringify(renderer.toJSON())).toContain("Reconnecting to Pi…");
+  expect(renderer.root.findAllByProps({ role: "alert" })).toHaveLength(0);
+  expect(renderer.root.findByType("textarea").props.value).toBe("Keep my draft");
+  expect(mocks.command).not.toHaveBeenCalled();
 });
 
 it("shows the live terminal by default and keeps loaded history when the agent starts working", async () => {

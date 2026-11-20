@@ -8,11 +8,13 @@ export function useLiveChat(target: string, enabled: boolean, session: string | 
     session?: string;
     snapshot?: Snapshot;
     error?: string;
+    reconnecting?: boolean;
   }>({ target, session });
   useEffect(() => {
     if (!enabled) return;
     let disposed = false;
     let connected = false;
+    let reconnecting = false;
     let generation = 0;
     let events: EventSource | undefined;
     let baselineTimer: ReturnType<typeof setTimeout> | undefined;
@@ -35,6 +37,7 @@ export function useLiveChat(target: string, enabled: boolean, session: string | 
           ? { snapshot: current.snapshot }
           : {}),
         error: reason,
+        reconnecting,
       }));
     }
     function checkDeadline() {
@@ -72,7 +75,7 @@ export function useLiveChat(target: string, enabled: boolean, session: string | 
         setState((current) =>
           current.target === target && current.session === session && current.snapshot
             ? { target, session, snapshot: current.snapshot, error: "Reconnecting to Pi…" }
-            : { target, session },
+            : { target, session, reconnecting },
         );
       }
       checkDeadline();
@@ -85,6 +88,8 @@ export function useLiveChat(target: string, enabled: boolean, session: string | 
       events = undefined;
     }
     function scheduleRetry() {
+      reconnecting = true;
+      waitForStartup(startupReason);
       retire();
       if (retry !== undefined || disposed) return;
       const delay = Math.min(30_000, retryDelay + Math.floor(Math.random() * 250));
@@ -116,7 +121,7 @@ export function useLiveChat(target: string, enabled: boolean, session: string | 
           if (!isCurrent()) return;
           checkDeadline();
           scheduleRetry();
-        }, 30_000);
+        }, 10_000);
       }
       awaitBaseline();
       source.onmessage = (event) => {
@@ -141,6 +146,7 @@ export function useLiveChat(target: string, enabled: boolean, session: string | 
               clearTimeout(baselineTimer);
               baselineTimer = undefined;
               recoveryRequested = false;
+              reconnecting = false;
               clearDeadline();
               setState({ target, session, error: reason });
             }
@@ -150,6 +156,7 @@ export function useLiveChat(target: string, enabled: boolean, session: string | 
           if (previous?.epoch === snapshot.epoch && previous.seq > snapshot.seq) return;
           previous = snapshot;
           connected = true;
+          reconnecting = false;
           clearTimeout(baselineTimer);
           baselineTimer = undefined;
           recoveryRequested = false;

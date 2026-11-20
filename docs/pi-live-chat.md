@@ -20,8 +20,10 @@
   are coalesced and rapid successful recoveries are rate-limited. EventSource
   handles ordinary reconnects natively; terminal CLOSED streams and malformed
   frames retry with jittered exponential backoff (1 second initially, capped at
-  30 seconds). A per-stream 30-second fresh-baseline watchdog also replaces silent
-  startup streams and stuck native reconnects using that same backoff. Connecting
+  30 seconds). A per-stream 10-second fresh-baseline watchdog also replaces silent
+  startup streams and stuck native reconnects using that same backoff. Startup
+  retries show “Reconnecting to Pi…” without an error screen until the unchanged
+  30-second notice deadline. Connecting
   notices do not extend this watchdog; valid snapshots and explicit unavailable
   errors cancel it. Healthy idle streams are not periodically reconnected.
   Superseded connection callbacks cannot update state. EventSource

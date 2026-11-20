@@ -71,7 +71,7 @@ it("waits quietly for initial registration but reports a bounded startup timeout
   expect(latest.snapshot).toBeUndefined();
   await act(async () => vi.advanceTimersByTimeAsync(20_000));
   await act(async () =>
-    events.onmessage!({
+    Events.instances.at(-1)!.onmessage!({
       data: JSON.stringify({ type: "connecting", reason: "Pi live chat extension unavailable" }),
     }),
   );
