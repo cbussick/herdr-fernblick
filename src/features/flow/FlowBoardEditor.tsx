@@ -473,18 +473,20 @@ function Playground(props: BoardEditorProps) {
           type="file"
           aria-label="Import flow JSON"
           accept=".json,application/json"
-          onChange={async (e) => {
-            const file = e.target.files?.[0];
-            e.target.value = "";
-            if (!file) return;
-            try {
-              if (file.size > MAX_FLOW_BACKUP_BYTES) throw new Error("Import exceeds 12 MiB");
-              const next = importFlowScene(await file.text());
-              await verifySceneImages(next);
-              if (!callbacks.current.locked) setPendingImport(next);
-            } catch (error) {
-              onError(String(error));
-            }
+          onChange={(e) => {
+            void (async () => {
+              const file = e.target.files?.[0];
+              e.target.value = "";
+              if (!file) return;
+              try {
+                if (file.size > MAX_FLOW_BACKUP_BYTES) throw new Error("Import exceeds 12 MiB");
+                const next = importFlowScene(await file.text());
+                await verifySceneImages(next);
+                if (!callbacks.current.locked) setPendingImport(next);
+              } catch (error) {
+                onError(String(error));
+              }
+            })();
           }}
         />
       </label>

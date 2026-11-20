@@ -10,7 +10,9 @@ import { IconButton, StatusIndicator, TabKindIcon } from "../../shared/ui";
 import { getAgentTarget, getStatusLabel } from "./agentPresentation";
 import { StateNotice } from "../../shared/ui/StateFeedback";
 import { TerminalOutput } from "./TerminalOutput";
+import type { PaneComposer } from "./PaneConsole";
 interface ShellConsoleProps {
+  composer?: PaneComposer;
   tab: ShellTab;
   agent?: Agent;
   onBack: () => void;
@@ -22,8 +24,10 @@ const controls: { key: KeyName; label: string }[] = [
   { key: "down", label: "↓" },
   { key: "enter", label: "Enter" },
 ];
-export function ShellConsole({ tab, agent, onBack }: ShellConsoleProps) {
-  const [command, setCommand] = useState("");
+export function ShellConsole({ tab, agent, onBack, composer }: ShellConsoleProps) {
+  const [localCommand, setLocalCommand] = useState("");
+  const command = composer?.text ?? localCommand;
+  const setCommand = composer?.setText ?? setLocalCommand;
   const queryClient = useQueryClient();
   const inputMutation = useMutation({
     mutationFn: (text: string) => sendPaneInput(tab.pane_id, text),
@@ -109,6 +113,7 @@ export function ShellConsole({ tab, agent, onBack }: ShellConsoleProps) {
             }
           >
             <textarea
+              ref={composer?.inputRef}
               id="shell-command"
               value={command}
               onChange={(event) => setCommand(event.target.value)}

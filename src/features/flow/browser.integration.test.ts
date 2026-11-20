@@ -28,26 +28,28 @@ beforeAll(async () => {
       rolldownOptions: { input: ["flow-board-render.html", "src/features/flow/editor.test.html"] },
     },
   });
-  server = createServer(async (req, res) => {
-    try {
-      const path = new URL(req.url!, "http://localhost").pathname;
-      requests.push(path);
-      const data = await readFile(join(directory, path));
-      res.setHeader(
-        "Content-Type",
-        (
-          {
-            ".html": "text/html",
-            ".js": "text/javascript",
-            ".css": "text/css",
-            ".woff2": "font/woff2",
-          } as Record<string, string>
-        )[extname(path)] ?? "application/octet-stream",
-      );
-      res.end(data);
-    } catch {
-      res.writeHead(404).end();
-    }
+  server = createServer((req, res) => {
+    void (async () => {
+      try {
+        const path = new URL(req.url!, "http://localhost").pathname;
+        requests.push(path);
+        const data = await readFile(join(directory, path));
+        res.setHeader(
+          "Content-Type",
+          (
+            {
+              ".html": "text/html",
+              ".js": "text/javascript",
+              ".css": "text/css",
+              ".woff2": "font/woff2",
+            } as Record<string, string>
+          )[extname(path)] ?? "application/octet-stream",
+        );
+        res.end(data);
+      } catch {
+        res.writeHead(404).end();
+      }
+    })();
   });
   await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));
   const address = server.address();

@@ -6,6 +6,7 @@ import { randomUUID } from "node:crypto";
 import type { Agent } from "../../shared/api/contracts";
 import type { Snapshot } from "../../../packages/pi-live-chat/protocol";
 import { AgentConsole } from "./AgentConsole";
+import { PaneConsole } from "./PaneConsole";
 import { MessageBranchDialog } from "./MessageBranchDialog";
 import { ConversationTreeDialog } from "./ConversationTreeDialog";
 import { Whiteboard } from "../whiteboard/Whiteboard";
@@ -150,6 +151,98 @@ it.each([
     expect(renderer.root.findByType("label").children.join("")).toBe(`Message ${title}`);
   }
 });
+
+it("preserves a draft typed in the shell while Pi is starting", async () => {
+  const tab = {
+    pane_id: agent.pane_id,
+    tab_id: "w1:t1",
+    workspace_id: "w1",
+    label: "Starting",
+    revision: 1,
+  };
+  function pane(ready: boolean) {
+    return (
+      <QueryClientProvider client={client}>
+        <PaneConsole tab={tab} agent={ready ? agent : undefined} onBack={() => {}} />
+      </QueryClientProvider>
+    );
+  }
+  await act(async () => renderer.update(pane(false)));
+  await act(async () =>
+    renderer.root.findByType("textarea").props.onChange({ target: { value: "My first prompt" } }),
+  );
+  await act(async () => renderer.update(pane(true)));
+  expect(renderer.root.findByType("textarea").props.value).toBe("My first prompt");
+  expect(mocks.command).not.toHaveBeenCalled();
+  expect(mocks.paneInput).not.toHaveBeenCalled();
+});
+
+it.each([true, false])(
+  "transfers shell editor focus and selection only when focused (%s)",
+  async (focused) => {
+    const tab = {
+      pane_id: agent.pane_id,
+      tab_id: "w1:t1",
+      workspace_id: "w1",
+      label: "Starting",
+      revision: 1,
+    };
+    const ownerDocument = { activeElement: null as unknown };
+    const editors: {
+      focus: ReturnType<typeof vi.fn<() => void>>;
+      setSelectionRange: ReturnType<
+        typeof vi.fn<(start: number, end: number, direction: string) => void>
+      >;
+    }[] = [];
+    function pane(ready: boolean, key = agent.pane_id) {
+      return (
+        <QueryClientProvider client={client}>
+          <PaneConsole
+            key={key}
+            tab={tab}
+            agent={ready ? { ...agent, pane_id: key } : undefined}
+            onBack={() => {}}
+          />
+        </QueryClientProvider>
+      );
+    }
+    await act(async () => {
+      renderer.unmount();
+      renderer = create(pane(false), {
+        createNodeMock: (element) => {
+          if (element.type !== "textarea") return null;
+          const node = {
+            ownerDocument,
+            selectionStart: 3,
+            selectionEnd: 8,
+            selectionDirection: "backward",
+            focus: vi.fn(),
+            setSelectionRange: vi.fn(),
+          };
+          node.focus.mockImplementation(() => {
+            ownerDocument.activeElement = node;
+          });
+          editors.push(node);
+          return node;
+        },
+      });
+    });
+    await act(async () =>
+      renderer.root
+        .findByType("textarea")
+        .props.onChange({ target: { value: "Keep typing here" } }),
+    );
+    if (focused) editors[0].focus();
+    await act(async () => renderer.update(pane(true)));
+    expect(renderer.root.findByType("textarea").props.value).toBe("Keep typing here");
+    const chatEditor = editors.at(-1)!;
+    expect(chatEditor.focus).toHaveBeenCalledTimes(focused ? 1 : 0);
+    if (focused) expect(chatEditor.setSelectionRange).toHaveBeenCalledWith(3, 8, "backward");
+    await act(async () => renderer.update(pane(true, "w1:p2")));
+    expect(renderer.root.findByType("textarea").props.value).toBe("");
+    expect(editors.at(-1)!.focus).not.toHaveBeenCalled();
+  },
+);
 
 it("confirms before branching and restores the prompt after an epoch-changing snapshot", async () => {
   const original = mocks.live.snapshot!;
