@@ -1,3 +1,4 @@
+import { dispatchTestEvent } from "../../shared/lib/dispatchTestEvent";
 import { act } from "react";
 import { create } from "react-test-renderer";
 import type { ReactTestRenderer } from "react-test-renderer";
@@ -43,10 +44,10 @@ afterEach(async () => {
 });
 const click = (text: string) =>
   act(async () => {
-    renderer.root
-      .findAllByType("button")
-      .find((button) => button.children.includes(text))!
-      .props.onClick();
+    await dispatchTestEvent(
+      renderer.root.findAllByType("button").find((button) => button.children.includes(text))!,
+      "onClick",
+    );
   });
 const notices = () => renderer.root.findAllByProps({ "data-testid": "snackbar" });
 
@@ -70,7 +71,7 @@ it("opens app settings from the overview gear without changing the selected over
   await click("Past sessions");
   const gear = renderer.root.findByProps({ "aria-label": "Open settings" });
   expect(gear.props["aria-haspopup"]).toBe("dialog");
-  await act(async () => gear.props.onClick());
+  await act(async () => dispatchTestEvent(gear, "onClick"));
   expect(openSettings).toHaveBeenCalledOnce();
   expect(renderer.root.findByType("input").props["aria-label"]).toBe("Search past sessions");
 });
@@ -91,7 +92,10 @@ it("shows a removal snackbar across overview tabs and supports manual dismissal"
   await click("Workspaces");
   expect(notices()).toHaveLength(1);
   await act(async () =>
-    renderer.root.findByProps({ "aria-label": "Dismiss notification" }).props.onClick(),
+    dispatchTestEvent(
+      renderer.root.findByProps({ "aria-label": "Dismiss notification" }),
+      "onClick",
+    ),
   );
   expect(notices()).toHaveLength(0);
 });

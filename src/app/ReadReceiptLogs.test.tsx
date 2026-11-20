@@ -1,3 +1,4 @@
+import { dispatchTestEvent } from "../shared/lib/dispatchTestEvent";
 import { act, create } from "react-test-renderer";
 import type { ReactTestRenderer } from "react-test-renderer";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
@@ -35,7 +36,7 @@ async function click(label: string) {
     .findAllByType("button")
     .find((node) => node.children.includes(label))!;
   await act(async () => {
-    await button.props.onClick();
+    await dispatchTestEvent(button, "onClick");
   });
 }
 it("views/copies saved logs offline and clears the displayed snapshot", async () => {
@@ -67,7 +68,7 @@ it("opens selectable plain text when clipboard access fails", async () => {
   const output = renderer.root.findByType("textarea");
   expect(output.props.readOnly).toBe(true);
   const select = vi.fn();
-  output.props.onFocus({ currentTarget: { select } });
+  await dispatchTestEvent(output, "onFocus", { currentTarget: { select } });
   expect(select).toHaveBeenCalledOnce();
   expect(renderer.root.findByProps({ role: "status" }).children.join("")).toContain(
     "Select the text",

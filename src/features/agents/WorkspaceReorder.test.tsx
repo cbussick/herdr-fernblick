@@ -1,3 +1,4 @@
+import { dispatchTestEvent } from "../../shared/lib/dispatchTestEvent";
 import { act } from "react";
 import { create } from "react-test-renderer";
 import type { ReactTestRenderer } from "react-test-renderer";
@@ -31,9 +32,12 @@ const order = () => renderer.root.findAllByType("h3").map((node) => node.childre
 const context = () =>
   renderer.root.find((node) => !!node.props.onDragEnd && !!node.props.onDragStart);
 async function drag(from = "w1", to: string | null = "w3") {
-  await act(async () => context().props.onDragStart({ active: { id: from } }));
+  await act(async () => dispatchTestEvent(context(), "onDragStart", { active: { id: from } }));
   await act(async () =>
-    context().props.onDragEnd({ active: { id: from }, over: to ? { id: to } : null }),
+    dispatchTestEvent(context(), "onDragEnd", {
+      active: { id: from },
+      over: to ? { id: to } : null,
+    }),
   );
 }
 
@@ -274,16 +278,18 @@ it("does not consider the rest of the page a drop destination", () => {
 it("does not save cancelled, outside or unchanged drops", async () => {
   await drag("w1", null);
   await drag("w1", "w1");
-  await act(async () => context().props.onDragCancel());
+  await act(async () => dispatchTestEvent(context(), "onDragCancel"));
   expect(moveWorkspace).not.toHaveBeenCalled();
 });
 
 it("rejects stale drops if another client changes the order", async () => {
-  await act(async () => context().props.onDragStart({ active: { id: "w1" } }));
+  await act(async () => dispatchTestEvent(context(), "onDragStart", { active: { id: "w1" } }));
   await act(async () =>
     renderer.update(render(false, [workspaces[1], workspaces[0], workspaces[2]])),
   );
-  await act(async () => context().props.onDragEnd({ active: { id: "w1" }, over: { id: "w3" } }));
+  await act(async () =>
+    dispatchTestEvent(context(), "onDragEnd", { active: { id: "w1" }, over: { id: "w3" } }),
+  );
   expect(moveWorkspace).not.toHaveBeenCalled();
   expect(renderer.root.findByProps({ role: "alert" }).children.join("")).toContain(
     "changed while dragging",
@@ -294,17 +300,20 @@ it("provides a click-only destination picker without expanding a workspace", asy
   const preventDefault = vi.fn();
   const stopPropagation = vi.fn();
   await act(async () =>
-    renderer.root
-      .findByProps({ "aria-label": "Reorder Gamma" })
-      .props.onClick({ preventDefault, stopPropagation }),
+    dispatchTestEvent(renderer.root.findByProps({ "aria-label": "Reorder Gamma" }), "onClick", {
+      preventDefault,
+      stopPropagation,
+    }),
   );
   expect(showModal).toHaveBeenCalledOnce();
   expect(preventDefault).toHaveBeenCalledOnce();
   expect(stopPropagation).toHaveBeenCalledOnce();
   await act(async () =>
-    renderer.root.findByType("select").props.onChange({ target: { value: "w1" } }),
+    dispatchTestEvent(renderer.root.findByType("select"), "onChange", { target: { value: "w1" } }),
   );
-  await act(async () => renderer.root.findByType("form").props.onSubmit({ preventDefault }));
+  await act(async () =>
+    dispatchTestEvent(renderer.root.findByType("form"), "onSubmit", { preventDefault }),
+  );
   expect(moveWorkspace).toHaveBeenCalledWith({ workspaceId: "w3", beforeWorkspaceId: "w1" });
   expect(close).toHaveBeenCalledOnce();
 });

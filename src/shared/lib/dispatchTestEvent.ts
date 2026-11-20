@@ -26,3 +26,15 @@ export async function dispatchTestEvent(
   }
   await Promise.resolve(handler.call(props, ...args));
 }
+
+/** Optional handlers retain React's absence semantics but still validate present values. */
+export async function dispatchOptionalTestEvent(
+  instance: ReactTestInstance,
+  name: string,
+  ...args: ReadonlyArray<unknown>
+): Promise<void> {
+  const props: unknown = instance.props;
+  if (typeof props === "object" && props !== null && name in props) {
+    await dispatchTestEvent(instance, name, ...args);
+  }
+}

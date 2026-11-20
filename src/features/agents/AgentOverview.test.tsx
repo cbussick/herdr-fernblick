@@ -1,3 +1,4 @@
+import { dispatchOptionalTestEvent, dispatchTestEvent } from "../../shared/lib/dispatchTestEvent";
 import { act } from "react";
 import { create } from "react-test-renderer";
 import type { ReactTestRenderer } from "react-test-renderer";
@@ -108,10 +109,10 @@ it.each([
 it.each([
   ["First", "w1"],
   ["Empty workspace", "w2"],
-])("keeps the plus button for %s without toggling disclosure", (label, workspaceId) => {
+])("keeps the plus button for %s without toggling disclosure", async (label, workspaceId) => {
   const button = renderer.root.findByProps({ "aria-label": `Create agent in ${label}` });
   const event = { preventDefault: vi.fn(), stopPropagation: vi.fn() };
-  button.props.onClick(event);
+  await dispatchTestEvent(button, "onClick", event);
   expect(onCreateAgent).toHaveBeenCalledExactlyOnceWith(workspaceId);
   expect(event.preventDefault).toHaveBeenCalled();
   expect(event.stopPropagation).toHaveBeenCalled();
@@ -119,9 +120,9 @@ it.each([
 
 it.each(["touch", "pen"])(
   "does not create an agent when holding a workspace with %s",
-  (pointerType) => {
+  async (pointerType) => {
     const header = summary();
-    header.props.onPointerDown?.({
+    await dispatchOptionalTestEvent(header, "onPointerDown", {
       pointerType,
       button: 0,
       isPrimary: true,
@@ -129,7 +130,7 @@ it.each(["touch", "pen"])(
       clientY: 20,
     });
     vi.advanceTimersByTime(2000);
-    header.props.onPointerUp?.();
+    await dispatchOptionalTestEvent(header, "onPointerUp");
     expect(onCreateAgent).not.toHaveBeenCalled();
     expect(header.props.onPointerDown).toBeUndefined();
   },
@@ -165,7 +166,7 @@ it("shows one tab heading and distinct agent names, with pane-specific navigatio
   ]);
   expect(paneRows()[0].props["aria-current"]).toBeUndefined();
   expect(paneRows()[1].props["aria-current"]).toBe("page");
-  paneRows()[1].props.onClick();
+  await dispatchTestEvent(paneRows()[1], "onClick");
   expect(onSelectAgent).toHaveBeenCalledExactlyOnceWith(namedAgents[1]);
   expect(summary().findByType("small").children.join("")).toBe("2 agents");
 });
@@ -184,7 +185,7 @@ it("gives a single-agent tab the same heading, identity and collapse control", a
   expect(tabGroups()[0].findByType("small").children).toEqual(["Tab"]);
   expect(tabGroups()[0].findByType("summary").findAllByType("svg")).toHaveLength(1);
   expect(paneRows()[0].findAllByType("small")).toHaveLength(0);
-  paneRows()[0].props.onClick();
+  await dispatchTestEvent(paneRows()[0], "onClick");
   expect(onSelectAgent).toHaveBeenCalledExactlyOnceWith(namedAgents[0]);
 });
 
@@ -200,7 +201,7 @@ it("gives a single shell the same collapsible heading and an indented terminal r
   ).toEqual(["Terminal", "Shell terminal"]);
   expect(tabGroups()[0].findByType("small").children).toEqual(["Tab"]);
   expect(paneRows()[0].findAllByType("small")).toHaveLength(0);
-  paneRows()[0].props.onClick();
+  await dispatchTestEvent(paneRows()[0], "onClick");
   expect(onSelectTab).toHaveBeenCalledExactlyOnceWith(shell);
 });
 
@@ -211,14 +212,18 @@ it.each(["agent", "shell"])(
     const shells = kind === "shell" ? [shell] : [];
     await updateWorkspace(agents, shells);
     expect(tabGroups()[0].props.open).toBe(true);
-    await act(async () => tabGroups()[0].props.onToggle({ currentTarget: { open: false } }));
+    await act(async () =>
+      dispatchTestEvent(tabGroups()[0], "onToggle", { currentTarget: { open: false } }),
+    );
     await updateWorkspace(agents, shells);
     expect(tabGroups()[0].props.open).toBe(false);
     await act(async () => renderer.update(workspaceList(agents, shells, "Empty workspace")));
     expect(tabGroups()[0].props.open).toBe(true);
     await updateWorkspace(agents, shells);
     expect(tabGroups()[0].props.open).toBe(false);
-    await act(async () => tabGroups()[0].props.onToggle({ currentTarget: { open: true } }));
+    await act(async () =>
+      dispatchTestEvent(tabGroups()[0], "onToggle", { currentTarget: { open: true } }),
+    );
     expect(tabGroups()[0].props.open).toBe(true);
   },
 );
@@ -273,7 +278,7 @@ it("groups mixed panes by tab and preserves every split shell's navigation", asy
   expect(paneRows()).toHaveLength(4);
   expect(paneRows()[2].findByType("strong").children).toEqual(["Shell w2:p1"]);
   expect(paneRows()[3].findByType("strong").children).toEqual(["Shell w2:p4"]);
-  paneRows()[3].props.onClick();
+  await dispatchTestEvent(paneRows()[3], "onClick");
   expect(onSelectTab).toHaveBeenCalledExactlyOnceWith(splitShell);
 });
 
@@ -324,8 +329,12 @@ it("preserves workspace/tab expansion across polling and a temporary search", as
   await updateWorkspace(namedAgents, []);
   const workspace = () =>
     renderer.root.findAllByProps({ "data-testid": "workspace-disclosure" }).at(-1)!;
-  await act(async () => workspace().props.onToggle({ currentTarget: { open: true } }));
-  await act(async () => tabGroups()[0].props.onToggle({ currentTarget: { open: false } }));
+  await act(async () =>
+    dispatchTestEvent(workspace(), "onToggle", { currentTarget: { open: true } }),
+  );
+  await act(async () =>
+    dispatchTestEvent(tabGroups()[0], "onToggle", { currentTarget: { open: false } }),
+  );
   await updateWorkspace(
     namedAgents.map((item) => ({ ...item, revision: 2 })),
     [],

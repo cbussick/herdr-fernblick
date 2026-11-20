@@ -1,3 +1,4 @@
+import { dispatchTestEvent } from "../shared/lib/dispatchTestEvent";
 import { createHash } from "node:crypto";
 import { act as reactAct } from "react";
 import { create } from "react-test-renderer";
@@ -96,12 +97,12 @@ async function update(agents: Array<Agent>) {
   });
 }
 async function openAndBack() {
-  await act(async () => row().props.onClick());
+  await act(async () => dispatchTestEvent(row(), "onClick"));
   await act(async () =>
-    renderer.root
-      .findAllByType("button")
-      .find((node) => node.children.includes("Back"))!
-      .props.onClick(),
+    dispatchTestEvent(
+      renderer.root.findAllByType("button").find((node) => node.children.includes("Back"))!,
+      "onClick",
+    ),
   );
 }
 beforeEach(async () => {
@@ -190,10 +191,10 @@ it("keeps a failed receipt unread and lets the user retry saving it", async () =
     "Could not save read status",
   );
   await act(async () =>
-    renderer.root
-      .findAllByType("button")
-      .find((node) => node.children.includes("Retry"))!
-      .props.onClick(),
+    dispatchTestEvent(
+      renderer.root.findAllByType("button").find((node) => node.children.includes("Retry"))!,
+      "onClick",
+    ),
   );
   expect(status()).toBe("Idle");
 });
@@ -203,10 +204,10 @@ it("dismisses a failed receipt without marking it read or retrying, including ac
   await openAndBack();
   expect(renderer.root.findAllByProps({ role: "alert" })).toHaveLength(1);
   await act(async () => {
-    renderer.root
-      .findAllByType("button")
-      .find((node) => node.children.includes("Dismiss"))!
-      .props.onClick();
+    await dispatchTestEvent(
+      renderer.root.findAllByType("button").find((node) => node.children.includes("Dismiss"))!,
+      "onClick",
+    );
   });
   expect(renderer.root.findAllByProps({ role: "alert" })).toHaveLength(0);
   expect(status()).toBe("New answer");
@@ -223,10 +224,10 @@ it("dismisses a failed receipt without marking it read or retrying, including ac
   expect(renderer.root.findAllByProps({ role: "alert" })).toHaveLength(1);
   expect(status()).toBe("New answer");
   await act(async () =>
-    renderer.root
-      .findAllByType("button")
-      .find((node) => node.children.includes("Retry"))!
-      .props.onClick(),
+    dispatchTestEvent(
+      renderer.root.findAllByType("button").find((node) => node.children.includes("Retry"))!,
+      "onClick",
+    ),
   );
   expect(status()).toBe("Idle");
   expect(renderer.root.findAllByProps({ role: "alert" })).toHaveLength(0);
@@ -234,13 +235,13 @@ it("dismisses a failed receipt without marking it read or retrying, including ac
 
 it("keeps a dismissed warning hidden in the open conversation but reports a new failed answer", async () => {
   vi.mocked(markAgentRead).mockRejectedValueOnce(new Error("Offline"));
-  await act(async () => row().props.onClick());
+  await act(async () => dispatchTestEvent(row(), "onClick"));
   expect(renderer.root.findAllByProps({ role: "alert" })).toHaveLength(1);
   await act(async () => {
-    renderer.root
-      .findAllByType("button")
-      .find((node) => node.children.includes("Dismiss"))!
-      .props.onClick();
+    await dispatchTestEvent(
+      renderer.root.findAllByType("button").find((node) => node.children.includes("Dismiss"))!,
+      "onClick",
+    );
   });
   await update([{ ...agent, revision: 8 }]);
   expect(renderer.root.findAllByProps({ role: "alert" })).toHaveLength(0);
@@ -258,8 +259,8 @@ it("can retry a failed answer by reopening it after reading a different agent", 
   await update([agent, { ...agent, pane_id: "w1:p2" }]);
   vi.mocked(markAgentRead).mockRejectedValueOnce(new Error("Offline"));
   await openAndBack();
-  await act(async () => row(1).props.onClick());
-  await act(async () => row().props.onClick());
+  await act(async () => dispatchTestEvent(row(1), "onClick"));
+  await act(async () => dispatchTestEvent(row(), "onClick"));
   expect(status()).toBe("Idle");
   expect(markAgentRead).toHaveBeenCalledTimes(3);
 });
@@ -289,7 +290,7 @@ it("shows the next completed answer as unread even if polling missed the working
 
 it("does not clear another agent's unread answer", async () => {
   await update([agent, { ...agent, pane_id: "w1:p2", tab_id: "w1:t2" }]);
-  await act(async () => row().props.onClick());
+  await act(async () => dispatchTestEvent(row(), "onClick"));
   expect(status()).toBe("Idle");
   expect(status(1)).toBe("New answer");
 });
@@ -306,13 +307,13 @@ it.each(["working", "blocked", "unknown", "idle"] as const)(
 
 it("marks answers completed in the open conversation as read", async () => {
   await update([{ ...agent, agent_status: "working", state_change_seq: 13 }]);
-  await act(async () => row().props.onClick());
+  await act(async () => dispatchTestEvent(row(), "onClick"));
   await update([{ ...agent, state_change_seq: 14 }]);
   expect(status()).toBe("Idle");
 });
 
 it("does not mark an answer read in a hidden browser tab", async () => {
-  await act(async () => row().props.onClick());
+  await act(async () => dispatchTestEvent(row(), "onClick"));
   await act(async () => {
     visibilityState = "hidden";
     visibility.dispatchEvent(new Event("visibilitychange"));

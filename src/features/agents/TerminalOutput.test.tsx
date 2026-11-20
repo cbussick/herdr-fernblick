@@ -1,3 +1,4 @@
+import { dispatchTestEvent } from "../../shared/lib/dispatchTestEvent";
 import { act } from "react";
 import { create } from "react-test-renderer";
 import type { ReactTestRenderer } from "react-test-renderer";
@@ -40,7 +41,7 @@ function button(label: string) {
   return renderer.root.findAllByType("button").find((node) => node.children.includes(label))!;
 }
 async function click(label: string) {
-  await act(async () => button(label).props.onClick());
+  await act(async () => dispatchTestEvent(button(label), "onClick"));
   await flush();
 }
 beforeEach(async () => {
@@ -89,7 +90,7 @@ it("loads history once, keeps it scrollable while working, and returns to live e
   scroll.scrollTop = 123;
   idle = false;
   await act(async () => {
-    renderer.root.findByType("pre").props.onScroll();
+    await dispatchTestEvent(renderer.root.findByType("pre"), "onScroll");
     renderer.update(render());
     await client.invalidateQueries({ queryKey: ["terminal", pane] });
   });
@@ -128,7 +129,7 @@ it("retains an existing history snapshot when refreshing it fails", async () => 
 
 it("does not pull a scrolled live screen back to the bottom on refresh", async () => {
   scroll.scrollTop = 100;
-  await act(async () => renderer.root.findByType("pre").props.onScroll());
+  await act(async () => dispatchTestEvent(renderer.root.findByType("pre"), "onScroll"));
   read.mockResolvedValueOnce({ ...output, revision: 2 });
   await act(async () => {
     await client.invalidateQueries({ queryKey: ["terminal", pane] });

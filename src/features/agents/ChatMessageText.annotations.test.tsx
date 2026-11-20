@@ -1,3 +1,4 @@
+import { dispatchTestEvent } from "../../shared/lib/dispatchTestEvent";
 import { act } from "react";
 import { create } from "react-test-renderer";
 import type { ReactTestRenderer } from "react-test-renderer";
@@ -5,7 +6,7 @@ import { renderToStaticMarkup } from "react-dom/server";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { ChatMessageText } from "./ChatMessageText";
 
-describe("editing highlighted passages", () => {
+describe("editing highlighted passages", async () => {
   let renderer: ReactTestRenderer;
   let collapsed = true;
   const edit = vi.fn();
@@ -38,7 +39,7 @@ describe("editing highlighted passages", () => {
       nativeEvent: { isComposing: false },
     };
   }
-  it("opens the matching comment at the tapped passage, choosing the newest overlapping entry", () => {
+  it("opens the matching comment at the tapped passage, choosing the newest overlapping entry", async () => {
     const marks = renderer.root.findAllByType("mark");
     expect(marks.map((mark) => mark.props["data-annotation-id"])).toEqual([
       "first",
@@ -46,33 +47,37 @@ describe("editing highlighted passages", () => {
       "second",
     ]);
     const click = event();
-    marks[1].props.onClick(click);
+    await dispatchTestEvent(marks[1], "onClick", click);
     expect(edit.mock.calls[0][0]).toBe("second");
     expect(edit.mock.calls[0][1]()).toBe(rect);
     expect(click.preventDefault).toHaveBeenCalledOnce();
     expect(click.stopPropagation).toHaveBeenCalledOnce();
   });
-  it("does not open an editor or prevent copying while selecting highlighted text", () => {
+  it("does not open an editor or prevent copying while selecting highlighted text", async () => {
     collapsed = false;
     const click = event();
-    renderer.root.findAllByType("mark")[0].props.onClick(click);
+    await dispatchTestEvent(renderer.root.findAllByType("mark")[0], "onClick", click);
     expect(edit).not.toHaveBeenCalled();
     expect(click.preventDefault).not.toHaveBeenCalled();
   });
-  it.each(["Enter", " "])("supports keyboard activation with %s", (key) => {
+  it.each(["Enter", " "])("supports keyboard activation with %s", async (key) => {
     const mark = renderer.root.findAllByType("mark")[0];
     expect(mark.props.role).toBe("button");
     expect(mark.props.tabIndex).toBe(0);
     const keyEvent = { ...event(), key };
-    mark.props.onKeyDown(keyEvent);
+    await dispatchTestEvent(mark, "onKeyDown", keyEvent);
     expect(edit.mock.calls[0][0]).toBe("first");
     expect(keyEvent.preventDefault).toHaveBeenCalledOnce();
     expect(keyEvent.stopPropagation).toHaveBeenCalledOnce();
   });
-  it("ignores IME confirmation and unrelated keys", () => {
+  it("ignores IME confirmation and unrelated keys", async () => {
     const mark = renderer.root.findAllByType("mark")[0];
-    mark.props.onKeyDown({ ...event(), key: "Enter", nativeEvent: { isComposing: true } });
-    mark.props.onKeyDown({ ...event(), key: "ArrowRight" });
+    await dispatchTestEvent(mark, "onKeyDown", {
+      ...event(),
+      key: "Enter",
+      nativeEvent: { isComposing: true },
+    });
+    await dispatchTestEvent(mark, "onKeyDown", { ...event(), key: "ArrowRight" });
     expect(edit).not.toHaveBeenCalled();
   });
   it("keeps read-only highlights noninteractive when no edit handler is supplied", async () => {
@@ -83,11 +88,11 @@ describe("editing highlighted passages", () => {
     expect(mark.props.role).toBeUndefined();
     expect(mark.props.tabIndex).toBeUndefined();
     const click = event();
-    mark.props.onClick(click);
+    await dispatchTestEvent(mark, "onClick", click);
     expect(click.preventDefault).not.toHaveBeenCalled();
     expect(edit).not.toHaveBeenCalled();
   });
-  it("keeps every source character and raw offsets across formatting and links", () => {
+  it("keeps every source character and raw offsets across formatting and links", async () => {
     const text = "Before **[Read docs](https://example.com)** then `main`.";
     const start = text.indexOf("Read docs");
     const html = renderToStaticMarkup(

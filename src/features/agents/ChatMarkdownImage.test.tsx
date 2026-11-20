@@ -1,3 +1,4 @@
+import { dispatchTestEvent } from "../../shared/lib/dispatchTestEvent";
 import { act } from "react";
 import { create } from "react-test-renderer";
 import type { ReactTestRenderer } from "react-test-renderer";
@@ -24,7 +25,7 @@ describe("Markdown image loading", () => {
         <ChatMessageText text={`Before ![Design](${destination}) after`} annotationSource="a1" />,
       );
     });
-    await act(async () => renderer!.root.findByType("img").props.onError());
+    await act(async () => dispatchTestEvent(renderer!.root.findByType("img"), "onError"));
     expect(renderer!.root.findAllByType("img")).toHaveLength(0);
     const link = renderer!.root.findByType("a");
     expect(link.props.href).toBe(src);

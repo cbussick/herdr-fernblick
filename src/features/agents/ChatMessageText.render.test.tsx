@@ -345,8 +345,10 @@ describe("ChatMessageText formatting", () => {
     );
     expect(html).toContain('<th scope="col" data-align="left">Name</th>');
     expect(html).toContain('<td data-align="right"><code');
-    expect(html).toContain('type="checkbox" disabled="" aria-label="Completed task" checked=""');
-    expect(html).toContain('type="checkbox" disabled="" aria-label="Incomplete task"');
+    expect(html).toContain(
+      'type="checkbox" readOnly="" disabled="" aria-label="Completed task" checked=""',
+    );
+    expect(html).toContain('type="checkbox" readOnly="" disabled="" aria-label="Incomplete task"');
     expect(html).not.toContain("| :---");
     expect(html).not.toContain("[x]");
   });

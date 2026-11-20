@@ -1,3 +1,4 @@
+import { dispatchTestEvent } from "../shared/lib/dispatchTestEvent";
 // @vitest-environment happy-dom
 import { act } from "react";
 import { create } from "react-test-renderer";
@@ -49,10 +50,10 @@ async function start(path = "/") {
 }
 async function click(label: string) {
   await act(async () => {
-    renderer.root
-      .findAllByType("button")
-      .find((b) => b.children.includes(label))!
-      .props.onClick();
+    await dispatchTestEvent(
+      renderer.root.findAllByType("button").find((b) => b.children.includes(label))!,
+      "onClick",
+    );
   });
 }
 async function go(delta: number) {

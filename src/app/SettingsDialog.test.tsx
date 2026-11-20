@@ -1,3 +1,4 @@
+import { dispatchTestEvent } from "../shared/lib/dispatchTestEvent";
 import { act } from "react";
 import { create } from "react-test-renderer";
 import type { ReactTestRenderer } from "react-test-renderer";
@@ -70,10 +71,10 @@ afterEach(async () => {
 const snackbars = () => renderer.root.findAllByType(Snackbar);
 const click = (label: string) =>
   act(async () => {
-    await renderer.root
-      .findAllByType("button")
-      .find((node) => node.children.includes(label))!
-      .props.onClick();
+    await dispatchTestEvent(
+      renderer.root.findAllByType("button").find((node) => node.children.includes(label))!,
+      "onClick",
+    );
   });
 const advance = (ms: number) =>
   act(async () => {
@@ -121,7 +122,10 @@ it("confirms diagnostic copies without inserting text into the diagnostics secti
   const section = renderer.root.findByProps({ "aria-labelledby": "diagnostics-heading" });
   expect(section.findAllByType("p")).toHaveLength(0);
   await act(async () =>
-    renderer.root.findByProps({ "aria-label": "Dismiss notification" }).props.onClick(),
+    dispatchTestEvent(
+      renderer.root.findByProps({ "aria-label": "Dismiss notification" }),
+      "onClick",
+    ),
   );
   expect(snackbars()).toHaveLength(0);
 });
@@ -133,7 +137,7 @@ it("keeps copy failures visible until dismissed and permits viewing diagnostics"
   await advance(60_000);
   expect(snackbars()).toHaveLength(1);
   await act(async () =>
-    renderer.root.findByProps({ "aria-label": "View diagnostics" }).props.onClick(),
+    dispatchTestEvent(renderer.root.findByProps({ "aria-label": "View diagnostics" }), "onClick"),
   );
   expect(snackbars()).toHaveLength(0);
   expect(renderer.root.findByType("pre").props.hidden).toBe(false);

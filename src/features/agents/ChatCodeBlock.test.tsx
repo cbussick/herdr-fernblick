@@ -1,3 +1,4 @@
+import { dispatchTestEvent } from "../../shared/lib/dispatchTestEvent";
 import { act } from "react";
 import { create } from "react-test-renderer";
 import type { ReactTestRenderer } from "react-test-renderer";
@@ -31,7 +32,7 @@ describe("copying code blocks", () => {
         </ChatCodeBlock>,
       );
     });
-    await act(async () => renderer!.root.findByType("button").props.onClick());
+    await act(async () => dispatchTestEvent(renderer!.root.findByType("button"), "onClick"));
     expect(writeText).toHaveBeenCalledWith(value);
     expect(renderer!.root.findByType("button").children).toEqual(["Copied"]);
     expect(renderer!.root.findByProps({ role: "status" }).children).toEqual(["Code copied"]);
@@ -96,14 +97,14 @@ describe("copying code blocks", () => {
     await act(async () => {
       renderer = create(<ChatCodeBlock value="code">code</ChatCodeBlock>);
     });
-    await act(async () => renderer!.root.findByType("button").props.onClick());
+    await act(async () => dispatchTestEvent(renderer!.root.findByType("button"), "onClick"));
     expect(renderer!.root.findByType("button").children).toEqual(["Retry copy"]);
     expect(renderer!.root.findByProps({ role: "status" }).children.join("")).toContain(
       "Copy failed",
     );
     expect(legacy.textarea.remove).toHaveBeenCalledOnce();
     writeText.mockResolvedValue(undefined);
-    await act(async () => renderer!.root.findByType("button").props.onClick());
+    await act(async () => dispatchTestEvent(renderer!.root.findByType("button"), "onClick"));
     expect(renderer!.root.findByType("button").children).toEqual(["Copied"]);
   });
 });

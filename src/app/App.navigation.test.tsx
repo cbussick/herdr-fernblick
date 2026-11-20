@@ -1,3 +1,4 @@
+import { dispatchTestEvent } from "../shared/lib/dispatchTestEvent";
 // @vitest-environment happy-dom
 import { act, useEffect, useEffectEvent, useState } from "react";
 import { create } from "react-test-renderer";
@@ -74,15 +75,18 @@ let router: ReturnType<typeof createAppRouter>;
 const chat = () => renderer.root.findAllByProps({ "data-testid": "chat" });
 async function click(label: string) {
   await act(async () =>
-    renderer.root
-      .findAllByType("button")
-      .find((b) => b.children.includes(label))!
-      .props.onClick(),
+    dispatchTestEvent(
+      renderer.root.findAllByType("button").find((b) => b.children.includes(label))!,
+      "onClick",
+    ),
   );
 }
 async function open(position = 0) {
   await act(async () =>
-    renderer.root.findAllByProps({ "data-testid": "pane-row" })[position].props.onClick(),
+    dispatchTestEvent(
+      renderer.root.findAllByProps({ "data-testid": "pane-row" })[position],
+      "onClick",
+    ),
   );
 }
 async function start(path = "/") {
@@ -141,7 +145,7 @@ it("opens a fresh agent from its live session even when Herdr has no saved sessi
   );
   // Use the flat Agents view because the fixture has no workspaces.
   await act(async () =>
-    renderer.root.findByProps({ role: "tab", children: "Agents" }).props.onClick(),
+    dispatchTestEvent(renderer.root.findByProps({ role: "tab", children: "Agents" }), "onClick"),
   );
   await open();
   await act(async () => {
@@ -153,9 +157,9 @@ it("opens a fresh agent from its live session even when Herdr has no saved sessi
   expect(JSON.stringify(renderer.toJSON())).not.toContain("Waiting for this agent");
   expect(visited).toEqual([]);
   await act(async () =>
-    renderer.root
-      .findByProps({ "aria-label": "Draft" })
-      .props.onChange({ target: { value: "My first prompt" } }),
+    dispatchTestEvent(renderer.root.findByProps({ "aria-label": "Draft" }), "onChange", {
+      target: { value: "My first prompt" },
+    }),
   );
   // Pi has an in-memory ID, but session URLs cannot resolve it until it is saved.
   await act(async () => client.setQueryData(["agents"], { ...response, agents: [agent] }));
@@ -177,13 +181,13 @@ it("keeps a fresh unsaved conversation and draft when opening its whiteboard", a
   vi.mocked(getSession).mockResolvedValue({ agent: null, chat: null });
   await start();
   await act(async () =>
-    renderer.root.findByProps({ role: "tab", children: "Agents" }).props.onClick(),
+    dispatchTestEvent(renderer.root.findByProps({ role: "tab", children: "Agents" }), "onClick"),
   );
   await open();
   await act(async () =>
-    renderer.root
-      .findByProps({ "aria-label": "Draft" })
-      .props.onChange({ target: { value: "My first prompt" } }),
+    dispatchTestEvent(renderer.root.findByProps({ "aria-label": "Draft" }), "onChange", {
+      target: { value: "My first prompt" },
+    }),
   );
   await click("Open board");
   await act(async () => {
@@ -215,9 +219,11 @@ it("opens a newly created agent without flashing the waiting snackbar before das
   // Hold the refresh so the create response is the only source of the new agent.
   vi.mocked(getAgents).mockImplementation(() => new Promise(() => {}));
   await start();
-  await act(async () => renderer.root.findByType(AgentList).props.onCreate());
+  await act(async () => dispatchTestEvent(renderer.root.findByType(AgentList), "onCreate"));
   const created = { ...other, pane_id: "w1:p3", pi_session_id: undefined };
-  await act(async () => renderer.root.findByType(NewAgentDialog).props.onCreated(created));
+  await act(async () =>
+    dispatchTestEvent(renderer.root.findByType(NewAgentDialog), "onCreated", created),
+  );
   expect(JSON.stringify(renderer.toJSON())).not.toContain("Waiting for this agent");
   expect(chat()).toHaveLength(1);
   expect(client.getQueryData<{ agents: Array<Agent> }>(["agents"])?.agents).toContainEqual(created);
@@ -296,9 +302,9 @@ it("keeps a pending fresh chat mounted when dashboard refresh fails", async () =
   await start();
   await open();
   await act(async () =>
-    renderer.root
-      .findByProps({ "aria-label": "Draft" })
-      .props.onChange({ target: { value: "Keep my draft" } }),
+    dispatchTestEvent(renderer.root.findByProps({ "aria-label": "Draft" }), "onChange", {
+      target: { value: "Keep my draft" },
+    }),
   );
   vi.mocked(getAgents).mockRejectedValue(new Error("Disconnected"));
   await act(async () => {
@@ -348,9 +354,9 @@ it("retains a composer draft when switching chat and board", async () => {
   await start();
   await open();
   await act(async () =>
-    renderer.root
-      .findByProps({ "aria-label": "Draft" })
-      .props.onChange({ target: { value: "Keep this draft" } }),
+    dispatchTestEvent(renderer.root.findByProps({ "aria-label": "Draft" }), "onChange", {
+      target: { value: "Keep this draft" },
+    }),
   );
   await click("Open board");
   expect(router.state.location.pathname).toBe("/sessions/s1/whiteboard");
@@ -361,9 +367,9 @@ it("retains the mounted chat and draft when session polling fails", async () => 
   await start();
   await open();
   await act(async () =>
-    renderer.root
-      .findByProps({ "aria-label": "Draft" })
-      .props.onChange({ target: { value: "Still here" } }),
+    dispatchTestEvent(renderer.root.findByProps({ "aria-label": "Draft" }), "onChange", {
+      target: { value: "Still here" },
+    }),
   );
   vi.mocked(getSession).mockRejectedValue(new Error("Temporary failure"));
   await act(async () => {

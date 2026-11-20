@@ -2,7 +2,7 @@ import { act } from "react";
 import { create } from "react-test-renderer";
 import type { ReactTestRenderer } from "react-test-renderer";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
-import { dispatchTestEvent } from "./dispatchTestEvent";
+import { dispatchOptionalTestEvent, dispatchTestEvent } from "./dispatchTestEvent";
 
 let renderer: ReactTestRenderer | undefined;
 function Harness({ onTest }: { onTest: unknown }) {
@@ -31,7 +31,7 @@ it("passes event arguments and the original props receiver", async () => {
   expect(handler.mock.contexts[0]).toBe(instance.props);
 });
 it("does not finish dispatch until the asynchronous handler settles", async () => {
-  let release = () => {};
+  let release: (() => void) | undefined;
   const gate = new Promise<void>((resolve) => {
     release = resolve;
   });
@@ -42,6 +42,9 @@ it("does not finish dispatch until the asynchronous handler settles", async () =
   });
   await Promise.resolve();
   expect(completed).toBe(false);
+  if (!release) {
+    throw new Error("Deferred handler was not initialized");
+  }
   release();
   await dispatched;
   expect(completed).toBe(true);
@@ -51,6 +54,11 @@ it("waits for asynchronous handlers and propagates rejection", async () => {
   const handler = vi.fn().mockRejectedValue(failure);
   const instance = await mount(handler);
   await expect(dispatchTestEvent(instance, "onTest")).rejects.toBe(failure);
+});
+it("skips absent optional events but still rejects present non-callable props", async () => {
+  const instance = await mount(42);
+  await dispatchOptionalTestEvent(instance, "missing");
+  await expect(dispatchOptionalTestEvent(instance, "onTest")).rejects.toThrow("not callable");
 });
 it("rejects absent and non-callable props at the boundary", async () => {
   const instance = await mount(42);

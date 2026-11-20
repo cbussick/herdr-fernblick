@@ -1,3 +1,4 @@
+import { dispatchTestEvent } from "../shared/lib/dispatchTestEvent";
 import { act } from "react";
 import { create } from "react-test-renderer";
 import type { ReactTestInstance, ReactTestRenderer } from "react-test-renderer";
@@ -55,13 +56,15 @@ const button = (label: string, root = renderer.root) =>
 const agentForm = () => renderer.root.findByProps({ id: "new-agent-name" }).parent!;
 const workspaceForm = () => renderer.root.findByProps({ id: "new-workspace-label" }).parent!;
 async function change(id: string, value: string) {
-  await act(async () => renderer.root.findByProps({ id }).props.onChange({ target: { value } }));
+  await act(async () =>
+    dispatchTestEvent(renderer.root.findByProps({ id }), "onChange", { target: { value } }),
+  );
 }
 async function click(label: string, root?: ReactTestInstance) {
-  await act(async () => button(label, root).props.onClick());
+  await act(async () => dispatchTestEvent(button(label, root), "onClick"));
 }
 async function submit(form: ReactTestInstance) {
-  await act(async () => form.props.onSubmit({ preventDefault: vi.fn() }));
+  await act(async () => dispatchTestEvent(form, "onSubmit", { preventDefault: vi.fn() }));
   await act(async () => {
     await new Promise((resolve) => {
       setTimeout(resolve, 20);

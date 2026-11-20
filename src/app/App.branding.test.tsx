@@ -1,3 +1,4 @@
+import { dispatchTestEvent } from "../shared/lib/dispatchTestEvent";
 import { act } from "react";
 import { create } from "react-test-renderer";
 import type { ReactTestRenderer } from "react-test-renderer";
@@ -115,7 +116,7 @@ it("keeps automatic retries quiet but shows loading for manual retries", async (
   expect(renderer.root.findByType("p").children).toEqual(["Still unavailable"]);
 
   await act(async () => {
-    renderer.root.findByType("button").props.onClick();
+    await dispatchTestEvent(renderer.root.findByType("button"), "onClick");
     await settle();
   });
   expect(logo()).toHaveLength(1);
@@ -127,7 +128,7 @@ it("keeps automatic retries quiet but shows loading for manual retries", async (
   expect(renderer.root.findByType("p").children).toEqual(["Manual retry failed"]);
 
   await act(async () => {
-    renderer.root.findByType("button").props.onClick();
+    await dispatchTestEvent(renderer.root.findByType("button"), "onClick");
     await settle();
   });
   expect(logo()).toHaveLength(1);

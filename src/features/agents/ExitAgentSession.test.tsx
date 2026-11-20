@@ -1,3 +1,4 @@
+import { dispatchTestEvent } from "../../shared/lib/dispatchTestEvent";
 import { act } from "react";
 import { create } from "react-test-renderer";
 import type { ReactTestRenderer } from "react-test-renderer";
@@ -35,7 +36,9 @@ async function mount(status: AgentStatus = "idle", agentRunning = true) {
   });
 }
 async function confirm() {
-  await act(async () => renderer.root.findByType("form").props.onSubmit({ preventDefault() {} }));
+  await act(async () =>
+    dispatchTestEvent(renderer.root.findByType("form"), "onSubmit", { preventDefault() {} }),
+  );
   await act(async () => {
     await new Promise((resolve) => {
       setTimeout(resolve, 20);
@@ -57,9 +60,9 @@ it("confirms exit, keeps the tab selected, and refreshes agents and past session
   await mount();
   const invalidate = vi.spyOn(client, "invalidateQueries");
   await act(async () =>
-    renderer.root.findByProps({ "data-testid": "edit-tab-button" }).props.onClick(),
+    dispatchTestEvent(renderer.root.findByProps({ "data-testid": "edit-tab-button" }), "onClick"),
   );
-  await act(async () => button("Exit agent session").props.onClick());
+  await act(async () => dispatchTestEvent(button("Exit agent session"), "onClick"));
   expect(exitAgentSession).not.toHaveBeenCalled();
   expect(JSON.stringify(renderer.toJSON())).toContain(
     "terminal tab will stay open under Shell tabs",
@@ -74,7 +77,7 @@ it("confirms exit, keeps the tab selected, and refreshes agents and past session
 it("shows refusal without closing or automatically retrying", async () => {
   await mount();
   vi.mocked(exitAgentSession).mockRejectedValue(new Error("Pi terminal has an unsent draft"));
-  await act(async () => button("Exit agent session").props.onClick());
+  await act(async () => dispatchTestEvent(button("Exit agent session"), "onClick"));
   await confirm();
   expect(renderer.root.findByProps({ role: "alert" }).children).toEqual([
     "Pi terminal has an unsent draft",

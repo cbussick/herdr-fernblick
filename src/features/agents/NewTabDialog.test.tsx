@@ -1,3 +1,4 @@
+import { dispatchTestEvent } from "../../shared/lib/dispatchTestEvent";
 import { act } from "react";
 import { create } from "react-test-renderer";
 import type { ReactTestRenderer } from "react-test-renderer";
@@ -49,7 +50,7 @@ it("allows submitting a shell tab without naming it", async () => {
     "Tab name (optional)",
   ]);
   await act(async () =>
-    renderer.root.findByType("form").props.onSubmit({ preventDefault: vi.fn() }),
+    dispatchTestEvent(renderer.root.findByType("form"), "onSubmit", { preventDefault: vi.fn() }),
   );
   await act(async () => {
     await new Promise((resolve) => {
