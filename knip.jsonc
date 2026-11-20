@@ -5,6 +5,8 @@
   "ignoreExportsUsedInFile": true,
   // Optional Linux host utility used by offline service verification tests.
   "ignoreBinaries": ["systemd-analyze"],
+  // Oxlint discovers its type-aware backend at runtime, not through a static import.
+  "ignoreDependencies": ["tsrs"],
   "workspaces": {
     ".": {
       "entry": [

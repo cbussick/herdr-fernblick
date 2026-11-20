@@ -563,42 +563,45 @@ export function createHttpServer(
     : undefined;
   if (boards) bridge.setBoardStore(boards);
   const handleBoard = boards ? createBoardRoutes(service, bridge, boards) : undefined;
-  return createServer(async (request, response) => {
-    setSecurityHeaders(response);
+  return createServer((request, response) => {
+    void (async () => {
+      setSecurityHeaders(response);
 
-    try {
-      const handled = request.url?.startsWith("/api/")
-        ? (await handleBoard?.(request, response)) ||
-          (await handleApi(request, response, service, bridge, readStatuses, logReadReceipt))
-        : serveStatic(request, response, publicDir);
+      try {
+        const handled = request.url?.startsWith("/api/")
+          ? (await handleBoard?.(request, response)) ||
+            (await handleApi(request, response, service, bridge, readStatuses, logReadReceipt))
+          : serveStatic(request, response, publicDir);
 
-      if (!handled) sendJson(response, 404, { error: "Not found" });
-    } catch (error) {
-      if (error instanceof z.ZodError) {
-        sendJson(response, 400, { error: "Invalid request" });
-        return;
-      }
-      if (
-        error instanceof HttpError ||
-        error instanceof LocalImageError ||
-        error instanceof LiveChatError ||
-        error instanceof BoardError ||
-        error instanceof SavedChatError ||
-        error instanceof ReadStatusError
-      ) {
-        sendJson(response, error.status, {
-          error: error.message,
-          ...(error instanceof BoardError && error.code ? { code: error.code } : {}),
-        });
-        return;
-      }
-      if (error instanceof HerdrRequestError) {
-        const status = error.code === "unavailable" ? 503 : error.code === "agent_busy" ? 409 : 502;
-        sendJson(response, status, { error: error.message, code: error.code });
-        return;
-      }
+        if (!handled) sendJson(response, 404, { error: "Not found" });
+      } catch (error) {
+        if (error instanceof z.ZodError) {
+          sendJson(response, 400, { error: "Invalid request" });
+          return;
+        }
+        if (
+          error instanceof HttpError ||
+          error instanceof LocalImageError ||
+          error instanceof LiveChatError ||
+          error instanceof BoardError ||
+          error instanceof SavedChatError ||
+          error instanceof ReadStatusError
+        ) {
+          sendJson(response, error.status, {
+            error: error.message,
+            ...(error instanceof BoardError && error.code ? { code: error.code } : {}),
+          });
+          return;
+        }
+        if (error instanceof HerdrRequestError) {
+          const status =
+            error.code === "unavailable" ? 503 : error.code === "agent_busy" ? 409 : 502;
+          sendJson(response, status, { error: error.message, code: error.code });
+          return;
+        }
 
-      sendJson(response, 500, { error: "Unexpected server error" });
-    }
+        sendJson(response, 500, { error: "Unexpected server error" });
+      }
+    })();
   });
 }

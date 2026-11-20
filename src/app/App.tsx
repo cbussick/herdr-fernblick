@@ -397,20 +397,22 @@ export function App({
           pending={resuming}
           error={resumeError || undefined}
           onClose={() => setResumeOpen(false)}
-          onConfirm={async (workspaceId) => {
-            setResuming(true);
-            try {
-              const agent = await resumeChat({ id: sessionQuery.data.chat!.id, workspaceId });
-              queryClient.setQueryData(["session", sessionId], { ...sessionQuery.data, agent });
-              setResumeOpen(false);
-              void agentsQuery.refetch();
-            } catch (error) {
-              setResumeError(
-                error instanceof Error ? error.message : "Could not resume conversation.",
-              );
-            } finally {
-              setResuming(false);
-            }
+          onConfirm={(workspaceId) => {
+            void (async () => {
+              setResuming(true);
+              try {
+                const agent = await resumeChat({ id: sessionQuery.data.chat!.id, workspaceId });
+                queryClient.setQueryData(["session", sessionId], { ...sessionQuery.data, agent });
+                setResumeOpen(false);
+                void agentsQuery.refetch();
+              } catch (error) {
+                setResumeError(
+                  error instanceof Error ? error.message : "Could not resume conversation.",
+                );
+              } finally {
+                setResuming(false);
+              }
+            })();
           }}
         />
       )}

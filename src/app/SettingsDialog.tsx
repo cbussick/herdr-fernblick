@@ -137,9 +137,11 @@ export function SettingsDialog({ onClose }: { onClose: () => void }) {
             <button
               type="button"
               disabled={!updates || updates.checking || updates.applying}
-              onClick={async () => {
-                dismissNotice();
-                if ((await updates?.check()) === "up-to-date") showNotice("current");
+              onClick={() => {
+                void (async () => {
+                  dismissNotice();
+                  if ((await updates?.check()) === "up-to-date") showNotice("current");
+                })();
               }}
             >
               {updates?.checking ? "Checking…" : "Check for updates"}
@@ -165,18 +167,20 @@ export function SettingsDialog({ onClose }: { onClose: () => void }) {
           <div className={styles.actions}>
             <button
               type="button"
-              onClick={async () => {
-                try {
-                  if (!navigator.clipboard?.writeText) throw new Error("Clipboard unavailable");
-                  const inset = probeRef.current
-                    ? getComputedStyle(probeRef.current).paddingTop
-                    : null;
-                  setSafeAreaTop(inset);
-                  await navigator.clipboard.writeText(diagnostics(inset));
-                  showNotice("copied");
-                } catch {
-                  showNotice("copy-failed");
-                }
+              onClick={() => {
+                void (async () => {
+                  try {
+                    if (!navigator.clipboard?.writeText) throw new Error("Clipboard unavailable");
+                    const inset = probeRef.current
+                      ? getComputedStyle(probeRef.current).paddingTop
+                      : null;
+                    setSafeAreaTop(inset);
+                    await navigator.clipboard.writeText(diagnostics(inset));
+                    showNotice("copied");
+                  } catch {
+                    showNotice("copy-failed");
+                  }
+                })();
               }}
             >
               Copy diagnostics
