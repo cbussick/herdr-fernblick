@@ -41,9 +41,15 @@ vi.mock("../features/agents/AgentConsole", () => ({
     return (
       <main data-testid="chat" data-view={routeView}>
         <input aria-label="Draft" value={draft} onChange={(e) => setDraft(e.target.value)} />
-        <button onClick={onBack}>Back to overview</button>
-        <button onClick={() => onViewChange("whiteboard", id)}>Open board</button>
-        <button onClick={() => onViewChange("chat", id)}>Close board</button>
+        <button type="button" onClick={onBack}>
+          Back to overview
+        </button>
+        <button type="button" onClick={() => onViewChange("whiteboard", id)}>
+          Open board
+        </button>
+        <button type="button" onClick={() => onViewChange("chat", id)}>
+          Close board
+        </button>
       </main>
     );
   },

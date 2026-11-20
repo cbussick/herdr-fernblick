@@ -23,7 +23,9 @@ vi.mock("./useHeaderDiagnostics", () => ({ useHeaderDiagnostics: () => {} }));
 vi.mock("../features/agents/AgentConsole", () => ({
   AgentConsole: ({ onBack }: { onBack: () => void }) => (
     <main>
-      <button onClick={onBack}>Back</button>
+      <button type="button" onClick={onBack}>
+        Back
+      </button>
     </main>
   ),
 }));

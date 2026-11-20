@@ -12,12 +12,24 @@ import { StateIcon } from "../shared/ui/StateFeedback";
 vi.mock("./App", () => ({
   App: ({ navigation: n }: { navigation: ReturnType<typeof usePaneNavigation> }) => (
     <main data-pane={n.paneId} data-session={n.sessionId} data-view={n.view}>
-      <button onClick={() => n.selectPane("w1:p1")}>First</button>
-      <button onClick={() => n.selectPane("w1:p2")}>Second</button>
-      <button onClick={() => n.selectSession("s", "chat", true)}>Canonical</button>
-      <button onClick={() => n.selectSession("s", "whiteboard")}>Board</button>
-      <button onClick={() => n.selectSession("s", "chat")}>Chat</button>
-      <button onClick={() => n.selectPane(null)}>Overview</button>
+      <button type="button" onClick={() => n.selectPane("w1:p1")}>
+        First
+      </button>
+      <button type="button" onClick={() => n.selectPane("w1:p2")}>
+        Second
+      </button>
+      <button type="button" onClick={() => n.selectSession("s", "chat", true)}>
+        Canonical
+      </button>
+      <button type="button" onClick={() => n.selectSession("s", "whiteboard")}>
+        Board
+      </button>
+      <button type="button" onClick={() => n.selectSession("s", "chat")}>
+        Chat
+      </button>
+      <button type="button" onClick={() => n.selectPane(null)}>
+        Overview
+      </button>
     </main>
   ),
 }));

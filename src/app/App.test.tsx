@@ -24,10 +24,18 @@ vi.mock("../features/agents/AgentList", () => ({
     workspaces: Array<Workspace>;
   }) => (
     <nav>
-      <button onClick={() => props.onCreate()}>New agent</button>
-      <button onClick={props.onCreateWorkspace}>New workspace</button>
+      <button type="button" onClick={() => props.onCreate()}>
+        New agent
+      </button>
+      <button type="button" onClick={props.onCreateWorkspace}>
+        New workspace
+      </button>
       {props.workspaces.map((workspace) => (
-        <button key={workspace.workspace_id} onClick={() => props.onCreate(workspace.workspace_id)}>
+        <button
+          type="button"
+          key={workspace.workspace_id}
+          onClick={() => props.onCreate(workspace.workspace_id)}
+        >
           {`Add agent to ${workspace.label}`}
         </button>
       ))}

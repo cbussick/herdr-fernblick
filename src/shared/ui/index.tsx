@@ -16,6 +16,7 @@ export function Button({
 }) {
   return (
     <button
+      type="button"
       className={`${uiStyles["button"]} ${variant === "primary" ? "" : uiStyles[`button--${variant}`]} ${size === "small" ? uiStyles["button--small"] : ""} ${className}`}
       {...props}
     />
@@ -29,6 +30,7 @@ export function IconButton({
 }: ButtonHTMLAttributes<HTMLButtonElement> & { label: string; children: ReactNode }) {
   return (
     <button
+      type="button"
       className={`${uiStyles["icon-button"]} ${className}`}
       data-ui="icon-button"
       aria-label={label}

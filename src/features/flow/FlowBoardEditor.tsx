@@ -481,6 +481,7 @@ function Playground(props: BoardEditorProps) {
           )
           .map((kind) => (
             <button
+              type="button"
               key={kind}
               className={styles["library-item"]}
               disabled={locked}
@@ -532,6 +533,7 @@ function Playground(props: BoardEditorProps) {
         />
       </label>
       <button
+        type="button"
         className={styles["secondary"]}
         disabled={locked}
         aria-label="Download"
@@ -545,6 +547,7 @@ function Playground(props: BoardEditorProps) {
         <span>Download</span>
       </button>
       <button
+        type="button"
         disabled={locked}
         className={styles["secondary"]}
         aria-label="Clear canvas"
@@ -763,12 +766,17 @@ function Playground(props: BoardEditorProps) {
                   <div className={styles["selection-bar"]} aria-label="Selection actions">
                     <span>{selected.length + selectedEdges.length} selected</span>
                     {one?.type === "component" && (
-                      <button onClick={() => edit(one.id)} className={styles["secondary"]}>
+                      <button
+                        type="button"
+                        onClick={() => edit(one.id)}
+                        className={styles["secondary"]}
+                      >
                         <Pencil size={15} /> Edit
                       </button>
                     )}
                     {!selected.length && selectedEdges.length === 1 && (
                       <button
+                        type="button"
                         className={styles["secondary"]}
                         onClick={() => setEdgeEditing({ ...selectedEdges[0] })}
                       >
@@ -777,6 +785,7 @@ function Playground(props: BoardEditorProps) {
                     )}
                     {!!selected.length && (
                       <button
+                        type="button"
                         onClick={duplicate}
                         className={styles["icon-button"]}
                         aria-label="Duplicate selection"
@@ -799,6 +808,7 @@ function Playground(props: BoardEditorProps) {
                       </select>
                     )}
                     <button
+                      type="button"
                       onClick={() => {
                         void flow.deleteElements({ nodes: selected, edges: selectedEdges });
                       }}
@@ -808,6 +818,7 @@ function Playground(props: BoardEditorProps) {
                       <Trash2 size={17} />
                     </button>
                     <button
+                      type="button"
                       onClick={() => {
                         setNodes((current) => current.map((n) => ({ ...n, selected: false })));
                         setEdges((current) => current.map((e) => ({ ...e, selected: false })));
@@ -896,7 +907,9 @@ function Playground(props: BoardEditorProps) {
               >
                 Cancel
               </button>
-              <button className={styles["primary"]}>Save connection</button>
+              <button type="button" className={styles["primary"]}>
+                Save connection
+              </button>
             </footer>
           </form>
         </Modal>
@@ -917,6 +930,7 @@ function Playground(props: BoardEditorProps) {
             </p>
             <footer className={styles["dialog-footer"]}>
               <button
+                type="button"
                 className={styles["secondary"]}
                 disabled={replacementBusy}
                 onClick={() => setPendingImport(null)}
@@ -924,6 +938,7 @@ function Playground(props: BoardEditorProps) {
                 Cancel
               </button>
               <button
+                type="button"
                 className={styles["primary"]}
                 disabled={locked || replacementBusy}
                 onClick={() => void replaceDrawing(pendingImport)}
@@ -948,13 +963,19 @@ function Playground(props: BoardEditorProps) {
             <p>Remove all elements. You can undo this.</p>
             <footer className={styles["dialog-footer"]}>
               <button
+                type="button"
                 className={styles["secondary"]}
                 data-autofocus
                 onClick={() => setResetting(false)}
               >
                 Cancel
               </button>
-              <button className={styles["danger"]} disabled={locked} onClick={clearDrawing}>
+              <button
+                type="button"
+                className={styles["danger"]}
+                disabled={locked}
+                onClick={clearDrawing}
+              >
                 Clear canvas
               </button>
             </footer>

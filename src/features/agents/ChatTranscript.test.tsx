@@ -229,7 +229,7 @@ it.each(["viewport expansion", "content shrink"])(
     } else {
       viewport.scrollHeight = 700;
     }
-    viewport.scrollTop = viewport.scrollTop;
+    viewport.scrollTop = top;
     await act(async () => output().props.onScroll());
     await act(async () => resize());
     expect(top).toBe(500);
@@ -252,7 +252,7 @@ it("keeps following when layout expands and contracts before the browser scroll 
 });
 it("still pauses for a small reader scroll after automatic clamping", async () => {
   viewport.clientHeight = 500;
-  viewport.scrollTop = viewport.scrollTop;
+  viewport.scrollTop = top;
   await act(async () => output().props.onScroll());
   await readerScrollTo(viewport.scrollTop - 0.5);
   await act(async () => resize());
@@ -264,7 +264,7 @@ it("does not resume a paused reader when geometry clamps before alignment", asyn
   await readerScrollTo(300);
   await act(async () => renderer.update(<ChatTranscript {...props} />));
   viewport.clientHeight = 900;
-  viewport.scrollTop = viewport.scrollTop;
+  viewport.scrollTop = top;
   await act(async () => output().props.onScroll());
   await act(async () => resize());
   viewport.clientHeight = 200;

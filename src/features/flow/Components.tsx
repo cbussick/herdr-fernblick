@@ -174,6 +174,7 @@ export function ComponentView({ id, data, selected }: NodeProps<ComponentNode>) 
       <ComponentContent data={data} />
       {selected && (
         <button
+          type="button"
           className={`${styles["edit-badge"]} ${styles["no-drag"]}`}
           aria-label={`Edit ${data.title || "component"}`}
           onClick={(event) => {
