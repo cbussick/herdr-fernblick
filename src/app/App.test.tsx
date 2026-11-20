@@ -7,8 +7,8 @@ import { App } from "./App";
 import { createAgent, createWorkspace, getAgents } from "../shared/api/apiClient";
 import type { Workspace } from "../shared/api/contracts";
 
-vi.mock("../shared/api/apiClient", async (importOriginal) => ({
-  ...(await importOriginal<typeof import("../shared/api/apiClient")>()),
+vi.mock(import("../shared/api/apiClient"), async (importOriginal) => ({
+  ...(await importOriginal()),
   markAgentRead: vi.fn().mockResolvedValue(undefined),
   getAgents: vi.fn(),
   createAgent: vi.fn(),

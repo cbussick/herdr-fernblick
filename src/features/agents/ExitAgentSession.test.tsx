@@ -7,8 +7,8 @@ import { CloseTabButton } from "./CloseTabButton";
 import { exitAgentSession } from "../../shared/api/apiClient";
 import type { AgentStatus } from "../../shared/api/contracts";
 
-vi.mock("../../shared/api/apiClient", async (importOriginal) => ({
-  ...(await importOriginal<typeof import("../../shared/api/apiClient")>()),
+vi.mock(import("../../shared/api/apiClient"), async (importOriginal) => ({
+  ...(await importOriginal()),
   exitAgentSession: vi.fn(),
 }));
 let renderer: ReactTestRenderer;

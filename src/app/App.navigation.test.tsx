@@ -12,8 +12,8 @@ import { Button } from "../shared/ui";
 import { AgentList } from "../features/agents/AgentList";
 import { NewAgentDialog } from "../features/agents/NewAgentDialog";
 
-vi.mock("../shared/api/apiClient", async (original) => ({
-  ...(await original<typeof import("../shared/api/apiClient")>()),
+vi.mock(import("../shared/api/apiClient"), async (original) => ({
+  ...(await original()),
   getAgents: vi.fn(),
   getSession: vi.fn(),
   resumeChat: vi.fn(),

@@ -13,8 +13,8 @@ import { App } from "./App";
 import { getAgents, markAgentRead } from "../shared/api/apiClient";
 import type { Agent } from "../shared/api/contracts";
 
-vi.mock("../shared/api/apiClient", async (importOriginal) => ({
-  ...(await importOriginal<typeof import("../shared/api/apiClient")>()),
+vi.mock(import("../shared/api/apiClient"), async (importOriginal) => ({
+  ...(await importOriginal()),
   getAgents: vi.fn(),
   markAgentRead: vi.fn(),
 }));

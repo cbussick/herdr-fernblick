@@ -16,8 +16,8 @@ import { afterEach, beforeEach, expect, it, vi } from "vitest";
 import { readReceiptRecordSchema } from "../../src/shared/api/readReceiptDiagnostics.js";
 import { ReadReceiptFileLog } from "./readReceiptFileLog.js";
 
-vi.mock("node:fs/promises", async (importOriginal) => {
-  const actual = await importOriginal<typeof import("node:fs/promises")>();
+vi.mock(import("node:fs/promises"), async (importOriginal) => {
+  const actual = await importOriginal();
   return { ...actual, open: vi.fn(actual.open) };
 });
 

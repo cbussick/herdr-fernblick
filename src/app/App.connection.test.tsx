@@ -6,8 +6,8 @@ import { afterEach, beforeEach, expect, it, vi } from "vitest";
 import { App } from "./App";
 import { getAgents } from "../shared/api/apiClient";
 
-vi.mock("../shared/api/apiClient", async (original) => ({
-  ...(await original<typeof import("../shared/api/apiClient")>()),
+vi.mock(import("../shared/api/apiClient"), async (original) => ({
+  ...(await original()),
   getAgents: vi.fn(),
 }));
 vi.mock("./useSinglePaneLayout", () => ({ useSinglePaneLayout: () => false }));

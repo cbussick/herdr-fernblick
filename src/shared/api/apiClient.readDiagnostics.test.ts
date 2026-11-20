@@ -1,9 +1,10 @@
+import type { markAgentRead as MarkAgentRead } from "./apiClient";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
 import { READ_RECEIPT_REQUEST_ID_HEADER } from "./readReceiptDiagnostics";
 
 const input = { paneId: "private-pane", completionId: "a".repeat(64) };
 const fetchMock = vi.fn();
-let markAgentRead: typeof import("./apiClient").markAgentRead;
+let markAgentRead: typeof MarkAgentRead;
 let warn: ReturnType<typeof vi.spyOn>;
 let info: ReturnType<typeof vi.spyOn>;
 beforeEach(async () => {

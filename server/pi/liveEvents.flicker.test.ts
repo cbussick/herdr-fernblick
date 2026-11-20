@@ -1,3 +1,4 @@
+import type { ServerResponse } from "node:http";
 import { EventEmitter } from "node:events";
 import { randomUUID } from "node:crypto";
 import { expect, it, vi } from "vitest";
@@ -46,7 +47,7 @@ it.each([
     };
     try {
       liveEvents(
-        response as unknown as import("node:http").ServerResponse,
+        response as unknown as ServerResponse,
         { pane_id: "w1:p1" } as Agent,
         bridge as unknown as LiveBridge,
       );

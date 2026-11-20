@@ -7,8 +7,8 @@ import { App } from "./App";
 import { ScoutLogo } from "../shared/ui/ScoutLogo";
 import { getAgents } from "../shared/api/apiClient";
 
-vi.mock("../shared/api/apiClient", async (original) => ({
-  ...(await original<typeof import("../shared/api/apiClient")>()),
+vi.mock(import("../shared/api/apiClient"), async (original) => ({
+  ...(await original()),
   getAgents: vi.fn(),
 }));
 vi.mock("./useSinglePaneLayout", () => ({ useSinglePaneLayout: () => false }));

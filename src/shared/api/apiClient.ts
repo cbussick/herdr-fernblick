@@ -1,3 +1,4 @@
+import type { TreePageRequest } from "../../../packages/pi-live-chat/treeProtocol";
 import {
   agentsResponseSchema,
   markAgentReadRequestSchema,
@@ -430,7 +431,7 @@ export async function saveAgentGlobalDefault(
 export async function getAgentTreePage(
   pane: string,
   target: Target,
-  page: import("../../../packages/pi-live-chat/treeProtocol").TreePageRequest,
+  page: TreePageRequest,
   signal?: AbortSignal,
 ) {
   const response = treePageResponseSchema.parse(
