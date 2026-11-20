@@ -1,3 +1,4 @@
+import { dispatchTestEvent } from "../../shared/lib/dispatchTestEvent";
 import { act } from "react";
 import type { ReactNode } from "react";
 import { create } from "react-test-renderer";
@@ -63,10 +64,10 @@ async function flush() {
 }
 async function openSkills() {
   await act(async () =>
-    renderer.root
-      .findAllByType("button")
-      .find((button) => button.children.includes(" Skills"))!
-      .props.onClick(),
+    dispatchTestEvent(
+      renderer.root.findAllByType("button").find((button) => button.children.includes(" Skills"))!,
+      "onClick",
+    ),
   );
   await flush();
 }
@@ -173,7 +174,9 @@ it("preserves a draft typed in the shell while Pi is starting", async () => {
   }
   await act(async () => renderer.update(pane(false)));
   await act(async () =>
-    renderer.root.findByType("textarea").props.onChange({ target: { value: "My first prompt" } }),
+    dispatchTestEvent(renderer.root.findByType("textarea"), "onChange", {
+      target: { value: "My first prompt" },
+    }),
   );
   await act(async () => renderer.update(pane(true)));
   expect(renderer.root.findByType("textarea").props.value).toBe("My first prompt");
@@ -234,9 +237,9 @@ it.each([true, false])(
       });
     });
     await act(async () =>
-      renderer.root
-        .findByType("textarea")
-        .props.onChange({ target: { value: "Keep typing here" } }),
+      dispatchTestEvent(renderer.root.findByType("textarea"), "onChange", {
+        target: { value: "Keep typing here" },
+      }),
     );
     if (focused) {
       editors[0].focus();
@@ -262,13 +265,15 @@ it("confirms before branching and restores the prompt after an epoch-changing sn
   };
   await act(async () => renderer.update(render()));
   await act(async () =>
-    renderer.root.findByProps({ "aria-label": "Jump back here" }).props.onClick(),
+    dispatchTestEvent(renderer.root.findByProps({ "aria-label": "Jump back here" }), "onClick"),
   );
   expect(mocks.navigate).not.toHaveBeenCalled();
-  await act(async () => renderer.root.findByType(MessageBranchDialog).props.onClose());
+  await act(async () =>
+    dispatchTestEvent(renderer.root.findByType(MessageBranchDialog), "onClose"),
+  );
   expect(mocks.navigate).not.toHaveBeenCalled();
   await act(async () =>
-    renderer.root.findByProps({ "aria-label": "Jump back here" }).props.onClick(),
+    dispatchTestEvent(renderer.root.findByProps({ "aria-label": "Jump back here" }), "onClick"),
   );
   let finish!: (value: unknown) => void;
   mocks.navigate.mockImplementation(
@@ -277,7 +282,9 @@ it("confirms before branching and restores the prompt after an epoch-changing sn
         finish = resolve;
       }),
   );
-  await act(async () => renderer.root.findByType(MessageBranchDialog).props.onConfirm());
+  await act(async () =>
+    dispatchTestEvent(renderer.root.findByType(MessageBranchDialog), "onConfirm"),
+  );
   expect(mocks.navigate).toHaveBeenCalledWith(
     "w1:p1",
     {
@@ -335,15 +342,19 @@ it("keeps the tab title in the header and labels replies Agent", async () => {
 
 async function openActions() {
   await act(async () =>
-    renderer.root.findByProps({ "data-ui": "conversation-actions-button" }).props.onClick(),
+    dispatchTestEvent(
+      renderer.root.findByProps({ "data-ui": "conversation-actions-button" }),
+      "onClick",
+    ),
   );
 }
 async function confirmCompact() {
   await openActions();
   await act(async () =>
-    renderer.root
-      .findByProps({ role: "menuitem", "aria-label": "Compact conversation" })
-      .props.onClick(),
+    dispatchTestEvent(
+      renderer.root.findByProps({ role: "menuitem", "aria-label": "Compact conversation" }),
+      "onClick",
+    ),
   );
 }
 function compactNow() {
@@ -385,23 +396,29 @@ it("resolves relative Markdown images using Pi's cwd and updates when the contex
 it("cancels compact confirmation with Cancel or Escape without invoking Pi or changing the draft", async () => {
   await enableCompact();
   await act(async () =>
-    renderer.root.findByType("textarea").props.onChange({ target: { value: "keep this" } }),
+    dispatchTestEvent(renderer.root.findByType("textarea"), "onChange", {
+      target: { value: "keep this" },
+    }),
   );
   await confirmCompact();
   expect(
     renderer.root.findByProps({ "data-ui": "conversation-actions-button" }).props["aria-expanded"],
   ).toBe(false);
   await act(async () =>
-    renderer.root
-      .findAllByType("button")
-      .find((b) => b.children.includes("Cancel"))!
-      .props.onClick(),
+    dispatchTestEvent(
+      renderer.root.findAllByType("button").find((b) => b.children.includes("Cancel"))!,
+      "onClick",
+    ),
   );
   expect(compactNow()).toBeUndefined();
   await confirmCompact();
   const event = { key: "Escape", preventDefault: vi.fn(), stopPropagation: vi.fn() };
   await act(async () =>
-    renderer.root.findByProps({ "data-ui": "conversation-compaction" }).props.onKeyDown(event),
+    dispatchTestEvent(
+      renderer.root.findByProps({ "data-ui": "conversation-compaction" }),
+      "onKeyDown",
+      event,
+    ),
   );
   expect(event.preventDefault).toHaveBeenCalledOnce();
   expect(event.stopPropagation).toHaveBeenCalledOnce();
@@ -421,8 +438,12 @@ it("explains and compacts separately from Skills, waits for completion and prese
   );
   const file = new File(["image"], "image.png", { type: "image/png" });
   await act(async () => {
-    renderer.root.findByType("textarea").props.onChange({ target: { value: "keep my draft" } });
-    renderer.root.findByProps({ type: "file" }).props.onChange({ target: { files: [file] } });
+    await dispatchTestEvent(renderer.root.findByType("textarea"), "onChange", {
+      target: { value: "keep my draft" },
+    });
+    await dispatchTestEvent(renderer.root.findByProps({ type: "file" }), "onChange", {
+      target: { files: [file] },
+    });
   });
   await confirmCompact();
   expect(JSON.stringify(renderer.toJSON())).toContain("does not clear the conversation");
@@ -456,7 +477,7 @@ it("resumes waiting after reconnecting to the same running compaction", async ()
       }),
   );
   await confirmCompact();
-  await act(async () => compactNow().props.onClick());
+  await act(async () => dispatchTestEvent(compactNow(), "onClick"));
   const initial = mocks.live.snapshot!;
   mocks.live = { error: "Reconnecting to Pi…" };
   await act(async () => renderer.update(render()));
@@ -482,10 +503,12 @@ it.each(["before", "after"])(
         }),
     );
     await act(async () =>
-      renderer.root.findByType("textarea").props.onChange({ target: { value: "keep this" } }),
+      dispatchTestEvent(renderer.root.findByType("textarea"), "onChange", {
+        target: { value: "keep this" },
+      }),
     );
     await confirmCompact();
-    await act(async () => compactNow().props.onClick());
+    await act(async () => dispatchTestEvent(compactNow(), "onClick"));
     const initial = mocks.live.snapshot!;
     mocks.live = { error: "Reconnecting to Pi…" };
     await act(async () => renderer.update(render()));
@@ -520,7 +543,7 @@ it("does not recover an invalidated request from a replacement or older compacti
       }),
   );
   await confirmCompact();
-  await act(async () => compactNow().props.onClick());
+  await act(async () => dispatchTestEvent(compactNow(), "onClick"));
   const initial = mocks.live.snapshot!;
   mocks.live.snapshot = { ...initial, epoch: randomUUID(), busy: true, compacting: true };
   await act(async () => renderer.update(render()));
@@ -535,7 +558,9 @@ it("does not recover an invalidated request from a replacement or older compacti
 
 it("labels terminal compaction without invoking the UI action and preserves the draft", async () => {
   await act(async () =>
-    renderer.root.findByType("textarea").props.onChange({ target: { value: "keep this draft" } }),
+    dispatchTestEvent(renderer.root.findByType("textarea"), "onChange", {
+      target: { value: "keep this draft" },
+    }),
   );
   mocks.live.snapshot = { ...mocks.live.snapshot!, busy: true, compacting: true };
   await act(async () => renderer.update(render()));
@@ -573,7 +598,7 @@ it.each(["unsupported", "disconnected"])("disables compact when %s", async (mode
   });
   expect(button.props["aria-disabled"]).toBe(true);
   expect(button.findByType("small").children.join("")).toMatch(/Connect|reload|idle/);
-  await act(async () => button.props.onClick());
+  await act(async () => dispatchTestEvent(button, "onClick"));
   expect(compactNow()).toBeUndefined();
   expect(mocks.compact).not.toHaveBeenCalled();
 });
@@ -609,10 +634,12 @@ it.each(["disconnect", "replacement", "error"])(
         }),
     );
     await act(async () =>
-      renderer.root.findByType("textarea").props.onChange({ target: { value: "retain me" } }),
+      dispatchTestEvent(renderer.root.findByType("textarea"), "onChange", {
+        target: { value: "retain me" },
+      }),
     );
     await confirmCompact();
-    await act(async () => compactNow().props.onClick());
+    await act(async () => dispatchTestEvent(compactNow(), "onClick"));
     await flush();
     if (mode === "disconnect") {
       mocks.live.error = "Connection lost";
@@ -659,17 +686,21 @@ it.each(["codex", "claude", "other"])(
     expect(JSON.stringify(renderer.toJSON())).not.toContain("A saved Pi session");
     expect(renderer.root.findAllByProps({ "aria-label": "Switch to Chat view" })).toHaveLength(0);
     await act(async () =>
-      renderer.root.findByType("textarea").props.onChange({ target: { value: "Check my code" } }),
+      dispatchTestEvent(renderer.root.findByType("textarea"), "onChange", {
+        target: { value: "Check my code" },
+      }),
     );
-    await act(async () => renderer.root.findByType("form").props.onSubmit({ preventDefault() {} }));
+    await act(async () =>
+      dispatchTestEvent(renderer.root.findByType("form"), "onSubmit", { preventDefault() {} }),
+    );
     await flush();
     expect(mocks.paneInput).toHaveBeenCalledWith(agent.pane_id, "Check my code");
     expect(renderer.root.findByType("textarea").props.value).toBe("");
     await act(async () =>
-      renderer.root
-        .findAllByType("button")
-        .find((button) => button.children.includes("Enter"))!
-        .props.onClick(),
+      dispatchTestEvent(
+        renderer.root.findAllByType("button").find((button) => button.children.includes("Enter"))!,
+        "onClick",
+      ),
     );
     await flush();
     expect(mocks.paneKey).toHaveBeenCalledWith(agent.pane_id, "enter");
@@ -681,9 +712,13 @@ it("retains non-Pi terminal input after a failed send without retrying through P
   mocks.paneInput.mockRejectedValueOnce(new Error("Terminal unavailable"));
   await act(async () => renderer.update(render({ ...agent, agent: "codex" })));
   await act(async () =>
-    renderer.root.findByType("textarea").props.onChange({ target: { value: "Keep this text" } }),
+    dispatchTestEvent(renderer.root.findByType("textarea"), "onChange", {
+      target: { value: "Keep this text" },
+    }),
   );
-  await act(async () => renderer.root.findByType("form").props.onSubmit({ preventDefault() {} }));
+  await act(async () =>
+    dispatchTestEvent(renderer.root.findByType("form"), "onSubmit", { preventDefault() {} }),
+  );
   await flush();
   expect(renderer.root.findByType("textarea").props.value).toBe("Keep this text");
   expect(JSON.stringify(renderer.toJSON())).toContain("Terminal unavailable");
@@ -711,7 +746,9 @@ it("keeps a newly started Pi in chat while it waits for its saved session", asyn
 
 it("shows retry progress without an error screen and preserves the draft", async () => {
   await act(async () =>
-    renderer.root.findByType("textarea").props.onChange({ target: { value: "Keep my draft" } }),
+    dispatchTestEvent(renderer.root.findByType("textarea"), "onChange", {
+      target: { value: "Keep my draft" },
+    }),
   );
   mocks.live = { reconnecting: true };
   await act(async () => renderer.update(render()));
@@ -723,7 +760,10 @@ it("shows retry progress without an error screen and preserves the draft", async
 
 it("shows the live terminal by default and keeps loaded history when the agent starts working", async () => {
   await act(async () =>
-    renderer.root.findByProps({ "aria-label": "Switch to Terminal view" }).props.onClick(),
+    dispatchTestEvent(
+      renderer.root.findByProps({ "aria-label": "Switch to Terminal view" }),
+      "onClick",
+    ),
   );
   await flush();
   expect(mocks.output.mock.calls[0].slice(0, 2)).toEqual([agent.pane_id, "visible"]);
@@ -735,7 +775,7 @@ it("shows the live terminal by default and keeps loaded history when the agent s
           button.children.includes("Load history") || button.children.includes("Refresh history"),
       )!;
   expect(historyButton().props.disabled).toBe(false);
-  await act(async () => historyButton().props.onClick());
+  await act(async () => dispatchTestEvent(historyButton(), "onClick"));
   await flush();
   expect(renderer.root.findByType("pre").children).toEqual(["Older terminal history"]);
   await act(async () => renderer.update(render({ ...agent, agent_status: "working" })));
@@ -749,23 +789,31 @@ it("selects and searches skills without sending or losing draft text and images"
   await act(async () => renderer.update(render()));
   const file = new File(["image"], "image.png", { type: "image/png" });
   await act(async () => {
-    renderer.root.findByType("textarea").props.onChange({ target: { value: "check my diff" } });
-    renderer.root.findByProps({ type: "file" }).props.onChange({ target: { files: [file] } });
+    await dispatchTestEvent(renderer.root.findByType("textarea"), "onChange", {
+      target: { value: "check my diff" },
+    });
+    await dispatchTestEvent(renderer.root.findByProps({ type: "file" }), "onChange", {
+      target: { files: [file] },
+    });
   });
   await openSkills();
   expect(mocks.skills).toHaveBeenCalledOnce();
-  await act(async () => renderer.root.findByProps({ role: "option" }).props.onClick());
+  await act(async () =>
+    dispatchTestEvent(renderer.root.findByProps({ role: "option" }), "onClick"),
+  );
   expect(renderer.root.findByType("textarea").props.value).toBe("/skill:review check my diff");
   expect(renderer.root.findAllByProps({ "aria-label": "Image attachments" })).toHaveLength(1);
   expect(renderer.root.findByProps({ "aria-label": "Send message" }).props.disabled).toBe(true);
   expect(mocks.command).not.toHaveBeenCalled();
   await openSkills();
   await act(async () =>
-    renderer.root.findByProps({ role: "combobox" }).props.onChange({ target: { value: "rev" } }),
+    dispatchTestEvent(renderer.root.findByProps({ role: "combobox" }), "onChange", {
+      target: { value: "rev" },
+    }),
   );
   expect(renderer.root.findAllByProps({ role: "option" })).toHaveLength(1);
   await act(async () =>
-    renderer.root.findByProps({ role: "combobox" }).props.onKeyDown({
+    dispatchTestEvent(renderer.root.findByProps({ role: "combobox" }), "onKeyDown", {
       key: "Enter",
       nativeEvent: {},
       preventDefault() {},
@@ -779,14 +827,18 @@ it("reselects a typed skill without duplicating it or opening the picker automat
   mocks.live.snapshot = { ...mocks.live.snapshot!, capabilities: { skills: true } };
   await act(async () => renderer.update(render()));
   await act(async () =>
-    renderer.root.findByType("textarea").props.onChange({ target: { value: "/skill:review" } }),
+    dispatchTestEvent(renderer.root.findByType("textarea"), "onChange", {
+      target: { value: "/skill:review" },
+    }),
   );
   await flush();
   expect(renderer.root.findAllByProps({ "data-testid": "skill-picker" })).toHaveLength(0);
   expect(renderer.root.findByType("textarea").props.value).toBe("/skill:review");
   expect(mocks.skills).not.toHaveBeenCalled();
   await openSkills();
-  await act(async () => renderer.root.findByProps({ role: "option" }).props.onClick());
+  await act(async () =>
+    dispatchTestEvent(renderer.root.findByProps({ role: "option" }), "onClick"),
+  );
   expect(renderer.root.findByType("textarea").props.value).toBe("/skill:review ");
   expect(mocks.command).not.toHaveBeenCalled();
 });
@@ -796,17 +848,17 @@ it("shows skill errors and empty states, hides stale choices on disconnect, and 
   mocks.skills.mockRejectedValueOnce(new Error("Skills offline"));
   await act(async () => renderer.update(render()));
   await act(async () =>
-    renderer.root.findByType("textarea").props.onChange({ target: { value: "/" } }),
+    dispatchTestEvent(renderer.root.findByType("textarea"), "onChange", { target: { value: "/" } }),
   );
   await openSkills();
   expect(JSON.stringify(renderer.toJSON())).toContain("Skills offline");
   expect(renderer.root.findAllByProps({ role: "option" })).toHaveLength(0);
   mocks.skills.mockResolvedValueOnce({ skills: [], truncated: false });
   await act(async () =>
-    renderer.root
-      .findAllByType("button")
-      .find((b) => b.children.includes("Try again"))!
-      .props.onClick(),
+    dispatchTestEvent(
+      renderer.root.findAllByType("button").find((b) => b.children.includes("Try again"))!,
+      "onClick",
+    ),
   );
   await flush();
   expect(JSON.stringify(renderer.toJSON())).toContain("No skills loaded");
@@ -815,7 +867,7 @@ it("shows skill errors and empty states, hides stale choices on disconnect, and 
   expect(JSON.stringify(renderer.toJSON())).toContain("Connect to Pi live chat");
   expect(renderer.root.findByType("textarea").props.value).toBe("/");
   await act(async () =>
-    renderer.root.findByProps({ role: "combobox" }).props.onKeyDown({
+    dispatchTestEvent(renderer.root.findByProps({ role: "combobox" }), "onKeyDown", {
       key: "Escape",
       nativeEvent: {},
       preventDefault() {},
@@ -833,22 +885,28 @@ it("previews all ten local draft images without uploading, sending or discarding
     (_, i) => new File(["image"], `draft-${i}.png`, { type: "image/png" }),
   );
   await act(async () => {
-    renderer.root.findByType("textarea").props.onChange({ target: { value: "Keep my draft" } });
-    renderer.root.findByProps({ type: "file" }).props.onChange({ target: { files } });
+    await dispatchTestEvent(renderer.root.findByType("textarea"), "onChange", {
+      target: { value: "Keep my draft" },
+    });
+    await dispatchTestEvent(renderer.root.findByProps({ type: "file" }), "onChange", {
+      target: { files },
+    });
   });
   const previews = renderer.root
     .findByProps({ "aria-label": "Image attachments" })
     .findAllByType("img");
   await act(async () =>
-    renderer.root.findByProps({ "aria-label": "Preview image 10" }).props.onClick(),
+    dispatchTestEvent(renderer.root.findByProps({ "aria-label": "Preview image 10" }), "onClick"),
   );
   const modal = () => renderer.root.findByProps({ "data-ui": "chat-image-preview" });
   expect(modal().findByType("img").props.src).toBe(previews[9].props.src);
   expect(modal().findByType("img").props.alt).toBe("draft-9.png");
-  await act(async () => modal().findByProps({ "aria-label": "Next image" }).props.onClick());
+  await act(async () =>
+    dispatchTestEvent(modal().findByProps({ "aria-label": "Next image" }), "onClick"),
+  );
   expect(modal().findByType("img").props.src).toBe(previews[0].props.src);
   expect(modal().findByProps({ role: "status" }).children.join("")).toBe("Image 1 of 10");
-  await act(async () => modal().props.onClose({ currentTarget: { open: false } }));
+  await act(async () => dispatchTestEvent(modal(), "onClose", { currentTarget: { open: false } }));
   expect(renderer.root.findAllByProps({ "data-ui": "chat-image-preview" })).toHaveLength(0);
   expect(renderer.root.findByType("textarea").props.value).toBe("Keep my draft");
   expect(
@@ -870,20 +928,20 @@ it("previews restored upload IDs and closes if the displayed attachment is remov
     const action = renderer.root.findByProps({ role: "menuitem", "aria-label": label });
     expect(action.findAllByType("svg")).toHaveLength(1);
   }
-  await act(async () => treeAction.props.onClick());
+  await act(async () => dispatchTestEvent(treeAction, "onClick"));
   const tree = renderer.root.findByType(ConversationTreeDialog);
   await act(async () => {
-    tree.props.onRestorePrompt("Restored draft", ids);
-    tree.props.onClose();
+    await dispatchTestEvent(tree, "onRestorePrompt", "Restored draft", ids);
+    await dispatchTestEvent(tree, "onClose");
   });
   await act(async () =>
-    renderer.root.findByProps({ "aria-label": "Preview image 2" }).props.onClick(),
+    dispatchTestEvent(renderer.root.findByProps({ "aria-label": "Preview image 2" }), "onClick"),
   );
   expect(
     renderer.root.findByProps({ "data-ui": "chat-image-preview" }).findByType("img").props.src,
   ).toBe(`/api/uploads/${ids[1]}`);
   await act(async () =>
-    renderer.root.findByProps({ "aria-label": "Remove image 2" }).props.onClick(),
+    dispatchTestEvent(renderer.root.findByProps({ "aria-label": "Remove image 2" }), "onClick"),
   );
   expect(renderer.root.findAllByProps({ "data-ui": "chat-image-preview" })).toHaveLength(0);
   expect(renderer.root.findByType("textarea").props.value).toBe("Restored draft");
@@ -898,7 +956,9 @@ it("accepts ten images across selections, caps overflow and restores capacity af
   );
   const select = async (selected: Array<File>) =>
     act(async () =>
-      renderer.root.findByProps({ type: "file" }).props.onChange({ target: { files: selected } }),
+      dispatchTestEvent(renderer.root.findByProps({ type: "file" }), "onChange", {
+        target: { files: selected },
+      }),
     );
   const previews = () =>
     renderer.root.findByProps({ "aria-label": "Image attachments" }).findAllByType("img");
@@ -911,12 +971,14 @@ it("accepts ten images across selections, caps overflow and restores capacity af
   expect(renderer.root.findByProps({ "aria-label": "Attach images" }).props.disabled).toBe(true);
   expect(JSON.stringify(renderer.toJSON())).toContain("Choose up to 10 PNG");
   await act(async () =>
-    renderer.root.findByProps({ "aria-label": "Remove image 10" }).props.onClick(),
+    dispatchTestEvent(renderer.root.findByProps({ "aria-label": "Remove image 10" }), "onClick"),
   );
   expect(renderer.root.findByProps({ "aria-label": "Attach images" }).props.disabled).toBe(false);
   await select([files[10]]);
   expect(previews()).toHaveLength(10);
-  await act(async () => renderer.root.findByType("form").props.onSubmit({ preventDefault() {} }));
+  await act(async () =>
+    dispatchTestEvent(renderer.root.findByType("form"), "onSubmit", { preventDefault() {} }),
+  );
   await flush();
   expect(mocks.upload).toHaveBeenCalledTimes(10);
   expect(mocks.upload.mock.calls.map(([file]) => file.name)).toEqual(
@@ -937,14 +999,16 @@ it("pastes clipboard images into the existing attachment upload flow", async () 
   const file = new File(["image"], "clipboard.png", { type: "image/png" });
   const preventDefault = vi.fn();
   await act(async () =>
-    renderer.root.findByType("textarea").props.onPaste({
+    dispatchTestEvent(renderer.root.findByType("textarea"), "onPaste", {
       clipboardData: { files: [file] },
       preventDefault,
     }),
   );
   expect(preventDefault).toHaveBeenCalledOnce();
   expect(renderer.root.findAllByProps({ "aria-label": "Image attachments" })).toHaveLength(1);
-  await act(async () => renderer.root.findByType("form").props.onSubmit({ preventDefault() {} }));
+  await act(async () =>
+    dispatchTestEvent(renderer.root.findByType("form"), "onSubmit", { preventDefault() {} }),
+  );
   await flush();
   expect(mocks.upload).toHaveBeenCalledWith(file);
   expect(mocks.command).toHaveBeenCalledOnce();
@@ -953,14 +1017,14 @@ it("pastes clipboard images into the existing attachment upload flow", async () 
 it("leaves normal text pastes untouched and validates pasted image formats", async () => {
   const preventDefault = vi.fn();
   await act(async () =>
-    renderer.root.findByType("textarea").props.onPaste({
+    dispatchTestEvent(renderer.root.findByType("textarea"), "onPaste", {
       clipboardData: { files: [] },
       preventDefault,
     }),
   );
   expect(preventDefault).not.toHaveBeenCalled();
   await act(async () =>
-    renderer.root.findByType("textarea").props.onPaste({
+    dispatchTestEvent(renderer.root.findByType("textarea"), "onPaste", {
       clipboardData: { files: [new File(["svg"], "image.svg", { type: "image/svg+xml" })] },
       preventDefault,
     }),
@@ -979,10 +1043,12 @@ it("submits on Enter only when sendable, without interfering with newlines or IM
     currentTarget: { form: { requestSubmit } },
     preventDefault,
   };
-  renderer.root.findByType("textarea").props.onKeyDown(event);
+  await dispatchTestEvent(renderer.root.findByType("textarea"), "onKeyDown", event);
   expect(requestSubmit).not.toHaveBeenCalled();
   await act(async () =>
-    renderer.root.findByType("textarea").props.onChange({ target: { value: "hello" } }),
+    dispatchTestEvent(renderer.root.findByType("textarea"), "onChange", {
+      target: { value: "hello" },
+    }),
   );
   const keydown = renderer.root.findByType("textarea").props.onKeyDown;
   preventDefault.mockClear();
@@ -999,10 +1065,16 @@ it("submits on Enter only when sendable, without interfering with newlines or IM
 it("clears an acknowledged text-and-image send without waiting for any Pi event", async () => {
   const file = new File(["image"], "image.png", { type: "image/png" });
   await act(async () => {
-    renderer.root.findByType("textarea").props.onChange({ target: { value: "hello" } });
-    renderer.root.findByProps({ type: "file" }).props.onChange({ target: { files: [file] } });
+    await dispatchTestEvent(renderer.root.findByType("textarea"), "onChange", {
+      target: { value: "hello" },
+    });
+    await dispatchTestEvent(renderer.root.findByProps({ type: "file" }), "onChange", {
+      target: { files: [file] },
+    });
   });
-  await act(async () => renderer.root.findByType("form").props.onSubmit({ preventDefault() {} }));
+  await act(async () =>
+    dispatchTestEvent(renderer.root.findByType("form"), "onSubmit", { preventDefault() {} }),
+  );
   await flush();
   expect(mocks.command).toHaveBeenCalledOnce();
   expect(renderer.root.findByType("textarea").props.disabled).toBe(false);
@@ -1012,7 +1084,9 @@ it("clears an acknowledged text-and-image send without waiting for any Pi event"
   mocks.live.snapshot = { ...mocks.live.snapshot!, seq: 3, busy: false };
   await act(async () => renderer.update(render()));
   await act(async () =>
-    renderer.root.findByType("textarea").props.onChange({ target: { value: "next" } }),
+    dispatchTestEvent(renderer.root.findByType("textarea"), "onChange", {
+      target: { value: "next" },
+    }),
   );
   expect(renderer.root.findByProps({ "aria-label": "Send message" }).props.disabled).toBe(false);
 });
@@ -1020,10 +1094,16 @@ it.each(["", "keep me"])("retains text %j and images when forwarding fails", asy
   mocks.command.mockRejectedValue(new Error("Connection lost"));
   const file = new File(["image"], "image.png", { type: "image/png" });
   await act(async () => {
-    renderer.root.findByType("textarea").props.onChange({ target: { value: draft } });
-    renderer.root.findByProps({ type: "file" }).props.onChange({ target: { files: [file] } });
+    await dispatchTestEvent(renderer.root.findByType("textarea"), "onChange", {
+      target: { value: draft },
+    });
+    await dispatchTestEvent(renderer.root.findByProps({ type: "file" }), "onChange", {
+      target: { files: [file] },
+    });
   });
-  await act(async () => renderer.root.findByType("form").props.onSubmit({ preventDefault() {} }));
+  await act(async () =>
+    dispatchTestEvent(renderer.root.findByType("form"), "onSubmit", { preventDefault() {} }),
+  );
   await flush();
   expect(renderer.root.findByType("textarea").props.value).toBe(draft);
   expect(renderer.root.findAllByProps({ "aria-label": "Image attachments" })).toHaveLength(1);
@@ -1035,12 +1115,18 @@ it.each(["", "keep me"])("retains text %j and images when forwarding fails", asy
 });
 it("does not erase a newer draft when Pi sends more chat updates", async () => {
   await act(async () =>
-    renderer.root.findByType("textarea").props.onChange({ target: { value: "old" } }),
+    dispatchTestEvent(renderer.root.findByType("textarea"), "onChange", {
+      target: { value: "old" },
+    }),
   );
-  await act(async () => renderer.root.findByType("form").props.onSubmit({ preventDefault() {} }));
+  await act(async () =>
+    dispatchTestEvent(renderer.root.findByType("form"), "onSubmit", { preventDefault() {} }),
+  );
   await flush();
   await act(async () =>
-    renderer.root.findByType("textarea").props.onChange({ target: { value: "new draft" } }),
+    dispatchTestEvent(renderer.root.findByType("textarea"), "onChange", {
+      target: { value: "new draft" },
+    }),
   );
   mocks.live.snapshot = { ...mocks.live.snapshot!, seq: 2, busy: true };
   await act(async () => renderer.update(render()));
@@ -1057,10 +1143,10 @@ it("ignores a late stop ACK after the agent becomes idle and starts again", asyn
   mocks.live.snapshot = { ...mocks.live.snapshot!, busy: true };
   await act(async () => renderer.update(render()));
   await act(async () =>
-    renderer.root
-      .findAllByType("button")
-      .find((b) => b.children.includes("Stop"))!
-      .props.onClick(),
+    dispatchTestEvent(
+      renderer.root.findAllByType("button").find((b) => b.children.includes("Stop"))!,
+      "onClick",
+    ),
   );
   await flush();
   mocks.live.snapshot = { ...mocks.live.snapshot, busy: false };
@@ -1086,7 +1172,9 @@ it("preserves the conversation on a disconnect while disabling send and stop", a
   };
   await act(async () => renderer.update(render()));
   await act(async () =>
-    renderer.root.findByType("textarea").props.onChange({ target: { value: "next" } }),
+    dispatchTestEvent(renderer.root.findByType("textarea"), "onChange", {
+      target: { value: "next" },
+    }),
   );
   expect(JSON.stringify(renderer.toJSON())).toContain("conversation stays");
   expect(renderer.root.findByProps({ "aria-label": "Send message" }).props.disabled).toBe(true);
@@ -1098,8 +1186,12 @@ it("preserves the conversation on a disconnect while disabling send and stop", a
 it("preserves drafts and images through recovery without replaying commands", async () => {
   const file = new File(["image"], "image.png", { type: "image/png" });
   await act(async () => {
-    renderer.root.findByType("textarea").props.onChange({ target: { value: "keep this draft" } });
-    renderer.root.findByProps({ type: "file" }).props.onChange({ target: { files: [file] } });
+    await dispatchTestEvent(renderer.root.findByType("textarea"), "onChange", {
+      target: { value: "keep this draft" },
+    });
+    await dispatchTestEvent(renderer.root.findByProps({ type: "file" }), "onChange", {
+      target: { files: [file] },
+    });
   });
   mocks.live.error = "Reconnecting to Pi…";
   await act(async () => renderer.update(render()));
@@ -1123,9 +1215,13 @@ it("never replays an uncertain in-flight send when the stream recovers", async (
       }),
   );
   await act(async () =>
-    renderer.root.findByType("textarea").props.onChange({ target: { value: "uncertain send" } }),
+    dispatchTestEvent(renderer.root.findByType("textarea"), "onChange", {
+      target: { value: "uncertain send" },
+    }),
   );
-  await act(async () => renderer.root.findByType("form").props.onSubmit({ preventDefault() {} }));
+  await act(async () =>
+    dispatchTestEvent(renderer.root.findByType("form"), "onSubmit", { preventDefault() {} }),
+  );
   await flush();
   mocks.live.error = "Reconnecting to Pi…";
   await act(async () => renderer.update(render()));
@@ -1141,7 +1237,7 @@ it("never replays an uncertain in-flight send when the stream recovers", async (
 it("keeps the captured board through a missing live snapshot and same-session recovery", async () => {
   const initial = mocks.live.snapshot!;
   await act(async () =>
-    renderer.root.findByProps({ "aria-label": "Open whiteboard" }).props.onClick(),
+    dispatchTestEvent(renderer.root.findByProps({ "aria-label": "Open whiteboard" }), "onClick"),
   );
   const captured = renderer.root.findByType(Whiteboard).props.target;
   // A transport-level unavailable frame removes the live snapshot. It does not
@@ -1172,7 +1268,7 @@ it.each(["epoch", "runtime", "sessionId"] as const)(
   async (field) => {
     const initial = mocks.live.snapshot!;
     await act(async () =>
-      renderer.root.findByProps({ "aria-label": "Open whiteboard" }).props.onClick(),
+      dispatchTestEvent(renderer.root.findByProps({ "aria-label": "Open whiteboard" }), "onClick"),
     );
     mocks.live = { error: "Temporarily unavailable" };
     await act(async () => renderer.update(render()));
@@ -1190,7 +1286,7 @@ it.each(["epoch", "runtime", "sessionId"] as const)(
 
 async function openBoard() {
   await act(async () =>
-    renderer.root.findByProps({ "aria-label": "Open whiteboard" }).props.onClick(),
+    dispatchTestEvent(renderer.root.findByProps({ "aria-label": "Open whiteboard" }), "onClick"),
   );
 }
 function boardConversation(): WhiteboardConversation {
@@ -1199,10 +1295,12 @@ function boardConversation(): WhiteboardConversation {
 it("shares the text draft and live conversation but never sends hidden chat images from the board", async () => {
   const file = new File(["image"], "image.png", { type: "image/png" });
   await act(async () => {
-    renderer.root
-      .findByType("textarea")
-      .props.onChange({ target: { value: "Existing chat draft" } });
-    renderer.root.findByProps({ type: "file" }).props.onChange({ target: { files: [file] } });
+    await dispatchTestEvent(renderer.root.findByType("textarea"), "onChange", {
+      target: { value: "Existing chat draft" },
+    });
+    await dispatchTestEvent(renderer.root.findByProps({ type: "file" }), "onChange", {
+      target: { files: [file] },
+    });
   });
   await openBoard();
   expect(boardConversation().draft).toBe("Existing chat draft");
@@ -1248,7 +1346,7 @@ it("retains uncertain dock text and its error across Back/reopen and reconnect w
   await act(async () => renderer.update(render()));
   delete mocks.live.error;
   await act(async () => renderer.update(render()));
-  await act(async () => renderer.root.findByType(Whiteboard).props.onClose());
+  await act(async () => dispatchTestEvent(renderer.root.findByType(Whiteboard), "onClose"));
   await openBoard();
   expect(boardConversation().draft).toBe("Keep this question");
   expect(boardConversation().error).toContain("Draft retained");
@@ -1272,7 +1370,7 @@ it.each(["busy", "closed", "epoch"])(
     await act(async () => boardConversation().onDraftChange("Do not send stale text"));
     const submit = boardConversation().onSend;
     if (state === "closed") {
-      await act(async () => renderer.root.findByType(Whiteboard).props.onClose());
+      await act(async () => dispatchTestEvent(renderer.root.findByType(Whiteboard), "onClose"));
     } else if (state === "busy") {
       mocks.live.snapshot = { ...mocks.live.snapshot!, busy: true };
     } else {
@@ -1322,7 +1420,9 @@ it("requires reloading a legacy extension instead of accepting an unconfirmable 
   await openSkills();
   expect(mocks.skills).not.toHaveBeenCalled();
   await act(async () =>
-    renderer.root.findByType("textarea").props.onChange({ target: { value: "message" } }),
+    dispatchTestEvent(renderer.root.findByType("textarea"), "onChange", {
+      target: { value: "message" },
+    }),
   );
   expect(renderer.root.findByProps({ "aria-label": "Send message" }).props.disabled).toBe(true);
   expect(JSON.stringify(renderer.toJSON())).toContain("Run /reload in Pi");
@@ -1336,9 +1436,13 @@ it("keeps an unacknowledged draft across a Pi restart", async () => {
       }),
   );
   await act(async () =>
-    renderer.root.findByType("textarea").props.onChange({ target: { value: "original draft" } }),
+    dispatchTestEvent(renderer.root.findByType("textarea"), "onChange", {
+      target: { value: "original draft" },
+    }),
   );
-  await act(async () => renderer.root.findByType("form").props.onSubmit({ preventDefault() {} }));
+  await act(async () =>
+    dispatchTestEvent(renderer.root.findByType("form"), "onSubmit", { preventDefault() {} }),
+  );
   await flush();
   mocks.live.snapshot = {
     ...mocks.live.snapshot!,
@@ -1367,10 +1471,16 @@ it("locks the composer only through upload and forwarding, then uses Pi busy/idl
   );
   const file = new File(["image"], "image.png", { type: "image/png" });
   await act(async () => {
-    renderer.root.findByType("textarea").props.onChange({ target: { value: "hello" } });
-    renderer.root.findByProps({ type: "file" }).props.onChange({ target: { files: [file] } });
+    await dispatchTestEvent(renderer.root.findByType("textarea"), "onChange", {
+      target: { value: "hello" },
+    });
+    await dispatchTestEvent(renderer.root.findByProps({ type: "file" }), "onChange", {
+      target: { files: [file] },
+    });
   });
-  await act(async () => renderer.root.findByType("form").props.onSubmit({ preventDefault() {} }));
+  await act(async () =>
+    dispatchTestEvent(renderer.root.findByType("form"), "onSubmit", { preventDefault() {} }),
+  );
   await flush();
   const assertWaiting = () => {
     const form = renderer.root.findByType("form");
@@ -1446,11 +1556,13 @@ it.each(["text", "image"])(
     });
     const transcript = () => renderer.root.findByProps({ "data-ui": "chat-transcript" });
     expect(viewport.scrollTop).toBe(800);
-    await act(async () => transcript().props.onWheel({ deltaY: -500 }));
+    await act(async () => dispatchTestEvent(transcript(), "onWheel", { deltaY: -500 }));
     viewport.scrollTop = 300;
-    await act(async () => transcript().props.onScroll());
+    await act(async () => dispatchTestEvent(transcript(), "onScroll"));
     // An empty, rejected submission must not leave reading mode.
-    await act(async () => renderer.root.findByType("form").props.onSubmit({ preventDefault() {} }));
+    await act(async () =>
+      dispatchTestEvent(renderer.root.findByType("form"), "onSubmit", { preventDefault() {} }),
+    );
     expect(viewport.scrollTop).toBe(300);
     let resolve!: (value: unknown) => void;
     const pending = new Promise((done) => {
@@ -1459,14 +1571,16 @@ it.each(["text", "image"])(
     if (kind === "image") {
       mocks.upload.mockReturnValueOnce(pending);
       await act(async () =>
-        renderer.root.findByProps({ type: "file" }).props.onChange({
+        dispatchTestEvent(renderer.root.findByProps({ type: "file" }), "onChange", {
           target: { files: [new File(["image"], "image.png", { type: "image/png" })] },
         }),
       );
     } else {
       mocks.command.mockReturnValueOnce(pending);
       await act(async () =>
-        renderer.root.findByType("textarea").props.onChange({ target: { value: "New turn" } }),
+        dispatchTestEvent(renderer.root.findByType("textarea"), "onChange", {
+          target: { value: "New turn" },
+        }),
       );
     }
     expect(viewport.scrollTop).toBe(300);
@@ -1482,9 +1596,9 @@ it.each(["text", "image"])(
     await act(async () => renderer.update(render()));
     expect(viewport.scrollTop).toBe(1000);
     // Reading upward again during this send must still pause following.
-    await act(async () => transcript().props.onWheel({ deltaY: -12 }));
+    await act(async () => dispatchTestEvent(transcript(), "onWheel", { deltaY: -12 }));
     viewport.scrollTop = 988;
-    await act(async () => transcript().props.onScroll());
+    await act(async () => dispatchTestEvent(transcript(), "onScroll"));
     // A stale repeated submission is guarded and must not resume following again.
     await act(async () => submit({ preventDefault() {} }));
     expect(viewport.scrollTop).toBe(988);
@@ -1508,9 +1622,13 @@ it("shows visible feedback while a text message is being forwarded", async () =>
       }),
   );
   await act(async () =>
-    renderer.root.findByType("textarea").props.onChange({ target: { value: "hello" } }),
+    dispatchTestEvent(renderer.root.findByType("textarea"), "onChange", {
+      target: { value: "hello" },
+    }),
   );
-  await act(async () => renderer.root.findByType("form").props.onSubmit({ preventDefault() {} }));
+  await act(async () =>
+    dispatchTestEvent(renderer.root.findByType("form"), "onSubmit", { preventDefault() {} }),
+  );
   await flush();
   const transcript = renderer.root.findByProps({ "data-testid": "chat-transcript" });
   const activity = transcript.findByProps({ "data-testid": "chat-activity" });
@@ -1539,10 +1657,16 @@ it("shows uncertain sends in a dismissible snackbar with a terminal action, not 
   mocks.command.mockRejectedValueOnce(new TypeError("Failed to fetch"));
   const file = new File(["image"], "image.png", { type: "image/png" });
   await act(async () => {
-    renderer.root.findByType("textarea").props.onChange({ target: { value: "keep this draft" } });
-    renderer.root.findByProps({ type: "file" }).props.onChange({ target: { files: [file] } });
+    await dispatchTestEvent(renderer.root.findByType("textarea"), "onChange", {
+      target: { value: "keep this draft" },
+    });
+    await dispatchTestEvent(renderer.root.findByProps({ type: "file" }), "onChange", {
+      target: { files: [file] },
+    });
   });
-  await act(async () => renderer.root.findByType("form").props.onSubmit({ preventDefault() {} }));
+  await act(async () =>
+    dispatchTestEvent(renderer.root.findByType("form"), "onSubmit", { preventDefault() {} }),
+  );
   await flush();
   expect(renderer.root.findByProps({ "data-testid": "snackbar" })).toBeDefined();
   expect(JSON.stringify(renderer.toJSON())).toContain("Couldn’t confirm your message was sent.");
@@ -1554,11 +1678,14 @@ it("shows uncertain sends in a dismissible snackbar with a terminal action, not 
   const open = renderer.root
     .findAllByType("button")
     .find((b) => b.children.includes("Open terminal"))!;
-  await act(async () => open.props.onClick());
+  await act(async () => dispatchTestEvent(open, "onClick"));
   await flush();
   expect(renderer.root.findByProps({ "aria-label": "Switch to Chat view" })).toBeDefined();
   await act(async () =>
-    renderer.root.findByProps({ "aria-label": "Switch to Chat view" }).props.onClick(),
+    dispatchTestEvent(
+      renderer.root.findByProps({ "aria-label": "Switch to Chat view" }),
+      "onClick",
+    ),
   );
   expect(renderer.root.findByType("textarea").props.value).toBe("keep this draft");
   expect(renderer.root.findAllByProps({ "aria-label": "Image attachments" })).toHaveLength(1);
@@ -1569,14 +1696,21 @@ it("shows uncertain sends in a dismissible snackbar with a terminal action, not 
 it("dismisses the snackbar without clearing the draft or inventing handoff progress", async () => {
   mocks.command.mockRejectedValueOnce(new Error("Delivery uncertain"));
   await act(async () =>
-    renderer.root.findByType("textarea").props.onChange({ target: { value: "keep me" } }),
+    dispatchTestEvent(renderer.root.findByType("textarea"), "onChange", {
+      target: { value: "keep me" },
+    }),
   );
-  await act(async () => renderer.root.findByType("form").props.onSubmit({ preventDefault() {} }));
+  await act(async () =>
+    dispatchTestEvent(renderer.root.findByType("form"), "onSubmit", { preventDefault() {} }),
+  );
   await flush();
   mocks.live.snapshot = { ...mocks.live.snapshot!, sendPending: true };
   await act(async () => renderer.update(render()));
   await act(async () =>
-    renderer.root.findByProps({ "aria-label": "Dismiss notification" }).props.onClick(),
+    dispatchTestEvent(
+      renderer.root.findByProps({ "aria-label": "Dismiss notification" }),
+      "onClick",
+    ),
   );
   expect(renderer.root.findAllByProps({ "data-testid": "snackbar" })).toHaveLength(0);
   expect(renderer.root.findByType("textarea").props.value).toBe("keep me");
@@ -1590,9 +1724,13 @@ it.each(["disconnect", "busy", "replacement", "handoff"])(
     mocks.upload.mockRejectedValueOnce(new TypeError("Failed to fetch"));
     const file = new File(["image"], "image.png", { type: "image/png" });
     await act(async () =>
-      renderer.root.findByProps({ type: "file" }).props.onChange({ target: { files: [file] } }),
+      dispatchTestEvent(renderer.root.findByProps({ type: "file" }), "onChange", {
+        target: { files: [file] },
+      }),
     );
-    await act(async () => renderer.root.findByType("form").props.onSubmit({ preventDefault() {} }));
+    await act(async () =>
+      dispatchTestEvent(renderer.root.findByType("form"), "onSubmit", { preventDefault() {} }),
+    );
     await flush();
     if (mode === "disconnect") {
       mocks.live.error = "Reconnecting";
@@ -1611,7 +1749,7 @@ it.each(["disconnect", "busy", "replacement", "handoff"])(
       .findAllByType("button")
       .find((b) => b.children.includes("Try again"))!;
     expect(retry.props.disabled).toBe(true);
-    await act(async () => retry.props.onClick());
+    await act(async () => dispatchTestEvent(retry, "onClick"));
     expect(mocks.upload).toHaveBeenCalledOnce();
     expect(mocks.command).not.toHaveBeenCalled();
   },
@@ -1637,10 +1775,16 @@ it("updates multi-image progress and retains attachments after upload failure fo
     (name) => new File(["image"], name, { type: "image/png" }),
   );
   await act(async () => {
-    renderer.root.findByType("textarea").props.onChange({ target: { value: "compare these" } });
-    renderer.root.findByProps({ type: "file" }).props.onChange({ target: { files } });
+    await dispatchTestEvent(renderer.root.findByType("textarea"), "onChange", {
+      target: { value: "compare these" },
+    });
+    await dispatchTestEvent(renderer.root.findByProps({ type: "file" }), "onChange", {
+      target: { files },
+    });
   });
-  await act(async () => renderer.root.findByType("form").props.onSubmit({ preventDefault() {} }));
+  await act(async () =>
+    dispatchTestEvent(renderer.root.findByType("form"), "onSubmit", { preventDefault() {} }),
+  );
   await flush();
   expect(JSON.stringify(renderer.toJSON())).toContain("Uploading image 1 of 2…");
   const firstId = `${randomUUID()}.png`;
@@ -1664,7 +1808,7 @@ it("updates multi-image progress and retains attachments after upload failure fo
     .findAllByType("button")
     .find((b) => b.children.includes("Try again"))!;
   expect(retry.props.disabled).toBe(false);
-  await act(async () => retry.props.onClick());
+  await act(async () => dispatchTestEvent(retry, "onClick"));
   await flush();
   expect(mocks.upload).toHaveBeenCalledTimes(3);
   expect(mocks.command).toHaveBeenCalledOnce();
@@ -1691,9 +1835,13 @@ it("does not show handoff progress after an uncertain send or during reconnect",
       }),
   );
   await act(async () =>
-    renderer.root.findByType("textarea").props.onChange({ target: { value: "keep this" } }),
+    dispatchTestEvent(renderer.root.findByType("textarea"), "onChange", {
+      target: { value: "keep this" },
+    }),
   );
-  await act(async () => renderer.root.findByType("form").props.onSubmit({ preventDefault() {} }));
+  await act(async () =>
+    dispatchTestEvent(renderer.root.findByType("form"), "onSubmit", { preventDefault() {} }),
+  );
   await flush();
   mocks.live.snapshot = { ...mocks.live.snapshot, sendPending: true };
   await act(async () => {
@@ -1739,16 +1887,18 @@ it("uses routed board views without losing the shared draft", async () => {
   );
   await act(async () => renderer.update(routed("chat")));
   await act(async () =>
-    renderer.root.findByType("textarea").props.onChange({ target: { value: "Keep my draft" } }),
+    dispatchTestEvent(renderer.root.findByType("textarea"), "onChange", {
+      target: { value: "Keep my draft" },
+    }),
   );
   await act(async () =>
-    renderer.root.findByProps({ "aria-label": "Open whiteboard" }).props.onClick(),
+    dispatchTestEvent(renderer.root.findByProps({ "aria-label": "Open whiteboard" }), "onClick"),
   );
   expect(onViewChange).toHaveBeenCalledWith("whiteboard", "s");
   await act(async () => renderer.update(routed("whiteboard")));
   const board = renderer.root.findByType(Whiteboard);
   expect(board.props.conversation.draft).toBe("Keep my draft");
-  await act(async () => board.props.onClose());
+  await act(async () => dispatchTestEvent(board, "onClose"));
   expect(onViewChange).toHaveBeenCalledWith("chat", "s");
   await act(async () => renderer.update(routed("chat")));
   expect(renderer.root.findAllByType(Whiteboard)).toHaveLength(0);
@@ -1805,7 +1955,7 @@ it.each([true, false])(
       const board = renderer.root.findByType(Whiteboard);
       expect(board.props.agentName).toBe("test");
       expect(board.props.target.sessionId).toBe("s");
-      await act(async () => board.props.onClose());
+      await act(async () => dispatchTestEvent(board, "onClose"));
       expect(renderer.root.findAllByType(Whiteboard)).toHaveLength(0);
     } else {
       expect(JSON.stringify(renderer.toJSON())).toContain("different Pi conversation");
