@@ -5,10 +5,12 @@ const mocks = vi.hoisted(() => ({
   handler: vi.fn(() => "app-shell"),
   navigation: vi.fn(
     class {
-      constructor(
-        public handler: unknown,
-        public options: { allowlist: Array<RegExp> },
-      ) {}
+      handler: unknown;
+      options: { allowlist: Array<RegExp> };
+      constructor(handler: unknown, options: { allowlist: Array<RegExp> }) {
+        this.handler = handler;
+        this.options = options;
+      }
     },
   ),
   route: vi.fn(),
