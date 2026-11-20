@@ -5,11 +5,13 @@ const buildSchema = z.object({
   builtAt: z.string().datetime(),
 });
 export type BuildInfo = { revision: string; builtAt: string | null };
-declare const __FERNBLICK_BUILD__: BuildInfo;
+declare const __FERNBLICK_BUILD__: BuildInfo | undefined;
 
 // Storybook and non-Vite test consumers have no production build injected.
 export const runningBuild: BuildInfo =
-  __FERNBLICK_BUILD__ === undefined
+  // The Vite replacement is an undeclared identifier in non-Vite consumers: direct access throws.
+  // oxlint-disable-next-line unicorn/no-typeof-undefined
+  typeof __FERNBLICK_BUILD__ === "undefined"
     ? { revision: "development", builtAt: null }
     : __FERNBLICK_BUILD__;
 
