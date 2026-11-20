@@ -33,8 +33,15 @@ export function contentText(content: unknown): string {
     return "";
   }
   return content
-    .flatMap((b) =>
-      b && typeof b === "object" && b.type === "text" && typeof b.text === "string" ? [b.text] : [],
+    .flatMap((block: unknown) =>
+      block !== null &&
+      typeof block === "object" &&
+      "type" in block &&
+      block.type === "text" &&
+      "text" in block &&
+      typeof block.text === "string"
+        ? [block.text]
+        : [],
     )
     .join("\n");
 }
@@ -47,8 +54,12 @@ export function projectTree(
   const stack: Array<{ raw: SessionTreeNode; visibleParent?: PiTreeNode; depth: number }> = raw
     .map((node) => ({ raw: node, depth: 0 }))
     .reverse();
-  while (stack.length) {
-    const { raw: item, visibleParent, depth } = stack.pop()!;
+  while (true) {
+    const current = stack.pop();
+    if (!current) {
+      break;
+    }
+    const { raw: item, visibleParent, depth } = current;
     if (byId.size >= 2000 || depth > 256) {
       throw new Error("Conversation tree is too large to display safely");
     }

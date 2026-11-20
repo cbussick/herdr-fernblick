@@ -11,6 +11,7 @@ import type { TreePage, TreePageRequest, TreePageRow } from "./treeProtocol.js";
 
 type Manager = Pick<ExtensionContext["sessionManager"], "getEntries" | "getLeafId">;
 type Visible = { row: TreePageRow; entry: SessionEntry; children: Array<Visible> };
+const rowBytes = (row: TreePageRow) => Buffer.byteLength(JSON.stringify(row));
 
 // Index only references and small previews. Neither raw history nor a recursive
 // tree crosses the wire. All ancestry walks are iterative and cycle-checked.
@@ -50,24 +51,38 @@ export function readTreePage(manager: Manager, input: TreePageRequest): TreePage
   }
   const active = new Set<string>();
   let cursor = rawLeaf;
-  while (cursor && raw.has(cursor)) {
+  while (cursor) {
+    const ancestor = raw.get(cursor);
+    if (!ancestor) {
+      break;
+    }
     if (active.has(cursor)) {
       throw new Error("Conversation paths contain cyclic ancestry");
     }
     active.add(cursor);
-    cursor = raw.get(cursor)!.entry.parentId;
+    cursor = ancestor.entry.parentId;
   }
   const visible = new Map<string, Visible>();
   const visibleRoots: Array<Visible> = [];
-  const stack = roots.map((id) => ({ id, parent: null as Visible | null })).reverse();
+  const stack: Array<{ id: string; parent: Visible | null }> = roots
+    .map((id) => ({ id, parent: null }))
+    .reverse();
   const visited = new Set<string>();
-  while (stack.length) {
-    const { id, parent } = stack.pop()!;
+  while (true) {
+    const current = stack.pop();
+    if (!current) {
+      break;
+    }
+    const { id, parent } = current;
     if (visited.has(id)) {
       throw new Error("Conversation paths contain cyclic ancestry");
     }
     visited.add(id);
-    const { entry, children } = raw.get(id)!;
+    const source = raw.get(id);
+    if (!source) {
+      throw new Error("Conversation path references an unavailable entry");
+    }
+    const { entry, children } = source;
     let nextParent = parent;
     if (
       entry.type === "message" &&
@@ -156,7 +171,10 @@ export function readTreePage(manager: Manager, input: TreePageRequest): TreePage
       focusId = null;
     }
     while (choices.length) {
-      const next = choices.find((node) => node.row.isActivePath) ?? choices.at(-1)!;
+      const next = choices.find((node) => node.row.isActivePath) ?? choices.at(-1);
+      if (!next) {
+        break;
+      }
       candidates.push(next);
       choices = next.children;
     }
@@ -192,7 +210,6 @@ export function readTreePage(manager: Manager, input: TreePageRequest): TreePage
       nextOffset: Number.MAX_SAFE_INTEGER,
     }),
   );
-  const rowBytes = (row: TreePageRow) => Buffer.byteLength(JSON.stringify(row));
   let bytes =
     headerBytes + rows.reduce((sum, row) => sum + rowBytes(row), 0) + Math.max(0, rows.length - 1);
   while (bytes > MAX_TREE_PAGE_BYTES && rows.length > 1) {
@@ -200,7 +217,10 @@ export function readTreePage(manager: Manager, input: TreePageRequest): TreePage
       request.offset === undefined &&
       mode === "path" &&
       focusIndex - page.offset >= rows.length / 2;
-    const removed = keepFocus ? rows.shift()! : rows.pop()!;
+    const removed = keepFocus ? rows.shift() : rows.pop();
+    if (!removed) {
+      break;
+    }
     if (keepFocus) {
       page.offset++;
     }

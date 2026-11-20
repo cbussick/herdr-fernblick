@@ -7,20 +7,20 @@ import { saveImageUpload, validateImage } from "./images.js";
 export const IMAGE_METADATA = "fernblick-image-uploads";
 const referenceSchema = z.object({ hash: z.string().regex(/^[a-f0-9]{64}$/), id: uploadIdSchema });
 type Reference = z.infer<typeof referenceSchema>;
+const historyImageSchema = z.object({
+  type: z.literal("image"),
+  data: z.string().max(Math.ceil(MAX_IMAGE_BYTES / 3) * 4),
+  mimeType: z.string(),
+});
+const historyContentSchema = z.object({ content: z.array(z.unknown()) });
+const metadataSchema = z.object({
+  type: z.literal("custom"),
+  customType: z.literal(IMAGE_METADATA),
+  data: z.array(referenceSchema).max(MAX_IMAGES),
+});
 function image(value: unknown) {
-  if (!value || typeof value !== "object") {
-    return;
-  }
-  const b = value as { type?: string; data?: string; mimeType?: string };
-  if (
-    b.type !== "image" ||
-    typeof b.data !== "string" ||
-    typeof b.mimeType !== "string" ||
-    b.data.length > Math.ceil(MAX_IMAGE_BYTES / 3) * 4
-  ) {
-    return;
-  }
-  return { type: "image" as const, data: b.data, mimeType: b.mimeType };
+  const parsed = historyImageSchema.safeParse(value);
+  return parsed.success ? parsed.data : undefined;
 }
 function fingerprint(b: { data: string; mimeType: string }) {
   return createHash("sha256").update(b.mimeType).update("\0").update(b.data).digest("hex");
@@ -32,18 +32,18 @@ export class ImageHistory {
   private set(ref: Reference) {
     this.references.set(ref.hash, ref.id);
     while (this.references.size > 4096) {
-      this.references.delete(this.references.keys().next().value!);
+      const oldest = this.references.keys().next();
+      if (oldest.done) {
+        break;
+      }
+      this.references.delete(oldest.value);
     }
   }
   restore(entries: ReadonlyArray<unknown>) {
     for (const raw of entries) {
-      const e = raw as { type?: string; customType?: string; data?: unknown };
-      if (e.type !== "custom" || e.customType !== IMAGE_METADATA) {
-        continue;
-      }
-      const parsed = z.array(referenceSchema).max(MAX_IMAGES).safeParse(e.data);
+      const parsed = metadataSchema.safeParse(raw);
       if (parsed.success) {
-        for (const ref of parsed.data) {
+        for (const ref of parsed.data.data) {
           this.set(ref);
         }
       }
@@ -62,11 +62,11 @@ export class ImageHistory {
     return id ? `/api/uploads/${id}` : imageUrl(value);
   };
   ids(message: unknown) {
-    const content = (message as { content?: unknown })?.content;
-    if (!Array.isArray(content)) {
+    const parsed = historyContentSchema.safeParse(message);
+    if (!parsed.success) {
       return [];
     }
-    return content
+    return parsed.data.content
       .flatMap((value) => {
         const url = this.url(value);
         return url?.startsWith("/api/uploads/") ? [url.slice("/api/uploads/".length)] : [];
@@ -74,12 +74,16 @@ export class ImageHistory {
       .slice(0, MAX_IMAGES);
   }
   async hydrate(message: unknown, valid: () => boolean, persist: (refs: Array<Reference>) => void) {
-    const content = (message as { content?: unknown })?.content;
-    if (!Array.isArray(content)) {
+    const parsed = historyContentSchema.safeParse(message);
+    if (!parsed.success) {
       return false;
     }
     let changed = false;
-    for (const value of content.filter((b) => b?.type === "image").slice(0, MAX_IMAGES)) {
+    const candidates = parsed.data.content.filter(
+      (block) =>
+        block !== null && typeof block === "object" && "type" in block && block.type === "image",
+    );
+    for (const value of candidates.slice(0, MAX_IMAGES)) {
       const b = image(value);
       if (!b || !valid()) {
         continue;

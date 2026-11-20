@@ -19,10 +19,11 @@ function live(element?: BoardElement): BoardElement | null {
   return element && !element.isDeleted ? element : null;
 }
 function fingerprint(element: BoardElement | null | undefined): string {
-  if (!live(element ?? undefined)) {
+  const current = live(element ?? undefined);
+  if (!current) {
     return "null";
   }
-  const { version: _version, isDeleted: _deleted, ...content } = element!;
+  const { version: _version, isDeleted: _deleted, ...content } = current;
   return canonical(content);
 }
 function changesBetween(before: BoardScene, after: BoardScene): Array<Change> {
@@ -104,7 +105,11 @@ export class BoardHistory {
     }
     let bytes = this.past.reduce((sum, command) => sum + command.bytes, 0);
     while (this.past.length > this.maxEntries || bytes > this.maxBytes) {
-      bytes -= this.past.shift()!.bytes;
+      const oldest = this.past.shift();
+      if (!oldest) {
+        break;
+      }
+      bytes -= oldest.bytes;
     }
     return true;
   }
@@ -165,9 +170,9 @@ export class BoardHistory {
       files[id] = file;
     }
     const used = imageIds(
-      [...elements.values()]
-        .filter((e) => !e.isDeleted)
-        .map((after) => ({ id: after.id, before: null, after })),
+      [...elements.values()].flatMap((after) =>
+        after.isDeleted ? [] : [{ id: after.id, before: null, after }],
+      ),
     );
     // Validate the complete graph before changing either stack or publishing.
     // This also prevents removing an item now referenced by an agent's new edge.
