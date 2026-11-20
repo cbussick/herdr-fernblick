@@ -1,8 +1,10 @@
 import { act, createRef } from "react";
-import { create, type ReactTestRenderer } from "react-test-renderer";
+import { create } from "react-test-renderer";
+import type { ReactTestRenderer } from "react-test-renderer";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
-import { ConversationSettings, type ConversationSettingsProps } from "./ConversationSettings";
+import { ConversationSettings } from "./ConversationSettings";
+import type { ConversationSettingsProps } from "./ConversationSettings";
 
 const api = vi.hoisted(() => ({
   models: vi.fn(),
@@ -54,7 +56,9 @@ function view() {
 }
 async function flush() {
   await act(async () => {
-    await new Promise((resolve) => setTimeout(resolve, 15));
+    await new Promise((resolve) => {
+      setTimeout(resolve, 15);
+    });
   });
 }
 async function open() {
@@ -108,8 +112,11 @@ function defaultButton() {
 it.each(["model", "thinking"])(
   "saves a non-current %s from its row without switching or closing, and moves the Default marker",
   async (kind) => {
-    if (kind === "model") await open();
-    else await openThinking();
+    if (kind === "model") {
+      await open();
+    } else {
+      await openThinking();
+    }
     expect(api.saveDefault).not.toHaveBeenCalled();
     expect(defaultButton().props.type).toBe("button");
     await act(async () => defaultButton().props.onClick());
@@ -147,8 +154,11 @@ it.each(["model", "thinking"])(
           reject = fail;
         }),
     );
-    if (kind === "model") await open();
-    else await openThinking();
+    if (kind === "model") {
+      await open();
+    } else {
+      await openThinking();
+    }
     const save = defaultButton();
     const option = renderer.root.findAllByProps({ "aria-pressed": false })[0];
     await act(async () => {
@@ -183,8 +193,11 @@ it.each(["model", "thinking"])(
   async (kind) => {
     props = { ...props, defaultsSupported: false };
     await act(async () => renderer.update(view()));
-    if (kind === "model") await open();
-    else await openThinking();
+    if (kind === "model") {
+      await open();
+    } else {
+      await openThinking();
+    }
     expect(defaultButton().props["aria-disabled"]).toBe(true);
     await act(async () => defaultButton().props.onClick());
     expect(api.saveDefault).not.toHaveBeenCalled();
@@ -209,8 +222,11 @@ it.each(["model", "thinking"])(
       defaults: persisted,
     });
     for (let attempt = 0; attempt < 2; attempt++) {
-      if (kind === "model") await open();
-      else await openThinking();
+      if (kind === "model") {
+        await open();
+      } else {
+        await openThinking();
+      }
       const saved = defaultButtons().filter((button) => button.props["data-default"]);
       expect(saved).toHaveLength(1);
       expect(saved[0].props["aria-label"]).toBe(
@@ -261,8 +277,11 @@ it.each(["model", "thinking"])(
       levels: ["low", "medium", "high"],
       defaults: empty,
     });
-    if (kind === "model") await open();
-    else await openThinking();
+    if (kind === "model") {
+      await open();
+    } else {
+      await openThinking();
+    }
     expect(defaultButtons().some((button) => button.props["data-default"])).toBe(false);
     expect(defaultButton().props["aria-disabled"]).toBe(false);
   },

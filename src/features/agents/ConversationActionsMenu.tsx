@@ -1,4 +1,5 @@
-import { useEffect, useId, useRef, useState, type ReactNode, type RefObject } from "react";
+import { useEffect, useId, useRef, useState } from "react";
+import type { ReactNode, RefObject } from "react";
 import { MoreIcon } from "../../shared/ui/Icons";
 import styles from "./ConversationActionsMenu.module.css";
 
@@ -12,7 +13,7 @@ export interface ConversationAction {
 }
 
 interface Props {
-  actions: readonly ConversationAction[];
+  actions: ReadonlyArray<ConversationAction>;
   contextKey: string;
   disabled?: boolean;
   triggerRef: RefObject<HTMLButtonElement | null>;
@@ -33,19 +34,25 @@ export function ConversationActionsMenu({
   const [active, setActive] = useState(0);
   const menuId = useId();
   const menu = useRef<HTMLDivElement>(null);
-  const items = useRef<(HTMLButtonElement | null)[]>([]);
+  const items = useRef<Array<HTMLButtonElement | null>>([]);
   const openingIndex = useRef(0);
   if (previousContext !== contextKey) {
     setPreviousContext(contextKey);
     setOpen(false);
   }
-  if (open && disabled) setOpen(false);
+  if (open && disabled) {
+    setOpen(false);
+  }
   function close(restoreFocus = true) {
     setOpen(false);
-    if (restoreFocus) triggerRef.current?.focus();
+    if (restoreFocus) {
+      triggerRef.current?.focus();
+    }
   }
   function show(index = 0) {
-    if (disabled) return;
+    if (disabled) {
+      return;
+    }
     openingIndex.current = index;
     setActive(index);
     setOpen(true);
@@ -53,7 +60,9 @@ export function ConversationActionsMenu({
   useEffect(() => {
     const popup = menu.current;
     const anchor = triggerRef.current;
-    if (!open || !popup || !anchor) return;
+    if (!open || !popup || !anchor) {
+      return;
+    }
     popup.showPopover();
     function position() {
       const viewport = window.visualViewport;
@@ -99,7 +108,9 @@ export function ConversationActionsMenu({
       window.visualViewport?.removeEventListener("resize", position);
       window.visualViewport?.removeEventListener("scroll", position);
       observer.disconnect();
-      if (popup.matches(":popover-open")) popup.hidePopover();
+      if (popup.matches(":popover-open")) {
+        popup.hidePopover();
+      }
     };
   }, [open, triggerRef]);
 
@@ -120,8 +131,11 @@ export function ConversationActionsMenu({
         if (event.key === "ArrowDown" || event.key === "ArrowUp") {
           event.preventDefault();
           const index = event.key === "ArrowUp" ? Math.max(0, actions.length - 1) : 0;
-          if (open) items.current[index]?.focus();
-          else show(index);
+          if (open) {
+            items.current[index]?.focus();
+          } else {
+            show(index);
+          }
         }
       }}
     >
@@ -140,7 +154,9 @@ export function ConversationActionsMenu({
           role="menu"
           aria-label="Conversation actions"
           onToggle={(event) => {
-            if (event.newState === "closed") close(false);
+            if (event.newState === "closed") {
+              close(false);
+            }
           }}
           onKeyDown={(event) => {
             if (event.key === "Escape") {
@@ -186,7 +202,9 @@ export function ConversationActionsMenu({
               tabIndex={index === active ? 0 : -1}
               onFocus={() => setActive(index)}
               onClick={() => {
-                if (action.disabledReason) return;
+                if (action.disabledReason) {
+                  return;
+                }
                 close(false);
                 action.onSelect();
               }}

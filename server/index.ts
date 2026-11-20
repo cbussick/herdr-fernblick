@@ -27,8 +27,9 @@ try {
     typeof metadata === "object" &&
     "revision" in metadata &&
     typeof metadata.revision === "string"
-  )
+  ) {
     logBuild = metadata.revision;
+  }
 } catch {
   /* Development or missing build metadata. */
 }
@@ -64,7 +65,7 @@ server.on("close", () => {
   void renderer?.close();
   void receiptLog.close();
 });
-for (const signal of ["SIGTERM", "SIGINT"] as const)
+for (const signal of ["SIGTERM", "SIGINT"] as const) {
   process.once(signal, () => {
     boards.close();
     server.close();
@@ -76,6 +77,7 @@ for (const signal of ["SIGTERM", "SIGINT"] as const)
       receiptLog.close(),
     ]).finally(() => process.exit(0));
   });
+}
 server.listen(port, host, () => {
   const address = server.address();
   const renderHost = host === "0.0.0.0" || host === "::" ? "127.0.0.1" : host;

@@ -18,7 +18,9 @@ try {
     directory,
     {},
   );
-  await new Promise((resolve) => server.listen(0, "127.0.0.1", resolve));
+  await new Promise((resolve) => {
+    server.listen(0, "127.0.0.1", resolve);
+  });
   const base = `http://127.0.0.1:${server.address().port}`;
   browser = await chromium.launchPersistentContext(profile, {
     ...(process.env.CHROMIUM_EXECUTABLE ? { executablePath: process.env.CHROMIUM_EXECUTABLE } : {}),
@@ -130,8 +132,9 @@ try {
     "/icons/scout-logo.svg",
     "/icons/scout-wordmark.svg",
     ...manifest.icons.map((icon) => icon.src),
-  ])
+  ]) {
     assert.ok(cached.includes(path), `Branding asset must remain available offline: ${path}`);
+  }
   assert.ok(cached.every((path) => !path.startsWith("/api/")));
   await page.screenshot({ path: "design-gallery/pwa/offline-phone.png" });
   await context.setOffline(false);
@@ -148,7 +151,11 @@ try {
   );
 } finally {
   await browser?.close();
-  if (server?.listening) await new Promise((resolve) => server.close(resolve));
+  if (server?.listening) {
+    await new Promise((resolve) => {
+      server.close(resolve);
+    });
+  }
   await rm(directory, { recursive: true, force: true });
   await rm(profile, { recursive: true, force: true });
 }

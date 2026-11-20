@@ -23,14 +23,17 @@ export function MessageBranchDialog({
   const cancel = useRef<HTMLButtonElement>(null);
   useEffect(() => {
     const dialog = ref.current;
-    if (!dialog) return;
+    if (!dialog) {
+      return;
+    }
     const opener = dialog.ownerDocument.activeElement;
     dialog.showModal();
     cancel.current?.focus();
     return () => {
       dialog.close();
-      if (opener instanceof HTMLElement && opener.isConnected)
+      if (opener instanceof HTMLElement && opener.isConnected) {
         opener.focus({ preventScroll: true });
+      }
     };
   }, []);
   return (
@@ -41,14 +44,18 @@ export function MessageBranchDialog({
       aria-describedby="message-branch-description"
       onCancel={(event) => {
         event.preventDefault();
-        if (!pending) onClose();
+        if (!pending) {
+          onClose();
+        }
       }}
     >
       <form
         aria-busy={pending}
         onSubmit={(event) => {
           event.preventDefault();
-          if (!disabled && !pending) onConfirm();
+          if (!disabled && !pending) {
+            onConfirm();
+          }
         }}
       >
         <h2 id="message-branch-heading">Jump back to this point?</h2>

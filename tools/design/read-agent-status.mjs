@@ -65,8 +65,9 @@ for (const [engine, browserType] of [
         const pathname = decodeURIComponent(new URL(request.url()).pathname);
         if (pathname === "/api/agents/w1:p1/read" && request.method() === "POST") {
           const id = request.postDataJSON().completionId;
-          if (id !== completionId())
+          if (id !== completionId()) {
             return route.fulfill({ status: 409, json: { error: "Answer changed" } });
+          }
           readCompletions.add(id);
           return route.fulfill({ json: { ok: true } });
         }
@@ -120,7 +121,9 @@ for (const [engine, browserType] of [
       assert((await workspaceSummary.textContent()).includes("Idle"));
       await page.reload();
       await workspace.waitFor();
-      if ((await workspace.getAttribute("open")) === null) await workspaceSummary.click();
+      if ((await workspace.getAttribute("open")) === null) {
+        await workspaceSummary.click();
+      }
       await row.getByText("Idle", { exact: true }).waitFor();
       assert(
         (await workspaceSummary.textContent()).includes("Idle"),

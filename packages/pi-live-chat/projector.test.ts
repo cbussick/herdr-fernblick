@@ -47,8 +47,9 @@ describe("shared history/live projector", () => {
     });
   });
   it("does not mirror shell/custom/system roles and preserves stopped partial text", () => {
-    for (const role of ["system", "custom", "bashExecution"])
+    for (const role of ["system", "custom", "bashExecution"]) {
       expect(projectMessage({ role, content: "secret" }, "x")).toEqual([]);
+    }
     expect(
       projectMessage({ ...assistant("partial"), stopReason: "aborted" }, "x").map((m) => m.text),
     ).toEqual(["reason", "partial", "Agent stopped"]);
@@ -68,7 +69,7 @@ describe("shared history/live projector", () => {
     expect(imageUrl(image)).toMatch(/^data:image\/png;base64,/);
     expect(imageUrl({ ...image, mimeType: "image/svg+xml" })).toBeUndefined();
     expect(imageUrl({ ...image, data: "not an image" })).toBeUndefined();
-    expect(imageUrl({ ...image, data: "A".repeat(180000) })).toBeUndefined();
+    expect(imageUrl({ ...image, data: "A".repeat(180_000) })).toBeUndefined();
     const [message] = projectMessage(
       {
         role: "user",
@@ -82,9 +83,11 @@ describe("shared history/live projector", () => {
   it("bounds history, every live frame and long-running turns", () => {
     const p = new TranscriptProjector();
     p.reconcile(
-      Array.from({ length: 1000 }, (_, i) => entry(String(i), assistant("x".repeat(33000), i))),
+      Array.from({ length: 1000 }, (_, i) => entry(String(i), assistant("x".repeat(33_000), i))),
     );
-    for (let i = 1000; i < 1100; i++) p.message(assistant("y".repeat(33000), i));
+    for (let i = 1000; i < 1100; i++) {
+      p.message(assistant("y".repeat(33_000), i));
+    }
     expect(p.messages().length).toBeLessThanOrEqual(MAX_MESSAGES);
     expect(Buffer.byteLength(JSON.stringify(p.messages()))).toBeLessThan(
       MAX_SNAPSHOT + MAX_MESSAGES,

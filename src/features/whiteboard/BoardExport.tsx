@@ -50,7 +50,9 @@ export function BoardExport({
       cancelAnimationFrame(frame);
       request.current?.abort();
       onInteraction(false);
-      if (anchor.isConnected) anchor.focus({ preventScroll: true });
+      if (anchor.isConnected) {
+        anchor.focus({ preventScroll: true });
+      }
     };
   }, [anchor, onInteraction]);
   useEffect(() => {
@@ -70,7 +72,9 @@ export function BoardExport({
     return () => document.removeEventListener("pointerdown", outside, true);
   }, [anchor, onClose]);
   async function png(quality: BoardImageQuality) {
-    if (request.current) return;
+    if (request.current) {
+      return;
+    }
     const controller = new AbortController();
     request.current = controller;
     setBusy(true);
@@ -81,9 +85,10 @@ export function BoardExport({
         downloadBlob(blob, quality === "high" ? "whiteboard-high.png" : "whiteboard.png");
         onClose();
       }
-    } catch (reason) {
-      if (!controller.signal.aborted)
-        setError(reason instanceof Error ? reason.message : "Could not download PNG");
+    } catch (error_) {
+      if (!controller.signal.aborted) {
+        setError(error_ instanceof Error ? error_.message : "Could not download PNG");
+      }
     } finally {
       if (!controller.signal.aborted) {
         request.current = null;
@@ -103,7 +108,9 @@ export function BoardExport({
       data-ui="board-export"
       onKeyDown={(event) => {
         const keys = ["Escape", "Tab", "ArrowDown", "ArrowUp", "Home", "End"];
-        if (!keys.includes(event.key)) return;
+        if (!keys.includes(event.key)) {
+          return;
+        }
         event.preventDefault();
         event.stopPropagation();
         if (event.key === "Escape" || event.key === "Tab") {
@@ -132,8 +139,8 @@ export function BoardExport({
           try {
             downloadScene(scene);
             onClose();
-          } catch (reason) {
-            setError(reason instanceof Error ? reason.message : "Could not download JSON");
+          } catch (error_) {
+            setError(error_ instanceof Error ? error_.message : "Could not download JSON");
           }
         }}
       >

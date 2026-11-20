@@ -20,7 +20,7 @@ export function PastChats({
 }: {
   query: string;
   onOpenSession?: (sessionId: string) => void;
-  workspaces: Workspace[];
+  workspaces: Array<Workspace>;
   onResumed: (agent: Agent) => void;
   onRemoved: () => void;
   onClearSearch?: () => void;
@@ -33,7 +33,7 @@ export function PastChats({
   const chats = useQuery({
     queryKey: ["saved-chats"],
     queryFn: getSavedChats,
-    refetchInterval: (query) => (query.state.data?.indexing ? 1_000 : 30_000),
+    refetchInterval: (query) => (query.state.data?.indexing ? 1000 : 30_000),
   });
   const resume = useMutation({
     mutationFn: resumeChat,

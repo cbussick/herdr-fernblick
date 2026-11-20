@@ -16,24 +16,26 @@ it("bounds the five data-only SVG primitive kinds and path grammar", () => {
     { href: "https://evil.test" },
     { onload: "alert(1)" },
     { style: { fill: "url(https://evil.test)" } },
-  ])
+  ]) {
     expect(primitivePropsSchema.safeParse({ ...defaultPrimitiveProps(), ...extra }).success).toBe(
       false,
     );
+  }
   for (const commands of [
     [["L", 0, 0]],
     [["M", -1, 0]],
     [["M", 101, 0]],
-    [["M", NaN, 0]],
+    [["M", Number.NaN, 0]],
     [
       ["M", 0, 0],
       ["A", 1, 2],
     ],
     Array.from({ length: 501 }, () => ["M", 0, 0]),
-  ])
+  ]) {
     expect(primitivePropsSchema.safeParse({ ...defaultPrimitiveProps(), commands }).success).toBe(
       false,
     );
+  }
   expect(
     primitivePropsSchema.safeParse({ ...defaultPrimitiveProps(), fill: "url(#x)" }).success,
   ).toBe(false);

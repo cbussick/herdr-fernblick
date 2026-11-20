@@ -20,7 +20,7 @@ export const annotationGeneralPromptIntro =
 
 // Like Plannotator, keep the original passage next to its feedback. Message IDs and
 // offsets disambiguate repeated passages and comments on older assistant responses.
-export function annotationPrompt(annotations: Annotation[]) {
+export function annotationPrompt(annotations: Array<Annotation>) {
   return [
     annotations.some((entry) => entry.messageId === undefined)
       ? annotationGeneralPromptIntro
@@ -36,7 +36,7 @@ export function annotationPrompt(annotations: Annotation[]) {
   ].join("\n\n");
 }
 
-export function annotationHighlights(message: ChatMessage, annotations: Annotation[]) {
+export function annotationHighlights(message: ChatMessage, annotations: Array<Annotation>) {
   return annotations.filter(
     (entry): entry is Annotation & AnnotationSource =>
       entry.messageId !== undefined &&
@@ -56,9 +56,11 @@ function annotationRangeText(range: Range) {
 export function readAnnotationSelection(
   selection: Selection | null,
   transcript: HTMLElement,
-  messages: ChatMessage[],
+  messages: Array<ChatMessage>,
 ): { source: AnnotationSource; range: Range } | null {
-  if (!selection || selection.isCollapsed || selection.rangeCount !== 1) return null;
+  if (!selection || selection.isCollapsed || selection.rangeCount !== 1) {
+    return null;
+  }
   const range = selection.getRangeAt(0);
   const element =
     range.startContainer.nodeType === 1
@@ -78,21 +80,28 @@ export function readAnnotationSelection(
     !source.contains(range.endContainer) ||
     element?.closest("[data-message-control]") ||
     endElement?.closest("[data-message-control]")
-  )
+  ) {
     return null;
+  }
   const message = messages.find(
     (entry) => entry.id === source.dataset.annotationSource && entry.role === "assistant",
   );
-  if (!message) return null;
+  if (!message) {
+    return null;
+  }
   const raw = annotationRangeText(range);
   const quote = raw.trim();
-  if (!quote) return null;
+  if (!quote) {
+    return null;
+  }
   const prefix = range.cloneRange();
   prefix.selectNodeContents(source);
   prefix.setEnd(range.startContainer, range.startOffset);
   const start = annotationRangeText(prefix).length + raw.length - raw.trimStart().length;
   const end = start + quote.length;
-  if (message.text.slice(start, end) !== quote) return null;
+  if (message.text.slice(start, end) !== quote) {
+    return null;
+  }
   return { source: { messageId: message.id, quote, start, end }, range: range.cloneRange() };
 }
 
@@ -120,16 +129,22 @@ export function positionTouchAnnotationAction(
   // Beside a multiline selection, stay within its vertical band rather than
   // protruding into the native menu above/below it or covering selection handles.
   if (middle >= anchor.top && middle + size.height <= anchor.bottom) {
-    if (anchor.right >= leftEdge && anchor.right + handleGap + size.width <= rightEdge)
+    if (anchor.right >= leftEdge && anchor.right + handleGap + size.width <= rightEdge) {
       return { left: anchor.right + handleGap, top: middle };
-    if (anchor.left <= rightEdge && anchor.left - handleGap - size.width >= leftEdge)
+    }
+    if (anchor.left <= rightEdge && anchor.left - handleGap - size.width >= leftEdge) {
       return { left: anchor.left - handleGap - size.width, top: middle };
+    }
   }
   const left = clamp(anchor.left, leftEdge, rightEdge - size.width);
   const below = anchor.bottom + calloutGap;
-  if (below >= topEdge && below + size.height <= bottomEdge) return { left, top: below };
+  if (below >= topEdge && below + size.height <= bottomEdge) {
+    return { left, top: below };
+  }
   const above = anchor.top - calloutGap - size.height;
-  if (above >= topEdge && above + size.height <= bottomEdge) return { left, top: above };
+  if (above >= topEdge && above + size.height <= bottomEdge) {
+    return { left, top: above };
+  }
 
   // A viewport-filling selection may leave no exterior slot. Keep the action
   // inside its visible band, not clamped back into an estimated callout area.

@@ -1,5 +1,6 @@
 import dialogStyles from "./Dialogs.module.css";
-import { useEffect, useRef, useState, type FormEvent } from "react";
+import { useEffect, useRef, useState } from "react";
+import type { FormEvent } from "react";
 import { useMutation } from "@tanstack/react-query";
 import type { Workspace } from "../../shared/api/contracts";
 import { createWorkspace } from "../../shared/api/apiClient";
@@ -29,24 +30,35 @@ export function NewWorkspaceDialog({
 
   useEffect(() => {
     const dialog = dialogRef.current;
-    if (!dialog) return;
+    if (!dialog) {
+      return;
+    }
     const opener = dialog.ownerDocument?.activeElement;
-    if (!dialog.open) dialog.showModal();
+    if (!dialog.open) {
+      dialog.showModal();
+    }
     nameRef.current?.focus();
     return () => {
-      if (dialog.open) dialog.close();
-      if (opener && opener instanceof HTMLElement && opener.isConnected)
+      if (dialog.open) {
+        dialog.close();
+      }
+      if (opener && opener instanceof HTMLElement && opener.isConnected) {
         opener.focus({ preventScroll: true });
+      }
     };
   }, []);
 
   function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    if (!createMutation.isPending) createMutation.mutate({ label, cwd });
+    if (!createMutation.isPending) {
+      createMutation.mutate({ label, cwd });
+    }
   }
 
   function handleClose() {
-    if (!createMutation.isPending) onClose();
+    if (!createMutation.isPending) {
+      onClose();
+    }
   }
 
   return (
@@ -59,7 +71,9 @@ export function NewWorkspaceDialog({
         handleClose();
       }}
       onClose={(event) => {
-        if (!event.currentTarget.open) handleClose();
+        if (!event.currentTarget.open) {
+          handleClose();
+        }
       }}
     >
       <form
@@ -102,7 +116,7 @@ export function NewWorkspaceDialog({
           disabled={createMutation.isPending}
           onChange={(event) => setCwd(event.target.value)}
           placeholder="/srv/my-project"
-          maxLength={4_096}
+          maxLength={4096}
           pattern="/.*"
           aria-describedby="new-workspace-cwd-help"
           required

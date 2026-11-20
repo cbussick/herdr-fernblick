@@ -1,5 +1,6 @@
 import { act } from "react";
-import { create, type ReactTestRenderer } from "react-test-renderer";
+import { create } from "react-test-renderer";
+import type { ReactTestRenderer } from "react-test-renderer";
 import { onlineManager, QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
 import { App } from "./App";
@@ -21,7 +22,10 @@ vi.mock("../features/agents/ShellConsole", () => ({ ShellConsole: () => null }))
 const dashboard = { agents: [], tabs: [], workspaces: [] };
 let client: QueryClient;
 let renderer: ReactTestRenderer;
-const settle = () => new Promise<void>((resolve) => setTimeout(resolve, 20));
+const settle = () =>
+  new Promise<void>((resolve) => {
+    setTimeout(resolve, 20);
+  });
 beforeEach(async () => {
   vi.stubGlobal("IS_REACT_ACT_ENVIRONMENT", true);
   vi.clearAllMocks();

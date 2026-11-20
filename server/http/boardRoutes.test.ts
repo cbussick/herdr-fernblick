@@ -1,7 +1,8 @@
 import { randomUUID } from "node:crypto";
 import { defaultPrimitiveProps } from "../../packages/pi-live-chat/primitiveProtocol.js";
 import { mkdtemp, rm, writeFile, readFile, readdir } from "node:fs/promises";
-import { connect, type Socket } from "node:net";
+import { connect } from "node:net";
+import type { Socket } from "node:net";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
@@ -11,11 +12,12 @@ import type { HerdrService } from "../herdr/herdrService.js";
 import { boardSessionKey, LiveBridge } from "../pi/liveBridge.js";
 import { BoardStore } from "../boards/storage.js";
 import { createHttpServer } from "./server.js";
-import { targetOf, type Snapshot } from "../../packages/pi-live-chat/protocol.js";
-import {
-  type BoardGrant,
-  type BoardRequest,
-  type BoardState,
+import { targetOf } from "../../packages/pi-live-chat/protocol.js";
+import type { Snapshot } from "../../packages/pi-live-chat/protocol.js";
+import type {
+  BoardGrant,
+  BoardRequest,
+  BoardState,
 } from "../../packages/pi-live-chat/boardProtocol.js";
 import { receiveFrames, writeFrame } from "../../packages/pi-live-chat/transport.js";
 
@@ -41,7 +43,7 @@ let server: Server;
 let socket: Socket;
 let base: string;
 let snapshot: Snapshot;
-let frames: Record<string, unknown>[];
+let frames: Array<Record<string, unknown>>;
 let acceptSend: boolean;
 let autoAcknowledge: boolean;
 let foreground: boolean;
@@ -72,7 +74,9 @@ beforeEach(async () => {
     bridge,
     boards,
   );
-  await new Promise<void>((done) => server.listen(0, "127.0.0.1", done));
+  await new Promise<void>((done) => {
+    server.listen(0, "127.0.0.1", done);
+  });
   base = `http://127.0.0.1:${(server.address() as { port: number }).port}`;
   snapshot = {
     type: "snapshot",
@@ -96,17 +100,20 @@ beforeEach(async () => {
     status: { cwd: "/project", totalTokens: 0, cost: 0 },
   };
   socket = connect(bridge.path);
-  await new Promise<void>((done) => socket.once("connect", done));
+  await new Promise<void>((done) => {
+    socket.once("connect", done);
+  });
   receiveFrames(socket, (raw) => {
     const frame = raw as Record<string, unknown>;
     frames.push(frame);
-    if (frame.type === "command" && autoAcknowledge)
+    if (frame.type === "command" && autoAcknowledge) {
       writeFrame(socket, {
         type: "ack",
         id: frame.id,
         outcome: acceptSend ? "invoked" : "rejected",
         reason: acceptSend ? undefined : "Rejected by test Pi",
       });
+    }
   });
   writeFrame(socket, snapshot);
   await vi.waitFor(() => expect(bridge.current(agent).snapshot.seq).toBe(1));
@@ -115,7 +122,11 @@ afterEach(async () => {
   vi.unstubAllEnvs();
   socket?.destroy();
   server?.closeAllConnections();
-  if (server) await new Promise<void>((done) => server.close(() => done()));
+  if (server) {
+    await new Promise<void>((done) => {
+      server.close(() => done());
+    });
+  }
   await bridge?.close();
   boards?.close();
   await rm(directory, { recursive: true, force: true });
@@ -835,8 +846,12 @@ it.each(["non-PNG", "unknown", "corrupt"])(
       ],
     });
     let uploadId: string | undefined;
-    if (kind === "non-PNG") uploadId = randomUUID() + ".jpg";
-    if (kind === "unknown") uploadId = randomUUID() + ".png";
+    if (kind === "non-PNG") {
+      uploadId = randomUUID() + ".jpg";
+    }
+    if (kind === "unknown") {
+      uploadId = randomUUID() + ".png";
+    }
     if (kind === "corrupt") {
       uploadId = await upload();
       await writeFile(join(directory, "uploads", uploadId), "broken", {

@@ -21,5 +21,7 @@ registerRoute(
 
 // No runtime data caches, background sync, automatic activation or clientsClaim.
 self.addEventListener("message", (event) => {
-  if (event.data?.type === "SKIP_WAITING") void self.skipWaiting();
+  if (event.data?.type === "SKIP_WAITING") {
+    void self.skipWaiting();
+  }
 });

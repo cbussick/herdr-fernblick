@@ -1,5 +1,7 @@
-import { act, StrictMode, useState, type ReactNode } from "react";
-import { create, type ReactTestRenderer } from "react-test-renderer";
+import { act, StrictMode, useState } from "react";
+import type { ReactNode } from "react";
+import { create } from "react-test-renderer";
+import type { ReactTestRenderer } from "react-test-renderer";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
 import { ImageLightbox } from "./ImageLightbox";
 

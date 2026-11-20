@@ -1,7 +1,8 @@
 import { chmod, mkdtemp, readdir, rm, symlink, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { createServer as createSocketServer, type Server as SocketServer } from "node:net";
+import { createServer as createSocketServer } from "node:net";
+import type { Server as SocketServer } from "node:net";
 import type { Server } from "node:http";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
 import { HerdrClient } from "../herdr/HerdrClient.js";
@@ -17,8 +18,8 @@ let socketPath: string;
 let herdr: SocketServer;
 let server: Server;
 let base: string;
-let agents: Agent[];
-let methods: string[];
+let agents: Array<Agent>;
+let methods: Array<string>;
 let snapshotError: boolean;
 let holdSnapshot: ((send: () => void) => void) | undefined;
 
@@ -35,7 +36,9 @@ function createHerdrSocket() {
     let buffer = "";
     socket.on("data", (chunk) => {
       buffer += chunk;
-      if (!buffer.includes("\n")) return;
+      if (!buffer.includes("\n")) {
+        return;
+      }
       const request = JSON.parse(buffer.split("\n")[0]);
       methods.push(request.method);
       if (request.method !== "session.snapshot" || snapshotError) {
@@ -62,8 +65,11 @@ function createHerdrSocket() {
         }) + "\n";
       const hold = holdSnapshot;
       holdSnapshot = undefined;
-      if (hold) hold(() => socket.end(reply));
-      else socket.end(reply);
+      if (hold) {
+        hold(() => socket.end(reply));
+      } else {
+        socket.end(reply);
+      }
     });
   });
 }
@@ -80,7 +86,9 @@ async function createBackend(path = socketPath, log?: ReadReceiptFileLog) {
       diagnostics: log ? { sink: log.write, build: "a".repeat(40) } : undefined,
     },
   );
-  await new Promise<void>((done) => instance.listen(0, "127.0.0.1", done));
+  await new Promise<void>((done) => {
+    instance.listen(0, "127.0.0.1", done);
+  });
   return {
     server: instance,
     base: `http://127.0.0.1:${(instance.address() as { port: number }).port}`,
@@ -91,14 +99,14 @@ async function startBackend() {
 }
 async function stopBackend(instance = server) {
   instance.closeAllConnections();
-  await new Promise<void>((done, reject) =>
-    instance.close((error) => (error ? reject(error) : done())),
-  );
+  await new Promise<void>((done, reject) => {
+    instance.close((error) => (error ? reject(error) : done()));
+  });
 }
 async function dashboard(origin = base) {
   const response = await fetch(`${origin}/api/agents`);
   expect(response.status).toBe(200);
-  return (await response.json()) as { agents: Agent[] };
+  return (await response.json()) as { agents: Array<Agent> };
 }
 async function markRead(paneId: string, completionId: string, origin = base) {
   return fetch(`${origin}/api/agents/${encodeURIComponent(paneId)}/read`, {
@@ -129,13 +137,17 @@ beforeEach(async () => {
     },
   ];
   herdr = createHerdrSocket();
-  await new Promise<void>((done) => herdr.listen(socketPath, done));
+  await new Promise<void>((done) => {
+    herdr.listen(socketPath, done);
+  });
   await startBackend();
 });
 afterEach(async () => {
   vi.restoreAllMocks();
   await stopBackend();
-  await new Promise<void>((done) => herdr.close(() => done()));
+  await new Promise<void>((done) => {
+    herdr.close(() => done());
+  });
   await rm(directory, { recursive: true, force: true });
 });
 
@@ -156,7 +168,9 @@ it("remembers a read completion across browsers and backend restarts without cha
 it("cleans superseded and closed-agent receipts while preserving current answers across restarts", async () => {
   agents.push({ ...agents[0], pane_id: "w1:p2", terminal_id: "term-2" });
   const first = (await dashboard()).agents;
-  for (const agent of first) await markRead(agent.pane_id, agent.completion!.id);
+  for (const agent of first) {
+    await markRead(agent.pane_id, agent.completion!.id);
+  }
   expect(await receiptIds()).toHaveLength(2);
   agents[0].revision++;
   expect((await dashboard()).agents.map((agent) => agent.completion!.read)).toEqual([true, true]);
@@ -196,9 +210,11 @@ it("ignores unrelated revisions but refuses stale receipts for a newer answer", 
 it.each(["session", "terminal"])("does not inherit receipts after %s replacement", async (kind) => {
   const first = (await dashboard()).agents[0];
   await markRead(first.pane_id, first.completion!.id);
-  if (kind === "session")
+  if (kind === "session") {
     agents[0].agent_session = { ...agents[0].agent_session!, value: "/sessions/two.jsonl" };
-  else agents[0].terminal_id = "term-2";
+  } else {
+    agents[0].terminal_id = "term-2";
+  }
   const next = (await dashboard()).agents[0];
   expect(next.completion!.read).toBe(false);
   expect((await markRead(first.pane_id, first.completion!.id)).status).toBe(409);
@@ -241,18 +257,27 @@ it.each(["same path", "different path"])(
   async (kind) => {
     const first = (await dashboard()).agents[0];
     await markRead(first.pane_id, first.completion!.id);
-    await new Promise<void>((done) => herdr.close(() => done()));
+    await new Promise<void>((done) => {
+      herdr.close(() => done());
+    });
     if (kind === "different path") {
       await stopBackend();
       socketPath = join(directory, "other-herdr.sock");
     }
-    await new Promise<void>((done) => herdr.listen(socketPath, done));
-    if (kind === "different path") await startBackend();
+    await new Promise<void>((done) => {
+      herdr.listen(socketPath, done);
+    });
+    if (kind === "different path") {
+      await startBackend();
+    }
     const current = (await dashboard()).agents[0];
     expect(current.completion!.read).toBe(false);
     expect(current.completion!.id).not.toBe(first.completion!.id);
-    if (kind === "same path") expect(await receiptIds()).not.toContain(first.completion!.id);
-    else expect(await receiptIds()).toContain(first.completion!.id);
+    if (kind === "same path") {
+      expect(await receiptIds()).not.toContain(first.completion!.id);
+    } else {
+      expect(await receiptIds()).toContain(first.completion!.id);
+    }
     expect((await markRead(first.pane_id, first.completion!.id)).status).toBe(409);
   },
 );
@@ -284,7 +309,9 @@ it("does not clean another live Herdr socket's receipts in shared storage", asyn
   await markRead(first.pane_id, first.completion!.id);
   const otherSocket = join(directory, "other.sock");
   const otherHerdr = createHerdrSocket();
-  await new Promise<void>((done) => otherHerdr.listen(otherSocket, done));
+  await new Promise<void>((done) => {
+    otherHerdr.listen(otherSocket, done);
+  });
   const other = await createBackend(otherSocket);
   const original = [...agents];
   try {
@@ -298,7 +325,9 @@ it("does not clean another live Herdr socket's receipts in shared storage", asyn
     expect((await dashboard()).agents[0].completion!.read).toBe(true);
   } finally {
     await stopBackend(other.server);
-    await new Promise<void>((done) => otherHerdr.close(() => done()));
+    await new Promise<void>((done) => {
+      otherHerdr.close(() => done());
+    });
   }
 });
 

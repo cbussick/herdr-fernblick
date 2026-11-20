@@ -3,7 +3,12 @@ import type { BoardElement, BoardScene } from "../../../packages/pi-live-chat/bo
 import { validateScene } from "./scene";
 
 type Change = { id: string; before: BoardElement | null; after: BoardElement | null };
-type Command = { changes: Change[]; files: BoardScene["files"]; group?: symbol; bytes: number };
+type Command = {
+  changes: Array<Change>;
+  files: BoardScene["files"];
+  group?: symbol;
+  bytes: number;
+};
 const canonical = (value: unknown): string =>
   JSON.stringify(value, (_key, item: unknown) =>
     item && typeof item === "object" && !Array.isArray(item)
@@ -14,11 +19,13 @@ function live(element?: BoardElement): BoardElement | null {
   return element && !element.isDeleted ? element : null;
 }
 function fingerprint(element: BoardElement | null | undefined): string {
-  if (!live(element ?? undefined)) return "null";
+  if (!live(element ?? undefined)) {
+    return "null";
+  }
   const { version: _version, isDeleted: _deleted, ...content } = element!;
   return canonical(content);
 }
-function changesBetween(before: BoardScene, after: BoardScene): Change[] {
+function changesBetween(before: BoardScene, after: BoardScene): Array<Change> {
   const old = new Map(before.elements.map((e) => [e.id, e]));
   const next = new Map(after.elements.map((e) => [e.id, e]));
   return [...new Set([...old.keys(), ...next.keys()])].flatMap((id) => {
@@ -27,28 +34,32 @@ function changesBetween(before: BoardScene, after: BoardScene): Change[] {
     return fingerprint(before) === fingerprint(after) ? [] : [{ id, before, after }];
   });
 }
-function imageIds(changes: Change[]): Set<string> {
+function imageIds(changes: Array<Change>): Set<string> {
   const ids = new Set<string>();
-  for (const change of changes)
+  for (const change of changes) {
     for (const element of [change.before, change.after]) {
-      if (element?.type !== "component") continue;
+      if (element?.type !== "component") {
+        continue;
+      }
       const props = element.props;
       if (
         props &&
         typeof props === "object" &&
         !Array.isArray(props) &&
         typeof props.imageId === "string"
-      )
+      ) {
         ids.add(props.imageId);
+      }
     }
+  }
   return ids;
 }
 
 /** Local edits only. Commands touch explicit IDs, retain tombstones/assets, and
  * are never whole-board snapshots that could overwrite another author's work. */
 export class BoardHistory {
-  private past: Command[] = [];
-  private future: Command[] = [];
+  private past: Array<Command> = [];
+  private future: Array<Command> = [];
   private readonly maxEntries: number;
   private readonly maxBytes: number;
   constructor(maxEntries = 50, maxBytes = 32 * 1024 * 1024) {
@@ -68,7 +79,9 @@ export class BoardHistory {
 
   record(before: BoardScene, after: BoardScene, group?: symbol): boolean {
     let changes = changesBetween(before, after);
-    if (!changes.length) return false;
+    if (!changes.length) {
+      return false;
+    }
     let files = { ...before.files, ...after.files };
     const previous = this.past.at(-1);
     if (group !== undefined && previous?.group === group) {
@@ -124,25 +137,31 @@ export class BoardHistory {
     const source = undo ? this.past : this.future;
     const destination = undo ? this.future : this.past;
     const command = source.at(-1);
-    if (!command) return;
+    if (!command) {
+      return;
+    }
     const elements = new Map(scene.elements.map((e) => [e.id, e]));
     for (const change of command.changes) {
       const current = elements.get(change.id);
       const expected = undo ? change.after : change.before;
-      if (fingerprint(current) !== fingerprint(expected))
+      if (fingerprint(current) !== fingerprint(expected)) {
         throw new Error(
           "Cannot undo/redo: an affected item has changed. Newer changes were preserved.",
         );
+      }
       const wanted = undo ? change.before : change.after;
       const version = Number(current?.version ?? 0) + 1;
-      if (wanted)
+      if (wanted) {
         elements.set(change.id, { ...structuredClone(wanted), version, isDeleted: false });
-      else if (current) elements.set(change.id, { ...current, version, isDeleted: true });
+      } else if (current) {
+        elements.set(change.id, { ...current, version, isDeleted: true });
+      }
     }
     const files = { ...scene.files };
     for (const [id, file] of Object.entries(command.files)) {
-      if (files[id] && files[id].dataURL !== file.dataURL)
+      if (files[id] && files[id].dataURL !== file.dataURL) {
         throw new Error("Cannot undo/redo: an image asset has changed.");
+      }
       files[id] = file;
     }
     const used = imageIds(
@@ -157,7 +176,9 @@ export class BoardHistory {
       elements: [...elements.values()],
       files: Object.fromEntries(Object.entries(files).filter(([id]) => used.has(id))),
     });
-    if (!accept(next)) return;
+    if (!accept(next)) {
+      return;
+    }
     source.pop();
     destination.push(command);
     return next;
@@ -178,14 +199,18 @@ export function useBoardHistory(
       const next = undo
         ? store.current.undo(current(), publish)
         : store.current.redo(current(), publish);
-      if (next) refresh();
+      if (next) {
+        refresh();
+      }
     } catch (error) {
       problem(error instanceof Error ? error.message : "Cannot undo/redo this edit.");
     }
   };
   return {
     record: (before: BoardScene, after: BoardScene, group?: symbol) => {
-      if (store.current.record(before, after, group)) refresh();
+      if (store.current.record(before, after, group)) {
+        refresh();
+      }
     },
     reconcile: (before: BoardScene, after: BoardScene) => {
       if (store.current.reconcile(before, after)) {

@@ -17,7 +17,7 @@ import { SessionIndex } from "./sessionIndex.js";
 let root: string;
 let sessions: string;
 let directory: string;
-const indexes: SessionIndex[] = [];
+const indexes: Array<SessionIndex> = [];
 const header = { type: "session", id: "session", cwd: "/project" };
 const user = { type: "message", message: { role: "user", content: "First prompt" } };
 const named = (name: string) => JSON.stringify({ type: "session_info", name }) + "\n";

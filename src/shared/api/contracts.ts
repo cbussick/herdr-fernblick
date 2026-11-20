@@ -125,7 +125,7 @@ export type SavedChat = z.infer<typeof savedChatSchema>;
 export const createAgentResponseSchema = z.object({ agent: agentSchema });
 
 export const createWorkspaceRequestSchema = z.object({
-  cwd: z.string().trim().min(1).max(4_096).startsWith("/"),
+  cwd: z.string().trim().min(1).max(4096).startsWith("/"),
   label: z.string().trim().min(1).max(80),
 });
 

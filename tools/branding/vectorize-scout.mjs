@@ -23,7 +23,9 @@ const masks = palette.map(() => new Uint8Array(count));
 const eyes = new Uint8Array(count);
 const scale = width / 564;
 for (let i = 0; i < count; i++) {
-  if (data[i * 4 + 3] < 128) continue;
+  if (data[i * 4 + 3] < 128) {
+    continue;
+  }
   const rgb = Array.from(data.subarray(i * 4, i * 4 + 3));
   const distances = palette.map((color) =>
     color.reduce((sum, channel, j) => sum + (channel - rgb[j]) ** 2, 0),
@@ -32,13 +34,18 @@ for (let i = 0; i < count; i++) {
   const x = (i % width) / scale;
   const y = Math.floor(i / width) / scale;
   const inEye = y > 235 && y < 325 && ((x > 188 && x < 288) || (x > 376 && x < 476));
-  if (inEye && (color === 2 || color === 3 || color === 0)) eyes[i] = 1;
-  else masks[color][i] = 1;
+  if (inEye && (color === 2 || color === 3 || color === 0)) {
+    eyes[i] = 1;
+  } else {
+    masks[color][i] = 1;
+  }
 }
 async function trace(mask) {
   const pixels = Buffer.alloc(count, 255);
   mask.forEach((on, i) => {
-    if (on) pixels[i] = 0;
+    if (on) {
+      pixels[i] = 0;
+    }
   });
   const png = await sharp(pixels, { raw: { width, height, channels: 1 } })
     .png()
@@ -46,10 +53,14 @@ async function trace(mask) {
   return new Promise((resolve, reject) => {
     const tracer = new Potrace({ threshold: 128, turdSize: 5, optTolerance: 0.35 });
     tracer.loadImage(png, (error) => {
-      if (error) return reject(error);
+      if (error) {
+        return reject(error);
+      }
       const svg = tracer.getSVG();
       const path = svg.match(/<path d="([^"]*)"/);
-      if (!path) return reject(new Error("Trace produced no path"));
+      if (!path) {
+        return reject(new Error("Trace produced no path"));
+      }
       resolve(path[1]);
     });
   });

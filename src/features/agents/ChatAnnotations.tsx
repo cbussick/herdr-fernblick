@@ -12,7 +12,9 @@ function useAnchoredOverlay(anchor: () => DOMRect, touchAction = false) {
   useLayoutEffect(() => {
     function place() {
       const element = ref.current;
-      if (!element) return;
+      if (!element) {
+        return;
+      }
       const viewport = window.visualViewport;
       const bounds = {
         left: viewport?.offsetLeft ?? 0,
@@ -26,7 +28,9 @@ function useAnchoredOverlay(anchor: () => DOMRect, touchAction = false) {
     }
     place();
     const observer = new ResizeObserver(place);
-    if (ref.current) observer.observe(ref.current);
+    if (ref.current) {
+      observer.observe(ref.current);
+    }
     window.addEventListener("resize", place);
     window.addEventListener("scroll", place, true);
     window.visualViewport?.addEventListener("resize", place);
@@ -101,7 +105,9 @@ export function AnnotationTray({
     </button>
   );
   const editDisabled = locked || annotations.stale || Boolean(annotations.editor);
-  if (!annotations.entries.length) return null;
+  if (!annotations.entries.length) {
+    return null;
+  }
   const count = annotations.entries.length;
   return (
     <section className={styles.tray} aria-label="Pending annotations" aria-busy={sending}>
@@ -238,7 +244,7 @@ export function AnnotationPopover({ annotations }: { annotations: ChatAnnotation
         id="annotation-comment"
         value={editor.comment}
         rows={3}
-        maxLength={32000}
+        maxLength={32_000}
         placeholder="What would you change?"
         onChange={(event) => annotations.setComment(event.target.value)}
         onKeyDown={(event) => {

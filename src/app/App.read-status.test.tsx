@@ -1,6 +1,7 @@
 import { createHash } from "node:crypto";
 import { act as reactAct } from "react";
-import { create, type ReactTestRenderer } from "react-test-renderer";
+import { create } from "react-test-renderer";
+import type { ReactTestRenderer } from "react-test-renderer";
 import {
   defaultScheduler,
   notifyManager,
@@ -53,7 +54,9 @@ async function act(callback: () => unknown) {
     await callback();
   });
   for (let batches = 0; notifications.length; batches++) {
-    if (batches === 100) throw new Error("Read-status notifications did not settle");
+    if (batches === 100) {
+      throw new Error("Read-status notifications did not settle");
+    }
     const pending = notifications.splice(0);
     await reactAct(async () => {
       pending.forEach((notify) => notify());
@@ -61,7 +64,7 @@ async function act(callback: () => unknown) {
   }
 }
 
-const response = (agents: Agent[]) => ({
+const response = (agents: Array<Agent>) => ({
   agents: agents.map((item) => ({
     ...item,
     completion:
@@ -83,7 +86,7 @@ const status = (index = 0) =>
     .findByProps({ "data-ui": "status-indicator" })
     .children.filter((child) => typeof child === "string")
     .join("");
-async function update(agents: Agent[]) {
+async function update(agents: Array<Agent>) {
   const next = response(agents);
   vi.mocked(getAgents).mockResolvedValue(next);
   await act(async () => {
@@ -144,7 +147,7 @@ it("clears New answer after opening an agent and going back without replying", a
   expect(status()).toBe("Idle");
   const workspaceStatus = renderer.root
     .findByProps({ "data-testid": "workspace-disclosure" })
-    .findAllByType("summary")[0]!
+    .findAllByType("summary")[0]
     .findByProps({ "data-ui": "status-indicator" });
   expect(workspaceStatus.children).toContain("Idle");
   expect(client.getQueryData<ReturnType<typeof response>>(["agents"])!.agents[0].agent_status).toBe(

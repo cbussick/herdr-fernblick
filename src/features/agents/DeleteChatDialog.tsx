@@ -1,4 +1,5 @@
-import { useEffect, useRef, type RefObject } from "react";
+import { useEffect, useRef } from "react";
+import type { RefObject } from "react";
 import type { SavedChat } from "../../shared/api/contracts";
 import styles from "./Dialogs.module.css";
 
@@ -21,16 +22,24 @@ export function DeleteChatDialog({
   const cancelRef = useRef<HTMLButtonElement>(null);
   useEffect(() => {
     const dialog = dialogRef.current;
-    if (!dialog) return;
+    if (!dialog) {
+      return;
+    }
     const opener = dialog.ownerDocument?.activeElement;
     const fallbackFocus = fallbackFocusRef.current;
-    if (!dialog.open) dialog.showModal();
+    if (!dialog.open) {
+      dialog.showModal();
+    }
     cancelRef.current?.focus();
     return () => {
-      if (dialog.open) dialog.close();
-      if (opener && opener instanceof HTMLElement && opener.isConnected)
+      if (dialog.open) {
+        dialog.close();
+      }
+      if (opener && opener instanceof HTMLElement && opener.isConnected) {
         opener.focus({ preventScroll: true });
-      else fallbackFocus?.focus({ preventScroll: true });
+      } else {
+        fallbackFocus?.focus({ preventScroll: true });
+      }
     };
   }, [fallbackFocusRef]);
 
@@ -43,17 +52,23 @@ export function DeleteChatDialog({
       aria-describedby="delete-chat-description"
       onCancel={(event) => {
         event.preventDefault();
-        if (!pending) onClose();
+        if (!pending) {
+          onClose();
+        }
       }}
       onClose={(event) => {
-        if (!event.currentTarget.open && !pending) onClose();
+        if (!event.currentTarget.open && !pending) {
+          onClose();
+        }
       }}
     >
       <form
         aria-busy={pending}
         onSubmit={(event) => {
           event.preventDefault();
-          if (!pending) onConfirm();
+          if (!pending) {
+            onConfirm();
+          }
         }}
       >
         <h2 id="delete-chat-heading">Delete session?</h2>

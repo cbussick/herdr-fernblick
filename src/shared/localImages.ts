@@ -26,15 +26,20 @@ export function resolveLocalPath(destination: string, cwd?: string): string | un
       !path ||
       /^[a-z][a-z\d+.-]*:/i.test(path) ||
       /^[\\/~#?]/.test(path)
-    )
+    ) {
       return;
+    }
     // Preserve ./ and ../ for filesystem resolution, including directory symlinks.
     path = `${cwd.replace(/\/+$/, "")}/${path}`;
   }
-  if (isLocalImagePath(path)) return path;
+  if (isLocalImagePath(path)) {
+    return path;
+  }
 }
 
 export function localImageSource(destination: string, cwd?: string): string | undefined {
   const path = resolveLocalPath(destination, cwd);
-  if (path) return `/api/local-images?path=${encodeURIComponent(path)}`;
+  if (path) {
+    return `/api/local-images?path=${encodeURIComponent(path)}`;
+  }
 }

@@ -1,6 +1,7 @@
 // @vitest-environment happy-dom
 import { act } from "react";
-import { create, type ReactTestRenderer } from "react-test-renderer";
+import { create } from "react-test-renderer";
+import type { ReactTestRenderer } from "react-test-renderer";
 import { createMemoryHistory, RouterProvider } from "@tanstack/react-router";
 import { afterEach, expect, it, vi } from "vitest";
 import { createAppRouter } from "./router";

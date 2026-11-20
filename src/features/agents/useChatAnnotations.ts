@@ -1,17 +1,9 @@
-import { useEffect, useEffectEvent, useRef, useState, type RefObject } from "react";
-import {
-  MAX_TEXT,
-  matchesTarget,
-  targetOf,
-  type Snapshot,
-  type Target,
-} from "../../../packages/pi-live-chat/protocol";
-import {
-  annotationPrompt,
-  readAnnotationSelection,
-  type Annotation,
-  type AnnotationSource,
-} from "./annotations";
+import { useEffect, useEffectEvent, useRef, useState } from "react";
+import type { RefObject } from "react";
+import { MAX_TEXT, matchesTarget, targetOf } from "../../../packages/pi-live-chat/protocol";
+import type { Snapshot, Target } from "../../../packages/pi-live-chat/protocol";
+import { annotationPrompt, readAnnotationSelection } from "./annotations";
+import type { Annotation, AnnotationSource } from "./annotations";
 
 type AnnotationAnchor = {
   source: AnnotationSource;
@@ -31,7 +23,7 @@ export function useChatAnnotations(
   transcript: RefObject<HTMLElement | null>,
   sending: boolean,
 ) {
-  const [entries, setEntries] = useState<Annotation[]>([]);
+  const [entries, setEntries] = useState<Array<Annotation>>([]);
   const [owner, setOwner] = useState<Target | null>(null);
   const [editor, setEditor] = useState<AnnotationEditor | null>(null);
   const [candidate, setCandidate] = useState<AnnotationSelection | null>(null);
@@ -52,21 +44,29 @@ export function useChatAnnotations(
       : null;
 
   function begin(source: AnnotationSource | null, anchor: () => DOMRect) {
-    if (!visible || !snapshot || stale || sending || editor || (!source && !entries.length)) return;
+    if (!visible || !snapshot || stale || sending || editor || (!source && !entries.length)) {
+      return;
+    }
     setCandidate(null);
     setEditor({ source, target: targetOf(snapshot), comment: "", anchor });
     setError("");
     setNotice("");
   }
   function openSelection() {
-    if (selection) begin(selection.source, selection.anchor);
+    if (selection) {
+      begin(selection.source, selection.anchor);
+    }
   }
 
   const available = Boolean(snapshot);
   const capture = useEffectEvent((touch = false) => {
-    if (!snapshot || !transcript.current || editor) return;
+    if (!snapshot || !transcript.current || editor) {
+      return;
+    }
     const active = document.activeElement;
-    if (active?.closest('[data-ui="annotation-action"], [data-ui="annotation-popover"]')) return;
+    if (active?.closest('[data-ui="annotation-action"], [data-ui="annotation-popover"]')) {
+      return;
+    }
     if (active?.matches('input, textarea, [contenteditable="true"]')) {
       setCandidate(null);
       return;
@@ -93,7 +93,9 @@ export function useChatAnnotations(
     );
   });
   const shortcut = useEffectEvent((event: KeyboardEvent) => {
-    if (!selection || event.isComposing) return;
+    if (!selection || event.isComposing) {
+      return;
+    }
     if (event.key === "Escape") {
       setCandidate(null);
       window.getSelection()?.removeAllRanges();
@@ -114,7 +116,9 @@ export function useChatAnnotations(
     }
   });
   useEffect(() => {
-    if (!visible || !available || stale || sending || typeof document === "undefined") return;
+    if (!visible || !available || stale || sending || typeof document === "undefined") {
+      return;
+    }
     let timer: ReturnType<typeof setTimeout> | undefined;
     let touch = false;
     let dragging = false;
@@ -125,17 +129,23 @@ export function useChatAnnotations(
       );
     }
     function down(event: PointerEvent) {
-      if (inAnnotationUI(event.target)) return;
+      if (inAnnotationUI(event.target)) {
+        return;
+      }
       touch = event.pointerType === "touch";
       dragging = true;
       setCandidate(null);
     }
     function up(event: PointerEvent) {
       dragging = false;
-      if (!touch && !inAnnotationUI(event.target)) capture();
+      if (!touch && !inAnnotationUI(event.target)) {
+        capture();
+      }
     }
     function keyboard(event: KeyboardEvent) {
-      if (event.key === "Shift" || event.key.startsWith("Arrow")) capture();
+      if (event.key === "Shift" || event.key.startsWith("Arrow")) {
+        capture();
+      }
     }
     function selectionChanged() {
       clearTimeout(timer);
@@ -143,7 +153,9 @@ export function useChatAnnotations(
       // focuses it, opens the keyboard, clears the selection, or intercepts Copy.
       timer = setTimeout(
         () => {
-          if (!dragging || touch) capture(touch);
+          if (!dragging || touch) {
+            capture(touch);
+          }
         },
         touch ? 450 : 120,
       );
@@ -182,8 +194,9 @@ export function useChatAnnotations(
       stale ||
       sending ||
       (!editor.source && !entries.length)
-    )
+    ) {
       return;
+    }
     const content = {
       id: editor.id ?? `annotation-${++nextId.current}`,
       comment: editor.comment.trim(),
@@ -204,7 +217,9 @@ export function useChatAnnotations(
     close();
   }
   function edit(entry: Annotation, anchor: () => DOMRect) {
-    if (!visible || !owner || stale || sending || editor) return;
+    if (!visible || !owner || stale || sending || editor) {
+      return;
+    }
     setCandidate(null);
     setEditor({
       source: entry.messageId === undefined ? null : entry,
@@ -216,15 +231,18 @@ export function useChatAnnotations(
     setError("");
   }
   function remove(id: string) {
-    if (sending) return;
+    if (sending) {
+      return;
+    }
     setEntries((current) => current.filter((entry) => entry.id !== id));
     if (
       editor?.id === id ||
       (editor && !editor.source && entries.length === 1 && entries[0].id === id)
-    )
+    ) {
       close();
+    }
   }
-  function acknowledge(ids: string[]) {
+  function acknowledge(ids: Array<string>) {
     setEntries((current) => current.filter((entry) => !ids.includes(entry.id)));
     setNotice("Comments forwarded to Pi.");
   }
@@ -250,7 +268,9 @@ export function useChatAnnotations(
     setComment: (comment: string) =>
       setEditor((current) => (current ? { ...current, comment } : null)),
     clear: () => {
-      if (sending) return;
+      if (sending) {
+        return;
+      }
       setEntries([]);
       setCandidate(null);
       setEditor(null);

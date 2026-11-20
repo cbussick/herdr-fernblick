@@ -4,29 +4,37 @@ import {
   FLOW_CONNECTION_COLOR,
   flowKinds,
   validateFlowGraph,
-  type FlowElement,
-  type FlowKind,
 } from "../../packages/pi-live-chat/flowProtocol.js";
+import type { FlowElement, FlowKind } from "../../packages/pi-live-chat/flowProtocol.js";
 import { BoardError, requireBoard } from "./errors.js";
 import {
   defaultPrimitiveProps,
   primitiveKinds,
-  type PrimitiveKind,
 } from "../../packages/pi-live-chat/primitiveProtocol.js";
+import type { PrimitiveKind } from "../../packages/pi-live-chat/primitiveProtocol.js";
 
 /** Relationships are implicit dependencies, including both sides of existing relations.
  * New endpoints must already have been read; same-batch creation is deliberately not supported.
  */
-export function flowDependencies(scene: BoardScene, op: BoardOperation): string[] {
+export function flowDependencies(scene: BoardScene, op: BoardOperation): Array<string> {
   const ids = new Set<string>();
   const relation = (e: Record<string, unknown>) => {
-    for (const key of ["parentId", "source", "target"])
-      if (typeof e[key] === "string") ids.add(e[key] as string);
+    for (const key of ["parentId", "source", "target"]) {
+      if (typeof e[key] === "string") {
+        ids.add(e[key]);
+      }
+    }
   };
-  if (op.op !== "delete") relation(op);
+  if (op.op !== "delete") {
+    relation(op);
+  }
   for (const e of scene.elements) {
-    if (e.isDeleted) continue;
-    if (e.id === op.id) relation(e);
+    if (e.isDeleted) {
+      continue;
+    }
+    if (e.id === op.id) {
+      relation(e);
+    }
     if (e.parentId === op.id || e.source === op.id || e.target === op.id) {
       ids.add(e.id);
       relation(e);
@@ -35,8 +43,11 @@ export function flowDependencies(scene: BoardScene, op: BoardOperation): string[
   return [...ids];
 }
 
-export function applyFlowOperations(scene: BoardScene, operations: BoardOperation[]): BoardScene {
-  let elements: FlowElement[];
+export function applyFlowOperations(
+  scene: BoardScene,
+  operations: Array<BoardOperation>,
+): BoardScene {
+  let elements: Array<FlowElement>;
   try {
     elements = validateFlowGraph(scene);
   } catch {
@@ -69,7 +80,7 @@ export function applyFlowOperations(scene: BoardScene, operations: BoardOperatio
           label: op.label ?? "",
           color: op.color ?? FLOW_CONNECTION_COLOR,
         };
-      } else if ((primitiveKinds as readonly string[]).includes(op.kind)) {
+      } else if ((primitiveKinds as ReadonlyArray<string>).includes(op.kind)) {
         element = {
           ...common,
           type: "primitive",
@@ -78,7 +89,7 @@ export function applyFlowOperations(scene: BoardScene, operations: BoardOperatio
         };
       } else {
         requireBoard(
-          (flowKinds as readonly string[]).includes(op.kind),
+          (flowKinds as ReadonlyArray<string>).includes(op.kind),
           400,
           "Unsupported flow component kind",
         );
@@ -105,13 +116,14 @@ export function applyFlowOperations(scene: BoardScene, operations: BoardOperatio
       400,
       "Drawing props require a primitive",
     );
-    if (element.type !== "component")
+    if (element.type !== "component") {
       requireBoard(
         op.props === undefined && op.parentId === undefined,
         400,
         "Component fields require a component",
       );
-    if (element.type !== "connection")
+    }
+    if (element.type !== "connection") {
       requireBoard(
         [op.source, op.target, op.sourceHandle, op.targetHandle, op.label].every(
           (v) => v === undefined,
@@ -119,8 +131,12 @@ export function applyFlowOperations(scene: BoardScene, operations: BoardOperatio
         400,
         "Connection fields require a connection",
       );
-    for (const key of ["x", "y", "width", "height"] as const)
-      if (op[key] !== undefined) element[key] = op[key];
+    }
+    for (const key of ["x", "y", "width", "height"] as const) {
+      if (op[key] !== undefined) {
+        element[key] = op[key];
+      }
+    }
     if (element.type === "primitive") {
       element.props = {
         ...element.props,
@@ -133,7 +149,9 @@ export function applyFlowOperations(scene: BoardScene, operations: BoardOperatio
         ...op.props,
         ...(op.color === undefined ? {} : { color: op.color }),
       };
-      if (op.parentId !== undefined) element.parentId = op.parentId;
+      if (op.parentId !== undefined) {
+        element.parentId = op.parentId;
+      }
     } else if (element.type === "connection") {
       for (const key of [
         "source",
@@ -144,9 +162,13 @@ export function applyFlowOperations(scene: BoardScene, operations: BoardOperatio
         "color",
       ] as const) {
         // Keep the discriminated record strongly typed while copying optional fields.
-        if (op[key] !== undefined) Object.assign(element, { [key]: op[key] });
+        if (op[key] !== undefined) {
+          Object.assign(element, { [key]: op[key] });
+        }
       }
-    } else if (op.color !== undefined) element.props.color = op.color;
+    } else if (op.color !== undefined) {
+      element.props.color = op.color;
+    }
   }
   // Deleting a parent or endpoint without deleting/reparenting all relations fails closed.
   // Validate only the final graph, so explicit related deletions may appear in any order.
@@ -198,9 +220,10 @@ export function flowSummary(
         : {}),
     };
   }
-  if (element.type === "primitive")
+  if (element.type === "primitive") {
     return { ...common, kind: element.kind, drawing: element.props };
-  if (element.type === "connection")
+  }
+  if (element.type === "connection") {
     return {
       ...common,
       source: element.source,
@@ -210,6 +233,7 @@ export function flowSummary(
       label: element.label,
       color: element.color,
     };
+  }
   return {
     ...common,
     ink: {

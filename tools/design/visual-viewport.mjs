@@ -45,7 +45,9 @@ const server = createHttpServer(
   resolve("dist"),
   {},
 );
-await new Promise((done) => server.listen(0, "127.0.0.1", done));
+await new Promise((done) => {
+  server.listen(0, "127.0.0.1", done);
+});
 await mkdir("design-gallery/visual-viewport", { recursive: true });
 try {
   for (const [name, engine] of [
@@ -92,7 +94,7 @@ try {
           (url) => url.pathname.startsWith("/api/"),
           (route) => {
             const path = new URL(route.request().url()).pathname;
-            if (path === "/api/agents")
+            if (path === "/api/agents") {
               return route.fulfill({
                 json: {
                   agents: [agent],
@@ -100,6 +102,7 @@ try {
                   workspaces: [{ workspace_id: "w1", label: "Fixture" }],
                 },
               });
+            }
             return route.fulfill({ status: 503, json: { error: "Synthetic keyboard fixture" } });
           },
         );
@@ -111,7 +114,10 @@ try {
         await prompt.fill("Keep this draft");
         const frame = () =>
           page.evaluate(
-            () => new Promise((done) => requestAnimationFrame(() => requestAnimationFrame(done))),
+            () =>
+              new Promise((done) => {
+                requestAnimationFrame(() => requestAnimationFrame(done));
+              }),
           );
         const setVisual = async (patch) => {
           await page.evaluate((patch) => {
@@ -214,5 +220,7 @@ try {
     }
   }
 } finally {
-  await new Promise((done) => server.close(done));
+  await new Promise((done) => {
+    server.close(done);
+  });
 }

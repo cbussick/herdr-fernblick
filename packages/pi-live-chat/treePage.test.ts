@@ -5,10 +5,12 @@ import { treePageSchema, treePageRequestSchema, MAX_TREE_PAGE_BYTES } from "./tr
 
 it("opens a bounded window at the current point in a deep conversation", () => {
   const manager = SessionManager.inMemory();
-  const ids: string[] = [];
+  const ids: Array<string> = [];
   for (let i = 0; i < 354; i++) {
     ids.push(manager.appendMessage({ role: "user", content: `Prompt ${i}`, timestamp: i }));
-    for (let j = 0; j < 4; j++) manager.appendCustomEntry("extension-state", {});
+    for (let j = 0; j < 4; j++) {
+      manager.appendCustomEntry("extension-state", {});
+    }
   }
   const page = readTreePage(manager, {});
   expect(page.rows.map((row) => row.id)).toEqual(ids.slice(-50));
@@ -19,7 +21,7 @@ it("opens a bounded window at the current point in a deep conversation", () => {
   expect(page.previousOffset).toBe(254);
   expect(page.rows.every((row) => row.isActivePath)).toBe(true);
   expect(JSON.stringify(page).length).toBeLessThan(128 * 1024);
-  const all: string[] = [];
+  const all: Array<string> = [];
   let offset: number | null = 0;
   while (offset !== null) {
     const next = treePageSchema.parse(readTreePage(manager, { offset, revision: page.revision }));
@@ -31,8 +33,9 @@ it("opens a bounded window at the current point in a deep conversation", () => {
 
 it("browses more than 2,000 deeply chained entries without nesting the response", () => {
   const manager = SessionManager.inMemory();
-  for (let i = 0; i < 10_000; i++)
+  for (let i = 0; i < 10_000; i++) {
     manager.appendMessage({ role: "user", content: "Long conversation", timestamp: i });
+  }
   const page = treePageSchema.parse(readTreePage(manager, {}));
   expect(page.total).toBe(10_000);
   expect(page.rows).toHaveLength(50);
@@ -49,8 +52,9 @@ it("searches beyond previews and unloaded alternate paths without changing the a
     timestamp: 2,
   });
   manager.branch(root);
-  for (let i = 0; i < 100; i++)
+  for (let i = 0; i < 100; i++) {
     manager.appendMessage({ role: "user", content: `Active ${i}`, timestamp: i + 3 });
+  }
   const before = manager.getLeafId();
   const page = readTreePage(manager, { query: "UNIQUE NEEDLE" });
   expect(page.total).toBe(1);
@@ -135,7 +139,7 @@ it("bounds worst-case encoded previews and keeps the current message in its init
     id: `${index}` + "\u0001".repeat(240),
     parentId: index ? `${index - 1}` + "\u0001".repeat(240) : null,
     timestamp: "2026-01-01T00:00:00Z",
-    message: { role: "user" as const, content: "\u0001".repeat(1_000), timestamp: index },
+    message: { role: "user" as const, content: "\u0001".repeat(1000), timestamp: index },
   }));
   const manager = { getEntries: () => entries, getLeafId: () => entries.at(-1)!.id };
   const page = treePageSchema.parse(readTreePage(manager, {}));

@@ -1,5 +1,6 @@
 import { act } from "react";
-import { create, type ReactTestRenderer } from "react-test-renderer";
+import { create } from "react-test-renderer";
+import type { ReactTestRenderer } from "react-test-renderer";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { ChatCodeBlock } from "./ChatCodeBlock";
 import { copyCodeText } from "./copyCodeText";
@@ -14,7 +15,9 @@ describe("copying code blocks", () => {
     writeText.mockReset().mockResolvedValue(undefined);
   });
   afterEach(async () => {
-    if (renderer) await act(async () => renderer!.unmount());
+    if (renderer) {
+      await act(async () => renderer!.unmount());
+    }
     renderer = undefined;
     vi.unstubAllGlobals();
   });
@@ -72,8 +75,11 @@ describe("copying code blocks", () => {
   it.each(["unavailable", "rejected"])(
     "uses the HTTP-compatible fallback when Clipboard API is %s",
     async (mode) => {
-      if (mode === "unavailable") vi.stubGlobal("navigator", {});
-      else writeText.mockRejectedValue(new Error("Permission denied"));
+      if (mode === "unavailable") {
+        vi.stubGlobal("navigator", {});
+      } else {
+        writeText.mockRejectedValue(new Error("Permission denied"));
+      }
       const { textarea, execCommand, focused, selection } = legacyClipboard(true);
       await copyCodeText("exact\n  payload");
       expect(textarea.value).toBe("exact\n  payload");

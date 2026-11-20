@@ -1,7 +1,10 @@
-import { act, type ReactNode } from "react";
-import { create, type ReactTestRenderer } from "react-test-renderer";
+import { act } from "react";
+import type { ReactNode } from "react";
+import { create } from "react-test-renderer";
+import type { ReactTestRenderer } from "react-test-renderer";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
-import { ChatTranscript, type ChatTranscriptProps } from "./ChatTranscript";
+import { ChatTranscript } from "./ChatTranscript";
+import type { ChatTranscriptProps } from "./ChatTranscript";
 
 vi.mock("react-dom", () => ({ createPortal: (children: ReactNode) => children }));
 let renderer: ReactTestRenderer;
@@ -113,8 +116,9 @@ it("renders all turns, status, tool errors and images with the shared thinking p
     "Next question",
     "Tool failed",
     "Session changed",
-  ])
+  ]) {
     expect(text).toContain(value);
+  }
   expect(text).not.toContain("Thinking detail");
   expect(renderer.root.findByProps({ "aria-label": "Open attached image" })).toBeDefined();
   props = { ...props, showThinking: true, truncated: true };
@@ -176,7 +180,7 @@ it.each([
   expect(time.props.title).not.toMatch(/\b[AP]M\b/i);
   expect(time.props["aria-label"]).not.toMatch(/\b[AP]M\b/i);
 });
-it.each([undefined, NaN, Infinity, -Infinity, 8.64e15 + 1])(
+it.each([undefined, Number.NaN, Infinity, -Infinity, 8.64e15 + 1])(
   "omits missing or invalid timestamps (%s) without hiding messages",
   async (timestamp) => {
     props = {
@@ -220,8 +224,11 @@ it.each(["viewport expansion", "content shrink"])(
   "keeps following after automatic clamping from %s before alignment",
   async (change) => {
     // Browser geometry changes can deliver a scroll event before our deferred alignment.
-    if (change === "viewport expansion") viewport.clientHeight = 500;
-    else viewport.scrollHeight = 700;
+    if (change === "viewport expansion") {
+      viewport.clientHeight = 500;
+    } else {
+      viewport.scrollHeight = 700;
+    }
     viewport.scrollTop = viewport.scrollTop;
     await act(async () => output().props.onScroll());
     await act(async () => resize());

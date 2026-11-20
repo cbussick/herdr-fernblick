@@ -1,4 +1,5 @@
-import { Fragment, useMemo, type ReactNode } from "react";
+import { Fragment, useMemo } from "react";
+import type { ReactNode } from "react";
 import { splitMessageLinks } from "./chatMessageLinks";
 import { ChatCodeBlock } from "./ChatCodeBlock";
 import { ChatCodeText } from "./ChatCodeText";
@@ -6,18 +7,17 @@ import { ChatMath } from "./ChatMath";
 import { ChatMarkdownImage } from "./ChatMarkdownImage";
 import { ChatImagePreviewLink } from "./ChatImagePreviewLink";
 import type { PreviewImage } from "./ImageLightbox";
-import { formatMessageText, type MessagePart } from "./chatMessageFormatting";
-import {
-  annotationGeneralPromptIntro,
-  annotationPromptIntro,
-  type TextHighlight,
-  type AnnotationEditHandler,
-} from "./annotations";
+import { formatMessageText } from "./chatMessageFormatting";
+import type { MessagePart } from "./chatMessageFormatting";
+import { annotationGeneralPromptIntro, annotationPromptIntro } from "./annotations";
+import type { TextHighlight, AnnotationEditHandler } from "./annotations";
 import annotationStyles from "./ChatAnnotations.module.css";
 import styles from "./ChatMessageText.module.css";
 
-function previewImages(part: MessagePart): PreviewImage[] {
-  if (part.kind === "image") return [{ url: part.href!, alt: part.alt ?? "" }];
+function previewImages(part: MessagePart): Array<PreviewImage> {
+  if (part.kind === "image") {
+    return [{ url: part.href!, alt: part.alt ?? "" }];
+  }
   return "children" in part ? part.children.flatMap(previewImages) : [];
 }
 
@@ -28,8 +28,7 @@ function annotationLabels(value: string) {
   for (const match of value.matchAll(
     /^\*\*(Comment [1-9]\d*)\*\*(?= \((?:response [^\n]*|general comment)\))/gm,
   )) {
-    parts.push(value.slice(end, match.index));
-    parts.push(<strong key={match.index}>{match[1]}</strong>);
+    parts.push(value.slice(end, match.index), <strong key={match.index}>{match[1]}</strong>);
     end = match.index + match[0].length;
   }
   parts.push(value.slice(end));
@@ -48,7 +47,7 @@ export function ChatMessageText({
   cwd?: string;
   annotationSource?: string;
   annotationFeedback?: boolean;
-  highlights?: TextHighlight[];
+  highlights?: Array<TextHighlight>;
   onAnnotationEdit?: AnnotationEditHandler;
 }) {
   const emphasizeLabels =
@@ -57,8 +56,10 @@ export function ChatMessageText({
     [annotationPromptIntro, annotationGeneralPromptIntro].some((intro) =>
       text.startsWith(`${intro}\n\n`),
     );
-  const parts = useMemo<MessagePart[]>(() => {
-    if (!emphasizeLabels) return formatMessageText(text, cwd);
+  const parts = useMemo<Array<MessagePart>>(() => {
+    if (!emphasizeLabels) {
+      return formatMessageText(text, cwd);
+    }
     // Generated annotation prompts keep their original quotes literal.
     let offset = 0;
     return splitMessageLinks(text).map((part) => {
@@ -86,10 +87,11 @@ export function ChatMessageText({
       // On overlapping passages, the latest pending comment wins the shared
       // segment; the full pending list still exposes every comment.
       const highlight = highlights.findLast((range) => range.start <= point && range.end > point);
-      if (!highlight)
+      if (!highlight) {
         return (
           <Fragment key={point}>{emphasizeLabels ? annotationLabels(segment) : segment}</Fragment>
         );
+      }
       const id = highlight.id;
       const editable = Boolean(id && onAnnotationEdit);
       return (
@@ -103,7 +105,9 @@ export function ChatMessageText({
           onClick={(event) => {
             // Dragging or long-pressing a saved passage must keep native
             // selection/copying intact, rather than opening its editor.
-            if (!id || !onAnnotationEdit || window.getSelection()?.isCollapsed === false) return;
+            if (!id || !onAnnotationEdit || window.getSelection()?.isCollapsed === false) {
+              return;
+            }
             event.preventDefault();
             event.stopPropagation();
             const element = event.currentTarget;
@@ -115,8 +119,9 @@ export function ChatMessageText({
               !onAnnotationEdit ||
               event.nativeEvent.isComposing ||
               (event.key !== "Enter" && event.key !== " ")
-            )
+            ) {
               return;
+            }
             event.preventDefault();
             event.stopPropagation();
             const element = event.currentTarget;
@@ -140,8 +145,9 @@ export function ChatMessageText({
         </span>
       ) : null;
     }
-    if (part.kind === "text")
+    if (part.kind === "text") {
       return <Fragment key={index}>{highlighted(part.start, part.end)}</Fragment>;
+    }
     const content = part.children.map((child, i) =>
       part.kind === "codeBlock" && child.kind === "text" ? (
         <ChatCodeText
@@ -180,7 +186,8 @@ export function ChatMessageText({
       case "paragraph":
         return <p key={index}>{content}</p>;
       case "heading": {
-        const Heading = `h${part.depth ?? 2}` as "h1" | "h2" | "h3" | "h4" | "h5" | "h6";
+        const headings = ["h1", "h2", "h3", "h4", "h5", "h6"] as const;
+        const Heading = headings[(part.depth ?? 2) - 1] ?? "h2";
         return <Heading key={index}>{content}</Heading>;
       }
       case "blockquote":
@@ -260,12 +267,13 @@ export function ChatMessageText({
         );
       case "link": {
         const images = previewImages(part);
-        if (images.length)
+        if (images.length) {
           return (
             <ChatImagePreviewLink key={index} href={part.href!} images={images}>
               {content}
             </ChatImagePreviewLink>
           );
+        }
         return (
           <a key={index} href={part.href} target="_blank" rel="noopener noreferrer">
             {content}

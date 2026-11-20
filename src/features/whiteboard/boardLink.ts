@@ -15,13 +15,16 @@ export function readWhiteboardLink(search: string): WhiteboardLink | null {
     pane.length > 200 ||
     session.length > 200 ||
     /[\r\n\0]/.test(pane + session)
-  )
+  ) {
     return null;
+  }
   return { pane, session };
 }
 
 export function consumeWhiteboardLink() {
   const url = new URL(window.location.href);
-  for (const key of ["pane", "session", "whiteboard"]) url.searchParams.delete(key);
+  for (const key of ["pane", "session", "whiteboard"]) {
+    url.searchParams.delete(key);
+  }
   window.history.replaceState(window.history.state, "", url.pathname + url.search + url.hash);
 }

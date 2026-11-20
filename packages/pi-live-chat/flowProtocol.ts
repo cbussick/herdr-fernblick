@@ -68,7 +68,7 @@ export const flowInkPropsSchema = z
     points: z
       .array(z.tuple([coordinate, coordinate, z.number().min(0).max(1)]))
       .min(1)
-      .max(10000),
+      .max(10_000),
     color,
     size: z.number().min(1).max(24),
     pressure: z.boolean(),
@@ -175,32 +175,45 @@ export function defaultFlowProps(kind: FlowKind): FlowComponentProps {
 
 /** Validate the entire relationship graph, not just individual JSON records. */
 export function validateFlowGraph(scene: {
-  elements: unknown[];
+  elements: Array<unknown>;
   files: Record<string, unknown>;
-}): FlowElement[] {
+}): Array<FlowElement> {
   const elements = flowElementsSchema.parse(scene.elements);
   const records = new Map<string, FlowElement>();
   let nodes = 0,
     connections = 0,
     points = 0;
   for (const e of elements) {
-    if (records.has(e.id)) throw new Error("Duplicate flow element ID");
+    if (records.has(e.id)) {
+      throw new Error("Duplicate flow element ID");
+    }
     records.set(e.id, e);
-    if (e.isDeleted) continue;
-    if (e.type === "connection") connections++;
-    else nodes++;
-    if (e.type === "ink") points += e.props.points.length;
-    if (e.type === "primitive" && e.kind === "path")
+    if (e.isDeleted) {
+      continue;
+    }
+    if (e.type === "connection") {
+      connections++;
+    } else {
+      nodes++;
+    }
+    if (e.type === "ink") {
+      points += e.props.points.length;
+    }
+    if (e.type === "primitive" && e.kind === "path") {
       points += e.props.commands.reduce((n, command) => n + (command.length - 1) / 2, 0);
+    }
     if (e.type === "component") {
-      if (e.props.rows.some((row) => row.length !== e.props.columns.length))
+      if (e.props.rows.some((row) => row.length !== e.props.columns.length)) {
         throw new Error("Table row/column count mismatch");
-      if (e.props.imageId !== null && !Object.hasOwn(scene.files, e.props.imageId))
+      }
+      if (e.props.imageId !== null && !Object.hasOwn(scene.files, e.props.imageId)) {
         throw new Error("Component image asset is missing");
+      }
     }
   }
-  if (nodes > 300 || connections > 1000 || points > 100000)
+  if (nodes > 300 || connections > 1000 || points > 100_000) {
     throw new Error("Flow canvas exceeds its node, connection or ink-point limits");
+  }
   for (const e of elements.filter((e) => !e.isDeleted)) {
     if (e.type === "component" && e.parentId !== null) {
       const parent = records.get(e.parentId);
@@ -209,8 +222,9 @@ export function validateFlowGraph(scene: {
         parent?.isDeleted ||
         parent?.type !== "component" ||
         parent.kind !== "boundary"
-      )
+      ) {
         throw new Error("Invalid component boundary");
+      }
     }
     if (e.type === "connection") {
       const source = records.get(e.source),
@@ -221,8 +235,9 @@ export function validateFlowGraph(scene: {
         target?.isDeleted ||
         source?.type !== "component" ||
         target?.type !== "component"
-      )
+      ) {
         throw new Error("Invalid connection endpoint");
+      }
     }
   }
   return elements;

@@ -31,12 +31,16 @@ beforeEach(async () => {
     "/unused",
     new LiveBridge(join(directory, "pi.sock"), join(directory, "herdr.sock")),
   );
-  await new Promise<void>((done) => server.listen(0, "127.0.0.1", done));
+  await new Promise<void>((done) => {
+    server.listen(0, "127.0.0.1", done);
+  });
   base = `http://127.0.0.1:${(server.address() as { port: number }).port}`;
 });
 afterEach(async () => {
   server.closeAllConnections();
-  await new Promise<void>((done) => server.close(() => done()));
+  await new Promise<void>((done) => {
+    server.close(() => done());
+  });
   await rm(directory, { recursive: true, force: true });
 });
 const createTab = (body: unknown) =>

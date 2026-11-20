@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useId, useRef, useState } from "react";
-import { runningBuild, type BuildInfo } from "../pwa/buildInfo";
+import { runningBuild } from "../pwa/buildInfo";
+import type { BuildInfo } from "../pwa/buildInfo";
 import { useAppUpdates } from "../pwa/useAppUpdates";
 import { IconButton } from "../shared/ui";
 import { Snackbar } from "../shared/ui/Snackbar";
@@ -9,7 +10,9 @@ import { getHeaderDiagnostics } from "./useHeaderDiagnostics";
 import { ReadReceiptLogs } from "./ReadReceiptLogs";
 
 function BuildDetails({ build }: { build: BuildInfo | null }) {
-  if (!build) return <span>Not checked</span>;
+  if (!build) {
+    return <span>Not checked</span>;
+  }
   return (
     <span>
       <code title={build.revision}>
@@ -43,13 +46,20 @@ export function SettingsDialog({ onClose }: { onClose: () => void }) {
   const diagnosticsId = useId();
   useEffect(() => {
     const dialog = dialogRef.current;
-    if (!dialog) return;
+    if (!dialog) {
+      return;
+    }
     const opener = dialog.ownerDocument.activeElement;
-    if (!dialog.open) dialog.showModal();
+    if (!dialog.open) {
+      dialog.showModal();
+    }
     return () => {
-      if (dialog.open) dialog.close();
-      if (opener instanceof HTMLElement && opener.isConnected)
+      if (dialog.open) {
+        dialog.close();
+      }
+      if (opener instanceof HTMLElement && opener.isConnected) {
         opener.focus({ preventScroll: true });
+      }
     };
   }, []);
 
@@ -104,7 +114,9 @@ export function SettingsDialog({ onClose }: { onClose: () => void }) {
         onClose();
       }}
       onClose={(event) => {
-        if (!event.currentTarget.open) onClose();
+        if (!event.currentTarget.open) {
+          onClose();
+        }
       }}
     >
       <div className={styles.content}>
@@ -140,7 +152,9 @@ export function SettingsDialog({ onClose }: { onClose: () => void }) {
               onClick={() => {
                 void (async () => {
                   dismissNotice();
-                  if ((await updates?.check()) === "up-to-date") showNotice("current");
+                  if ((await updates?.check()) === "up-to-date") {
+                    showNotice("current");
+                  }
                 })();
               }}
             >
@@ -170,7 +184,9 @@ export function SettingsDialog({ onClose }: { onClose: () => void }) {
               onClick={() => {
                 void (async () => {
                   try {
-                    if (!navigator.clipboard?.writeText) throw new Error("Clipboard unavailable");
+                    if (!navigator.clipboard?.writeText) {
+                      throw new Error("Clipboard unavailable");
+                    }
                     const inset = probeRef.current
                       ? getComputedStyle(probeRef.current).paddingTop
                       : null;
@@ -222,7 +238,7 @@ export function SettingsDialog({ onClose }: { onClose: () => void }) {
                 : "Copy failed. Choose View and select the text to copy manually."
           }
           role={notice.kind === "copy-failed" ? "alert" : "status"}
-          duration={notice.kind === "copy-failed" ? null : 6_000}
+          duration={notice.kind === "copy-failed" ? null : 6000}
           onDismiss={dismissNotice}
         />
       )}

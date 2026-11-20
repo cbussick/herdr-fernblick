@@ -69,12 +69,14 @@ function request(
 async function active(mode: "read" | "edit" = "edit", observe = true): Promise<BoardGrant> {
   const grant = store.grant(boardId, owner, mode, (await store.read(boardId)).revision);
   await store.handle(request(grant, "activate"), validate);
-  if (observe) await store.handle(request(grant, "read"), validate);
+  if (observe) {
+    await store.handle(request(grant, "read"), validate);
+  }
   return grant;
 }
 function apply(
   grant: BoardGrant,
-  operations: BoardOperation[] = [create()],
+  operations: Array<BoardOperation> = [create()],
   baseRevision = 0,
   operationId = randomUUID(),
 ): BoardRequest {
@@ -188,7 +190,7 @@ it("authorizes primitive discovery/edits, preserves stale human edits, and persi
 it("requires automatic flow relation observations, keeps independent groups and validates final graphs", async () => {
   boardId = (await store.open("flow", validate)).id;
   const grant = await active();
-  const nodes: BoardOperation[] = ["a", "b"].map((id) => ({
+  const nodes: Array<BoardOperation> = ["a", "b"].map((id) => ({
     op: "create",
     id,
     kind: "card",
@@ -219,7 +221,7 @@ it("requires automatic flow relation observations, keeps independent groups and 
   const state = await store.read(boardId);
   state.scene.elements[1].x = 80;
   await store.save(boardId, 2, state.scene);
-  const grouped: BoardOperation[] = [
+  const grouped: Array<BoardOperation> = [
     { op: "update", id: "a", x: 20, groupId: "related" },
     { op: "create", id: "grouped", kind: "card", x: 0, y: 0, groupId: "related" },
     { op: "create", id: "independent", kind: "comment", x: 0, y: 0 },
@@ -252,7 +254,7 @@ it("requires automatic flow relation observations, keeps independent groups and 
 it("does not connect newly created endpoints without a prior read", async () => {
   boardId = (await store.open("atomic-flow", validate)).id;
   const grant = await active();
-  const operations: BoardOperation[] = [
+  const operations: Array<BoardOperation> = [
     { op: "create", id: "a", kind: "card", x: 0, y: 0, groupId: "g" },
     { op: "create", id: "b", kind: "card", x: 0, y: 0, groupId: "g" },
     {
@@ -424,7 +426,7 @@ it.each(["update", "delete"] as const)(
     // Do not rely on native version counters: arbitrary JSON changes count too.
     await store.save(boardId, 1, { ...blank(), elements: [{ ...rectangle(), x: 42 }] });
     const before = await store.read(boardId);
-    const operations: BoardOperation[] = [
+    const operations: Array<BoardOperation> = [
       create("new"),
       op === "update" ? { op, id: "rect", x: 500 } : { op, id: "rect" },
     ];
@@ -578,8 +580,8 @@ it("keeps recorded partial outcomes detached from callers", async () => {
   const grant = await active();
   const req = apply(grant, [create(), { op: "delete", id: "gone" }]);
   const first = (await store.handle(req, validate)) as {
-    applied: string[];
-    skipped: { id: string; reason: string }[];
+    applied: Array<string>;
+    skipped: Array<{ id: string; reason: string }>;
   };
   first.applied.push("fake");
   first.skipped[0].reason = "fake";
@@ -748,9 +750,13 @@ it.each(["revoke", "target", "close"] as const)(
           bytes,
           () => {
             if (++calls === 2) {
-              if (kind === "revoke") store.revoke(grant.grantId);
-              else if (kind === "target") store.revokeTarget(owner);
-              else store.close();
+              if (kind === "revoke") {
+                store.revoke(grant.grantId);
+              } else if (kind === "target") {
+                store.revokeTarget(owner);
+              } else {
+                store.close();
+              }
             }
             check();
           },
@@ -781,7 +787,9 @@ it("revalidates after asynchronous reads and rejects a stale target before editi
   );
   await expect(
     store.handle(apply(grant), () => {
-      if (!valid) throw new BoardError(403, "target changed");
+      if (!valid) {
+        throw new BoardError(403, "target changed");
+      }
     }),
   ).rejects.toMatchObject({ status: 403 });
   expect((await store.read(boardId)).revision).toBe(0);
@@ -791,13 +799,17 @@ it("revalidates human saves and captures before commit, with no published snapsh
   let calls = 0;
   await expect(
     store.save(boardId, 0, blank(), () => {
-      if (++calls >= 4) throw new BoardError(403, "revoked");
+      if (++calls >= 4) {
+        throw new BoardError(403, "revoked");
+      }
     }),
   ).rejects.toMatchObject({ status: 403 });
   calls = 0;
   await expect(
     store.capture(boardId, 0, png, () => {
-      if (++calls >= 6) throw new BoardError(403, "revoked");
+      if (++calls >= 6) {
+        throw new BoardError(403, "revoked");
+      }
     }),
   ).rejects.toMatchObject({ status: 403 });
   expect(await store.read(boardId)).toMatchObject({ revision: 0, snapshots: [] });
@@ -915,7 +927,7 @@ it("reports unsupported and malformed operations rather than ignoring fields", a
     [{ op: "create", id: "bad", kind: "connection", x: 0, y: 0 }],
   ]) {
     await expect(
-      store.handle(apply(grant, operations as BoardOperation[]), validate),
+      store.handle(apply(grant, operations as Array<BoardOperation>), validate),
     ).rejects.toMatchObject({ status: 400 });
   }
   expect((await store.read(boardId)).revision).toBe(0);

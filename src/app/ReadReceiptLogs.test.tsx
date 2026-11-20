@@ -1,4 +1,5 @@
-import { act, create, type ReactTestRenderer } from "react-test-renderer";
+import { act, create } from "react-test-renderer";
+import type { ReactTestRenderer } from "react-test-renderer";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
 import { ReadReceiptLogs } from "./ReadReceiptLogs";
 import { readReceiptRecordSchema } from "../shared/api/readReceiptDiagnostics";

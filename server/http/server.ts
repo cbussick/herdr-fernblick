@@ -1,6 +1,7 @@
 import { randomUUID } from "node:crypto";
 import { createReadStream, existsSync, statSync } from "node:fs";
-import { type IncomingMessage, type ServerResponse, createServer } from "node:http";
+import { createServer } from "node:http";
+import type { IncomingMessage, ServerResponse } from "node:http";
 import { extname, resolve, sep } from "node:path";
 import { z } from "zod";
 import {
@@ -18,11 +19,8 @@ import {
 } from "../../src/shared/api/contracts.js";
 import { HerdrRequestError } from "../herdr/HerdrClient.js";
 import { LocalImageError, readLocalImage } from "../images/localImages.js";
-import {
-  AgentReadStatuses,
-  ReadStatusError,
-  type ReadReceiptOptions,
-} from "../agents/readStatuses.js";
+import { AgentReadStatuses, ReadStatusError } from "../agents/readStatuses.js";
+import type { ReadReceiptOptions } from "../agents/readStatuses.js";
 import {
   mimeTypeForUpload,
   readImageUpload,
@@ -30,10 +28,12 @@ import {
   uploadIdPattern,
 } from "../uploads/imageUploads.js";
 import type { HerdrService } from "../herdr/herdrService.js";
-import { LiveBridge, LiveChatError } from "../pi/liveBridge.js";
+import type { LiveBridge } from "../pi/liveBridge.js";
+import { LiveChatError } from "../pi/liveBridge.js";
 import { SavedChatError } from "../pi/sessionCatalog.js";
 import { liveEvents } from "../pi/liveEvents.js";
-import { BoardStore, BoardError } from "../boards/storage.js";
+import type { BoardStore } from "../boards/storage.js";
+import { BoardError } from "../boards/storage.js";
 import { createBoardRoutes } from "./boardRoutes.js";
 import {
   targetSchema as chatTargetSchema,
@@ -65,7 +65,7 @@ const targetSchema = z
   .min(1)
   .max(128)
   .regex(/^[A-Za-z0-9:_-]+$/);
-const linesSchema = z.coerce.number().int().min(20).max(2_000).default(400);
+const linesSchema = z.coerce.number().int().min(20).max(2000).default(400);
 
 const contentTypes: Record<string, string> = {
   ".css": "text/css; charset=utf-8",
@@ -106,13 +106,15 @@ async function readJson(request: IncomingMessage) {
     throw new HttpError(415, "Requests must use application/json");
   }
 
-  const chunks: Buffer[] = [];
+  const chunks: Array<Buffer> = [];
   let size = 0;
 
   for await (const chunk of request) {
     const buffer = Buffer.from(chunk);
     size += buffer.length;
-    if (size > MAX_BODY_BYTES) throw new HttpError(413, "Request is too large");
+    if (size > MAX_BODY_BYTES) {
+      throw new HttpError(413, "Request is too large");
+    }
     chunks.push(buffer);
   }
 
@@ -124,25 +126,33 @@ async function readJson(request: IncomingMessage) {
 }
 
 async function readBytes(request: IncomingMessage, limit: number) {
-  const chunks: Buffer[] = [];
+  const chunks: Array<Buffer> = [];
   let size = 0;
   for await (const chunk of request) {
     const buffer = Buffer.from(chunk);
     size += buffer.length;
-    if (size > limit) throw new HttpError(413, "Image is too large");
+    if (size > limit) {
+      throw new HttpError(413, "Image is too large");
+    }
     chunks.push(buffer);
   }
-  if (!size) throw new HttpError(400, "Image is empty");
+  if (!size) {
+    throw new HttpError(400, "Image is empty");
+  }
   return Buffer.concat(chunks);
 }
 
 function requireSameOrigin(request: IncomingMessage) {
   const origin = request.headers.origin;
   const host = request.headers.host;
-  if (!origin || !host) throw new HttpError(403, "Missing request origin");
+  if (!origin || !host) {
+    throw new HttpError(403, "Missing request origin");
+  }
 
   const originUrl = new URL(origin);
-  if (originUrl.host !== host) throw new HttpError(403, "Cross-origin request rejected");
+  if (originUrl.host !== host) {
+    throw new HttpError(403, "Cross-origin request rejected");
+  }
 }
 
 class HttpError extends Error {
@@ -158,27 +168,39 @@ function getAgentRoute(pathname: string) {
   const match = pathname.match(
     /^\/api\/agents\/([^/]+)(?:\/(output|chat|prompt|stop|tree|tree-page|tree-navigation|skills|compact|models|set-model|thinking-levels|set-thinking-level|save-default|keys|restart|exit|read))?$/,
   );
-  if (!match) return null;
+  if (!match) {
+    return null;
+  }
 
   const target = targetSchema.safeParse(decodeURIComponent(match[1]));
-  if (!target.success) throw new HttpError(400, "Invalid agent target");
+  if (!target.success) {
+    throw new HttpError(400, "Invalid agent target");
+  }
 
   return { target: target.data, action: match[2] };
 }
 
 function getPaneRoute(pathname: string) {
   const match = pathname.match(/^\/api\/panes\/([^/]+)\/(output|input|keys)$/);
-  if (!match) return null;
+  if (!match) {
+    return null;
+  }
   const paneId = targetSchema.safeParse(decodeURIComponent(match[1]));
-  if (!paneId.success) throw new HttpError(400, "Invalid pane target");
+  if (!paneId.success) {
+    throw new HttpError(400, "Invalid pane target");
+  }
   return { paneId: paneId.data, action: match[2] };
 }
 
 function getTabTarget(pathname: string) {
   const match = pathname.match(/^\/api\/tabs\/([^/]+)$/);
-  if (!match) return null;
+  if (!match) {
+    return null;
+  }
   const tabId = targetSchema.safeParse(decodeURIComponent(match[1]));
-  if (!tabId.success) throw new HttpError(400, "Invalid tab target");
+  if (!tabId.success) {
+    throw new HttpError(400, "Invalid tab target");
+  }
   return tabId.data;
 }
 
@@ -195,10 +217,13 @@ async function handleApi(
   if (request.method === "GET" && url.pathname === "/api/local-images") {
     response.setHeader("Cache-Control", "private, no-store");
     response.setHeader("Cross-Origin-Resource-Policy", "same-origin");
-    if (request.headers.origin) requireSameOrigin(request);
+    if (request.headers.origin) {
+      requireSameOrigin(request);
+    }
     const site = request.headers["sec-fetch-site"];
-    if (site && site !== "same-origin" && site !== "none")
+    if (site && site !== "same-origin" && site !== "none") {
       throw new HttpError(403, "Cross-origin request rejected");
+    }
     const { bytes, mimeType } = await readLocalImage(url.searchParams.get("path") ?? "");
     response.setHeader("Content-Type", mimeType);
     response.setHeader("Content-Length", bytes.length);
@@ -209,15 +234,18 @@ async function handleApi(
   const uploadMatch = url.pathname.match(/^\/api\/uploads\/([^/]+)$/);
   if (request.method === "GET" && uploadMatch) {
     const id = decodeURIComponent(uploadMatch[1]);
-    if (!uploadIdPattern.test(id)) throw new HttpError(400, "Invalid image attachment");
+    if (!uploadIdPattern.test(id)) {
+      throw new HttpError(400, "Invalid image attachment");
+    }
     response.statusCode = 200;
     response.setHeader("Content-Type", mimeTypeForUpload(id));
     response.setHeader("Cache-Control", "private, no-store");
     try {
       response.end(await readImageUpload(id));
     } catch (error) {
-      if ((error as NodeJS.ErrnoException).code === "ENOENT")
+      if ((error as NodeJS.ErrnoException).code === "ENOENT") {
         throw new HttpError(404, "Image no longer available");
+      }
       throw error;
     }
     return true;
@@ -226,7 +254,9 @@ async function handleApi(
   if (request.method === "POST" && url.pathname === "/api/uploads/images") {
     requireSameOrigin(request);
     const mimeType = request.headers["content-type"]?.split(";", 1)[0];
-    if (!mimeType?.startsWith("image/")) throw new HttpError(415, "A supported image is required");
+    if (!mimeType?.startsWith("image/")) {
+      throw new HttpError(415, "A supported image is required");
+    }
     try {
       sendJson(
         response,
@@ -234,16 +264,21 @@ async function handleApi(
         await saveImageUpload(await readBytes(request, MAX_IMAGE_BYTES), mimeType),
       );
     } catch (error) {
-      if (error instanceof HttpError) throw error;
+      if (error instanceof HttpError) {
+        throw error;
+      }
       throw new HttpError(400, error instanceof Error ? error.message : "Invalid image");
     }
     return true;
   }
 
   if (request.method === "GET" && url.pathname === "/api/chats") {
-    if (request.headers.origin) requireSameOrigin(request);
-    if (request.headers["sec-fetch-site"] === "cross-site")
+    if (request.headers.origin) {
+      requireSameOrigin(request);
+    }
+    if (request.headers["sec-fetch-site"] === "cross-site") {
       throw new HttpError(403, "Cross-origin request rejected");
+    }
     response.setHeader("Cache-Control", "no-store");
     sendJson(response, 200, await service.getSavedChats());
     return true;
@@ -251,9 +286,12 @@ async function handleApi(
 
   const sessionMatch = url.pathname.match(/^\/api\/sessions\/([^/]+)$/);
   if (request.method === "GET" && sessionMatch) {
-    if (request.headers.origin) requireSameOrigin(request);
-    if (request.headers["sec-fetch-site"] === "cross-site")
+    if (request.headers.origin) {
+      requireSameOrigin(request);
+    }
+    if (request.headers["sec-fetch-site"] === "cross-site") {
       throw new HttpError(403, "Cross-origin request rejected");
+    }
     const sessionId = z
       .string()
       .min(1)
@@ -357,7 +395,9 @@ async function handleApi(
   }
 
   const route = getAgentRoute(url.pathname);
-  if (!route) return false;
+  if (!route) {
+    return false;
+  }
 
   if (request.method === "POST" && route.action === "read") {
     const requestId =
@@ -378,12 +418,16 @@ async function handleApi(
     };
     response.once("finish", () => logResult(false));
     response.once("close", () => {
-      if (!response.writableFinished) logResult(true);
+      if (!response.writableFinished) {
+        logResult(true);
+      }
     });
     try {
       requireSameOrigin(request);
       const body = markAgentReadRequestSchema.parse(await readJson(request));
-      if (!readStatuses) throw new HttpError(503, "Read receipt storage is not configured");
+      if (!readStatuses) {
+        throw new HttpError(503, "Read receipt storage is not configured");
+      }
       await readStatuses.markRead(route.target, body.completionId, requestId);
       sendJson(response, 200, { ok: true });
       return true;
@@ -411,9 +455,12 @@ async function handleApi(
   }
 
   if (request.method === "GET" && route.action === "chat") {
-    if (request.headers.origin) requireSameOrigin(request);
-    if (request.headers["sec-fetch-site"] === "cross-site")
+    if (request.headers.origin) {
+      requireSameOrigin(request);
+    }
+    if (request.headers["sec-fetch-site"] === "cross-site") {
       throw new HttpError(403, "Cross-origin request rejected");
+    }
     liveEvents(response, await service.getAgent(route.target), bridge);
     return true;
   }
@@ -497,9 +544,11 @@ async function handleApi(
       const body = treeRequestSchema.parse(raw);
       target = body.target;
       if (route.action === "tree-navigation") {
-        if (!body.entryId) throw new HttpError(400, "Entry ID required");
+        if (!body.entryId) {
+          throw new HttpError(400, "Entry ID required");
+        }
         input = { action: "navigate", entryId: body.entryId };
-      } else
+      } else {
         input = {
           action: route.action as
             | "tree"
@@ -509,11 +558,14 @@ async function handleApi(
             | "models"
             | "thinking-levels",
         };
+      }
     }
     const reply = await bridge.request(await service.getAgent(route.target), target, input);
-    if (reply.type === "ack" && reply.outcome === "rejected")
+    if (reply.type === "ack" && reply.outcome === "rejected") {
       sendJson(response, 409, { error: reply.reason });
-    else sendJson(response, 200, reply);
+    } else {
+      sendJson(response, 200, reply);
+    }
     return true;
   }
 
@@ -529,24 +581,33 @@ async function handleApi(
 }
 
 function serveStatic(request: IncomingMessage, response: ServerResponse, publicDir: string) {
-  if (request.method !== "GET" && request.method !== "HEAD") return false;
+  if (request.method !== "GET" && request.method !== "HEAD") {
+    return false;
+  }
 
   const url = new URL(request.url ?? "/", `http://${request.headers.host ?? "localhost"}`);
   const requestedPath = url.pathname === "/" ? "index.html" : url.pathname.slice(1);
   let filePath = resolve(publicDir, requestedPath);
-  if (!filePath.startsWith(`${resolve(publicDir)}${sep}`)) return false;
+  if (!filePath.startsWith(`${resolve(publicDir)}${sep}`)) {
+    return false;
+  }
 
   if (!existsSync(filePath) || !statSync(filePath).isFile()) {
     filePath = resolve(publicDir, "index.html");
   }
-  if (!existsSync(filePath)) return false;
+  if (!existsSync(filePath)) {
+    return false;
+  }
 
   response.statusCode = 200;
   // Revalidate the shell and worker so an installed app can discover releases.
   response.setHeader("Cache-Control", "no-cache");
   response.setHeader("Content-Type", contentTypes[extname(filePath)] ?? "application/octet-stream");
-  if (request.method === "HEAD") response.end();
-  else createReadStream(filePath).pipe(response);
+  if (request.method === "HEAD") {
+    response.end();
+  } else {
+    createReadStream(filePath).pipe(response);
+  }
   return true;
 }
 
@@ -561,7 +622,9 @@ export function createHttpServer(
   const readStatuses = readReceiptOptions
     ? new AgentReadStatuses(service, readReceiptOptions)
     : undefined;
-  if (boards) bridge.setBoardStore(boards);
+  if (boards) {
+    bridge.setBoardStore(boards);
+  }
   const handleBoard = boards ? createBoardRoutes(service, bridge, boards) : undefined;
   return createServer((request, response) => {
     void (async () => {
@@ -573,7 +636,9 @@ export function createHttpServer(
             (await handleApi(request, response, service, bridge, readStatuses, logReadReceipt))
           : serveStatic(request, response, publicDir);
 
-        if (!handled) sendJson(response, 404, { error: "Not found" });
+        if (!handled) {
+          sendJson(response, 404, { error: "Not found" });
+        }
       } catch (error) {
         if (error instanceof z.ZodError) {
           sendJson(response, 400, { error: "Invalid request" });

@@ -41,8 +41,8 @@ it("round trips all primitives through editor state, backups, resizing, deletion
   expect(fromDiagram(toDiagram(scene), scene)).toEqual(scene);
   expect(importFlowScene(exportFlowScene(scene))).toEqual(scene);
   const view = toDiagram(scene);
-  view.nodes[0]!.position.x = 100;
-  view.nodes[0]!.width = 400;
+  view.nodes[0].position.x = 100;
+  view.nodes[0].width = 400;
   view.nodes = view.nodes.filter((n) => n.id !== "text");
   const changed = fromDiagram(view, scene);
   expect(changed.elements.find((e) => e.id === "line")).toMatchObject({
@@ -66,8 +66,9 @@ it("constructs only trusted SVG tags and escapes text instead of interpreting ma
   expect(svg).not.toContain("<image");
   expect(svg).not.toContain("foreignObject");
   expect(svg).toContain("<tspan");
-  for (const shape of primitiveKinds)
+  for (const shape of primitiveKinds) {
     expect(
       renderToStaticMarkup(<PrimitiveSvg shape={shape} drawing={defaultPrimitiveProps()} />),
     ).toContain("<svg");
+  }
 });

@@ -77,10 +77,14 @@ const initial = () => ({
   },
 });
 async function until(predicate, description) {
-  const limit = Date.now() + 10000;
+  const limit = Date.now() + 10_000;
   while (!predicate()) {
-    if (Date.now() > limit) throw new Error(`Timed out: ${description}`);
-    await new Promise((resolve) => setTimeout(resolve, 20));
+    if (Date.now() > limit) {
+      throw new Error(`Timed out: ${description}`);
+    }
+    await new Promise((resolve) => {
+      setTimeout(resolve, 20);
+    });
   }
 }
 const server = createHttpServer(
@@ -88,7 +92,9 @@ const server = createHttpServer(
   resolve("dist"),
   {},
 );
-await new Promise((resolve) => server.listen(0, "127.0.0.1", resolve));
+await new Promise((resolve) => {
+  server.listen(0, "127.0.0.1", resolve);
+});
 const origin = `http://127.0.0.1:${server.address().port}`;
 await mkdir(".runtime/flow-board-evidence", { recursive: true });
 try {
@@ -131,11 +137,12 @@ try {
               constructor(url) {
                 this.url = String(url);
                 window.fixtureSources.push(this);
-                if (!this.url.includes("/board/"))
+                if (!this.url.includes("/board/")) {
                   this.timer = setTimeout(
                     () => this.onmessage?.({ data: JSON.stringify(snapshot) }),
                     20,
                   );
+                }
               }
               close() {
                 clearTimeout(this.timer);
@@ -161,9 +168,13 @@ try {
         await page.route("**/*", async (route) => {
           const request = route.request();
           const url = new URL(request.url());
-          if (url.origin !== origin) return route.abort();
-          if (!url.pathname.startsWith("/api/")) return route.continue();
-          if (url.pathname === "/api/agents")
+          if (url.origin !== origin) {
+            return route.abort();
+          }
+          if (!url.pathname.startsWith("/api/")) {
+            return route.continue();
+          }
+          if (url.pathname === "/api/agents") {
             return route.fulfill({
               json: {
                 agents: [agent],
@@ -171,6 +182,7 @@ try {
                 workspaces: [{ workspace_id: "w1", label: "Flow fixture" }],
               },
             });
+          }
           if (url.pathname.endsWith("/board")) {
             await initialOpen;
             return failOpen
@@ -180,13 +192,15 @@ try {
           if (url.pathname.endsWith("/board/save")) {
             const input = request.postDataJSON();
             saves.push(input);
-            if (failSaves)
+            if (failSaves) {
               return route.fulfill({ status: 500, json: { error: "Fixture storage unavailable" } });
-            if (input.baseRevision !== board.revision)
+            }
+            if (input.baseRevision !== board.revision) {
               return route.fulfill({
                 status: 409,
                 json: { error: "Board changed", code: "board_stale" },
               });
+            }
             board = {
               ...board,
               scene: input.scene,
@@ -198,11 +212,12 @@ try {
           }
           if (url.pathname.endsWith("/board/export")) {
             exports.push(request.postDataJSON());
-            if (failExports)
+            if (failExports) {
               return route.fulfill({
                 status: 503,
                 json: { error: "Fixture renderer unavailable" },
               });
+            }
             return route.fulfill({
               contentType: "image/png",
               body: Buffer.from(
@@ -218,7 +233,9 @@ try {
               json: { type: "ack", id: input.requestId, outcome: "invoked" },
             });
           }
-          if (url.pathname.endsWith("/board/revoke")) return route.fulfill({ json: { ok: true } });
+          if (url.pathname.endsWith("/board/revoke")) {
+            return route.fulfill({ json: { ok: true } });
+          }
           return route.fulfill({
             status: 404,
             json: { error: `Unmocked fixture request ${url.pathname}` },
@@ -256,7 +273,7 @@ try {
               Math.abs(
                 box.left -
                   header.getBoundingClientRect().left -
-                  parseFloat(getComputedStyle(header).paddingLeft),
+                  Number.parseFloat(getComputedStyle(header).paddingLeft),
               ) < 2 &&
               box.width >= 44 &&
               box.height >= 44
@@ -639,5 +656,7 @@ try {
   );
 } finally {
   server.closeAllConnections();
-  await new Promise((resolve) => server.close(resolve));
+  await new Promise((resolve) => {
+    server.close(resolve);
+  });
 }

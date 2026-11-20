@@ -1,13 +1,5 @@
-import {
-  useCallback,
-  useEffect,
-  useId,
-  useRef,
-  useState,
-  type KeyboardEvent,
-  type ReactNode,
-  type RefCallback,
-} from "react";
+import { useCallback, useEffect, useId, useRef, useState } from "react";
+import type { KeyboardEvent, ReactNode, RefCallback } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { getAgentSkills } from "../../shared/api/apiClient";
 import type { AgentSkill, Target } from "../../../packages/pi-live-chat/protocol";
@@ -37,7 +29,7 @@ interface Props {
   canSend: boolean;
   canAttach: boolean;
   onAttach: () => void;
-  onPasteImages: (files: File[]) => void;
+  onPasteImages: (files: Array<File>) => void;
   canOpenBoard?: boolean;
   onOpenBoard?: () => void;
   conversationAction?: ReactNode;
@@ -90,31 +82,45 @@ export function SkillComposer(props: Props) {
   const activeId = open && ready && skills[index] ? `${listId}-${index}` : undefined;
 
   useEffect(() => {
-    if (browsing) searchInput.current?.focus({ preventScroll: true });
+    if (browsing) {
+      searchInput.current?.focus({ preventScroll: true });
+    }
   }, [browsing, mobile]);
   useEffect(() => {
-    if (open) selected.current?.scrollIntoView({ block: "nearest" });
+    if (open) {
+      selected.current?.scrollIntoView({ block: "nearest" });
+    }
   }, [index, open, search]);
 
   function close(focus = true) {
     dialogRef.current?.close();
     setBrowsing(false);
-    if (focus) textarea.current?.focus();
+    if (focus) {
+      textarea.current?.focus();
+    }
   }
   function choose(skill: AgentSkill) {
-    if (!ready || sending) return;
+    if (!ready || sending) {
+      return;
+    }
     const next = insertSkill(prompt, skill.name);
-    if (next.length > 32000) return;
+    if (next.length > 32_000) {
+      return;
+    }
     dialogRef.current?.close();
     onChange(next);
     setBrowsing(false);
     textarea.current?.focus();
   }
   function keys(event: KeyboardEvent) {
-    if (!open || event.nativeEvent.isComposing) return;
+    if (!open || event.nativeEvent.isComposing) {
+      return;
+    }
     // Search is inside the send form. Enter must never implicitly send a draft,
     // including while loading, after an error, or with no matching skills.
-    if (event.key === "Enter") event.preventDefault();
+    if (event.key === "Enter") {
+      event.preventDefault();
+    }
     if (event.key === "Escape") {
       event.preventDefault();
       event.stopPropagation();
@@ -124,11 +130,15 @@ export function SkillComposer(props: Props) {
       skills.length &&
       ["ArrowDown", "ArrowUp", "Enter", "Tab"].includes(event.key)
     ) {
-      if (event.key === "Tab" && event.shiftKey) return;
+      if (event.key === "Tab" && event.shiftKey) {
+        return;
+      }
       event.preventDefault();
-      if (event.key === "Enter" || event.key === "Tab") choose(skills[index]);
-      else
+      if (event.key === "Enter" || event.key === "Tab") {
+        choose(skills[index]);
+      } else {
         setActive((index + (event.key === "ArrowDown" ? 1 : -1) + skills.length) % skills.length);
+      }
     }
   }
 
@@ -198,7 +208,7 @@ export function SkillComposer(props: Props) {
                 className={styles.option}
                 onMouseDown={(event) => event.preventDefault()}
                 onClick={() => choose(skill)}
-                disabled={insertSkill(prompt, skill.name).length > 32000}
+                disabled={insertSkill(prompt, skill.name).length > 32_000}
                 title={skill.path}
               >
                 <span className={styles.name}>{skill.name}</span>
@@ -239,7 +249,7 @@ export function SkillComposer(props: Props) {
           Showing the first {catalog.data.skills.length} skills; catalogue limit reached.
         </p>
       ) : null}
-      {prompt.length > 31736 ? (
+      {prompt.length > 31_736 ? (
         <p className={styles.notice}>Shorten the draft if a skill won’t fit the message limit.</p>
       ) : null}
       <footer className={styles.hint} id={hintId}>
@@ -251,7 +261,9 @@ export function SkillComposer(props: Props) {
     <div
       className={styles.composer}
       onBlur={(event) => {
-        if (!mobile && !event.currentTarget.contains(event.relatedTarget)) close(false);
+        if (!mobile && !event.currentTarget.contains(event.relatedTarget)) {
+          close(false);
+        }
       }}
     >
       {open ? (
@@ -291,9 +303,13 @@ export function SkillComposer(props: Props) {
           const images = Array.from(event.clipboardData.files).filter((file) =>
             file.type.startsWith("image/"),
           );
-          if (!images.length) return;
+          if (!images.length) {
+            return;
+          }
           event.preventDefault();
-          if (!sending) props.onPasteImages(images);
+          if (!sending) {
+            props.onPasteImages(images);
+          }
         }}
         onKeyDown={(event) => {
           if (
@@ -303,14 +319,15 @@ export function SkillComposer(props: Props) {
             event.nativeEvent.keyCode !== 229
           ) {
             event.preventDefault();
-            if (!event.repeat && !sending && props.canSend)
+            if (!event.repeat && !sending && props.canSend) {
               event.currentTarget.form?.requestSubmit();
+            }
           }
         }}
         title="Enter to send; Shift+Enter for a new line"
         placeholder="Message…"
         rows={1}
-        maxLength={32000}
+        maxLength={32_000}
       />
       <div className={styles.toolbar}>
         <button
@@ -337,8 +354,9 @@ export function SkillComposer(props: Props) {
           aria-expanded={open}
           aria-controls={open ? listId : undefined}
           onClick={() => {
-            if (open) close();
-            else {
+            if (open) {
+              close();
+            } else {
               setBrowsing(true);
               setSearch("");
               setActive(0);

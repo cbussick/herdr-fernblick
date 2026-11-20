@@ -15,8 +15,9 @@ it("parses only complete conversation-bound board links", () => {
     "?pane=w1:p2&session=a&whiteboard=0",
     "?pane=w1%0Ap2&session=a&whiteboard=1",
     `?pane=${"x".repeat(201)}&session=a&whiteboard=1`,
-  ])
+  ]) {
     expect(readWhiteboardLink(value)).toBeNull();
+  }
 });
 it("consumes a viewing hint without discarding unrelated URL or history state", () => {
   const state = { fernblickPaneId: "w1:p2", other: true };

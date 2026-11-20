@@ -45,7 +45,7 @@ export function ThinkingLevelPicker({
   onClose,
 }: Props) {
   const dialog = useRef<HTMLDialogElement>(null);
-  const options = useRef<(HTMLButtonElement | null)[]>([]);
+  const options = useRef<Array<HTMLButtonElement | null>>([]);
   const mounted = useRef(false);
   const switching = useRef(false);
   const [pending, setPending] = useState(false);
@@ -94,7 +94,9 @@ export function ThinkingLevelPicker({
     }
   }, [state, modelMatches]);
   async function select(level: ThinkingLevel, saveDefault = false) {
-    if (!ready || switching.current || (saveDefault && !canSaveDefault)) return;
+    if (!ready || switching.current || (saveDefault && !canSaveDefault)) {
+      return;
+    }
     switching.current = true;
     setPending(true);
     setSavingDefault(saveDefault);
@@ -107,21 +109,28 @@ export function ThinkingLevelPicker({
           modelId: state.modelId,
           level,
         });
-        if (mounted.current) setSavedDefault(level);
+        if (mounted.current) {
+          setSavedDefault(level);
+        }
       } else {
         await setAgentThinkingLevel(pane, target, state.provider, state.modelId, level);
-        if (mounted.current) onClose();
+        if (mounted.current) {
+          onClose();
+        }
       }
     } catch (error) {
-      if (mounted.current)
+      if (mounted.current) {
         setError(
           error instanceof Error
             ? error.message
             : "Thinking level change failed. Check Pi before trying again.",
         );
+      }
     } finally {
       switching.current = false;
-      if (mounted.current) setPending(false);
+      if (mounted.current) {
+        setPending(false);
+      }
     }
   }
   return (

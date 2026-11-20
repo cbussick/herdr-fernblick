@@ -17,7 +17,7 @@ let root: string;
 let catalog: SessionCatalog;
 const header = { type: "session", id: "saved-session", version: 3, cwd: "/project" };
 const user = (content: unknown) => ({ type: "message", message: { role: "user", content } });
-async function save(path: string, entries: unknown[]) {
+async function save(path: string, entries: Array<unknown>) {
   await writeFile(path, entries.map((entry) => JSON.stringify(entry)).join("\n") + "\n");
 }
 beforeEach(async () => {

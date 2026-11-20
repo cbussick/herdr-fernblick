@@ -47,13 +47,18 @@ function viewport() {
 function capture() {
   for (const kind of ["console", "overview"]) {
     const header = document.querySelector(`[data-testid="${kind}-header"]`);
-    if (!header) continue;
+    if (!header) {
+      continue;
+    }
     const bounds = header.getBoundingClientRect();
     // A mounted overview can be hidden behind the single-pane console.
-    if (bounds.width <= 0 || bounds.height <= 0) continue;
+    if (bounds.width <= 0 || bounds.height <= 0) {
+      continue;
+    }
     const ancestors = [];
-    for (let node = header.parentElement; node && ancestors.length < 4; node = node.parentElement)
+    for (let node = header.parentElement; node && ancestors.length < 4; node = node.parentElement) {
       ancestors.push(surface(node));
+    }
     latest[kind] = {
       capturedAt: new Date().toISOString(),
       viewport: viewport(),
@@ -73,13 +78,16 @@ export function getHeaderDiagnostics() {
 export function useHeaderDiagnostics() {
   // Capture after each app navigation/render; no React state or storage writes.
   useLayoutEffect(() => {
-    if (typeof document === "undefined") return;
+    if (typeof document === "undefined") {
+      return;
+    }
     capture();
     const observer = typeof ResizeObserver === "undefined" ? null : new ResizeObserver(capture);
     for (const node of document.querySelectorAll(
       '[data-testid="console-header"], [data-testid="overview-header"]',
-    ))
+    )) {
       observer?.observe(node);
+    }
     window.addEventListener("resize", capture);
     window.addEventListener("scroll", capture);
     window.visualViewport?.addEventListener("resize", capture);

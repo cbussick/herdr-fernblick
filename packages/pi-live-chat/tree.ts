@@ -1,5 +1,6 @@
 import type { ExtensionContext, SessionTreeNode } from "@earendil-works/pi-coding-agent";
-import { MAX_SNAPSHOT, MAX_TEXT, type PiTree, type PiTreeNode } from "./protocol.js";
+import { MAX_SNAPSHOT, MAX_TEXT } from "./protocol.js";
+import type { PiTree, PiTreeNode } from "./protocol.js";
 
 // session_tree hooks may append non-message extension state (e.g. Plannotator)
 // before navigateTree returns. Accept that tail only when it reaches the exact
@@ -11,18 +12,26 @@ export function matchesNavigationDestination(
   let cursor = manager.getLeafId();
   const visited = new Set<string>();
   while (cursor !== expectedLeaf) {
-    if (cursor === null || visited.has(cursor)) return false;
+    if (cursor === null || visited.has(cursor)) {
+      return false;
+    }
     visited.add(cursor);
     const entry = manager.getEntry(cursor);
-    if (entry?.type !== "custom") return false;
+    if (entry?.type !== "custom") {
+      return false;
+    }
     cursor = entry.parentId;
   }
   return true;
 }
 
 export function contentText(content: unknown): string {
-  if (typeof content === "string") return content;
-  if (!Array.isArray(content)) return "";
+  if (typeof content === "string") {
+    return content;
+  }
+  if (!Array.isArray(content)) {
+    return "";
+  }
   return content
     .flatMap((b) =>
       b && typeof b === "object" && b.type === "text" && typeof b.text === "string" ? [b.text] : [],
@@ -34,14 +43,15 @@ export function projectTree(
 ): PiTree {
   const raw = manager.getTree();
   const byId = new Map<string, { node: PiTreeNode | undefined; parent: string | null }>();
-  const roots: PiTreeNode[] = [];
-  const stack: { raw: SessionTreeNode; visibleParent?: PiTreeNode; depth: number }[] = raw
+  const roots: Array<PiTreeNode> = [];
+  const stack: Array<{ raw: SessionTreeNode; visibleParent?: PiTreeNode; depth: number }> = raw
     .map((node) => ({ raw: node, depth: 0 }))
     .reverse();
   while (stack.length) {
     const { raw: item, visibleParent, depth } = stack.pop()!;
-    if (byId.size >= 2000 || depth > 256)
+    if (byId.size >= 2000 || depth > 256) {
       throw new Error("Conversation tree is too large to display safely");
+    }
     const e = item.entry;
     let node: PiTreeNode | undefined;
     if (e.type === "message" && (e.message.role === "user" || e.message.role === "assistant")) {
@@ -57,13 +67,17 @@ export function projectTree(
           isActivePath: false,
           children: [],
         };
-        if (visibleParent) visibleParent.children.push(node);
-        else roots.push(node);
+        if (visibleParent) {
+          visibleParent.children.push(node);
+        } else {
+          roots.push(node);
+        }
       }
     }
     byId.set(e.id, { node, parent: e.parentId });
-    for (let i = item.children.length - 1; i >= 0; i--)
+    for (let i = item.children.length - 1; i >= 0; i--) {
       stack.push({ raw: item.children[i], visibleParent: node ?? visibleParent, depth: depth + 1 });
+    }
   }
   let cursor = manager.getLeafId();
   let leafId: string | null = null;
@@ -71,7 +85,9 @@ export function projectTree(
   while (cursor && !visited.has(cursor)) {
     visited.add(cursor);
     const entry = byId.get(cursor);
-    if (!entry) break;
+    if (!entry) {
+      break;
+    }
     if (entry.node) {
       entry.node.isActivePath = true;
       leafId ??= entry.node.id;
@@ -79,7 +95,8 @@ export function projectTree(
     cursor = entry.parent;
   }
   const tree = { roots, leafId };
-  if (Buffer.byteLength(JSON.stringify(tree)) > MAX_SNAPSHOT)
+  if (Buffer.byteLength(JSON.stringify(tree)) > MAX_SNAPSHOT) {
     throw new Error("Conversation tree is too large to display safely");
+  }
   return tree;
 }

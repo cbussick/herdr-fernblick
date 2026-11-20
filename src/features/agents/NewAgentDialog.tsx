@@ -1,13 +1,10 @@
 import dialogStyles from "./Dialogs.module.css";
-import { useEffect, useRef, useState, type FormEvent } from "react";
+import { useEffect, useRef, useState } from "react";
+import type { FormEvent } from "react";
 import { useMutation } from "@tanstack/react-query";
 import { ZodError } from "zod";
-import {
-  createAgentRequestSchema,
-  optionalAgentNameSchema,
-  type Agent,
-  type Workspace,
-} from "../../shared/api/contracts";
+import { createAgentRequestSchema, optionalAgentNameSchema } from "../../shared/api/contracts";
+import type { Agent, Workspace } from "../../shared/api/contracts";
 import { createAgent } from "../../shared/api/apiClient";
 import { NewWorkspaceDialog } from "./NewWorkspaceDialog";
 
@@ -17,7 +14,7 @@ interface NewAgentDialogProps {
   onWorkspaceCreated: (workspace: Workspace) => void;
   open: boolean;
   initialWorkspaceId?: string;
-  workspaces: Workspace[];
+  workspaces: Array<Workspace>;
 }
 
 export function NewAgentDialog({
@@ -51,10 +48,16 @@ export function NewAgentDialog({
 
   useEffect(() => {
     const dialog = dialogRef.current;
-    if (!dialog) return;
+    if (!dialog) {
+      return;
+    }
 
-    if (open && !dialog.open) dialog.showModal();
-    if (!open && dialog.open) dialog.close();
+    if (open && !dialog.open) {
+      dialog.showModal();
+    }
+    if (!open && dialog.open) {
+      dialog.close();
+    }
   }, [open]);
 
   function validateName(value: string) {
@@ -93,7 +96,9 @@ export function NewAgentDialog({
       ref={dialogRef}
       className={dialogStyles["new-agent-dialog"]}
       onClose={(event) => {
-        if (event.target === event.currentTarget) handleClose();
+        if (event.target === event.currentTarget) {
+          handleClose();
+        }
       }}
     >
       <form className={dialogStyles["new-agent-form"]} onSubmit={handleSubmit} noValidate>
@@ -140,7 +145,9 @@ export function NewAgentDialog({
           value={name}
           onChange={(event) => {
             setName(event.target.value);
-            if (nameError) validateName(event.target.value);
+            if (nameError) {
+              validateName(event.target.value);
+            }
           }}
           onBlur={(event) => validateName(event.currentTarget.value)}
           placeholder="pi"

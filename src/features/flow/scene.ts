@@ -1,18 +1,20 @@
-import {
-  boardSceneSchema,
-  MAX_BOARD_BYTES,
-  type BoardScene,
-} from "../../../packages/pi-live-chat/boardProtocol";
-import { validateFlowGraph, type FlowElement } from "../../../packages/pi-live-chat/flowProtocol";
-import { edgeOptions, makeId, type Diagram } from "./model";
+import { boardSceneSchema, MAX_BOARD_BYTES } from "../../../packages/pi-live-chat/boardProtocol";
+import type { BoardScene } from "../../../packages/pi-live-chat/boardProtocol";
+import { validateFlowGraph } from "../../../packages/pi-live-chat/flowProtocol";
+import type { FlowElement } from "../../../packages/pi-live-chat/flowProtocol";
+import { edgeOptions, makeId } from "./model";
+import type { Diagram } from "./model";
 import { isInk } from "./ink";
 
 export function validateScene(input: unknown): BoardScene {
   const json = JSON.stringify(input);
-  if (new TextEncoder().encode(json).length > MAX_BOARD_BYTES)
+  if (new TextEncoder().encode(json).length > MAX_BOARD_BYTES) {
     throw new Error("Board exceeds 12 MiB");
+  }
   const scene = boardSceneSchema.parse(JSON.parse(json));
-  if (scene.engine !== "react-flow") throw new Error("Expected a React Flow board");
+  if (scene.engine !== "react-flow") {
+    throw new Error("Expected a React Flow board");
+  }
   scene.elements = validateFlowGraph(scene);
   for (const [id, file] of Object.entries(scene.files)) {
     const match = /^data:(image\/(?:png|jpeg|gif|webp));base64,([A-Za-z0-9+/]*={0,2})$/.exec(
@@ -23,18 +25,21 @@ export function validateScene(input: unknown): BoardScene {
       file.id !== id ||
       !match ||
       match[1] !== file.mimeType ||
-      match[2]!.length % 4 !== 0 ||
-      atob(match[2]!).length > 2 * 1024 * 1024
-    )
+      match[2].length % 4 !== 0 ||
+      atob(match[2]).length > 2 * 1024 * 1024
+    ) {
       throw new Error("Invalid image asset (maximum 2 MiB)");
-    const bytes = atob(match[2]!);
+    }
+    const bytes = atob(match[2]);
     const signatures: Record<string, boolean> = {
-      "image/png": bytes.startsWith("\x89PNG\r\n\x1a\n"),
-      "image/jpeg": bytes.startsWith("\xff\xd8\xff"),
+      "image/png": bytes.startsWith("\u0089PNG\r\n\u001a\n"),
+      "image/jpeg": bytes.startsWith("\u00ff\u00d8\u00ff"),
       "image/gif": bytes.startsWith("GIF87a") || bytes.startsWith("GIF89a"),
       "image/webp": bytes.startsWith("RIFF") && bytes.slice(8, 12) === "WEBP",
     };
-    if (!signatures[file.mimeType]) throw new Error("Image bytes do not match raster MIME type");
+    if (!signatures[file.mimeType]) {
+      throw new Error("Image bytes do not match raster MIME type");
+    }
   }
   return scene;
 }
@@ -48,8 +53,9 @@ export async function verifySceneImages(scene: BoardScene): Promise<void> {
       } catch {
         throw new Error("Import contains a broken image");
       }
-      if (!image.naturalWidth || !image.naturalHeight)
+      if (!image.naturalWidth || !image.naturalHeight) {
         throw new Error("Import contains an empty image");
+      }
     }),
   );
 }
@@ -79,14 +85,15 @@ export function toDiagram(input: BoardScene): Diagram {
               : { minHeight: e.height }),
           },
         };
-        if (e.type === "primitive")
+        if (e.type === "primitive") {
           return {
             ...common,
             type: "primitive" as const,
             connectable: false,
             data: { kind: "primitive" as const, shape: e.kind, drawing: e.props },
           };
-        if (e.type === "ink")
+        }
+        if (e.type === "ink") {
           return {
             ...common,
             zIndex: 2000,
@@ -94,11 +101,12 @@ export function toDiagram(input: BoardScene): Diagram {
             type: "ink" as const,
             data: { ...e.props, kind: "ink" as const },
           };
+        }
         const { imageId, ...props } = e.props;
         return {
           ...common,
           type: "component" as const,
-          data: { ...props, kind: e.kind, image: imageId ? scene.files[imageId]!.dataURL : "" },
+          data: { ...props, kind: e.kind, image: imageId ? scene.files[imageId].dataURL : "" },
           ...(e.parentId ? { parentId: e.parentId } : {}),
           ...(e.kind === "boundary" ? { zIndex: -1 } : {}),
         };
@@ -122,7 +130,7 @@ export function toDiagram(input: BoardScene): Diagram {
 export function fromDiagram(diagram: Diagram, base: BoardScene): BoardScene {
   const files = { ...base.files };
   const previous = new Map(validateFlowGraph(base).map((e) => [e.id, e]));
-  const candidates: FlowElement[] = [];
+  const candidates: Array<FlowElement> = [];
   for (const n of diagram.nodes) {
     const old = previous.get(n.id);
     const common = {
@@ -142,14 +150,15 @@ export function fromDiagram(diagram: Diagram, base: BoardScene): BoardScene {
       const { kind, image, ...props } = n.data;
       let imageId: string | null = null;
       if (image) {
-        imageId = Object.keys(files).find((id) => files[id]!.dataURL === image) ?? makeId();
-        if (!files[imageId])
+        imageId = Object.keys(files).find((id) => files[id].dataURL === image) ?? makeId();
+        if (!files[imageId]) {
           files[imageId] = {
             id: imageId,
             mimeType: image.slice(5, image.indexOf(";")) as BoardScene["files"][string]["mimeType"],
             dataURL: image,
             created: Date.now(),
           };
+        }
       }
       candidates.push({
         ...common,
@@ -162,10 +171,13 @@ export function fromDiagram(diagram: Diagram, base: BoardScene): BoardScene {
   }
   const liveNodes = new Set(candidates.map((e) => e.id));
   // Deleting a boundary can detach children; deleting a node must remove its edges.
-  for (const e of candidates)
-    if (e.type === "component" && e.parentId && !liveNodes.has(e.parentId)) e.parentId = null;
-  for (const e of diagram.edges)
-    if (liveNodes.has(e.source) && liveNodes.has(e.target))
+  for (const e of candidates) {
+    if (e.type === "component" && e.parentId && !liveNodes.has(e.parentId)) {
+      e.parentId = null;
+    }
+  }
+  for (const e of diagram.edges) {
+    if (liveNodes.has(e.source) && liveNodes.has(e.target)) {
       candidates.push({
         id: e.id,
         type: "connection",
@@ -181,9 +193,13 @@ export function fromDiagram(diagram: Diagram, base: BoardScene): BoardScene {
         label: String(e.label ?? ""),
         color: String(e.style?.stroke || edgeOptions.style.stroke),
       });
+    }
+  }
   const next = candidates.map((e) => {
     const old = previous.get(e.id);
-    if (!old) return e;
+    if (!old) {
+      return e;
+    }
     const comparable = {
       ...e,
       version: old.version,
@@ -194,9 +210,11 @@ export function fromDiagram(diagram: Diagram, base: BoardScene): BoardScene {
       : { ...e, version: old.version + 1 };
   });
   const ids = new Set(next.map((e) => e.id));
-  for (const old of previous.values())
-    if (!ids.has(old.id))
+  for (const old of previous.values()) {
+    if (!ids.has(old.id)) {
       next.push(old.isDeleted ? old : { ...old, isDeleted: true, version: old.version + 1 });
+    }
+  }
   return validateScene({
     engine: "react-flow",
     elements: next,
@@ -204,7 +222,7 @@ export function fromDiagram(diagram: Diagram, base: BoardScene): BoardScene {
     background: base.background,
   });
 }
-function liveFiles(elements: FlowElement[], files: BoardScene["files"]): BoardScene["files"] {
+function liveFiles(elements: Array<FlowElement>, files: BoardScene["files"]): BoardScene["files"] {
   const used = new Set(
     elements.flatMap((e) =>
       e.type === "component" && !e.isDeleted && e.props.imageId ? [e.props.imageId] : [],
@@ -216,13 +234,16 @@ function equalRecord(a: FlowElement, b: FlowElement) {
   return JSON.stringify(sort(a)) === JSON.stringify(sort(b));
 }
 function sort(v: unknown): unknown {
-  if (Array.isArray(v)) return v.map(sort);
-  if (v && typeof v === "object")
+  if (Array.isArray(v)) {
+    return v.map(sort);
+  }
+  if (v && typeof v === "object") {
     return Object.fromEntries(
       Object.entries(v)
         .sort(([a], [b]) => a.localeCompare(b))
         .map(([k, v]) => [k, sort(v)]),
     );
+  }
   return v;
 }
 // The small wrapper allowance keeps a maximum-size scene's own backup importable.
@@ -231,15 +252,17 @@ export function exportFlowScene(scene: BoardScene): string {
   return JSON.stringify({ format: "fernblick-flow", version: 1, scene: validateScene(scene) });
 }
 export function importFlowScene(raw: string): BoardScene {
-  if (new TextEncoder().encode(raw).length > MAX_FLOW_BACKUP_BYTES)
+  if (new TextEncoder().encode(raw).length > MAX_FLOW_BACKUP_BYTES) {
     throw new Error("Import exceeds 12 MiB");
+  }
   const data = JSON.parse(raw);
   if (
     data?.format !== "fernblick-flow" ||
     data.version !== 1 ||
     Object.keys(data).some((k) => !["format", "version", "scene"].includes(k))
-  )
+  ) {
     throw new Error("Unsupported flow backup");
+  }
   return validateScene(data.scene);
 }
 /** Replacement gets fresh identities; old records remain tombstones in the controller's history. */
@@ -260,9 +283,10 @@ export function replacementScene(imported: BoardScene, base: BoardScene): BoardS
     .filter((e) => !e.isDeleted)
     .map((e): FlowElement => {
       const id = ids.get(e.id)!;
-      if (e.type === "connection")
+      if (e.type === "connection") {
         return { ...e, id, version: 1, source: ids.get(e.source)!, target: ids.get(e.target)! };
-      if (e.type === "component")
+      }
+      if (e.type === "component") {
         return {
           ...e,
           id,
@@ -270,6 +294,7 @@ export function replacementScene(imported: BoardScene, base: BoardScene): BoardS
           parentId: e.parentId ? ids.get(e.parentId)! : null,
           props: { ...e.props, imageId: e.props.imageId ? assetIds.get(e.props.imageId)! : null },
         };
+      }
       return { ...e, id, version: 1 };
     });
   return validateScene({

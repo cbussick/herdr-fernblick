@@ -3,9 +3,14 @@ import { afterEach, expect, it, vi } from "vitest";
 const mocks = vi.hoisted(() => ({
   precache: vi.fn(),
   handler: vi.fn(() => "app-shell"),
-  navigation: vi.fn(function (handler, options) {
-    return { handler, options };
-  }),
+  navigation: vi.fn(
+    class {
+      constructor(
+        public handler: unknown,
+        public options: { allowlist: Array<RegExp> },
+      ) {}
+    },
+  ),
   route: vi.fn(),
 }));
 vi.mock("workbox-precaching", () => ({
@@ -27,7 +32,11 @@ it("precaches only build assets, handles only app navigation, and waits for expl
   await import("./sw");
   expect(mocks.precache).toHaveBeenCalledWith(worker.__WB_MANIFEST);
   expect(mocks.route).toHaveBeenCalledTimes(1);
-  const options = mocks.navigation.mock.calls[0][1] as { allowlist: RegExp[] };
+  const call = mocks.navigation.mock.calls[0];
+  if (!call) {
+    throw new Error("NavigationRoute was not constructed");
+  }
+  const options = call[1];
   const matches = (path: string) => options.allowlist.some((rule) => rule.test(path));
   expect(matches("/")).toBe(true);
   expect(matches("/?agent=one")).toBe(true);

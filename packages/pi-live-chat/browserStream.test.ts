@@ -1,7 +1,8 @@
 import { randomUUID } from "node:crypto";
 import { expect, it } from "vitest";
 import { browserFrame, readBrowserFrame } from "./browserStream.js";
-import { snapshotSchema, type Snapshot } from "./protocol.js";
+import { snapshotSchema } from "./protocol.js";
+import type { Snapshot } from "./protocol.js";
 export function fixture(): Snapshot {
   return {
     type: "snapshot",
@@ -23,7 +24,7 @@ export function fixture(): Snapshot {
     messages: Array.from({ length: 28 }, (_, i) => ({
       id: `m${i}`,
       role: "tool",
-      text: "x".repeat(32000),
+      text: "x".repeat(32_000),
     })),
     status: { cwd: "/", totalTokens: 0, cost: 0 },
   };

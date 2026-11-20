@@ -10,9 +10,11 @@ import {
   processIdentity,
 } from "../../packages/pi-live-chat/security.js";
 
-const dirs: string[] = [];
+const dirs: Array<string> = [];
 afterEach(async () => {
-  for (const dir of dirs.splice(0)) await rm(dir, { recursive: true, force: true });
+  for (const dir of dirs.splice(0)) {
+    await rm(dir, { recursive: true, force: true });
+  }
 });
 async function directory() {
   const dir = await mkdtemp(join(tmpdir(), "fb-sec-"));
@@ -72,5 +74,5 @@ it("parses Linux process identity and rejects nonexistent processes", async () =
   });
   const current = await processIdentity(process.pid);
   expect(current.start).toMatch(/^\d+$/);
-  await expect(processIdentity(2147483647)).rejects.toThrow();
+  await expect(processIdentity(2_147_483_647)).rejects.toThrow();
 });

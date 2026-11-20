@@ -47,7 +47,9 @@ async function assertVisibleMenu(page) {
 }
 
 for (const [name, engine] of Object.entries({ chromium, webkit })) {
-  if (process.env.DESIGN_BROWSER && process.env.DESIGN_BROWSER !== name) continue;
+  if (process.env.DESIGN_BROWSER && process.env.DESIGN_BROWSER !== name) {
+    continue;
+  }
   const browser = await engine.launch({ headless: true });
   try {
     for (const viewport of [
@@ -72,7 +74,9 @@ for (const [name, engine] of Object.entries({ chromium, webkit })) {
       await page.evaluate(() => document.fonts.ready);
       await page.getByTestId("workspace-disclosure").locator(":scope > summary").click();
       for (const grouped of [true, false]) {
-        if (!grouped) await page.getByRole("tab", { name: "Agents", exact: true }).click();
+        if (!grouped) {
+          await page.getByRole("tab", { name: "Agents", exact: true }).click();
+        }
         const row = page.getByTestId("pane-row").last();
         await row.scrollIntoViewIfNeeded();
         await row.dispatchEvent("pointerdown", { pointerType: "touch", pointerId: 1, button: 0 });

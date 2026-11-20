@@ -96,13 +96,13 @@ for (const [engine, browserType] of [
         const url = new URL(route.request().url());
         const method = route.request().method();
         let body;
-        if (url.pathname === "/api/agents" && method === "GET")
+        if (url.pathname === "/api/agents" && method === "GET") {
           body = {
             agents: resumed ? [agent] : [],
             tabs: [],
             workspaces: [...existingWorkspaces, ...(createdWorkspace ? [createdWorkspace] : [])],
           };
-        else if (url.pathname === "/api/chats" && method === "GET") {
+        } else if (url.pathname === "/api/chats" && method === "GET") {
           await historyReady;
           body = {
             chats: chats
@@ -172,7 +172,7 @@ for (const [engine, browserType] of [
         .first()
         .evaluate((card) => ({
           background: getComputedStyle(card).backgroundColor,
-          radius: parseFloat(getComputedStyle(card).borderRadius),
+          radius: Number.parseFloat(getComputedStyle(card).borderRadius),
         }));
       assert.equal(cardStyle.background, "rgb(255, 255, 255)");
       assert(cardStyle.radius > 0, "Chat rows are rounded cards");
@@ -331,8 +331,9 @@ for (const [engine, browserType] of [
       await dialog.waitFor({ state: "hidden" });
       assert.deepEqual(mutations, []);
       await opener.click();
-      if (existingWorkspaces.length)
+      if (existingWorkspaces.length) {
         await dialog.getByLabel("Workspace", { exact: true }).selectOption("w2");
+      }
       await dialog.getByRole("button", { name: "Create new workspace", exact: true }).click();
       const creation = page.getByRole("dialog", { name: "New workspace", exact: true });
       await creation.waitFor();
@@ -355,8 +356,9 @@ for (const [engine, browserType] of [
       assert.equal(await page.locator("dialog:modal").count(), 1);
       assert.deepEqual(creations, []);
       assert.deepEqual(mutations, []);
-      if (existingWorkspaces.length)
+      if (existingWorkspaces.length) {
         assert.equal(await dialog.getByLabel("Workspace", { exact: true }).inputValue(), "w2");
+      }
       await dialog.getByRole("button", { name: "Create new workspace", exact: true }).click();
       await creation.waitFor();
       await creation.getByLabel("Workspace name", { exact: true }).fill("Resumed project");

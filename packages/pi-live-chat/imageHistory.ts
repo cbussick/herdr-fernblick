@@ -8,15 +8,18 @@ export const IMAGE_METADATA = "fernblick-image-uploads";
 const referenceSchema = z.object({ hash: z.string().regex(/^[a-f0-9]{64}$/), id: uploadIdSchema });
 type Reference = z.infer<typeof referenceSchema>;
 function image(value: unknown) {
-  if (!value || typeof value !== "object") return;
+  if (!value || typeof value !== "object") {
+    return;
+  }
   const b = value as { type?: string; data?: string; mimeType?: string };
   if (
     b.type !== "image" ||
     typeof b.data !== "string" ||
     typeof b.mimeType !== "string" ||
     b.data.length > Math.ceil(MAX_IMAGE_BYTES / 3) * 4
-  )
+  ) {
     return;
+  }
   return { type: "image" as const, data: b.data, mimeType: b.mimeType };
 }
 function fingerprint(b: { data: string; mimeType: string }) {
@@ -28,20 +31,29 @@ export class ImageHistory {
   private pending = new Set<string>();
   private set(ref: Reference) {
     this.references.set(ref.hash, ref.id);
-    while (this.references.size > 4096)
+    while (this.references.size > 4096) {
       this.references.delete(this.references.keys().next().value!);
-  }
-  restore(entries: readonly unknown[]) {
-    for (const raw of entries) {
-      const e = raw as { type?: string; customType?: string; data?: unknown };
-      if (e.type !== "custom" || e.customType !== IMAGE_METADATA) continue;
-      const parsed = z.array(referenceSchema).max(MAX_IMAGES).safeParse(e.data);
-      if (parsed.success) for (const ref of parsed.data) this.set(ref);
     }
   }
-  remember(images: { data: string; mimeType: string }[], ids: string[]) {
+  restore(entries: ReadonlyArray<unknown>) {
+    for (const raw of entries) {
+      const e = raw as { type?: string; customType?: string; data?: unknown };
+      if (e.type !== "custom" || e.customType !== IMAGE_METADATA) {
+        continue;
+      }
+      const parsed = z.array(referenceSchema).max(MAX_IMAGES).safeParse(e.data);
+      if (parsed.success) {
+        for (const ref of parsed.data) {
+          this.set(ref);
+        }
+      }
+    }
+  }
+  remember(images: Array<{ data: string; mimeType: string }>, ids: Array<string>) {
     const refs = images.map((b, i) => ({ hash: fingerprint(b), id: uploadIdSchema.parse(ids[i]) }));
-    for (const ref of refs) this.set(ref);
+    for (const ref of refs) {
+      this.set(ref);
+    }
     return refs;
   }
   url = (value: unknown): string | undefined => {
@@ -51,7 +63,9 @@ export class ImageHistory {
   };
   ids(message: unknown) {
     const content = (message as { content?: unknown })?.content;
-    if (!Array.isArray(content)) return [];
+    if (!Array.isArray(content)) {
+      return [];
+    }
     return content
       .flatMap((value) => {
         const url = this.url(value);
@@ -59,29 +73,38 @@ export class ImageHistory {
       })
       .slice(0, MAX_IMAGES);
   }
-  async hydrate(message: unknown, valid: () => boolean, persist: (refs: Reference[]) => void) {
+  async hydrate(message: unknown, valid: () => boolean, persist: (refs: Array<Reference>) => void) {
     const content = (message as { content?: unknown })?.content;
-    if (!Array.isArray(content)) return false;
+    if (!Array.isArray(content)) {
+      return false;
+    }
     let changed = false;
     for (const value of content.filter((b) => b?.type === "image").slice(0, MAX_IMAGES)) {
       const b = image(value);
-      if (!b || !valid()) continue;
+      if (!b || !valid()) {
+        continue;
+      }
       const hash = fingerprint(b);
       if (
         this.references.has(hash) ||
         imageUrl(b) ||
         this.pending.has(hash) ||
         this.pending.size >= 4
-      )
+      ) {
         continue;
+      }
       this.pending.add(hash);
       try {
         // Large/normalized history images are served via HTTP, never large socket frames.
-        if (!/^[A-Za-z0-9+/]*={0,2}$/.test(b.data)) continue;
+        if (!/^[A-Za-z0-9+/]*={0,2}$/.test(b.data)) {
+          continue;
+        }
         const bytes = Buffer.from(b.data, "base64");
         validateImage(bytes, b.mimeType);
         const upload = await saveImageUpload(bytes, b.mimeType);
-        if (!valid()) return false;
+        if (!valid()) {
+          return false;
+        }
         const ref = { hash, id: upload.id };
         this.set(ref);
         persist([ref]);

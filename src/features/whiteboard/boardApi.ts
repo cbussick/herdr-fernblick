@@ -4,16 +4,15 @@ import {
   boardSceneSchema,
   boardStateSchema,
   boardTargetSchema,
-  type BoardTarget,
-  type BoardScene,
 } from "../../../packages/pi-live-chat/boardProtocol";
+import type { BoardTarget, BoardScene } from "../../../packages/pi-live-chat/boardProtocol";
 import { ackSchema, uploadIdSchema } from "../../../packages/pi-live-chat/protocol";
 import { ApiError } from "../../shared/api/apiClient";
 import {
   boardImageQualitySchema,
   boardImageLimits,
-  type BoardImageQuality,
 } from "../../../packages/pi-live-chat/boardImageExport";
+import type { BoardImageQuality } from "../../../packages/pi-live-chat/boardImageExport";
 
 const saveSchema = z.object({
   target: boardTargetSchema,
@@ -27,13 +26,13 @@ const sendSchema = z.object({
   revision: z.number().int().nonnegative(),
   uploadId: uploadIdSchema,
   mode: z.literal("image"),
-  text: z.string().max(29000),
+  text: z.string().max(29_000),
   requestId: z.string().uuid(),
 });
 const promptSchema = sendSchema
   .omit({ uploadId: true, mode: true })
   .extend({
-    text: z.string().trim().min(1).max(29000),
+    text: z.string().trim().min(1).max(29_000),
     uploadId: uploadIdSchema.optional(),
   })
   .strict();
@@ -58,8 +57,8 @@ async function post(pane: string, suffix: string, input: unknown, signal?: Abort
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(input),
     signal: signal
-      ? AbortSignal.any([signal, AbortSignal.timeout(15000)])
-      : AbortSignal.timeout(15000),
+      ? AbortSignal.any([signal, AbortSignal.timeout(15_000)])
+      : AbortSignal.timeout(15_000),
   });
   const body: unknown = await response.json().catch(() => null);
   if (!response.ok) {
@@ -86,18 +85,23 @@ async function forward(
   try {
     body = await post(pane, suffix, parsed, signal);
   } catch (error) {
-    if (error instanceof ApiError) throw error;
+    if (error instanceof ApiError) {
+      throw error;
+    }
     throw new Error(
       "Delivery uncertain. Check the conversation before sending again; your draft is retained.",
       { cause: error },
     );
   }
   const ack = ackSchema.safeParse(body);
-  if (!ack.success || ack.data.id !== parsed.requestId)
+  if (!ack.success || ack.data.id !== parsed.requestId) {
     throw new Error(
       "Invalid acknowledgement; delivery uncertain. Check the conversation before sending again.",
     );
-  if (ack.data.outcome !== "invoked") throw new Error(ack.data.reason ?? "Pi rejected the request");
+  }
+  if (ack.data.outcome !== "invoked") {
+    throw new Error(ack.data.reason ?? "Pi rejected the request");
+  }
   return ack.data;
 }
 export const boardApi = {
@@ -123,8 +127,8 @@ export const boardApi = {
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(input),
       signal: signal
-        ? AbortSignal.any([signal, AbortSignal.timeout(60000)])
-        : AbortSignal.timeout(60000),
+        ? AbortSignal.any([signal, AbortSignal.timeout(60_000)])
+        : AbortSignal.timeout(60_000),
     });
     if (!response.ok) {
       const error = z
@@ -135,11 +139,13 @@ export const boardApi = {
         error.success ? error.data.error : "Could not export PNG",
       );
     }
-    if (response.headers.get("Content-Type")?.split(";")[0] !== "image/png")
+    if (response.headers.get("Content-Type")?.split(";")[0] !== "image/png") {
       throw new Error("Invalid PNG export response");
+    }
     const blob = await response.blob();
-    if (!blob.size || blob.size > boardImageLimits(quality).maxBytes)
+    if (!blob.size || blob.size > boardImageLimits(quality).maxBytes) {
       throw new Error("PNG export exceeds the size limit");
+    }
     return blob;
   },
   async open(pane: string, target: BoardTarget, signal?: AbortSignal) {

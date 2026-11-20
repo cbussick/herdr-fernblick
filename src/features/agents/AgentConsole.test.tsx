@@ -1,5 +1,7 @@
-import { act, type ReactNode } from "react";
-import { create, type ReactTestRenderer } from "react-test-renderer";
+import { act } from "react";
+import type { ReactNode } from "react";
+import { create } from "react-test-renderer";
+import type { ReactTestRenderer } from "react-test-renderer";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
 import { randomUUID } from "node:crypto";
@@ -54,7 +56,9 @@ function render(currentAgent = agent) {
 }
 async function flush() {
   await act(async () => {
-    await new Promise((r) => setTimeout(r, 15));
+    await new Promise((r) => {
+      setTimeout(r, 15);
+    });
   });
 }
 async function openSkills() {
@@ -94,7 +98,7 @@ beforeEach(async () => {
   mocks.liveChat.mockReset().mockImplementation(() => mocks.live);
   mocks.paneInput.mockReset().mockResolvedValue(undefined);
   mocks.paneKey.mockReset().mockResolvedValue(undefined);
-  mocks.command.mockReset().mockImplementation(async (...args: unknown[]) => ({
+  mocks.command.mockReset().mockImplementation(async (...args: Array<unknown>) => ({
     type: "ack",
     id: args[5] ?? randomUUID(),
     outcome: "invoked",
@@ -188,12 +192,12 @@ it.each([true, false])(
       revision: 1,
     };
     const ownerDocument = { activeElement: null as unknown };
-    const editors: {
+    const editors: Array<{
       focus: ReturnType<typeof vi.fn<() => void>>;
       setSelectionRange: ReturnType<
         typeof vi.fn<(start: number, end: number, direction: string) => void>
       >;
-    }[] = [];
+    }> = [];
     function pane(ready: boolean, key = agent.pane_id) {
       return (
         <QueryClientProvider client={client}>
@@ -210,7 +214,9 @@ it.each([true, false])(
       renderer.unmount();
       renderer = create(pane(false), {
         createNodeMock: (element) => {
-          if (element.type !== "textarea") return null;
+          if (element.type !== "textarea") {
+            return null;
+          }
           const node = {
             ownerDocument,
             selectionStart: 3,
@@ -232,12 +238,16 @@ it.each([true, false])(
         .findByType("textarea")
         .props.onChange({ target: { value: "Keep typing here" } }),
     );
-    if (focused) editors[0].focus();
+    if (focused) {
+      editors[0].focus();
+    }
     await act(async () => renderer.update(pane(true)));
     expect(renderer.root.findByType("textarea").props.value).toBe("Keep typing here");
     const chatEditor = editors.at(-1)!;
     expect(chatEditor.focus).toHaveBeenCalledTimes(focused ? 1 : 0);
-    if (focused) expect(chatEditor.setSelectionRange).toHaveBeenCalledWith(3, 8, "backward");
+    if (focused) {
+      expect(chatEditor.setSelectionRange).toHaveBeenCalledWith(3, 8, "backward");
+    }
     await act(async () => renderer.update(pane(true, "w1:p2")));
     expect(renderer.root.findByType("textarea").props.value).toBe("");
     expect(editors.at(-1)!.focus).not.toHaveBeenCalled();
@@ -479,10 +489,14 @@ it.each(["before", "after"])(
     const initial = mocks.live.snapshot!;
     mocks.live = { error: "Reconnecting to Pi…" };
     await act(async () => renderer.update(render()));
-    if (timing === "before") await act(async () => fail(new Error("Compaction outcome uncertain")));
+    if (timing === "before") {
+      await act(async () => fail(new Error("Compaction outcome uncertain")));
+    }
     mocks.live = { snapshot: { ...initial, seq: 2, busy: true, compacting: true } };
     await act(async () => renderer.update(render()));
-    if (timing === "after") await act(async () => fail(new Error("Compaction outcome uncertain")));
+    if (timing === "after") {
+      await act(async () => fail(new Error("Compaction outcome uncertain")));
+    }
     expect(JSON.stringify(renderer.toJSON())).toContain("Pi is still compacting");
     expect(renderer.root.findAllByProps({ role: "alert" })).toHaveLength(0);
     expect(JSON.stringify(renderer.toJSON())).not.toContain("Conversation compacted.");
@@ -533,11 +547,11 @@ it("labels terminal compaction without invoking the UI action and preserves the 
   expect(JSON.stringify(renderer.toJSON())).not.toContain("Conversation compacted.");
 
   // Automatic compaction may continue into another agent turn.
-  mocks.live.snapshot = { ...mocks.live.snapshot!, compacting: false };
+  mocks.live.snapshot = { ...mocks.live.snapshot, compacting: false };
   await act(async () => renderer.update(render()));
   expect(JSON.stringify(renderer.toJSON())).not.toContain("Compacting…");
   expect(JSON.stringify(renderer.toJSON())).toContain("Working");
-  mocks.live.snapshot = { ...mocks.live.snapshot!, busy: false };
+  mocks.live.snapshot = { ...mocks.live.snapshot, busy: false };
   await act(async () => renderer.update(render()));
   expect(renderer.root.findByProps({ "aria-label": "Send message" }).props.disabled).toBe(false);
   expect(renderer.root.findByType("textarea").props.value).toBe("keep this draft");
@@ -545,8 +559,12 @@ it("labels terminal compaction without invoking the UI action and preserves the 
 
 it.each(["unsupported", "disconnected"])("disables compact when %s", async (mode) => {
   await enableCompact();
-  if (mode === "unsupported") mocks.live.snapshot = { ...mocks.live.snapshot!, capabilities: {} };
-  if (mode === "disconnected") mocks.live.error = "Connection lost";
+  if (mode === "unsupported") {
+    mocks.live.snapshot = { ...mocks.live.snapshot!, capabilities: {} };
+  }
+  if (mode === "disconnected") {
+    mocks.live.error = "Connection lost";
+  }
   await act(async () => renderer.update(render()));
   await openActions();
   const button = renderer.root.findByProps({
@@ -569,10 +587,10 @@ it("invalidates an open compact confirmation on replacement and rechecks busy st
   expect(compactNow().props.disabled).toBe(true);
   await act(async () => oldClick());
   expect(mocks.compact).not.toHaveBeenCalled();
-  mocks.live.snapshot = { ...mocks.live.snapshot!, busy: false };
+  mocks.live.snapshot = { ...mocks.live.snapshot, busy: false };
   await act(async () => renderer.update(render()));
   await confirmCompact();
-  mocks.live.snapshot = { ...mocks.live.snapshot!, epoch: randomUUID() };
+  mocks.live.snapshot = { ...mocks.live.snapshot, epoch: randomUUID() };
   await act(async () => renderer.update(render()));
   expect(compactNow()).toBeUndefined();
 });
@@ -596,12 +614,16 @@ it.each(["disconnect", "replacement", "error"])(
     await confirmCompact();
     await act(async () => compactNow().props.onClick());
     await flush();
-    if (mode === "disconnect") mocks.live.error = "Connection lost";
-    if (mode === "replacement")
+    if (mode === "disconnect") {
+      mocks.live.error = "Connection lost";
+    }
+    if (mode === "replacement") {
       mocks.live.snapshot = { ...mocks.live.snapshot!, epoch: randomUUID() };
+    }
     await act(async () => renderer.update(render()));
-    if (mode === "replacement")
+    if (mode === "replacement") {
       expect(JSON.stringify(renderer.toJSON())).toContain("outcome uncertain");
+    }
     if (mode === "disconnect") {
       expect(JSON.stringify(renderer.toJSON())).toContain("Pi may still be compacting");
       expect(JSON.stringify(renderer.toJSON())).not.toContain("outcome uncertain");
@@ -874,7 +896,7 @@ it("accepts ten images across selections, caps overflow and restores capacity af
     { length: 11 },
     (_, i) => new File(["image"], `image-${i}.png`, { type: "image/png" }),
   );
-  const select = async (selected: File[]) =>
+  const select = async (selected: Array<File>) =>
     act(async () =>
       renderer.root.findByProps({ type: "file" }).props.onChange({ target: { files: selected } }),
     );
@@ -1041,9 +1063,9 @@ it("ignores a late stop ACK after the agent becomes idle and starts again", asyn
       .props.onClick(),
   );
   await flush();
-  mocks.live.snapshot = { ...mocks.live.snapshot!, busy: false };
+  mocks.live.snapshot = { ...mocks.live.snapshot, busy: false };
   await act(async () => renderer.update(render()));
-  mocks.live.snapshot = { ...mocks.live.snapshot!, busy: true };
+  mocks.live.snapshot = { ...mocks.live.snapshot, busy: true };
   await act(async () => renderer.update(render()));
   await act(async () => acknowledge());
   await flush();
@@ -1249,10 +1271,13 @@ it.each(["busy", "closed", "epoch"])(
     await openBoard();
     await act(async () => boardConversation().onDraftChange("Do not send stale text"));
     const submit = boardConversation().onSend;
-    if (state === "closed")
+    if (state === "closed") {
       await act(async () => renderer.root.findByType(Whiteboard).props.onClose());
-    else if (state === "busy") mocks.live.snapshot = { ...mocks.live.snapshot!, busy: true };
-    else mocks.live.snapshot = { ...mocks.live.snapshot!, epoch: randomUUID() };
+    } else if (state === "busy") {
+      mocks.live.snapshot = { ...mocks.live.snapshot!, busy: true };
+    } else {
+      mocks.live.snapshot = { ...mocks.live.snapshot!, epoch: randomUUID() };
+    }
     await act(async () => renderer.update(render()));
     await act(async () =>
       submit({ boardId: "a".repeat(64), revision: 1, text: "Do not send stale text" }),
@@ -1352,7 +1377,9 @@ it("locks the composer only through upload and forwarding, then uses Pi busy/idl
     expect(form.findByProps({ "data-ui": "prompt-composer-surface" }).props["aria-busy"]).toBe(
       true,
     );
-    for (const button of form.findAllByType("button")) expect(button.props.disabled).toBe(true);
+    for (const button of form.findAllByType("button")) {
+      expect(button.props.disabled).toBe(true);
+    }
     expect(form.findByType("textarea").props.disabled).toBe(true);
     expect(form.findByProps({ type: "file" }).props.disabled).toBe(true);
     expect(form.findAllByProps({ "data-testid": "send-spinner" })).toHaveLength(1);
@@ -1380,7 +1407,7 @@ it("locks the composer only through upload and forwarding, then uses Pi busy/idl
   expect(renderer.root.findByProps({ "data-testid": "chat-activity" })).toBe(activity);
   expect(activity.findAllByType("button")).toHaveLength(0);
   expect(renderer.root.findByType("form").findAllByProps({ role: "status" })).toHaveLength(0);
-  mocks.live.snapshot = { ...mocks.live.snapshot!, seq: 3, busy: true, sendPending: false };
+  mocks.live.snapshot = { ...mocks.live.snapshot, seq: 3, busy: true, sendPending: false };
   await act(async () => renderer.update(render()));
   expect(
     renderer.root.findByProps({ "data-ui": "prompt-composer-surface" }).props["aria-busy"],
@@ -1503,7 +1530,7 @@ it("shows visible feedback while a text message is being forwarded", async () =>
   await act(async () => acknowledge({ type: "ack", outcome: "invoked" }));
   await flush();
   expect(renderer.root.findByProps({ "data-testid": "chat-activity" })).toBe(activity);
-  mocks.live.snapshot = { ...mocks.live.snapshot!, busy: false, sendPending: false };
+  mocks.live.snapshot = { ...mocks.live.snapshot, busy: false, sendPending: false };
   await act(async () => renderer.update(render()));
   expect(renderer.root.findAllByProps({ "data-testid": "chat-activity" })).toHaveLength(0);
 });
@@ -1567,11 +1594,18 @@ it.each(["disconnect", "busy", "replacement", "handoff"])(
     );
     await act(async () => renderer.root.findByType("form").props.onSubmit({ preventDefault() {} }));
     await flush();
-    if (mode === "disconnect") mocks.live.error = "Reconnecting";
-    if (mode === "busy") mocks.live.snapshot = { ...mocks.live.snapshot!, busy: true };
-    if (mode === "replacement")
+    if (mode === "disconnect") {
+      mocks.live.error = "Reconnecting";
+    }
+    if (mode === "busy") {
+      mocks.live.snapshot = { ...mocks.live.snapshot!, busy: true };
+    }
+    if (mode === "replacement") {
       mocks.live.snapshot = { ...mocks.live.snapshot!, epoch: randomUUID() };
-    if (mode === "handoff") mocks.live.snapshot = { ...mocks.live.snapshot!, sendPending: true };
+    }
+    if (mode === "handoff") {
+      mocks.live.snapshot = { ...mocks.live.snapshot!, sendPending: true };
+    }
     await act(async () => renderer.update(render()));
     const retry = renderer.root
       .findAllByType("button")
@@ -1647,7 +1681,7 @@ it("does not show handoff progress after an uncertain send or during reconnect",
   await act(async () => renderer.update(render()));
   expect(JSON.stringify(renderer.toJSON())).not.toContain("Waiting for agent activity…");
   delete mocks.live.error;
-  mocks.live.snapshot = { ...mocks.live.snapshot!, sendPending: false };
+  mocks.live.snapshot = { ...mocks.live.snapshot, sendPending: false };
   await act(async () => renderer.update(render()));
   let rejectSend!: (error: Error) => void;
   mocks.command.mockImplementationOnce(
@@ -1661,7 +1695,7 @@ it("does not show handoff progress after an uncertain send or during reconnect",
   );
   await act(async () => renderer.root.findByType("form").props.onSubmit({ preventDefault() {} }));
   await flush();
-  mocks.live.snapshot = { ...mocks.live.snapshot!, sendPending: true };
+  mocks.live.snapshot = { ...mocks.live.snapshot, sendPending: true };
   await act(async () => {
     renderer.update(render());
     rejectSend(new Error("Delivery uncertain"));

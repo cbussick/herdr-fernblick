@@ -2,7 +2,7 @@ import { randomUUID } from "node:crypto";
 import net from "node:net";
 import type { ZodType } from "zod";
 
-const DEFAULT_TIMEOUT_MS = 5_000;
+const DEFAULT_TIMEOUT_MS = 5000;
 
 type HerdrResult = Record<string, unknown>;
 
@@ -44,7 +44,9 @@ export class HerdrClient {
       let settled = false;
 
       const finish = (callback: () => void) => {
-        if (settled) return;
+        if (settled) {
+          return;
+        }
         settled = true;
         clearTimeout(timeout);
         socket.destroy();
@@ -64,13 +66,17 @@ export class HerdrClient {
       socket.on("data", (chunk) => {
         buffer += chunk;
         const lineEnd = buffer.indexOf("\n");
-        if (lineEnd === -1) return;
+        if (lineEnd === -1) {
+          return;
+        }
 
         const line = buffer.slice(0, lineEnd);
 
         try {
           const envelope = JSON.parse(line) as HerdrSuccessEnvelope | HerdrErrorEnvelope;
-          if (envelope.id !== id) return;
+          if (envelope.id !== id) {
+            return;
+          }
 
           if ("error" in envelope) {
             finish(() =>

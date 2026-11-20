@@ -1,4 +1,5 @@
-import { useEffect, useRef, useState, type FormEvent } from "react";
+import { useEffect, useRef, useState } from "react";
+import type { FormEvent } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import type { SavedChat, Workspace } from "../../shared/api/contracts";
 import { NewWorkspaceDialog } from "./NewWorkspaceDialog";
@@ -13,7 +14,7 @@ export function ResumeChatDialog({
   onClose,
 }: {
   chat: SavedChat;
-  workspaces: Workspace[];
+  workspaces: Array<Workspace>;
   pending: boolean;
   error?: string;
   onConfirm: (workspaceId: string) => void;
@@ -38,25 +39,34 @@ export function ResumeChatDialog({
 
   useEffect(() => {
     const dialog = dialogRef.current;
-    if (!dialog) return;
+    if (!dialog) {
+      return;
+    }
     openerRef.current ??= dialog.ownerDocument?.activeElement ?? null;
-    if (!dialog.open) dialog.showModal();
+    if (!dialog.open) {
+      dialog.showModal();
+    }
     (selectRef.current ?? createWorkspaceRef.current)?.focus();
     return () => {
-      if (dialog.open) dialog.close();
+      if (dialog.open) {
+        dialog.close();
+      }
       const opener = openerRef.current;
-      if (opener && opener instanceof HTMLElement && opener.isConnected)
+      if (opener && opener instanceof HTMLElement && opener.isConnected) {
         opener.focus({ preventScroll: true });
+      }
     };
   }, [creatingWorkspace]);
 
   function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    if (pending || !selectedWorkspace) return;
+    if (pending || !selectedWorkspace) {
+      return;
+    }
     onConfirm(selectedWorkspace);
   }
 
-  if (creatingWorkspace)
+  if (creatingWorkspace) {
     return (
       <NewWorkspaceDialog
         initialCwd={chat.cwd}
@@ -70,6 +80,7 @@ export function ResumeChatDialog({
         }}
       />
     );
+  }
 
   return (
     <dialog
@@ -80,10 +91,14 @@ export function ResumeChatDialog({
       aria-describedby="resume-chat-title"
       onCancel={(event) => {
         event.preventDefault();
-        if (!pending) onClose();
+        if (!pending) {
+          onClose();
+        }
       }}
       onClose={(event) => {
-        if (!event.currentTarget.open && !pending) onClose();
+        if (!event.currentTarget.open && !pending) {
+          onClose();
+        }
       }}
     >
       <form className={styles["new-agent-form"]} onSubmit={submit} aria-busy={pending}>

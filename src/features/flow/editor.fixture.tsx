@@ -5,9 +5,9 @@ import type { BoardScene } from "../../../packages/pi-live-chat/boardProtocol";
 import type { EditorHandle } from "../whiteboard/editorTypes";
 const empty: BoardScene = { engine: "react-flow", elements: [], files: {}, background: "#ffffff" };
 const test = {
-  changes: [] as BoardScene[],
-  events: [] as string[],
-  errors: [] as string[],
+  changes: [] as Array<BoardScene>,
+  events: [] as Array<string>,
+  errors: [] as Array<string>,
   ready: false,
   checkpointError: "",
   setScene: (_scene: BoardScene) => {},
@@ -39,7 +39,9 @@ function Fixture() {
       onReady={ready}
       onBeforeReplace={async () => {
         test.events.push("checkpoint");
-        if (test.checkpointError) throw new Error(test.checkpointError);
+        if (test.checkpointError) {
+          throw new Error(test.checkpointError);
+        }
       }}
       onChange={(scene) => {
         test.events.push("change");
@@ -47,7 +49,9 @@ function Fixture() {
         setScene(scene);
       }}
       onError={(message) => {
-        if (message) test.errors.push(message);
+        if (message) {
+          test.errors.push(message);
+        }
       }}
       onInteraction={(active) => test.events.push(active ? "active" : "idle")}
     />

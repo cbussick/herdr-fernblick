@@ -5,7 +5,7 @@ import { join } from "node:path";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
 import { BoardStore } from "../boards/storage.js";
 import { HerdrService } from "../herdr/herdrService.js";
-import { HerdrClient } from "../herdr/HerdrClient.js";
+import type { HerdrClient } from "../herdr/HerdrClient.js";
 import { SessionCatalog } from "./sessionCatalog.js";
 import { ChatArtifacts } from "./chatArtifacts.js";
 import * as images from "../../packages/pi-live-chat/images.js";
@@ -15,16 +15,16 @@ let root: string;
 let catalog: SessionCatalog;
 let boards: BoardStore;
 let service: HerdrService;
-let agents: Agent[];
+let agents: Array<Agent>;
 const png = Buffer.from([137, 80, 78, 71, 13, 10, 26, 10]);
 const key = (session: string, socket = "/fixture/herdr.sock") => JSON.stringify([socket, session]);
 const header = (session = "original") => ({ type: "session", id: session, cwd: "/project" });
-const refs = (...ids: string[]) => ({
+const refs = (...ids: Array<string>) => ({
   type: "custom",
   customType: "fernblick-image-uploads",
   data: ids.map((id) => ({ hash: "a".repeat(64), id })),
 });
-async function save(name: string, entries: unknown[]) {
+async function save(name: string, entries: Array<unknown>) {
   const path = join(root, `${name}.jsonl`);
   await writeFile(path, entries.map((entry) => JSON.stringify(entry)).join("\n") + "\n");
   return (await catalog.list()).find((chat) => chat.path === path)!;

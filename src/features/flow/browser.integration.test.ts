@@ -1,8 +1,10 @@
-import { createServer, type Server } from "node:http";
+import { createServer } from "node:http";
+import type { Server } from "node:http";
 import { mkdtemp, readFile, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { extname, join } from "node:path";
-import { chromium, type Browser, type Page } from "playwright";
+import { chromium } from "playwright";
+import type { Browser, Page } from "playwright";
 import { build } from "vite";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { defaults, edgeOptions, makeNode } from "./model";
@@ -17,7 +19,7 @@ import type {} from "../../flow-board-render";
 import type {} from "./editor.fixture";
 let directory: string, server: Server, browser: Browser, page: Page, origin: string;
 const empty: BoardScene = { engine: "react-flow", elements: [], files: {}, background: "#ffffff" };
-const requests: string[] = [];
+const requests: Array<string> = [];
 beforeAll(async () => {
   directory = await mkdtemp(join(tmpdir(), "flow-ui-"));
   await build({
@@ -51,17 +53,27 @@ beforeAll(async () => {
       }
     })();
   });
-  await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));
+  await new Promise<void>((resolve) => {
+    server.listen(0, "127.0.0.1", resolve);
+  });
   const address = server.address();
-  if (!address || typeof address === "string") throw new Error("No address");
+  if (!address || typeof address === "string") {
+    throw new Error("No address");
+  }
   origin = `http://127.0.0.1:${address.port}`;
   browser = await chromium.launch({ headless: true });
   page = await browser.newPage({ viewport: { width: 1280, height: 900 } });
-}, 60000);
+}, 60_000);
 afterAll(async () => {
   await browser?.close();
-  if (server) await new Promise<void>((resolve) => server.close(() => resolve()));
-  if (directory) await rm(directory, { recursive: true, force: true });
+  if (server) {
+    await new Promise<void>((resolve) => {
+      server.close(() => resolve());
+    });
+  }
+  if (directory) {
+    await rm(directory, { recursive: true, force: true });
+  }
 });
 const loadEditor = async () => {
   await page.goto(`${origin}/src/features/flow/editor.test.html`);
@@ -69,7 +81,9 @@ const loadEditor = async () => {
 };
 async function draw() {
   const box = await page.getByTestId("canvas").boundingBox();
-  if (!box) throw new Error("Canvas missing");
+  if (!box) {
+    throw new Error("Canvas missing");
+  }
   await page.mouse.move(box.x + 400, box.y + 220);
   await page.mouse.down();
   await page.mouse.move(box.x + 500, box.y + 270, { steps: 8 });
@@ -107,9 +121,9 @@ describe("isolated production editor and DOM renderer", { timeout: 30_000 }, () 
     await page.waitForFunction(() => window.flowTest.changes.length === 1);
     await page.evaluate(
       () =>
-        new Promise<void>((resolve) =>
-          requestAnimationFrame(() => requestAnimationFrame(() => resolve())),
-        ),
+        new Promise<void>((resolve) => {
+          requestAnimationFrame(() => requestAnimationFrame(() => resolve()));
+        }),
     );
     expect(await page.evaluate(() => window.flowTest.events.at(-1))).toBe("idle");
     expect(await page.locator('dialog[data-ui="flow-component-editor"][open]').count()).toBe(0);
@@ -219,7 +233,9 @@ describe("isolated production editor and DOM renderer", { timeout: 30_000 }, () 
     const node = page.getByTestId("component-movable");
     await node.waitFor();
     const box = await node.boundingBox();
-    if (!box) throw new Error("Missing component");
+    if (!box) {
+      throw new Error("Missing component");
+    }
     await page.mouse.move(box.x + box.width / 2, box.y + 25);
     await page.mouse.down();
     await page.mouse.move(box.x + box.width / 2 + 110, box.y + 95, { steps: 12 });
@@ -269,7 +285,9 @@ describe("isolated production editor and DOM renderer", { timeout: 30_000 }, () 
       '.react-flow__node[data-id="resizable"] .react-flow__resize-control.handle.bottom.right',
     );
     const box = await handle.boundingBox();
-    if (!box) throw new Error("Missing resize handle");
+    if (!box) {
+      throw new Error("Missing resize handle");
+    }
     await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2);
     await page.mouse.down();
     await page.mouse.move(box.x + 95, box.y + 60, { steps: 10 });
@@ -503,7 +521,7 @@ describe("isolated production editor and DOM renderer", { timeout: 30_000 }, () 
     const parsed = JSON.parse(result) as BoardScene;
     expect(parsed.elements.find((e) => e.id === "original")!.isDeleted).toBe(true);
     expect(parsed.elements.filter((e) => !e.isDeleted)).toHaveLength(1);
-    expect(parsed.elements.filter((e) => !e.isDeleted)[0]!.id).not.toBe("imported");
+    expect(parsed.elements.filter((e) => !e.isDeleted)[0].id).not.toBe("imported");
     expect(await page.evaluate(() => window.flowTest.errors)).toEqual([]);
   });
   it("clears without a recovery checkpoint and supports undo/redo on desktop and mobile", async () => {
@@ -562,15 +580,15 @@ describe("isolated production editor and DOM renderer", { timeout: 30_000 }, () 
         await page.waitForFunction(() => window.flowTest.changes.length === 1);
         expect(await confirmation.count()).toBe(0);
         expect(
-          await page.evaluate(() => window.flowTest.changes[0]!.elements.every((e) => e.isDeleted)),
+          await page.evaluate(() => window.flowTest.changes[0].elements.every((e) => e.isDeleted)),
         ).toBe(true);
-        expect(await page.evaluate(() => window.flowTest.changes[0]!.files)).toEqual({});
+        expect(await page.evaluate(() => window.flowTest.changes[0].files)).toEqual({});
         expect(await page.evaluate(() => window.flowTest.events)).not.toContain("checkpoint");
         const events = await page.evaluate(() => window.flowTest.events);
         expect(events.lastIndexOf("change")).toBeLessThan(events.lastIndexOf("idle"));
         await page.getByRole("button", { name: "Undo", exact: true }).click();
         await page.waitForFunction(() => window.flowTest.changes.length === 2);
-        const restored = await page.evaluate(() => window.flowTest.changes[1]!);
+        const restored = await page.evaluate(() => window.flowTest.changes[1]);
         expect(restored.elements.filter((e) => !e.isDeleted)).toHaveLength(first.elements.length);
         expect(
           restored.elements.map(({ version: _version, isDeleted: _deleted, ...e }) => e),
@@ -579,7 +597,7 @@ describe("isolated production editor and DOM renderer", { timeout: 30_000 }, () 
         await page.getByRole("button", { name: "Redo", exact: true }).click();
         await page.waitForFunction(() => window.flowTest.changes.length === 3);
         expect(
-          await page.evaluate(() => window.flowTest.changes[2]!.elements.every((e) => e.isDeleted)),
+          await page.evaluate(() => window.flowTest.changes[2].elements.every((e) => e.isDeleted)),
         ).toBe(true);
         expect(await page.evaluate(() => window.flowTest.errors)).toEqual([]);
       }
@@ -615,7 +633,7 @@ describe("isolated production editor and DOM renderer", { timeout: 30_000 }, () 
     await confirmation.getByRole("button", { name: "Replace drawing", exact: true }).click();
     await page.waitForFunction(() => window.flowTest.changes.length === 1);
     expect(
-      await page.evaluate(() => window.flowTest.changes[0]!.elements.every((e) => e.isDeleted)),
+      await page.evaluate(() => window.flowTest.changes[0].elements.every((e) => e.isDeleted)),
     ).toBe(true);
     const events = await page.evaluate(() => window.flowTest.events);
     expect(events.lastIndexOf("checkpoint")).toBeLessThan(events.lastIndexOf("change"));
@@ -786,11 +804,11 @@ describe("isolated production editor and DOM renderer", { timeout: 30_000 }, () 
     );
     expect(size.width).toBeGreaterThan(100);
     expect(size.height).toBeGreaterThan(900);
-    expect(size.width * size.height).toBeLessThanOrEqual(2097152);
+    expect(size.width * size.height).toBeLessThanOrEqual(2_097_152);
     await page.setViewportSize(size);
     const png = await page.screenshot();
     expect(png.subarray(1, 4).toString()).toBe("PNG");
-    expect(png.length).toBeGreaterThan(10000);
+    expect(png.length).toBeGreaterThan(10_000);
     expect(await page.getByText("Row 34", { exact: true }).isVisible()).toBe(true);
     expect(await page.locator('svg path[stroke="#000000"][stroke-width="2"]').count()).toBe(1);
     const smaller = await page.evaluate(

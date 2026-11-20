@@ -1,6 +1,7 @@
 import { randomUUID } from "node:crypto";
 import { mkdtemp, rm } from "node:fs/promises";
-import { connect, type Socket } from "node:net";
+import { connect } from "node:net";
+import type { Socket } from "node:net";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
@@ -10,7 +11,8 @@ import { HerdrService } from "../herdr/herdrService.js";
 import type { HerdrClient } from "../herdr/HerdrClient.js";
 import type { z } from "zod";
 import type { Agent } from "../../src/shared/api/contracts.js";
-import { type Snapshot, targetOf } from "../../packages/pi-live-chat/protocol.js";
+import { targetOf } from "../../packages/pi-live-chat/protocol.js";
+import type { Snapshot } from "../../packages/pi-live-chat/protocol.js";
 import { receiveFrames, writeFrame } from "../../packages/pi-live-chat/transport.js";
 import { readTreePage } from "../../packages/pi-live-chat/treePage.js";
 
@@ -46,7 +48,7 @@ const makeSnapshot = (): Snapshot => ({
 });
 let dir: string;
 let bridge: LiveBridge;
-let sockets: Socket[];
+let sockets: Array<Socket>;
 const inspect = vi.fn(async () => ({
   start: "456",
   foreground: true,
@@ -62,14 +64,18 @@ beforeEach(async () => {
   await bridge.start();
 });
 afterEach(async () => {
-  for (const s of sockets) s.destroy();
+  for (const s of sockets) {
+    s.destroy();
+  }
   await bridge.close();
   await rm(dir, { recursive: true, force: true });
 });
 async function peer(snapshot = makeSnapshot()) {
   const socket = connect(bridge.path);
   sockets.push(socket);
-  await new Promise<void>((done) => socket.once("connect", done));
+  await new Promise<void>((done) => {
+    socket.once("connect", done);
+  });
   writeFrame(socket, snapshot);
   await vi.waitFor(() =>
     expect(bridge.current(agent).snapshot.identity.runtime).toBe(snapshot.identity.runtime),
@@ -93,11 +99,13 @@ it.each(
   "guards $action through HTTP without terminal input: $condition",
   async ({ action, condition }) => {
     const snapshot = makeSnapshot();
-    if (condition !== "old-peer") snapshot.capabilities = { shutdown: true };
+    if (condition !== "old-peer") {
+      snapshot.capabilities = { shutdown: true };
+    }
     snapshot.busy = condition === "busy";
     snapshot.sendPending = condition === "send-pending";
     const p = await peer(snapshot);
-    const commands: unknown[] = [];
+    const commands: Array<unknown> = [];
     receiveFrames(p.socket, (raw) => {
       const command = raw as { id: string; action: string; target: unknown };
       commands.push(command);
@@ -128,18 +136,25 @@ it.each(
       });
     });
     const request = vi.fn(async <T>(method: string, _params: unknown, schema: z.ZodType<T>) => {
-      if (method === "agent.get") return schema.parse({ type: "agent_info", agent });
-      if (method === "session.snapshot")
+      if (method === "agent.get") {
+        return schema.parse({ type: "agent_info", agent });
+      }
+      if (method === "session.snapshot") {
         return schema.parse({
           type: "session_snapshot",
           snapshot: { agents: [], panes: [], tabs: [], workspaces: [] },
         });
-      if (method === "agent.start") return schema.parse({ type: "agent_started", agent });
+      }
+      if (method === "agent.start") {
+        return schema.parse({ type: "agent_started", agent });
+      }
       throw new Error(`Unexpected Herdr call: ${method}`);
     });
     const service = new HerdrService({ request } as unknown as HerdrClient);
     const server = createHttpServer(service, dir, bridge);
-    await new Promise<void>((done) => server.listen(0, "127.0.0.1", done));
+    await new Promise<void>((done) => {
+      server.listen(0, "127.0.0.1", done);
+    });
     const base = `http://127.0.0.1:${(server.address() as { port: number }).port}`;
     const restart = (origin = base) =>
       fetch(base + `/api/agents/w1:p1/${action}`, { method: "POST", headers: { Origin: origin } });
@@ -168,18 +183,25 @@ it.each(
       } else {
         expect(response.status).toBe(409);
         expect(request.mock.calls.map(([method]) => method)).toEqual(["agent.get"]);
-        if (condition === "old-peer") expect(body.error).toContain("/reload");
-        if (condition === "draft") expect(body.error).toContain("unsent draft");
+        if (condition === "old-peer") {
+          expect(body.error).toContain("/reload");
+        }
+        if (condition === "draft") {
+          expect(body.error).toContain("unsent draft");
+        }
       }
       expect(commands).toHaveLength(
         ["old-peer", "busy", "send-pending"].includes(condition) ? 0 : 1,
       );
-      for (const command of commands)
+      for (const command of commands) {
         expect(command).toMatchObject({ action: "shutdown", target: targetOf(snapshot) });
+      }
       expect(request.mock.calls.some(([method]) => method === "pane.send_input")).toBe(false);
     } finally {
       server.closeAllConnections();
-      await new Promise<void>((done) => server.close(() => done()));
+      await new Promise<void>((done) => {
+        server.close(() => done());
+      });
     }
   },
 );
@@ -208,7 +230,9 @@ it("fails closed for absent, stale, ambiguous and background mappings", async ()
   await expect(bridge.resolve(agent)).rejects.toThrow("foreground");
   const second = connect(bridge.path);
   sockets.push(second);
-  await new Promise<void>((done) => second.once("connect", done));
+  await new Promise<void>((done) => {
+    second.once("connect", done);
+  });
   writeFrame(second, {
     ...p.snapshot,
     identity: { ...p.snapshot.identity, runtime: randomUUID() },
@@ -264,7 +288,7 @@ it("rejects busy, concurrent and stale commands; ACK means invoked; disconnect n
   await expect(bridge.command(agent, targetOf(snapshot), "send", "hi")).rejects.toThrow("busy");
   writeFrame(socket, { ...snapshot, seq: 3 });
   await vi.waitFor(() => expect(bridge.current(agent).snapshot.busy).toBe(false));
-  const commands: Record<string, unknown>[] = [];
+  const commands: Array<Record<string, unknown>> = [];
   receiveFrames(socket, (value) => commands.push(value as Record<string, unknown>));
   const pending = bridge.command(agent, targetOf(snapshot), "send", "hi");
   await vi.waitFor(() => expect(commands).toHaveLength(1));
@@ -281,7 +305,9 @@ it("rejects busy, concurrent and stale commands; ACK means invoked; disconnect n
   const replacement = await peer({ ...snapshot, epoch: randomUUID() });
   const retried = vi.fn();
   receiveFrames(replacement.socket, retried);
-  await new Promise((done) => setTimeout(done, 30));
+  await new Promise((done) => {
+    setTimeout(done, 30);
+  });
   expect(retried).not.toHaveBeenCalled();
 });
 it("rejects invalid protocol and out-of-order sequences", async () => {
@@ -294,7 +320,9 @@ it("carries the browser request ID through HTTP and requires the current send br
   const p = await peer();
   const service = { getAgent: vi.fn(async () => agent) } as unknown as HerdrService;
   const server = createHttpServer(service, dir, bridge);
-  await new Promise<void>((done) => server.listen(0, "127.0.0.1", done));
+  await new Promise<void>((done) => {
+    server.listen(0, "127.0.0.1", done);
+  });
   const base = `http://127.0.0.1:${(server.address() as { port: number }).port}`;
   const requestId = randomUUID();
   const send = () =>
@@ -316,7 +344,9 @@ it("carries the browser request ID through HTTP and requires the current send br
     expect(await response.json()).toMatchObject({ id: requestId, outcome: "invoked" });
   } finally {
     server.closeAllConnections();
-    await new Promise<void>((done) => server.close(() => done()));
+    await new Promise<void>((done) => {
+      server.close(() => done());
+    });
   }
 });
 
@@ -324,9 +354,11 @@ it("pages trees over HTTP, rejects unsafe/stale requests and explains older peer
   const p = await peer();
   const service = { getAgent: vi.fn(async () => agent) } as unknown as HerdrService;
   const server = createHttpServer(service, dir, bridge);
-  await new Promise<void>((done) => server.listen(0, "127.0.0.1", done));
+  await new Promise<void>((done) => {
+    server.listen(0, "127.0.0.1", done);
+  });
   const base = `http://127.0.0.1:${(server.address() as { port: number }).port}`;
-  const commands: unknown[] = [];
+  const commands: Array<unknown> = [];
   const page = readTreePage({ getEntries: () => [], getLeafId: () => null }, {});
   receiveFrames(p.socket, (raw) => {
     const command = raw as { id: string; target: unknown };
@@ -360,7 +392,9 @@ it("pages trees over HTTP, rejects unsafe/stale requests and explains older peer
     ]);
   } finally {
     server.closeAllConnections();
-    await new Promise<void>((done) => server.close(() => done()));
+    await new Promise<void>((done) => {
+      server.close(() => done());
+    });
   }
 });
 
@@ -368,9 +402,11 @@ it("guards compact HTTP targets and waits for callback confirmation with a longe
   const p = await peer();
   const service = { getAgent: vi.fn(async () => agent) } as unknown as HerdrService;
   const server = createHttpServer(service, dir, bridge);
-  await new Promise<void>((done) => server.listen(0, "127.0.0.1", done));
+  await new Promise<void>((done) => {
+    server.listen(0, "127.0.0.1", done);
+  });
   const base = `http://127.0.0.1:${(server.address() as { port: number }).port}`;
-  const commands: { id: string; target: unknown }[] = [];
+  const commands: Array<{ id: string; target: unknown }> = [];
   receiveFrames(p.socket, (raw) => commands.push(raw as { id: string; target: unknown }));
   const request = (origin = base, target = targetOf(p.snapshot)) =>
     fetch(base + "/api/agents/w1:p1/compact", {
@@ -421,7 +457,9 @@ it("guards compact HTTP targets and waits for callback confirmation with a longe
   } finally {
     timer.mockRestore();
     server.closeAllConnections();
-    await new Promise<void>((done) => server.close(() => done()));
+    await new Promise<void>((done) => {
+      server.close(() => done());
+    });
   }
 });
 
@@ -429,20 +467,22 @@ it.each(["ack", "wrong-target", "disconnect"])(
   "never confirms or retries compaction on %s",
   async (mode) => {
     const p = await peer({ ...makeSnapshot(), capabilities: { compact: true } });
-    const commands: { id: string; target: unknown }[] = [];
+    const commands: Array<{ id: string; target: unknown }> = [];
     receiveFrames(p.socket, (raw) => commands.push(raw as { id: string; target: unknown }));
     const result = bridge.request(agent, targetOf(p.snapshot), { action: "compact" });
     const rejected = expect(result).rejects.toThrow("uncertain");
     await vi.waitFor(() => expect(commands).toHaveLength(1));
-    if (mode === "disconnect") p.socket.destroy();
-    else if (mode === "ack")
+    if (mode === "disconnect") {
+      p.socket.destroy();
+    } else if (mode === "ack") {
       writeFrame(p.socket, { type: "ack", id: commands[0].id, outcome: "invoked" });
-    else
+    } else {
       writeFrame(p.socket, {
         type: "compacted",
         id: commands[0].id,
         target: { ...targetOf(p.snapshot), epoch: randomUUID() },
       });
+    }
     await rejected;
     expect(commands).toHaveLength(1);
   },
@@ -452,9 +492,11 @@ it("guards the skills HTTP route and refuses skill sends to legacy peers without
   const p = await peer();
   const service = { getAgent: vi.fn(async () => agent) } as unknown as HerdrService;
   const server = createHttpServer(service, dir, bridge);
-  await new Promise<void>((done) => server.listen(0, "127.0.0.1", done));
+  await new Promise<void>((done) => {
+    server.listen(0, "127.0.0.1", done);
+  });
   const base = `http://127.0.0.1:${(server.address() as { port: number }).port}`;
-  const commands: unknown[] = [];
+  const commands: Array<unknown> = [];
   receiveFrames(p.socket, (raw) => {
     commands.push(raw);
     const c = raw as { id: string; target: unknown };
@@ -500,7 +542,9 @@ it("guards the skills HTTP route and refuses skill sends to legacy peers without
     expect(commands).toHaveLength(1);
   } finally {
     server.closeAllConnections();
-    await new Promise<void>((done) => server.close(() => done()));
+    await new Promise<void>((done) => {
+      server.close(() => done());
+    });
   }
 });
 
@@ -525,9 +569,11 @@ it("guards model HTTP routes by origin, capability, identity, input and idle sta
   const p = await peer();
   const service = { getAgent: vi.fn(async () => agent) } as unknown as HerdrService;
   const server = createHttpServer(service, dir, bridge);
-  await new Promise<void>((done) => server.listen(0, "127.0.0.1", done));
+  await new Promise<void>((done) => {
+    server.listen(0, "127.0.0.1", done);
+  });
   const base = `http://127.0.0.1:${(server.address() as { port: number }).port}`;
-  const commands: unknown[] = [];
+  const commands: Array<unknown> = [];
   receiveFrames(p.socket, (raw) => {
     commands.push(raw);
     const c = raw as {
@@ -590,7 +636,9 @@ it("guards model HTTP routes by origin, capability, identity, input and idle sta
     expect(commands).toHaveLength(2);
   } finally {
     server.closeAllConnections();
-    await new Promise<void>((done) => server.close(() => done()));
+    await new Promise<void>((done) => {
+      server.close(() => done());
+    });
   }
 });
 it.each(["wrong-target", "wrong-model", "ack"])("rejects %s model confirmations", async (kind) => {
@@ -625,9 +673,11 @@ it("guards thinking HTTP routes with origin, capability, idle state, model and t
   const p = await peer();
   const service = { getAgent: vi.fn(async () => agent) } as unknown as HerdrService;
   const server = createHttpServer(service, dir, bridge);
-  await new Promise<void>((done) => server.listen(0, "127.0.0.1", done));
+  await new Promise<void>((done) => {
+    server.listen(0, "127.0.0.1", done);
+  });
   const base = `http://127.0.0.1:${(server.address() as { port: number }).port}`;
-  const commands: unknown[] = [];
+  const commands: Array<unknown> = [];
   receiveFrames(p.socket, (raw) => {
     commands.push(raw);
     const c = raw as {
@@ -695,7 +745,9 @@ it("guards thinking HTTP routes with origin, capability, idle state, model and t
     expect(commands).toHaveLength(2);
   } finally {
     server.closeAllConnections();
-    await new Promise<void>((done) => server.close(() => done()));
+    await new Promise<void>((done) => {
+      server.close(() => done());
+    });
   }
 });
 it.each(["wrong-target", "wrong-model", "wrong-level", "ack"])(
@@ -732,9 +784,11 @@ it("guards global default writes with Origin, capability, identity, idle state a
   const p = await peer();
   const service = { getAgent: vi.fn(async () => agent) } as unknown as HerdrService;
   const server = createHttpServer(service, dir, bridge);
-  await new Promise<void>((done) => server.listen(0, "127.0.0.1", done));
+  await new Promise<void>((done) => {
+    server.listen(0, "127.0.0.1", done);
+  });
   const base = `http://127.0.0.1:${(server.address() as { port: number }).port}`;
-  const commands: unknown[] = [];
+  const commands: Array<unknown> = [];
   receiveFrames(p.socket, (raw) => {
     commands.push(raw);
     const c = raw as { id: string; target: unknown; selection: unknown };
@@ -773,7 +827,9 @@ it("guards global default writes with Origin, capability, identity, idle state a
     expect(commands).toHaveLength(2);
   } finally {
     server.closeAllConnections();
-    await new Promise<void>((done) => server.close(() => done()));
+    await new Promise<void>((done) => {
+      server.close(() => done());
+    });
   }
 });
 it.each(["wrong-target", "wrong-model", "wrong-kind", "wrong-level", "ack"])(
@@ -815,7 +871,9 @@ it("reports a new agent without a saved session as connecting, not an error", as
     getAgent: vi.fn(async () => ({ ...agent, agent_session: null })),
   } as unknown as HerdrService;
   const server = createHttpServer(service, dir, bridge);
-  await new Promise<void>((done) => server.listen(0, "127.0.0.1", done));
+  await new Promise<void>((done) => {
+    server.listen(0, "127.0.0.1", done);
+  });
   const abort = new AbortController();
   try {
     const response = await fetch(
@@ -828,7 +886,9 @@ it("reports a new agent without a saved session as connecting, not an error", as
   } finally {
     abort.abort();
     server.closeAllConnections();
-    await new Promise<void>((done) => server.close(() => done()));
+    await new Promise<void>((done) => {
+      server.close(() => done());
+    });
   }
 });
 
@@ -837,7 +897,9 @@ it("SSE streams directly after one Herdr lookup, reconnects fresh and removes qu
   const getAgent = vi.fn(async () => agent);
   const service = { getAgent } as unknown as HerdrService;
   const server = createHttpServer(service, dir, bridge);
-  await new Promise<void>((done) => server.listen(0, "127.0.0.1", done));
+  await new Promise<void>((done) => {
+    server.listen(0, "127.0.0.1", done);
+  });
   const address = server.address() as { port: number };
   const base = `http://127.0.0.1:${address.port}`;
   const abort = new AbortController();
@@ -847,7 +909,9 @@ it("SSE streams directly after one Herdr lookup, reconnects fresh and removes qu
     const reader = response.body!.getReader();
     async function nextContaining(value: string) {
       let text = "";
-      while (!text.includes(value)) text += new TextDecoder().decode((await reader.read()).value);
+      while (!text.includes(value)) {
+        text += new TextDecoder().decode((await reader.read()).value);
+      }
       return text;
     }
     expect(await nextContaining('"seq":1')).toContain(p.snapshot.epoch);
@@ -885,6 +949,8 @@ it("SSE streams directly after one Herdr lookup, reconnects fresh and removes qu
   } finally {
     abort.abort();
     server.closeAllConnections();
-    await new Promise<void>((done) => server.close(() => done()));
+    await new Promise<void>((done) => {
+      server.close(() => done());
+    });
   }
 });

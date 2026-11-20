@@ -8,8 +8,8 @@ import {
   useRef,
   useState,
   useSyncExternalStore,
-  type ReactNode,
 } from "react";
+import type { ReactNode } from "react";
 import { createPortal } from "react-dom";
 import type { BoardTarget } from "../../../packages/pi-live-chat/boardProtocol";
 import { sameTarget } from "../../../packages/pi-live-chat/protocol";
@@ -17,7 +17,8 @@ import { BoardController } from "./BoardController";
 import { BoardExport } from "./BoardExport";
 import { downloadScene } from "./scene";
 import type { EditorHandle } from "./editorTypes";
-import { ConversationDock, type WhiteboardConversation } from "./ConversationDock";
+import { ConversationDock } from "./ConversationDock";
+import type { WhiteboardConversation } from "./ConversationDock";
 import { ScoutLogo } from "../../shared/ui/ScoutLogo";
 import styles from "./Whiteboard.module.css";
 
@@ -123,7 +124,9 @@ function WhiteboardSession({
       element.inert = true;
     });
     const keydown = (event: KeyboardEvent) => {
-      if (!modal || event.defaultPrevented) return;
+      if (!modal || event.defaultPrevented) {
+        return;
+      }
       const nativeDialog = document.querySelector<HTMLElement>(
         "dialog[data-ui=chat-image-preview][open], dialog[data-ui=flow-component-editor][open], dialog[data-ui=board-export][open]",
       );
@@ -136,7 +139,9 @@ function WhiteboardSession({
         event.preventDefault();
         dismiss.current();
       }
-      if (event.key !== "Tab") return;
+      if (event.key !== "Tab") {
+        return;
+      }
       const scope = nativeDialog ?? modal;
       // The global notice is a sibling body portal so it stays actionable while
       // the app root is inert. Include it in this modal's normal Tab order, but
@@ -173,14 +178,20 @@ function WhiteboardSession({
         first.focus();
       }
     };
-    if (modal) document.addEventListener("keydown", keydown);
+    if (modal) {
+      document.addEventListener("keydown", keydown);
+    }
     return () => {
       active.current = false;
-      if (modal) document.removeEventListener("keydown", keydown);
+      if (modal) {
+        document.removeEventListener("keydown", keydown);
+      }
       previous.forEach(([element, inert]) => {
         element.inert = inert;
       });
-      if (focused instanceof HTMLElement) focused.focus();
+      if (focused instanceof HTMLElement) {
+        focused.focus();
+      }
     };
   }, [controller]);
   useEffect(() => {
@@ -190,7 +201,9 @@ function WhiteboardSession({
   useEffect(() => {
     const viewport = window.visualViewport;
     const element = dialog.current;
-    if (!viewport || !element) return;
+    if (!viewport || !element) {
+      return;
+    }
     // Mobile keyboards can resize only the visual viewport, not CSS dvh.
     const resize = () => {
       element.style.height = `${viewport.height}px`;
@@ -207,12 +220,14 @@ function WhiteboardSession({
 
   function assertTarget() {
     const now = current.current;
-    if (!active.current || !now.available || !sameTarget(now.target, controller.target))
+    if (!active.current || !now.available || !sameTarget(now.target, controller.target)) {
       throw new Error(
         "The agent is busy, disconnected, or this session changed. Nothing further was sent.",
       );
-    if (!controller.state.connected || controller.state.conflict)
+    }
+    if (!controller.state.connected || controller.state.conflict) {
       throw new Error("Whiteboard is disconnected or has a save conflict.");
+    }
   }
   const access = state.board?.access;
   const disconnected = agentState === "disconnected" || (Boolean(state.board) && !state.connected);
@@ -249,29 +264,38 @@ function WhiteboardSession({
   );
 
   async function back() {
-    if (operation.current) return;
+    if (operation.current) {
+      return;
+    }
     if (
       editorError &&
       !window.confirm(
         "Some changes cannot be saved. Download your current drawing from the canvas menu first. Leave and discard unsupported changes?",
       )
-    )
+    ) {
       return;
+    }
     operation.current = true;
     setWorking(true);
     try {
       await controller.flush();
       // Persist the instruction as well; a server save alone cannot store it.
-      if (state.instruction) await controller.keepLocal();
-      if (active.current) onClose();
-    } catch (reason) {
+      if (state.instruction) {
+        await controller.keepLocal();
+      }
       if (active.current) {
-        setError(reason instanceof Error ? reason.message : "Could not save your drawing");
+        onClose();
+      }
+    } catch (error_) {
+      if (active.current) {
+        setError(error_ instanceof Error ? error_.message : "Could not save your drawing");
         setLeave(true);
       }
     } finally {
       operation.current = false;
-      if (active.current) setWorking(false);
+      if (active.current) {
+        setWorking(false);
+      }
     }
   }
   async function promptBoard() {
@@ -283,8 +307,9 @@ function WhiteboardSession({
       Boolean(editorError) ||
       conversation.sending ||
       !conversation.draft.trim()
-    )
+    ) {
       return;
+    }
     const text = conversation.draft;
     const send = conversation.onSend;
     operation.current = true;
@@ -294,22 +319,30 @@ function WhiteboardSession({
       assertTarget();
       await controller.flush();
       assertTarget();
-      if (!current.current.structured)
+      if (!current.current.structured) {
         throw new Error("Run /reload in Pi to enable board editing.");
-      if (current.current.editorError) throw new Error(current.current.editorError);
+      }
+      if (current.current.editorError) {
+        throw new Error(current.current.editorError);
+      }
       const board = controller.state.board;
-      if (!board) throw new Error("Board is not ready.");
+      if (!board) {
+        throw new Error("Board is not ready.");
+      }
       // Flush manual drawing first. The agent reads the latest scene/image on
       // demand through the same tools as terminal and ordinary chat requests.
       send({ boardId: board.id, revision: board.revision, text });
-    } catch (reason) {
-      if (active.current)
+    } catch (error_) {
+      if (active.current) {
         setError(
-          `${reason instanceof Error ? reason.message : "Could not prepare board prompt"} Draft retained. No automatic retry.`,
+          `${error_ instanceof Error ? error_.message : "Could not prepare board prompt"} Draft retained. No automatic retry.`,
         );
+      }
     } finally {
       operation.current = false;
-      if (active.current) setWorking(false);
+      if (active.current) {
+        setWorking(false);
+      }
     }
   }
   async function revoke() {
@@ -317,17 +350,22 @@ function WhiteboardSession({
     setError("");
     try {
       await controller.revoke();
-    } catch (reason) {
-      if (active.current)
-        setError(reason instanceof Error ? reason.message : "Could not stop editing");
+    } catch (error_) {
+      if (active.current) {
+        setError(error_ instanceof Error ? error_.message : "Could not stop editing");
+      }
     } finally {
-      if (active.current) setRevoking(false);
+      if (active.current) {
+        setRevoking(false);
+      }
     }
   }
 
   useLayoutEffect(() => {
     dismiss.current = () => {
-      if (working) return;
+      if (working) {
+        return;
+      }
       void back();
     };
   });
@@ -341,7 +379,9 @@ function WhiteboardSession({
       data-testid="whiteboard"
       tabIndex={-1}
       onCancel={(event) => {
-        if (event.target !== event.currentTarget) return;
+        if (event.target !== event.currentTarget) {
+          return;
+        }
         event.preventDefault();
         dismiss.current();
       }}
@@ -468,17 +508,18 @@ function WhiteboardSession({
                           !window.confirm(
                             "Replace your local drawing with the latest server board? Download your drawing first if you want to keep it.",
                           )
-                        )
+                        ) {
                           return;
+                        }
                         void controller
                           .loadLatest()
                           .then(() => {
                             setError("");
                             setLeave(false);
                           })
-                          .catch((reason: unknown) =>
+                          .catch((error_: unknown) =>
                             setError(
-                              reason instanceof Error ? reason.message : "Could not load board",
+                              error_ instanceof Error ? error_.message : "Could not load board",
                             ),
                           );
                       }}

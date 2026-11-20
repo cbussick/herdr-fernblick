@@ -31,13 +31,21 @@ it.each(["message", "custom-message", "compaction", "model", "thinking"])(
     const manager = SessionManager.inMemory();
     const destination = manager.appendMessage({ role: "user", content: "Hello", timestamp: 1 });
     manager.appendCustomEntry("before-change", {});
-    if (kind === "message")
+    if (kind === "message") {
       manager.appendMessage({ role: "user", content: "Another prompt", timestamp: 2 });
-    if (kind === "custom-message")
+    }
+    if (kind === "custom-message") {
       manager.appendCustomMessageEntry("extension", "New context", false);
-    if (kind === "compaction") manager.appendCompaction("Summary", destination, 100);
-    if (kind === "model") manager.appendModelChange("fixture", "changed-model");
-    if (kind === "thinking") manager.appendThinkingLevelChange("high");
+    }
+    if (kind === "compaction") {
+      manager.appendCompaction("Summary", destination, 100);
+    }
+    if (kind === "model") {
+      manager.appendModelChange("fixture", "changed-model");
+    }
+    if (kind === "thinking") {
+      manager.appendThinkingLevelChange("high");
+    }
     manager.appendCustomEntry("after-change", {});
     expect(matchesNavigationDestination(manager, destination)).toBe(false);
   },

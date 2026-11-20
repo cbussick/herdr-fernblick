@@ -1,7 +1,8 @@
 import { describe, expect, it } from "vitest";
 import type { BoardScene } from "../../../packages/pi-live-chat/boardProtocol";
 import { BoardHistory } from "./history";
-import { defaults, edgeOptions, makeNode, type Diagram } from "./model";
+import { defaults, edgeOptions, makeNode } from "./model";
+import type { Diagram } from "./model";
 import { fromDiagram, toDiagram } from "./scene";
 
 const empty: BoardScene = { engine: "react-flow", elements: [], files: {}, background: "#ffffff" };
@@ -61,7 +62,7 @@ describe("local board edit history", () => {
     history.record(first, next, group);
     history.record(next, last, group);
     const resized = edit(last, (d) => {
-      d.nodes[0]!.width = 440;
+      d.nodes[0].width = 440;
     });
     history.record(last, resized, Symbol());
     const unresized = history.undo(resized)!;
@@ -77,12 +78,12 @@ describe("local board edit history", () => {
     const history = new BoardHistory(),
       before = seed();
     const selected = edit(before, (d) => {
-      d.nodes[0]!.selected = true;
-      d.nodes[0]!.measured = { width: 999, height: 999 };
+      d.nodes[0].selected = true;
+      d.nodes[0].measured = { width: 999, height: 999 };
     });
     history.record(before, selected);
     const newer = structuredClone(selected);
-    newer.elements[0]!.version = 200;
+    newer.elements[0].version = 200;
     history.record(selected, newer);
     expect(history.canUndo).toBe(false);
     const group = Symbol(),
@@ -105,7 +106,9 @@ describe("local board edit history", () => {
     history.record(added, grouped);
     const labeled = edit(grouped, (d) => {
       const n = d.nodes.find((n) => n.id === "a")!;
-      if (n.type === "component") n.data.title = "My edit";
+      if (n.type === "component") {
+        n.data.title = "My edit";
+      }
     });
     history.record(grouped, labeled);
     const connected = edit(labeled, (d) => {
@@ -119,13 +122,17 @@ describe("local board edit history", () => {
     });
     history.record(labeled, connected);
     let current = connected;
-    for (let i = 0; i < 4; i++) current = history.undo(current)!;
+    for (let i = 0; i < 4; i++) {
+      current = history.undo(current)!;
+    }
     expect(liveIds(current)).toEqual(["a", "b"]);
     expect(current.elements.find((e) => e.id === "a")).toMatchObject({
       parentId: null,
       props: { title: defaults("card").title },
     });
-    for (let i = 0; i < 4; i++) current = history.redo(current)!;
+    for (let i = 0; i < 4; i++) {
+      current = history.redo(current)!;
+    }
     expect(liveIds(current)).toEqual(["a", "b", "edge", "parent"]);
     expect(current.elements.find((e) => e.id === "edge")).toMatchObject({ label: "My connection" });
   });

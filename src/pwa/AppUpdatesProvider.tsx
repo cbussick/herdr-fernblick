@@ -1,7 +1,10 @@
-import { useEffect, useRef, useState, type ReactNode } from "react";
-import { AppUpdatesContext as Context, type CheckResult } from "./useAppUpdates";
+import { useEffect, useRef, useState } from "react";
+import type { ReactNode } from "react";
+import { AppUpdatesContext as Context } from "./useAppUpdates";
+import type { CheckResult } from "./useAppUpdates";
 import { watchForAppUpdates } from "./appUpdates";
-import { fetchLatestBuild, runningBuild, sameBuild, type BuildInfo } from "./buildInfo";
+import { fetchLatestBuild, runningBuild, sameBuild } from "./buildInfo";
+import type { BuildInfo } from "./buildInfo";
 
 export function AppUpdatesProvider({ children }: { children: ReactNode }) {
   const [online, setOnline] = useState(navigator.onLine);
@@ -35,18 +38,23 @@ export function AppUpdatesProvider({ children }: { children: ReactNode }) {
   }, []);
 
   async function check() {
-    if (checkLock.current || applyLock.current) return;
+    if (checkLock.current || applyLock.current) {
+      return;
+    }
     checkLock.current = true;
     setChecking(true);
     setError("");
     try {
-      if (!navigator.onLine) throw new Error("Reconnect before checking for updates.");
+      if (!navigator.onLine) {
+        throw new Error("Reconnect before checking for updates.");
+      }
       const next = await fetchLatestBuild();
       setLatest(next);
       const workerReady = await updater.current?.checkNow();
       if (workerReady || !sameBuild(runningBuild, next)) {
-        if (updater.current && !workerReady)
+        if (updater.current && !workerReady) {
           throw new Error("An update was found but is not ready. Try checking again shortly.");
+        }
         setAvailable(true);
         setNoticeVisible(true);
         setResult("update-ready");
@@ -55,9 +63,9 @@ export function AppUpdatesProvider({ children }: { children: ReactNode }) {
         setResult("up-to-date");
         return "up-to-date" as const;
       }
-    } catch (cause) {
+    } catch (error_) {
       setResult("failed");
-      setError(cause instanceof Error ? cause.message : "Could not check for updates.");
+      setError(error_ instanceof Error ? error_.message : "Could not check for updates.");
       return "failed" as const;
     } finally {
       checkLock.current = false;
@@ -66,16 +74,23 @@ export function AppUpdatesProvider({ children }: { children: ReactNode }) {
   }
 
   async function apply() {
-    if (applyLock.current || checkLock.current) return;
+    if (applyLock.current || checkLock.current) {
+      return;
+    }
     applyLock.current = true;
     setApplying(true);
     setError("");
     try {
-      if (!navigator.onLine) throw new Error("Reconnect before refreshing.");
-      if (updater.current) await updater.current.apply();
-      else window.location.reload();
-    } catch (cause) {
-      setError(cause instanceof Error ? cause.message : "Refresh failed. Try again.");
+      if (!navigator.onLine) {
+        throw new Error("Reconnect before refreshing.");
+      }
+      if (updater.current) {
+        await updater.current.apply();
+      } else {
+        window.location.reload();
+      }
+    } catch (error_) {
+      setError(error_ instanceof Error ? error_.message : "Refresh failed. Try again.");
       setApplying(false);
       applyLock.current = false;
     }

@@ -1,9 +1,11 @@
-import { createServer, type Server } from "node:http";
+import { createServer } from "node:http";
+import type { Server } from "node:http";
 import { defaultFlowProps } from "../../packages/pi-live-chat/flowProtocol.js";
 import { mkdtemp, readFile, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { extname, join } from "node:path";
-import { chromium, type Browser, type Page } from "playwright";
+import { chromium } from "playwright";
+import type { Browser, Page } from "playwright";
 import { build } from "vite";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import type { BoardElement, BoardScene } from "../../packages/pi-live-chat/boardProtocol.js";
@@ -15,8 +17,8 @@ let server: Server;
 let inspector: Browser;
 let page: Page;
 let renderer: BoardRenderer;
-const requests: string[] = [];
-const fontPaths: string[] = [];
+const requests: Array<string> = [];
+const fontPaths: Array<string> = [];
 let hostileScript: string | undefined;
 let redirectEntry: string | undefined;
 let redirectAsset: string | undefined;
@@ -65,7 +67,9 @@ beforeAll(async () => {
         return;
       }
       try {
-        if (path.includes("..")) throw new Error("Invalid path");
+        if (path.includes("..")) {
+          throw new Error("Invalid path");
+        }
         const data = await readFile(join(directory, path));
         const mime: Record<string, string> = {
           ".html": "text/html",
@@ -82,9 +86,13 @@ beforeAll(async () => {
       }
     })();
   });
-  await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));
+  await new Promise<void>((resolve) => {
+    server.listen(0, "127.0.0.1", resolve);
+  });
   const address = server.address();
-  if (!address || typeof address === "string") throw new Error("No test address");
+  if (!address || typeof address === "string") {
+    throw new Error("No test address");
+  }
   renderer = new BoardRenderer(`http://127.0.0.1:${address.port}`);
   inspector = await chromium.launch({ headless: true });
   page = await inspector.newPage();
@@ -93,11 +101,14 @@ beforeAll(async () => {
 afterAll(async () => {
   await renderer?.close();
   await inspector?.close();
-  if (server)
-    await new Promise<void>((resolve, reject) =>
-      server.close((error) => (error ? reject(error) : resolve())),
-    );
-  if (directory) await rm(directory, { recursive: true, force: true });
+  if (server) {
+    await new Promise<void>((resolve, reject) => {
+      server.close((error) => (error ? reject(error) : resolve()));
+    });
+  }
+  if (directory) {
+    await rm(directory, { recursive: true, force: true });
+  }
 });
 
 function element(id: string, x = 0, y = 0, props = {}, width = 300, height = 180): BoardElement {
@@ -131,10 +142,18 @@ async function inspect(png: Buffer) {
         green = 0,
         dark = 0;
       for (let i = 0; i < data.length; i += 4) {
-        if (data[i] > 200 && data[i + 1] < 60 && data[i + 2] < 60) red++;
-        if (data[i] < 60 && data[i + 1] < 60 && data[i + 2] > 200) blue++;
-        if (data[i] < 60 && data[i + 1] > 150 && data[i + 2] < 60) green++;
-        if (data[i] < 80 && data[i + 1] < 80 && data[i + 2] < 80) dark++;
+        if (data[i] > 200 && data[i + 1] < 60 && data[i + 2] < 60) {
+          red++;
+        }
+        if (data[i] < 60 && data[i + 1] < 60 && data[i + 2] > 200) {
+          blue++;
+        }
+        if (data[i] < 60 && data[i + 1] > 150 && data[i + 2] < 60) {
+          green++;
+        }
+        if (data[i] < 80 && data[i + 1] < 80 && data[i + 2] < 80) {
+          dark++;
+        }
       }
       return {
         width: canvas.width,
@@ -250,9 +269,13 @@ describe("structured browser board rendering", () => {
       escaped++;
       response.end("escaped");
     });
-    await new Promise<void>((resolve) => outside.listen(0, "127.0.0.1", resolve));
+    await new Promise<void>((resolve) => {
+      outside.listen(0, "127.0.0.1", resolve);
+    });
     const address = outside.address();
-    if (!address || typeof address === "string") throw new Error("No outside address");
+    if (!address || typeof address === "string") {
+      throw new Error("No outside address");
+    }
     const external = `http://127.0.0.1:${address.port}`;
     try {
       await renderer.render(emptyScene());
@@ -303,7 +326,9 @@ describe("structured browser board rendering", () => {
       hostileScript = undefined;
       redirectAsset = undefined;
       redirectEntry = undefined;
-      await new Promise<void>((resolve) => outside.close(() => resolve()));
+      await new Promise<void>((resolve) => {
+        outside.close(() => resolve());
+      });
     }
   }, 30_000);
   it("fails explicitly if local text fonts are missing", async () => {
@@ -322,7 +347,9 @@ describe("structured browser board rendering", () => {
 
   it("shuts down an in-flight real browser without waiting for its pending export", async () => {
     const address = server.address();
-    if (!address || typeof address === "string") throw new Error("No test address");
+    if (!address || typeof address === "string") {
+      throw new Error("No test address");
+    }
     const closingRenderer = new BoardRenderer(`http://127.0.0.1:${address.port}`);
     hostileScript = "window.prepareFlowBoardScene = () => new Promise(() => {});";
     requests.length = 0;
@@ -330,13 +357,19 @@ describe("structured browser board rendering", () => {
     try {
       const deadline = Date.now() + 10_000;
       while (!requests.includes("/assets/probe.js")) {
-        if (Date.now() > deadline) throw new Error("Browser did not load test module");
-        await new Promise((resolve) => setTimeout(resolve, 10));
+        if (Date.now() > deadline) {
+          throw new Error("Browser did not load test module");
+        }
+        await new Promise((resolve) => {
+          setTimeout(resolve, 10);
+        });
       }
       await closingRenderer.close();
       const error = await result;
       expect(error).toBeInstanceOf(Error);
-      if (error instanceof Error) expect(error.message).toMatch(/closed/);
+      if (error instanceof Error) {
+        expect(error.message).toMatch(/closed/);
+      }
     } finally {
       hostileScript = undefined;
       await closingRenderer.close();
@@ -355,8 +388,8 @@ describe("structured browser board rendering", () => {
     const png = await renderer.render({
       ...emptyScene(),
       elements: [
-        element("huge", -1000000, -1000000, {}, 100000, 100000),
-        element("distant", 1000000, 1000000),
+        element("huge", -1_000_000, -1_000_000, {}, 100_000, 100_000),
+        element("distant", 1_000_000, 1_000_000),
       ],
     });
     const size = await inspect(png);

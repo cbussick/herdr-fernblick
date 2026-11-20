@@ -7,9 +7,13 @@ export function useVisualViewport() {
   const ref = useRef<HTMLDivElement>(null);
   useLayoutEffect(() => {
     const element = ref.current;
-    if (!element) return;
+    if (!element) {
+      return;
+    }
     const viewport = window.visualViewport;
-    if (!viewport) return;
+    if (!viewport) {
+      return;
+    }
     const properties = [
       "--app-viewport-top",
       "--app-viewport-left",
@@ -19,8 +23,9 @@ export function useVisualViewport() {
     let layoutWidth = window.innerWidth;
     let layoutHeight = window.innerHeight;
     const fit = () => {
-      if (document.visibilityState === "hidden" || viewport.width <= 0 || viewport.height <= 0)
+      if (document.visibilityState === "hidden" || viewport.width <= 0 || viewport.height <= 0) {
         return;
+      }
       const zoomed = Math.abs(viewport.scale - 1) > 0.01;
       const layoutChanged =
         window.innerWidth !== layoutWidth || window.innerHeight !== layoutHeight;
@@ -28,8 +33,12 @@ export function useVisualViewport() {
       // Safari can restore a different layout size while still reporting zoom:
       // retaining the old pixel dimensions then leaves the app clipped/stunted.
       // Use unzoomed layout bounds in that case, never the smaller zoom rectangle.
-      if (zoomed && !layoutChanged) return;
-      if (zoomed && (window.innerWidth <= 0 || window.innerHeight <= 0)) return;
+      if (zoomed && !layoutChanged) {
+        return;
+      }
+      if (zoomed && (window.innerWidth <= 0 || window.innerHeight <= 0)) {
+        return;
+      }
       const values = zoomed
         ? [0, 0, window.innerWidth, window.innerHeight]
         : [viewport.offsetTop, viewport.offsetLeft, viewport.width, viewport.height];

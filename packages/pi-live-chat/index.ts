@@ -1,5 +1,6 @@
 import { randomUUID } from "node:crypto";
-import { connect, type Socket } from "node:net";
+import { connect } from "node:net";
+import type { Socket } from "node:net";
 import type { ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-agent";
 import {
   commandSchema,
@@ -9,10 +10,8 @@ import {
   footerUpdateEvent,
   matchesTarget,
   MAX_TEXT,
-  type Command,
-  type Identity,
-  type Snapshot,
 } from "./protocol.js";
+import type { Command, Identity, Snapshot } from "./protocol.js";
 import { thinkingState } from "./thinking.js";
 import { globalDefaultInfo, saveGlobalDefault } from "./globalDefaults.js";
 import { ImageHistory, IMAGE_METADATA } from "./imageHistory.js";
@@ -23,7 +22,8 @@ import { projectTree, contentText, matchesNavigationDestination } from "./tree.j
 import { readTreePage } from "./treePage.js";
 import { processIdentity, socketPath, validateSocket } from "./security.js";
 import { receiveFrames, writeFrame } from "./transport.js";
-import { BoardTools, type BoardConnection } from "./boardTools.js";
+import { BoardTools } from "./boardTools.js";
+import type { BoardConnection } from "./boardTools.js";
 import { openWhiteboardCommand } from "./whiteboardCommand.js";
 
 const singleton = Symbol.for("fernblick.pi-live-chat.owner.v1");
@@ -33,18 +33,23 @@ export default function liveChat(pi: ExtensionAPI) {
   const owner = {};
   const privateCommand = `fernblick-bridge-${randomUUID().replaceAll("-", "")}`;
   let context: ExtensionContext | undefined;
-  let footerLines: string[] | undefined;
+  let footerLines: Array<string> | undefined;
 
   pi.events.on(footerUpdateEvent, (raw: unknown) => {
-    if (!context) return;
+    if (!context) {
+      return;
+    }
     const parsed = footerPublicationSchema.safeParse(raw);
-    if (!parsed.success) return;
+    if (!parsed.success) {
+      return;
+    }
     try {
       if (
         parsed.data.sessionId !== context.sessionManager.getSessionId() ||
         parsed.data.sessionFile !== context.sessionManager.getSessionFile()
-      )
+      ) {
         return;
+      }
       footerLines = parsed.data.lines ?? undefined;
       publish();
     } catch {
@@ -54,7 +59,9 @@ export default function liveChat(pi: ExtensionAPI) {
 
   function requestFooter() {
     footerLines = undefined;
-    if (!context) return;
+    if (!context) {
+      return;
+    }
     pi.events.emit(footerRequestEvent, {
       sessionId: context.sessionManager.getSessionId(),
       sessionFile: context.sessionManager.getSessionFile(),
@@ -99,18 +106,23 @@ export default function liveChat(pi: ExtensionAPI) {
   pi.on("input", (event) => {
     inputGeneration++;
     boards?.input(event);
-    if (event.text.startsWith("/fernblick-bridge")) return { action: "handled" };
+    if (event.text.startsWith("/fernblick-bridge")) {
+      return { action: "handled" };
+    }
   });
   pi.on("before_agent_start", (event, ctx) => boards?.beforeAgentStart(event.prompt, ctx, event));
   pi.registerCommand("whiteboard", {
     description: "Open this conversation's Fernblick whiteboard without sending a prompt",
     handler: async (_args, ctx) => {
-      if (owners[singleton] !== owner) return;
+      if (owners[singleton] !== owner) {
+        return;
+      }
       await openWhiteboardCommand(ctx, () => {
-        if (!boards)
+        if (!boards) {
           throw new Error(
             "Whiteboard backend unavailable. Configure Fernblick and its Pi socket first.",
           );
+        }
         return boards.open(ctx);
       });
     },
@@ -119,7 +131,9 @@ export default function liveChat(pi: ExtensionAPI) {
     description: "Private one-use Fernblick navigation gateway",
     handler: async (args, ctx) => {
       const operation = navigation;
-      if (!operation || !operation.nonce || args.trim() !== operation.nonce) return;
+      if (!operation || !operation.nonce || args.trim() !== operation.nonce) {
+        return;
+      }
       operation.nonce = undefined;
       operation.entered = true;
       const reject = (reason: string) =>
@@ -140,16 +154,19 @@ export default function liveChat(pi: ExtensionAPI) {
           !fresh ||
           !matchesTarget(fresh, operation.command.target) ||
           ctx.sessionManager.getSessionId() !== operation.command.target.sessionId
-        )
+        ) {
           throw new Error("Stale navigation request");
-        if (fresh.busy || sendPending || !ctx.isIdle() || ctx.hasPendingMessages())
+        }
+        if (fresh.busy || sendPending || !ctx.isIdle() || ctx.hasPendingMessages()) {
           throw new Error("Pi is busy");
+        }
         const entry = ctx.sessionManager.getEntry(operation.command.entryId);
         if (
           entry?.type !== "message" ||
           (entry.message.role !== "user" && entry.message.role !== "assistant")
-        )
+        ) {
           throw new Error("Conversation entry is unavailable");
+        }
         const prompt =
           entry.message.role === "user"
             ? {
@@ -157,12 +174,15 @@ export default function liveChat(pi: ExtensionAPI) {
                 attachments: imageHistory.ids(entry.message),
               }
             : undefined;
-        if (prompt && prompt.text.length > MAX_TEXT)
+        if (prompt && prompt.text.length > MAX_TEXT) {
           throw new Error("Prompt is too large to restore");
+        }
         const expectedLeaf = entry.message.role === "user" ? entry.parentId : entry.id;
         // Pi itself selects a user's parent (including null/root).
         const result = await ctx.navigateTree(entry.id, { summarize: false });
-        if (result.cancelled) throw new Error("Navigation cancelled");
+        if (result.cancelled) {
+          throw new Error("Navigation cancelled");
+        }
         if (
           operation.expired ||
           navigation !== operation ||
@@ -171,8 +191,9 @@ export default function liveChat(pi: ExtensionAPI) {
           operation.client.destroyed ||
           ctx.sessionManager.getSessionId() !== operation.command.target.sessionId ||
           !matchesNavigationDestination(ctx.sessionManager, expectedLeaf)
-        )
+        ) {
           throw new Error("Navigation outcome changed or connection lost; inspect Pi");
+        }
         epoch = randomUUID();
         projector.reconcile(ctx.sessionManager.getBranch());
         writeFrame(operation.client, {
@@ -182,8 +203,9 @@ export default function liveChat(pi: ExtensionAPI) {
           prompt,
         });
       } catch (error) {
-        if (!operation.expired)
+        if (!operation.expired) {
           reject(error instanceof Error ? error.message.slice(0, 512) : "Navigation failed");
+        }
       } finally {
         clearTimeout(operation.timer);
         if (navigation === operation) {
@@ -225,10 +247,14 @@ export default function liveChat(pi: ExtensionAPI) {
     const old = socket;
     socket = undefined;
     old?.destroy();
-    if (owners[singleton] === owner) delete owners[singleton];
+    if (owners[singleton] === owner) {
+      delete owners[singleton];
+    }
   }
   function snapshot(): Snapshot | undefined {
-    if (!context || !identity) return;
+    if (!context || !identity) {
+      return;
+    }
     try {
       // A retained context throws after runtime replacement. Never reuse it.
       if (
@@ -277,13 +303,16 @@ export default function liveChat(pi: ExtensionAPI) {
     }
   }
   function boardConnection(): BoardConnection | undefined {
-    if (owners[singleton] !== owner || !context || !identity || !socket) return;
+    if (owners[singleton] !== owner || !context || !identity || !socket) {
+      return;
+    }
     try {
       if (
         context.sessionManager.getSessionId() !== identity.sessionId ||
         context.sessionManager.getSessionFile() !== identity.sessionFile
-      )
+      ) {
         return;
+      }
       return {
         client: socket,
         target: {
@@ -298,33 +327,49 @@ export default function liveChat(pi: ExtensionAPI) {
     }
   }
   function writeSnapshot(client: Socket, value: Snapshot) {
-    if (!writeFrame(client, value)) return;
+    if (!writeFrame(client, value)) {
+      return;
+    }
     // Connection setup handles RPC failures internally; publishing must not wait for it.
     void boards?.connected();
-    if (!client.writableNeedDrain || publishStallTimer) return;
+    if (!client.writableNeedDrain || publishStallTimer) {
+      return;
+    }
     // Brief stalls coalesce; a permanently stalled backend still loses its peer.
     publishStallTimer = setTimeout(() => {
       publishStallTimer = undefined;
-      if (socket === client) client.destroy();
+      if (socket === client) {
+        client.destroy();
+      }
     }, 60_000);
     publishStallTimer.unref();
   }
   function publish() {
-    if (!context) return;
+    if (!context) {
+      return;
+    }
     publishPending = true;
-    if (publishTimer || !socket || socket.connecting || socket.writableNeedDrain) return;
+    if (publishTimer || !socket || socket.connecting || socket.writableNeedDrain) {
+      return;
+    }
     publishTimer = setTimeout(() => {
       publishTimer = undefined;
-      if (!publishPending || !socket || socket.connecting || socket.writableNeedDrain) return;
+      if (!publishPending || !socket || socket.connecting || socket.writableNeedDrain) {
+        return;
+      }
       // Keep only a dirty bit while backpressured, never another full transcript.
       publishPending = false;
       const value = snapshot();
-      if (value && socket) writeSnapshot(socket, value);
+      if (value && socket) {
+        writeSnapshot(socket, value);
+      }
     }, 50);
     publishTimer.unref();
   }
   function scheduleReconnect() {
-    if (!context || retry) return;
+    if (!context || retry) {
+      return;
+    }
     retry = setTimeout(
       () => {
         retry = undefined;
@@ -340,9 +385,13 @@ export default function liveChat(pi: ExtensionAPI) {
     try {
       const path = socketPath();
       await validateSocket(path);
-      if (!context || current !== generation) return;
+      if (!context || current !== generation) {
+        return;
+      }
       const info = await processIdentity(process.pid);
-      if (!context || current !== generation) return;
+      if (!context || current !== generation) {
+        return;
+      }
       const sessionFile = context.sessionManager.getSessionFile();
       if (!sessionFile || !info.pane || !info.herdrSocket || !info.start) {
         scheduleReconnect();
@@ -363,13 +412,19 @@ export default function liveChat(pi: ExtensionAPI) {
       client.unref();
       client.on("error", () => {});
       client.on("drain", () => {
-        if (socket !== client || current !== generation) return;
+        if (socket !== client || current !== generation) {
+          return;
+        }
         clearTimeout(publishStallTimer);
         publishStallTimer = undefined;
-        if (publishPending) publish();
+        if (publishPending) {
+          publish();
+        }
       });
       client.on("close", () => {
-        if (socket !== client || current !== generation) return;
+        if (socket !== client || current !== generation) {
+          return;
+        }
         clearTimeout(publishStallTimer);
         publishStallTimer = undefined;
         boards?.revoke("Whiteboard socket disconnected");
@@ -390,10 +445,14 @@ export default function liveChat(pi: ExtensionAPI) {
         requestFooter();
         publishPending = false;
         const value = snapshot();
-        if (value) writeSnapshot(client, value);
+        if (value) {
+          writeSnapshot(client, value);
+        }
       });
       receiveFrames(client, (raw) => {
-        if (boards?.consume(raw, client)) return;
+        if (boards?.consume(raw, client)) {
+          return;
+        }
         const parsed = commandSchema.safeParse(raw);
         if (!parsed.success) {
           client.destroy();
@@ -440,17 +499,20 @@ export default function liveChat(pi: ExtensionAPI) {
         }
         if (command.action === "shutdown") {
           try {
-            if (value.busy || sendPending)
+            if (value.busy || sendPending) {
               throw new Error("Pi is busy or a previous send is unresolved");
+            }
             if (
               typeof context.ui?.getEditorText !== "function" ||
               typeof context.shutdown !== "function"
-            )
+            ) {
               throw new Error("Cannot safely inspect or shut down this Pi runtime");
-            if (context.ui.getEditorText().length > 0)
+            }
+            if (context.ui.getEditorText().length > 0) {
               throw new Error(
                 "Pi terminal has an unsent draft. Save or clear it in Pi before exiting or restarting; nothing was submitted or discarded.",
               );
+            }
             preparing = shuttingDown = true;
             // Confirmation means the shutdown was requested, not that Pi exited.
             // The backend must also observe the old agent disappear before restart.
@@ -496,10 +558,12 @@ export default function liveChat(pi: ExtensionAPI) {
               const selection = command.selection;
               if (selection.kind === "thinking") {
                 const state = thinkingState(pi, ctx);
-                if (state.provider !== selection.provider || state.modelId !== selection.modelId)
+                if (state.provider !== selection.provider || state.modelId !== selection.modelId) {
                   throw new Error("Model changed. Reopen Thinking level.");
-                if (!state.levels.includes(selection.level))
+                }
+                if (!state.levels.includes(selection.level)) {
                   throw new Error("This thinking level is not supported by the current model");
+                }
               } else if (
                 !ctx.modelRegistry
                   .getAvailable()
@@ -520,10 +584,11 @@ export default function liveChat(pi: ExtensionAPI) {
                 client.destroyed ||
                 !fresh ||
                 !matchesTarget(fresh, command.target)
-              )
+              ) {
                 throw new Error(
                   "Default save outcome uncertain. Check Pi settings before trying again.",
                 );
+              }
               writeFrame(client, {
                 type: "default-saved",
                 id: command.id,
@@ -531,10 +596,11 @@ export default function liveChat(pi: ExtensionAPI) {
                 selection,
               });
             } catch (error) {
-              if (current === generation && client === socket && !client.destroyed)
+              if (current === generation && client === socket && !client.destroyed) {
                 reject(
                   error instanceof Error ? error.message.slice(0, 512) : "Default save failed",
                 );
+              }
             } finally {
               if (current === generation) {
                 preparing = false;
@@ -569,10 +635,12 @@ export default function liveChat(pi: ExtensionAPI) {
           preparing = true;
           try {
             const state = thinkingState(pi, context);
-            if (state.provider !== command.provider || state.modelId !== command.modelId)
+            if (state.provider !== command.provider || state.modelId !== command.modelId) {
               throw new Error("Model changed. Reopen Thinking level.");
-            if (!state.levels.includes(command.level))
+            }
+            if (!state.levels.includes(command.level)) {
               throw new Error("This thinking level is not supported by the current model");
+            }
             // Pi's public setter is synchronous; no await between validation,
             // invocation and reading the effective level.
             pi.setThinkingLevel(command.level);
@@ -583,10 +651,11 @@ export default function liveChat(pi: ExtensionAPI) {
               fresh.status.provider !== command.provider ||
               fresh.status.model !== command.modelId ||
               pi.getThinkingLevel() !== command.level
-            )
+            ) {
               throw new Error(
                 "Thinking level change outcome uncertain. Check Pi before trying again.",
               );
+            }
             requestFooter();
             writeFrame(client, {
               type: "thinking-level-changed",
@@ -638,15 +707,18 @@ export default function liveChat(pi: ExtensionAPI) {
           preparing = true;
           void (async () => {
             try {
-              const model = context!.modelRegistry
+              const model = context.modelRegistry
                 .getAvailable()
                 .find(
                   (model) => model.provider === command.provider && model.id === command.modelId,
                 );
-              if (!model) throw new Error("Model is no longer available in Pi");
+              if (!model) {
+                throw new Error("Model is no longer available in Pi");
+              }
               // No await between validating this session and invoking the native API.
-              if (!(await pi.setModel(model)))
+              if (!(await pi.setModel(model))) {
                 throw new Error("Model authentication is unavailable");
+              }
               const fresh = snapshot();
               if (
                 current !== generation ||
@@ -656,8 +728,9 @@ export default function liveChat(pi: ExtensionAPI) {
                 !matchesTarget(fresh, command.target) ||
                 fresh.status.model !== model.id ||
                 fresh.status.provider !== model.provider
-              )
+              ) {
                 throw new Error("Model change outcome uncertain. Check Pi before trying again.");
+              }
               requestFooter();
               writeFrame(client, {
                 type: "model-changed",
@@ -666,10 +739,11 @@ export default function liveChat(pi: ExtensionAPI) {
                 model: { id: model.id, provider: model.provider, name: model.name },
               });
             } catch (error) {
-              if (current === generation && client === socket && !client.destroyed)
+              if (current === generation && client === socket && !client.destroyed) {
                 reject(
                   error instanceof Error ? error.message.slice(0, 512) : "Model change failed",
                 );
+              }
             } finally {
               // Retain serialization over disconnect until the native operation settles.
               if (current === generation) {
@@ -723,21 +797,29 @@ export default function liveChat(pi: ExtensionAPI) {
           boards?.compacting();
           let settled = false;
           const finish = (error?: Error) => {
-            if (settled) return;
+            if (settled) {
+              return;
+            }
             settled = true;
-            if (current !== generation) return;
+            if (current !== generation) {
+              return;
+            }
             const fresh = snapshot();
-            if (!fresh) return;
+            if (!fresh) {
+              return;
+            }
             const valid =
               client === socket && !client.destroyed && matchesTarget(fresh, command.target);
             preparing = false;
-            if (!valid && client === socket && !client.destroyed)
+            if (!valid && client === socket && !client.destroyed) {
               reject(
                 "Session changed; compaction outcome uncertain. Check Pi before trying again.",
               );
+            }
             if (valid) {
-              if (error) reject(error.message.slice(0, 512));
-              else {
+              if (error) {
+                reject(error.message.slice(0, 512));
+              } else {
                 projector.reconcile(context!.sessionManager.getBranch());
                 requestFooter();
                 writeFrame(client, { type: "compacted", id: command.id, target: command.target });
@@ -821,13 +903,16 @@ export default function liveChat(pi: ExtensionAPI) {
                 client.destroyed ||
                 !fresh ||
                 !matchesTarget(fresh, command.target)
-              )
+              ) {
                 throw new Error("Stale session or connection");
-              if (fresh.busy || sendPending)
+              }
+              if (fresh.busy || sendPending) {
                 throw new Error("Pi is busy or a previous send is unresolved");
+              }
               const prompt = skillPrompt(pi, command.text);
-              if (images.length)
+              if (images.length) {
                 pi.appendEntry(IMAGE_METADATA, imageHistory.remember(images, command.attachments));
+              }
               sendPending = true;
               // Prevent rapid double submission during Pi's async input preflight.
               // This is a bounded handoff guard, not a delivery receipt or queue.
@@ -841,7 +926,9 @@ export default function liveChat(pi: ExtensionAPI) {
               boards?.revoke("Whiteboard request replaced by a new send");
               if (command.board) {
                 const binding = boardConnection();
-                if (!boards || !binding) throw new Error("Whiteboard tools unavailable");
+                if (!boards || !binding) {
+                  throw new Error("Whiteboard tools unavailable");
+                }
                 boards.stage(command.board, command.text, binding);
                 boardStaged = true;
               }
@@ -861,11 +948,15 @@ export default function liveChat(pi: ExtensionAPI) {
                 outcome: "invoked",
               });
             } catch (error) {
-              if (boardStaged && current === generation && client === socket)
+              if (boardStaged && current === generation && client === socket) {
                 boards?.revoke("Whiteboard send failed");
-              if (invoked) client.destroy();
-              else {
-                if (current === generation) finishHandoff();
+              }
+              if (invoked) {
+                client.destroy();
+              } else {
+                if (current === generation) {
+                  finishHandoff();
+                }
                 reject(
                   error instanceof Error ? error.message.slice(0, 512) : "Image preparation failed",
                 );
@@ -892,13 +983,19 @@ export default function liveChat(pi: ExtensionAPI) {
         publish();
       });
     } catch {
-      if (current === generation) scheduleReconnect();
+      if (current === generation) {
+        scheduleReconnect();
+      }
     }
   }
   pi.on("session_start", (_event, ctx) => {
-    if (owners[singleton] && owners[singleton] !== owner) return;
+    if (owners[singleton] && owners[singleton] !== owner) {
+      return;
+    }
     stop();
-    if (ctx.mode !== "tui") return;
+    if (ctx.mode !== "tui") {
+      return;
+    }
     owners[singleton] = owner;
     context = ctx;
     requestFooter();
@@ -915,14 +1012,18 @@ export default function liveChat(pi: ExtensionAPI) {
   });
   pi.on("session_shutdown", () => stop());
   pi.on("agent_start", (_event, ctx) => {
-    if (!context) return;
+    if (!context) {
+      return;
+    }
     boards?.agentStart(ctx);
     active = true;
     finishHandoff();
     publish();
   });
   pi.on("agent_settled", (_e, ctx) => {
-    if (!context) return;
+    if (!context) {
+      return;
+    }
     boards?.settled();
     context = ctx;
     active = false;
@@ -931,19 +1032,29 @@ export default function liveChat(pi: ExtensionAPI) {
     publish();
   });
   pi.on("turn_end", (_e, ctx) => {
-    if (!context) return;
+    if (!context) {
+      return;
+    }
     context = ctx;
     projector.reconcile(ctx.sessionManager.getBranch());
     requestFooter();
     publish();
   });
   function reconcile(event: { type: string }, ctx: ExtensionContext) {
-    if (!context) return;
+    if (!context) {
+      return;
+    }
     inputGeneration++;
-    if (event.type === "session_tree") boards?.revoke("Whiteboard context changed");
+    if (event.type === "session_tree") {
+      boards?.revoke("Whiteboard context changed");
+    }
     context = ctx;
-    if (event.type === "session_compact") compacting = false;
-    if (event.type === "session_tree") epoch = randomUUID();
+    if (event.type === "session_compact") {
+      compacting = false;
+    }
+    if (event.type === "session_tree") {
+      epoch = randomUUID();
+    }
     projector.reconcile(ctx.sessionManager.getBranch(), event.type !== "session_tree");
     requestFooter();
     publish();
@@ -958,7 +1069,9 @@ export default function liveChat(pi: ExtensionAPI) {
   pi.on("session_before_compact", (_event, ctx) => {
     inputGeneration++;
     boards?.compacting();
-    if (!context) return;
+    if (!context) {
+      return;
+    }
     context = ctx;
     compacting = true;
     publish();
@@ -966,7 +1079,9 @@ export default function liveChat(pi: ExtensionAPI) {
   pi.on("session_tree", reconcile);
   pi.on("session_compact", reconcile);
   pi.on("session_compact_failed", (_event, ctx) => {
-    if (!context) return;
+    if (!context) {
+      return;
+    }
     context = ctx;
     compacting = false;
     publish();
@@ -981,7 +1096,9 @@ export default function liveChat(pi: ExtensionAPI) {
     void catalog
       .hydrate(value, valid, (refs) => pi.appendEntry(IMAGE_METADATA, refs))
       .then((changed) => {
-        if (!changed || !valid() || !context) return;
+        if (!changed || !valid() || !context) {
+          return;
+        }
         projector.reconcile(context.sessionManager.getBranch(), true);
         projector.message(value);
         publish();
@@ -989,13 +1106,20 @@ export default function liveChat(pi: ExtensionAPI) {
       .catch(() => {});
   }
   function hydrateHistory() {
-    if (!context) return;
+    if (!context) {
+      return;
+    }
     // Uploaded originals resolve immediately from metadata. Limit unsolicited copies.
-    for (const entry of context.sessionManager.getBranch().slice(-16))
-      if (entry.type === "message") hydrateMessage(entry.message);
+    for (const entry of context.sessionManager.getBranch().slice(-16)) {
+      if (entry.type === "message") {
+        hydrateMessage(entry.message);
+      }
+    }
   }
   function message(event: { message: unknown }) {
-    if (!context) return;
+    if (!context) {
+      return;
+    }
     projector.message(event.message);
     hydrateMessage(event.message);
     publish();
@@ -1004,7 +1128,9 @@ export default function liveChat(pi: ExtensionAPI) {
   pi.on("message_update", message);
   pi.on("message_end", message);
   function tool(event: Parameters<TranscriptProjector["tool"]>[0]) {
-    if (!context) return;
+    if (!context) {
+      return;
+    }
     projector.tool(event);
     publish();
   }
@@ -1012,12 +1138,16 @@ export default function liveChat(pi: ExtensionAPI) {
   pi.on("tool_execution_update", tool);
   pi.on("tool_execution_end", tool);
   pi.on("ui_prompt_start", () => {
-    if (!context) return;
+    if (!context) {
+      return;
+    }
     uiBlocked = true;
     publish();
   });
   pi.on("ui_prompt_end", () => {
-    if (!context) return;
+    if (!context) {
+      return;
+    }
     uiBlocked = false;
     publish();
   });

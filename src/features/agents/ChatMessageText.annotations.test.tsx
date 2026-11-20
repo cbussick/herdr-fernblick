@@ -1,5 +1,6 @@
 import { act } from "react";
-import { create, type ReactTestRenderer } from "react-test-renderer";
+import { create } from "react-test-renderer";
+import type { ReactTestRenderer } from "react-test-renderer";
 import { renderToStaticMarkup } from "react-dom/server";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { ChatMessageText } from "./ChatMessageText";
@@ -97,7 +98,7 @@ describe("editing highlighted passages", () => {
         onAnnotationEdit={edit}
       />,
     );
-    expect(html.replace(/<[^>]+>/g, "")).toBe(text);
+    expect(html.replaceAll(/<[^>]+>/g, "")).toBe(text);
     expect(html).toContain('data-annotation-id="formatted"');
     expect(html).toContain("data-message-syntax");
     expect(html).toMatch(/<mark[^>]*>Read docs<\/mark>/);

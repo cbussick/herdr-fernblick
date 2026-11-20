@@ -53,7 +53,7 @@ export function App({
     queryKey: ["session", sessionId],
     queryFn: () => getSession(sessionId!),
     enabled: Boolean(sessionId),
-    refetchInterval: 2_000,
+    refetchInterval: 2000,
   });
   const selectedPaneId =
     pendingPaneId ?? navigation.paneId ?? sessionQuery.data?.agent?.pane_id ?? null;
@@ -67,15 +67,18 @@ export function App({
   const agentsQuery = useQuery({
     queryKey: ["agents"],
     queryFn: getAgents,
-    refetchInterval: 2_000,
+    refetchInterval: 2000,
   });
 
   // Refetching without cached data resets the query to pending and clears its error.
   // Keep the last connection failure visible while automatic retries run.
   const [lastConnectionError, setLastConnectionError] = useState<Error | null>(null);
   useEffect(() => {
-    if (agentsQuery.data) setLastConnectionError(null);
-    else if (agentsQuery.error) setLastConnectionError(agentsQuery.error);
+    if (agentsQuery.data) {
+      setLastConnectionError(null);
+    } else if (agentsQuery.error) {
+      setLastConnectionError(agentsQuery.error);
+    }
   }, [agentsQuery.data, agentsQuery.error]);
   const connectionError = agentsQuery.data ? null : (agentsQuery.error ?? lastConnectionError);
 
@@ -310,10 +313,13 @@ export function App({
                   ? (next, id) => {
                       // An in-memory Pi ID is not resolvable by session routes yet.
                       // Keep the live console (and its draft) mounted until promotion.
-                      if (pendingPaneId) setPendingView(next);
-                      else if (id) navigation.selectSession(id, next);
-                      else if (selectedAgent)
+                      if (pendingPaneId) {
+                        setPendingView(next);
+                      } else if (id) {
+                        navigation.selectSession(id, next);
+                      } else if (selectedAgent) {
                         setSelectedPaneId(selectedAgent.pane_id, next === "terminal");
+                      }
                     }
                   : undefined
               }

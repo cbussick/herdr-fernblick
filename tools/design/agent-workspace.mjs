@@ -70,9 +70,11 @@ for (const [engine, browserType] of [
       for (const cancel of ["button", "escape"]) {
         await openWorkspace();
         await workspaceDialog.waitFor();
-        if (cancel === "button")
+        if (cancel === "button") {
           await workspaceDialog.getByRole("button", { name: "Cancel", exact: true }).click();
-        else await page.keyboard.press("Escape");
+        } else {
+          await page.keyboard.press("Escape");
+        }
         await workspaceDialog.waitFor({ state: "detached" });
         assert.equal(await agentDialog.evaluate((node) => node.open), true);
         assert.equal(

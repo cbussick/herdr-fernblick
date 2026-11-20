@@ -1,5 +1,6 @@
 import { act } from "react";
-import { create, type ReactTestRenderer } from "react-test-renderer";
+import { create } from "react-test-renderer";
+import type { ReactTestRenderer } from "react-test-renderer";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
 import { SettingsDialog } from "./SettingsDialog";
 import { Snackbar } from "../shared/ui/Snackbar";
@@ -96,15 +97,15 @@ it("shows Up to date only in a dialog-layer snackbar after a manual check", asyn
   expect(about.findAllByType("p").every((node) => !node.children.includes("Up to date."))).toBe(
     true,
   );
-  await advance(6_000);
+  await advance(6000);
   expect(snackbars()).toHaveLength(0);
 });
 
 it("starts a fresh snackbar interval for repeated checks with the same result", async () => {
   await click("Check for updates");
-  await advance(5_000);
+  await advance(5000);
   await click("Check for updates");
-  await advance(5_999);
+  await advance(5999);
   expect(snackbars()).toHaveLength(1);
   await advance(1);
   expect(snackbars()).toHaveLength(0);

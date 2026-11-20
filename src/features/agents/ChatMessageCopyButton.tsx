@@ -14,7 +14,9 @@ export function ChatMessageCopyButton({ text }: { text: string }) {
         ? "Retry copy message"
         : "Copy message";
   useEffect(() => {
-    if (!result) return;
+    if (!result) {
+      return;
+    }
     const timer = window.setTimeout(() => setResult(undefined), 2500);
     return () => window.clearTimeout(timer);
   }, [result]);

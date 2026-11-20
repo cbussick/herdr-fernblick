@@ -1,6 +1,7 @@
 import { randomUUID } from "node:crypto";
 import { mkdtemp, rm, writeFile, open } from "node:fs/promises";
-import { createServer, type Socket } from "node:net";
+import { createServer } from "node:net";
+import type { Socket } from "node:net";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type {
@@ -24,10 +25,11 @@ import {
   snapshotSchema,
   treePageResponseSchema,
   targetOf,
-  type Snapshot,
 } from "./protocol.js";
+import type { Snapshot } from "./protocol.js";
 import { receiveFrames, writeFrame } from "./transport.js";
-import { boardRequestSchema, type BoardGrant, type BoardRequest } from "./boardProtocol.js";
+import { boardRequestSchema } from "./boardProtocol.js";
+import type { BoardGrant, BoardRequest } from "./boardProtocol.js";
 
 vi.mock("node:fs/promises", async (importOriginal) => {
   const fs = await importOriginal<typeof import("node:fs/promises")>();
@@ -48,8 +50,8 @@ vi.mock("./security.js", async (importOriginal) => {
 });
 type Handler = (event: Record<string, unknown>, ctx: ExtensionContext) => unknown;
 function fakePi(session = "session") {
-  const handlers = new Map<string, Handler[]>();
-  const branch: unknown[] = [];
+  const handlers = new Map<string, Array<Handler>>();
+  const branch: Array<unknown> = [];
   const commands = new Map<
     string,
     { handler: (args: string, ctx: ExtensionCommandContext) => Promise<void> }
@@ -81,7 +83,7 @@ function fakePi(session = "session") {
       getSessionFile: () => `/${session}.jsonl`,
     },
   } as unknown as ExtensionContext;
-  const eventHandlers = new Map<string, ((value: unknown) => void)[]>();
+  const eventHandlers = new Map<string, Array<(value: unknown) => void>>();
   const pi = {
     events: {
       on: (name: string, handler: (value: unknown) => void) => {
@@ -93,7 +95,9 @@ function fakePi(session = "session") {
           );
       },
       emit: (name: string, value: unknown) => {
-        for (const handler of eventHandlers.get(name) ?? []) handler(value);
+        for (const handler of eventHandlers.get(name) ?? []) {
+          handler(value);
+        }
       },
     },
     on: (event: string, handler: Handler) => {
@@ -110,7 +114,7 @@ function fakePi(session = "session") {
     }),
     registerTool: vi.fn((definition: ToolDefinition) => tools.set(definition.name, definition)),
     getActiveTools: () => [...activeTools],
-    setActiveTools: vi.fn((names: string[]) => {
+    setActiveTools: vi.fn((names: Array<string>) => {
       activeTools = names;
     }),
     registerCommand: (
@@ -139,9 +143,11 @@ function fakePi(session = "session") {
     },
   };
 }
-const cleanup: (() => Promise<void> | void)[] = [];
+const cleanup: Array<() => Promise<void> | void> = [];
 afterEach(async () => {
-  for (const fn of cleanup.reverse()) await fn();
+  for (const fn of cleanup.reverse()) {
+    await fn();
+  }
   cleanup.length = 0;
   vi.unstubAllEnvs();
   vi.useRealTimers();
@@ -153,8 +159,8 @@ async function setup(
   const dir = await mkdtemp(join(tmpdir(), "fb-ext-"));
   const path = join(dir, "pi.sock");
   vi.stubEnv("FERNBLICK_PI_SOCKET", path);
-  const frames: unknown[] = [];
-  const connections: Socket[] = [];
+  const frames: Array<unknown> = [];
+  const connections: Array<Socket> = [];
   const server = createServer((socket) => {
     connections.push(socket);
     receiveFrames(socket, (value) => {
@@ -167,23 +173,30 @@ async function setup(
       ) {
         void (async () => {
           await beforeBoardBeginReply?.();
-          if (!socket.destroyed)
+          if (!socket.destroyed) {
             writeFrame(socket, {
               type: "board-reply",
               id: frame.id,
               ok: true,
               data: { expiresAt: null },
             });
+          }
         })();
       }
     });
   });
-  await new Promise<void>((done) => server.listen(path, done));
+  await new Promise<void>((done) => {
+    server.listen(path, done);
+  });
   const { chmod } = await import("node:fs/promises");
   await chmod(path, 0o600);
   cleanup.push(async () => {
-    for (const s of connections) s.destroy();
-    await new Promise<void>((done) => server.close(() => done()));
+    for (const s of connections) {
+      s.destroy();
+    }
+    await new Promise<void>((done) => {
+      server.close(() => done());
+    });
     await rm(dir, { recursive: true, force: true });
   });
   vi.mocked(saveGlobalDefault).mockReset().mockResolvedValue(undefined);
@@ -277,15 +290,24 @@ it.each(["busy", "queued", "send-pending", "stale", "unreadable-editor"])(
   "refuses unsafe shutdown: %s",
   async (condition) => {
     const t = await setup();
-    if (condition === "busy") t.setIdle(false);
-    if (condition === "queued") t.ctx.hasPendingMessages = () => true;
-    if (condition === "send-pending") await t.ack(t.command("send"));
-    if (condition === "unreadable-editor")
+    if (condition === "busy") {
+      t.setIdle(false);
+    }
+    if (condition === "queued") {
+      t.ctx.hasPendingMessages = () => true;
+    }
+    if (condition === "send-pending") {
+      await t.ack(t.command("send"));
+    }
+    if (condition === "unreadable-editor") {
       vi.mocked(t.ctx.ui.getEditorText).mockImplementation(() => {
         throw new Error("Editor unavailable");
       });
+    }
     const target = targetOf(t.latest()!);
-    if (condition === "stale") target.epoch = randomUUID();
+    if (condition === "stale") {
+      target.epoch = randomUUID();
+    }
     expect(await t.ack(t.command("shutdown", target))).toMatchObject({
       type: "ack",
       outcome: "rejected",
@@ -458,7 +480,9 @@ it("does not confirm a default save after shutdown", async () => {
   await vi.waitFor(() => expect(saveGlobalDefault).toHaveBeenCalledOnce());
   t.emit("session_shutdown");
   finish();
-  await new Promise((resolve) => setTimeout(resolve, 50));
+  await new Promise((resolve) => {
+    setTimeout(resolve, 50);
+  });
   expect(t.frames.some((frame) => (frame as { id?: string }).id === id)).toBe(false);
 });
 function modelCommand(
@@ -616,7 +640,7 @@ it("lists bounded display-only model metadata from this session without invoking
   );
   t.setIdle(false); // Discovery itself is read-only and allowed while busy.
   const reply = (await t.ack(modelCommand(t, "models"))) as {
-    models: unknown[];
+    models: Array<unknown>;
     truncated: boolean;
   };
   expect(reply.models).toHaveLength(1000);
@@ -705,7 +729,9 @@ it("serializes asynchronous model switches and never confirms after shutdown", a
   });
   t.emit("session_shutdown");
   finish(true);
-  await new Promise((resolve) => setTimeout(resolve, 60));
+  await new Promise((resolve) => {
+    setTimeout(resolve, 60);
+  });
   expect(t.frames.filter((frame) => (frame as { id?: string }).id === id)).toHaveLength(0);
 });
 it("does not confirm a model change when the native result differs", async () => {
@@ -785,7 +811,9 @@ it("restores a root prompt through real Pi even when a tree hook appends extensi
   t.emit("session_shutdown");
   vi.stubEnv("PI_OFFLINE", "1");
   const extraExtension = process.env.PI_TREE_TEST_EXTENSION;
-  if (extraExtension) vi.stubEnv("HOME", t.dir);
+  if (extraExtension) {
+    vi.stubEnv("HOME", t.dir);
+  }
   const stateType = extraExtension ? "plannotator" : "tree-fixture-state";
   const { createAgentSession, DefaultResourceLoader, SessionManager, SettingsManager } =
     (await import(
@@ -828,8 +856,9 @@ it("restores a root prompt through real Pi even when a tree hook appends extensi
       (pi) => {
         // Plannotator and other extensions persist non-message state after
         // navigation. This legitimately advances the leaf before Pi returns.
-        if (!extraExtension)
+        if (!extraExtension) {
           pi.on("session_tree", () => pi.appendEntry(stateType, { phase: "idle" }));
+        }
       },
     ],
   });
@@ -848,7 +877,7 @@ it("restores a root prompt through real Pi even when a tree hook appends extensi
     throw new Error("Model must never be called");
   });
   session.agent.streamFunction = stream;
-  const errors: unknown[] = [];
+  const errors: Array<unknown> = [];
   try {
     await session.bindExtensions({
       mode: "tui",
@@ -882,10 +911,10 @@ it("restores a root prompt through real Pi even when a tree hook appends extensi
     });
     const tree = (await t.ack(treeId)) as {
       tree: {
-        roots: {
+        roots: Array<{
           label?: string;
-          children: { id: string; isActivePath: boolean }[];
-        }[];
+          children: Array<{ id: string; isActivePath: boolean }>;
+        }>;
         leafId: string;
       };
     };
@@ -924,8 +953,9 @@ it("restores a root prompt through real Pi even when a tree hook appends extensi
     expect(manager.getBranch()).toEqual([
       expect.objectContaining({ type: "custom", customType: stateType, parentId: null }),
     ]);
-    for (const preserved of [root, active, alternate])
+    for (const preserved of [root, active, alternate]) {
       expect(manager.getEntry(preserved)).toBeDefined();
+    }
     await session.sendUserMessage("/fernblick-bridge-stale-token ignored", {
       expandPromptTemplates: true,
     });
@@ -1003,7 +1033,7 @@ it("uses real Pi shutdown bindings without submitting or changing a terminal dra
   });
   session.agent.streamFunction = stream;
   const shutdown = vi.fn();
-  const errors: unknown[] = [];
+  const errors: Array<unknown> = [];
   try {
     await session.bindExtensions({
       mode: "tui",
@@ -1068,8 +1098,12 @@ it.each(["UI", "terminal", "cancel", "abort", "failure"] as const)(
             await new Promise<void>((resolve) => {
               release = resolve;
             });
-            if (mode === "cancel") return { cancel: true };
-            if (mode === "failure") return;
+            if (mode === "cancel") {
+              return { cancel: true };
+            }
+            if (mode === "failure") {
+              return;
+            }
             return {
               compaction: {
                 summary: "Older conversation summarized",
@@ -1094,7 +1128,7 @@ it.each(["UI", "terminal", "cancel", "abort", "failure"] as const)(
         api: "anthropic-messages",
         provider: "anthropic",
         baseUrl: "https://example.invalid",
-        contextWindow: 200000,
+        contextWindow: 200_000,
         maxTokens: 1000,
         reasoning: false,
         input: ["text"],
@@ -1125,10 +1159,15 @@ it.each(["UI", "terminal", "cancel", "abort", "failure"] as const)(
       expect(t.frames.some((v) => typeof v === "object" && v && "id" in v && v.id === id)).toBe(
         false,
       );
-      if (mode === "abort") session.abortCompaction();
+      if (mode === "abort") {
+        session.abortCompaction();
+      }
       release();
-      if (id) expect(await t.ack(id)).toMatchObject({ type: "compacted" });
-      else expect(await result).toBe(mode === "terminal" ? "success" : "failure");
+      if (id) {
+        expect(await t.ack(id)).toMatchObject({ type: "compacted" });
+      } else {
+        expect(await result).toBe(mode === "terminal" ? "success" : "failure");
+      }
       expect(manager.getBranch().some((e) => e.type === "compaction")).toBe(
         mode === "UI" || mode === "terminal",
       );
@@ -1136,13 +1175,16 @@ it.each(["UI", "terminal", "cancel", "abort", "failure"] as const)(
       await vi.waitFor(() =>
         expect(t.latest()).toMatchObject({ busy: false, compacting: false, sendPending: false }),
       );
-      if (mode === "UI" || mode === "terminal")
+      if (mode === "UI" || mode === "terminal") {
         expect(await t.ack(t.command("compact"))).toMatchObject({
           type: "ack",
           outcome: "rejected",
           reason: "Already compacted",
         });
-      if (mode !== "failure") expect(stream).not.toHaveBeenCalled();
+      }
+      if (mode !== "failure") {
+        expect(stream).not.toHaveBeenCalled();
+      }
     } finally {
       await session.extensionRunner?.emit({ type: "session_shutdown", reason: "quit" });
       session.dispose();
@@ -1359,11 +1401,11 @@ it("sends ten 10 MiB image-only uploads as Pi ImageContent without putting base6
   // Wait for the actual command outcome before inspecting Pi's image content.
   expect(await t.ack(id, 10_000)).toMatchObject({ outcome: "invoked" });
   expect(t.pi.sendUserMessage).toHaveBeenCalledOnce();
-  const content = t.pi.sendUserMessage.mock.calls[0][0] as {
+  const content = t.pi.sendUserMessage.mock.calls[0][0] as Array<{
     type: string;
     data: string;
     mimeType: string;
-  }[];
+  }>;
   expect(content.filter((b) => b.type === "image")).toHaveLength(10);
   for (const image of content.filter((b) => b.type === "image")) {
     expect(image.mimeType).toBe("image/png");
@@ -1435,12 +1477,13 @@ it.each(["epoch", "session", "busy", "input", "stop", "compact"] as const)(
       const file = await fs.open(...args);
       return new Proxy(file, {
         get(target, prop) {
-          if (prop === "read")
+          if (prop === "read") {
             return async (...readArgs: Parameters<typeof file.read>) => {
               entered();
               await gate;
               return file.read(...readArgs);
             };
+          }
           const value = Reflect.get(target, prop);
           return typeof value === "function" ? value.bind(target) : value;
         },
@@ -1470,16 +1513,25 @@ it.each(["epoch", "session", "busy", "input", "stop", "compact"] as const)(
     } else if (change === "compact") {
       t.emit("session_before_compact");
       t.emit("session_compact_failed");
-    } else if (change === "session") t.emit("session_shutdown");
-    else if (change === "input") t.emit("input", { text: "unrelated", source: "interactive" });
-    else if (change === "stop")
+    } else if (change === "session") {
+      t.emit("session_shutdown");
+    } else if (change === "input") {
+      t.emit("input", { text: "unrelated", source: "interactive" });
+    } else if (change === "stop") {
       expect(await t.ack(t.command("stop"))).toMatchObject({
         outcome: "invoked",
       });
-    else t.setIdle(false);
+    } else {
+      t.setIdle(false);
+    }
     release();
-    if (change !== "session") expect(await t.ack(id)).toMatchObject({ outcome: "rejected" });
-    else await new Promise((done) => setTimeout(done, 50));
+    if (change !== "session") {
+      expect(await t.ack(id)).toMatchObject({ outcome: "rejected" });
+    } else {
+      await new Promise((done) => {
+        setTimeout(done, 50);
+      });
+    }
     expect(t.pi.sendUserMessage).not.toHaveBeenCalled();
     expect(boardRequests(t)).toEqual([]);
     if (change === "epoch") {
@@ -1622,7 +1674,9 @@ it("coalesces large transcript updates through a brief socket stall without reco
       t.emit("message_update", {
         message: { role: "assistant", timestamp: 999, content: `streaming-${i}` },
       });
-      await new Promise((done) => setTimeout(done, 100));
+      await new Promise((done) => {
+        setTimeout(done, 100);
+      });
     }
     expect(t.connections).toHaveLength(1);
     reader.resume();
@@ -1636,7 +1690,9 @@ it("coalesces large transcript updates through a brief socket stall without reco
       ),
     ).toBe(false);
     const received = t.frames.length;
-    await new Promise((done) => setTimeout(done, 150));
+    await new Promise((done) => {
+      setTimeout(done, 150);
+    });
     expect(t.frames).toHaveLength(received);
   } finally {
     reader.resume();
@@ -1720,7 +1776,9 @@ it("cleans up shutdown, prevents duplicate package connections and uses only fre
   });
   replacement.emit("session_start");
   await vi.waitFor(() => expect(t.latest()?.identity.sessionId).toBe("replacement"));
-  await new Promise((done) => setTimeout(done, 400));
+  await new Promise((done) => {
+    setTimeout(done, 400);
+  });
   expect(t.connections).toHaveLength(2);
 });
 
@@ -1741,7 +1799,7 @@ it.each(["interactive", "extension"])(
       t.frames.filter(
         (frame) =>
           !!frame && typeof frame === "object" && "type" in frame && frame.type === "board-control",
-      ) as { id: string; action: string; runId: string }[];
+      ) as Array<{ id: string; action: string; runId: string }>;
     await vi.waitFor(() => expect(controls().at(-1)?.action).toBe("begin"));
     writeFrame(t.connections.at(-1)!, {
       type: "board-reply",
@@ -1788,7 +1846,7 @@ it.each(["interactive", "extension"])(
 async function stageBoard(
   t: Awaited<ReturnType<typeof setup>>,
   mode: BoardGrant["mode"] = "edit",
-  attachments: string[] = [],
+  attachments: Array<string> = [],
 ) {
   const board: BoardGrant = {
     boardId: "a".repeat(64),
@@ -1810,12 +1868,14 @@ async function stageBoard(
   return board;
 }
 function boardRequests(t: Awaited<ReturnType<typeof setup>>) {
-  return t.frames.filter((frame) => boardRequestSchema.safeParse(frame).success) as BoardRequest[];
+  return t.frames.filter(
+    (frame) => boardRequestSchema.safeParse(frame).success,
+  ) as Array<BoardRequest>;
 }
 async function activateBoard(
   t: Awaited<ReturnType<typeof setup>>,
   mode: BoardGrant["mode"] = "edit",
-  attachments: string[] = [],
+  attachments: Array<string> = [],
 ) {
   const board = await stageBoard(t, mode, attachments);
   t.emit("input", { text: "Update this board", source: "extension" });
@@ -1842,14 +1902,15 @@ async function activateBoard(
     },
   ]);
   expect(results[0]).not.toHaveProperty("message");
-  if (attachments.length)
+  if (attachments.length) {
     expect(results[0]).toMatchObject({
       systemPrompt: expect.stringContaining("The attached image shows the board"),
     });
-  else
+  } else {
     expect(results[0]).toMatchObject({
       systemPrompt: expect.not.stringContaining("The attached image shows the board"),
     });
+  }
   return board;
 }
 
@@ -1951,18 +2012,22 @@ it.each([
   const t = await setup();
   const board = await activateBoard(t);
   t.emit("agent_start");
-  if (event === "input") t.emit("input", { text: "Update this board", source: "interactive" });
-  else if (event === "stop")
+  if (event === "input") {
+    t.emit("input", { text: "Update this board", source: "interactive" });
+  } else if (event === "stop") {
     expect(await t.ack(t.command("stop"))).toMatchObject({
       outcome: "invoked",
     });
-  else if (event === "disconnect") t.connections.at(-1)!.destroy();
-  else if (event === "backend")
+  } else if (event === "disconnect") {
+    t.connections.at(-1)!.destroy();
+  } else if (event === "backend") {
     writeFrame(t.connections.at(-1)!, {
       type: "board-revoke",
       grantId: board.grantId,
     });
-  else t.emit(event);
+  } else {
+    t.emit(event);
+  }
   await vi.waitFor(() => expect(t.pi.getActiveTools()).not.toContain("board_read"));
   expect(t.tools.get("board_apply")?.exposure).toBe("hidden");
   await expect(
@@ -1988,7 +2053,10 @@ it("a duplicate load neither registers replacements nor disables the active owne
 });
 
 it("requests footer replay on startup/reconnect and forwards session-bound updates through the real socket", async () => {
-  const lines = ["\x1b[38;2;246;226;183mreal footer high\x1b[0m", "\x1b[2m↑20k $1.234\x1b[0m"];
+  const lines = [
+    "\u001b[38;2;246;226;183mreal footer high\u001b[0m",
+    "\u001b[2m↑20k $1.234\u001b[0m",
+  ];
   const replay = vi.fn();
   const t = await setup(({ pi, ctx }) => {
     pi.events.on(footerRequestEvent, (request) => {
@@ -2026,7 +2094,9 @@ it("requests footer replay on startup/reconnect and forwards session-bound updat
     lines: ["x".repeat(8193)],
   });
   t.emit("message_update", { message: { role: "assistant", content: "new", id: "m" } });
-  await new Promise((r) => setTimeout(r, 100));
+  await new Promise((r) => {
+    setTimeout(r, 100);
+  });
   expect(t.latest()?.status.footerLines).toEqual(next);
   t.connections.at(-1)!.destroy();
   await vi.waitFor(() => expect(t.connections.length).toBe(2));
@@ -2064,6 +2134,8 @@ it("falls back without a publisher, clears on withdrawal/context change, and nev
   expect(t.latest()?.status.footerLines).toBeUndefined();
   replacement.pi.events.emit(footerUpdateEvent, publication);
   replacement.emit("model_select");
-  await new Promise((r) => setTimeout(r, 100));
+  await new Promise((r) => {
+    setTimeout(r, 100);
+  });
   expect(t.latest()?.status.footerLines).toBeUndefined();
 });

@@ -1,5 +1,6 @@
 import { act } from "react";
-import { create, type ReactTestRenderer } from "react-test-renderer";
+import { create } from "react-test-renderer";
+import type { ReactTestRenderer } from "react-test-renderer";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
 import { AgentList } from "./AgentList";
 
@@ -99,11 +100,11 @@ it("restarts the confirmation interval for each removed session and then hides i
   await click("Past sessions");
   await click("Remove fixture session");
   await act(async () => {
-    vi.advanceTimersByTime(4_000);
+    vi.advanceTimersByTime(4000);
   });
   await click("Remove fixture session");
   await act(async () => {
-    vi.advanceTimersByTime(5_999);
+    vi.advanceTimersByTime(5999);
   });
   expect(notices()).toHaveLength(1);
   await act(async () => {

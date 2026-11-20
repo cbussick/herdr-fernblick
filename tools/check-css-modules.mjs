@@ -40,9 +40,12 @@ for (const path of [...(await files("src")), ...(await files(".storybook"))]) {
 }
 const sourceLicense = await readFile("src/styles/fonts/Manrope-LICENSE.txt", "utf8");
 const shippedLicense = await readFile("public/licenses/Manrope-OFL.txt", "utf8");
-if (sourceLicense !== shippedLicense)
+if (sourceLicense !== shippedLicense) {
   errors.push("The redistributed Manrope license must match the source license");
+}
 if (errors.length) {
   console.error(errors.join("\n"));
   process.exitCode = 1;
-} else console.log("CSS Modules conventions and redistributed font license passed");
+} else {
+  console.log("CSS Modules conventions and redistributed font license passed");
+}

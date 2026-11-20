@@ -1,6 +1,7 @@
 import { expect, it, vi } from "vitest";
 import type { z } from "zod";
-import { HerdrRequestError, type HerdrClient } from "./HerdrClient.js";
+import { HerdrRequestError } from "./HerdrClient.js";
+import type { HerdrClient } from "./HerdrClient.js";
 import { HerdrService } from "./herdrService.js";
 
 const agent = {
@@ -28,7 +29,9 @@ function fixture(status: string, shell = false) {
   const request = vi.fn(
     async <T>(method: string, params: Record<string, unknown>, schema: z.ZodType<T>) => {
       const current = { ...agent, agent_status: status };
-      if (method === "agent.get") return schema.parse({ type: "agent_info", agent: current });
+      if (method === "agent.get") {
+        return schema.parse({ type: "agent_info", agent: current });
+      }
       if (method === "session.snapshot") {
         return schema.parse({
           type: "session_snapshot",

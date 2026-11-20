@@ -14,8 +14,11 @@ export function usePaneNavigation() {
   function selectPane(paneId: string | null, terminal = false) {
     if (paneId === null) {
       const delta = overviewIndex === undefined ? 0 : overviewIndex - location.state.__TSR_index;
-      if (delta < 0) router.history.go(delta);
-      else void router.navigate({ to: "/", replace: true });
+      if (delta < 0) {
+        router.history.go(delta);
+      } else {
+        void router.navigate({ to: "/", replace: true });
+      }
     } else {
       void router.navigate({
         to: `/panes/$paneId/${terminal ? "terminal" : "chat"}`,

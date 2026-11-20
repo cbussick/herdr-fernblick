@@ -1,4 +1,5 @@
-import { MarkerType, type Edge, type Node } from "@xyflow/react";
+import { MarkerType } from "@xyflow/react";
+import type { Edge, Node } from "@xyflow/react";
 import {
   flowCatalog,
   FLOW_CONNECTION_COLOR,
@@ -6,9 +7,8 @@ import {
   flowKinds,
   defaultFlowProps,
   flowComponentPropsSchema,
-  type FlowComponentProps,
-  type FlowKind,
 } from "../../../packages/pi-live-chat/flowProtocol";
+import type { FlowComponentProps, FlowKind } from "../../../packages/pi-live-chat/flowProtocol";
 import type { InkNode } from "./ink";
 import type {
   PrimitiveKind,
@@ -28,13 +28,13 @@ export type PrimitiveNode = Node<
   "primitive"
 >;
 export type CanvasNode = ComponentNode | InkNode | PrimitiveNode;
-export type Diagram = { nodes: CanvasNode[]; edges: Edge[] };
+export type Diagram = { nodes: Array<CanvasNode>; edges: Array<Edge> };
 export function makeId() {
   return `flow-${Array.from(crypto.getRandomValues(new Uint32Array(4)), (n) => n.toString(16).padStart(8, "0")).join("")}`;
 }
 export function defaults(kind: Kind): ComponentData {
   const { imageId: _imageId, ...props } = defaultFlowProps(kind);
-  return { ...props, kind, image: "", color: colors[kinds.indexOf(kind)]! };
+  return { ...props, kind, image: "", color: colors[kinds.indexOf(kind)] };
 }
 export function validData(data: ComponentData): boolean {
   const { kind: _kind, image, ...props } = data;

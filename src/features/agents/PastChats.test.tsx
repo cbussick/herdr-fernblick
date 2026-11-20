@@ -1,5 +1,7 @@
-import { act, type ReactElement } from "react";
-import { create as render, type ReactTestRenderer } from "react-test-renderer";
+import { act } from "react";
+import type { ReactElement } from "react";
+import { create as render } from "react-test-renderer";
+import type { ReactTestRenderer } from "react-test-renderer";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
 import { PastChats } from "./PastChats";
@@ -15,7 +17,7 @@ vi.mock("../../shared/api/apiClient", () => ({
   getSavedChats: vi.fn(),
   resumeChat: vi.fn(),
 }));
-const chats: SavedChat[] = [
+const chats: Array<SavedChat> = [
   {
     id: "a".repeat(64),
     title: "Fix authentication",
@@ -92,7 +94,9 @@ function view(query = "", withWorkspaces = true) {
 }
 async function settle() {
   await act(async () => {
-    await new Promise((resolve) => setTimeout(resolve, 20));
+    await new Promise((resolve) => {
+      setTimeout(resolve, 20);
+    });
   });
 }
 beforeEach(() => {
@@ -109,7 +113,9 @@ beforeEach(() => {
   vi.mocked(createWorkspace).mockResolvedValue(newWorkspace);
 });
 afterEach(async () => {
-  if (renderer) await act(async () => renderer.unmount());
+  if (renderer) {
+    await act(async () => renderer.unmount());
+  }
   client.clear();
   vi.unstubAllGlobals();
 });
@@ -133,7 +139,7 @@ it.each([
 ] as const)(
   "shows the shared loading state until the initial request resolves with %s",
   async (_description, result) => {
-    let complete!: (value: { chats: SavedChat[] }) => void;
+    let complete!: (value: { chats: Array<SavedChat> }) => void;
     vi.mocked(getSavedChats).mockImplementationOnce(
       () =>
         new Promise((resolve) => {
@@ -156,8 +162,9 @@ it.each([
     await settle();
     expect(renderer.root.findAllByProps({ role: "status" })).toHaveLength(0);
     expect(rows()).toHaveLength(result.length ? 1 : 0);
-    if (!result.length)
+    if (!result.length) {
       expect(JSON.stringify(renderer.toJSON())).toContain("No past sessions yet.");
+    }
   },
 );
 
@@ -197,7 +204,7 @@ it("shows indexing failures without a misleading empty state", async () => {
 
 it("keeps cached cards visible without a loading placeholder during background refresh", async () => {
   client.setQueryData(["saved-chats"], { chats });
-  let complete!: (value: { chats: SavedChat[] }) => void;
+  let complete!: (value: { chats: Array<SavedChat> }) => void;
   vi.mocked(getSavedChats).mockImplementationOnce(
     () =>
       new Promise((resolve) => {
@@ -353,7 +360,7 @@ it("hides a resumed chat immediately while the next list refresh is pending", as
     renderer = create(view());
   });
   await settle();
-  let refreshed!: (value: { chats: SavedChat[] }) => void;
+  let refreshed!: (value: { chats: Array<SavedChat> }) => void;
   vi.mocked(getSavedChats).mockImplementation(
     () =>
       new Promise((resolve) => {
@@ -487,17 +494,18 @@ it.each(["Cancel", "Close", "Escape"])(
         .props.onChange({ target: { value: "w2" } }),
     );
     await act(async () => createWorkspaceButton().props.onClick());
-    if (action === "Escape")
+    if (action === "Escape") {
       await act(async () => dialog().props.onCancel({ preventDefault: vi.fn() }));
-    else if (action === "Close")
+    } else if (action === "Close") {
       await act(async () => dialog().findByProps({ "aria-label": "Close" }).props.onClick());
-    else
+    } else {
       await act(async () =>
         dialog()
           .findAllByType("button")
           .find((button) => button.children.includes("Cancel"))!
           .props.onClick(),
       );
+    }
     expect(dialog().findByType("select").props.value).toBe("w2");
     expect(dialog().findByProps({ id: "resume-chat-title" }).children).toEqual([chats[0].title]);
     expect(createWorkspace).not.toHaveBeenCalled();
@@ -623,9 +631,11 @@ it.each(["Cancel", "Escape"])(
     expect(dialog().findByType("h2").children).toEqual(["Delete session?"]);
     expect(JSON.stringify(dialog().findByType("p").children)).toContain(chats[0].title);
     expect(deleteChat).not.toHaveBeenCalled();
-    if (action === "Escape")
+    if (action === "Escape") {
       await act(async () => dialog().props.onCancel({ preventDefault: vi.fn() }));
-    else await act(async () => dialog().findByProps({ type: "button" }).props.onClick());
+    } else {
+      await act(async () => dialog().findByProps({ type: "button" }).props.onClick());
+    }
     expect(renderer.root.findAllByType("dialog")).toHaveLength(0);
     expect(rows()).toHaveLength(1);
     expect(deleteChat).not.toHaveBeenCalled();

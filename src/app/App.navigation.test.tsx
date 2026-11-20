@@ -1,6 +1,7 @@
 // @vitest-environment happy-dom
 import { act, useEffect, useEffectEvent, useState } from "react";
-import { create, type ReactTestRenderer } from "react-test-renderer";
+import { create } from "react-test-renderer";
+import type { ReactTestRenderer } from "react-test-renderer";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { createMemoryHistory, RouterProvider } from "@tanstack/react-router";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
@@ -113,7 +114,7 @@ afterEach(async () => {
 
 it("opens an agent directly at its session URL without visiting a pane route", async () => {
   await start();
-  const visited: string[] = [];
+  const visited: Array<string> = [];
   const unsubscribe = router.history.subscribe(() =>
     visited.push(router.history.location.pathname),
   );
@@ -128,7 +129,7 @@ it("opens a fresh agent from its live session even when Herdr has no saved sessi
   client.setQueryData(["agents"], response);
   vi.mocked(getAgents).mockResolvedValue(response);
   await start();
-  const visited: string[] = [];
+  const visited: Array<string> = [];
   const unsubscribe = router.history.subscribe(() =>
     visited.push(router.history.location.pathname),
   );
@@ -138,7 +139,9 @@ it("opens a fresh agent from its live session even when Herdr has no saved sessi
   );
   await open();
   await act(async () => {
-    await new Promise((resolve) => setTimeout(resolve, 10));
+    await new Promise((resolve) => {
+      setTimeout(resolve, 10);
+    });
   });
   expect(chat()).toHaveLength(1);
   expect(JSON.stringify(renderer.toJSON())).not.toContain("Waiting for this agent");
@@ -151,7 +154,9 @@ it("opens a fresh agent from its live session even when Herdr has no saved sessi
   // Pi has an in-memory ID, but session URLs cannot resolve it until it is saved.
   await act(async () => client.setQueryData(["agents"], { ...response, agents: [agent] }));
   await act(async () => {
-    await new Promise((resolve) => setTimeout(resolve, 10));
+    await new Promise((resolve) => {
+      setTimeout(resolve, 10);
+    });
   });
   unsubscribe();
   expect(visited).toEqual(["/sessions/s1/chat"]);
@@ -176,7 +181,9 @@ it("keeps a fresh unsaved conversation and draft when opening its whiteboard", a
   );
   await click("Open board");
   await act(async () => {
-    await new Promise((resolve) => setTimeout(resolve, 10));
+    await new Promise((resolve) => {
+      setTimeout(resolve, 10);
+    });
   });
   expect(chat()).toHaveLength(1);
   expect(chat()[0].props["data-view"]).toBe("whiteboard");
@@ -189,7 +196,9 @@ it("keeps a fresh unsaved conversation and draft when opening its whiteboard", a
   vi.mocked(getSession).mockResolvedValue({ agent, chat: null });
   await act(async () => client.setQueryData(["agents"], { ...response, agents: [agent] }));
   await act(async () => {
-    await new Promise((resolve) => setTimeout(resolve, 10));
+    await new Promise((resolve) => {
+      setTimeout(resolve, 10);
+    });
   });
   expect(router.state.location.pathname).toBe("/sessions/s1/whiteboard");
   expect(chat()[0].props["data-view"]).toBe("whiteboard");
@@ -205,7 +214,7 @@ it("opens a newly created agent without flashing the waiting snackbar before das
   await act(async () => renderer.root.findByType(NewAgentDialog).props.onCreated(created));
   expect(JSON.stringify(renderer.toJSON())).not.toContain("Waiting for this agent");
   expect(chat()).toHaveLength(1);
-  expect(client.getQueryData<{ agents: Agent[] }>(["agents"])?.agents).toContainEqual(created);
+  expect(client.getQueryData<{ agents: Array<Agent> }>(["agents"])?.agents).toContainEqual(created);
 });
 
 it("opens a fresh agent while another session is selected and can return to overview", async () => {
@@ -219,7 +228,9 @@ it("opens a fresh agent while another session is selected and can return to over
   vi.mocked(getAgents).mockResolvedValue(response);
   await start("/sessions/s1/terminal");
   await act(async () => {
-    await new Promise((resolve) => setTimeout(resolve, 10));
+    await new Promise((resolve) => {
+      setTimeout(resolve, 10);
+    });
   });
   await open(1);
   expect(chat()).toHaveLength(1);
@@ -256,7 +267,9 @@ it.each(["/", "/sessions/s1/chat"])(
         chat: { title: "Previous conversation" },
       });
       client.setQueryData(["agents"], { ...response, agents: [] });
-      await new Promise((resolve) => setTimeout(resolve, 10));
+      await new Promise((resolve) => {
+        setTimeout(resolve, 10);
+      });
     });
     expect(JSON.stringify(renderer.toJSON())).not.toContain("Waiting for this agent");
     expect(JSON.stringify(renderer.toJSON())).not.toContain("This conversation is inactive");
@@ -298,7 +311,9 @@ it("keeps the saved conversation URL when its agent stops externally without sho
       agent: null,
       chat: { title: "Saved conversation" },
     });
-    await new Promise((resolve) => setTimeout(resolve, 10));
+    await new Promise((resolve) => {
+      setTimeout(resolve, 10);
+    });
   });
   expect(router.state.location.pathname).toBe("/sessions/s1/chat");
   expect(JSON.stringify(renderer.toJSON())).toContain("This conversation is inactive");
@@ -347,7 +362,9 @@ it("retains the mounted chat and draft when session polling fails", async () => 
   vi.mocked(getSession).mockRejectedValue(new Error("Temporary failure"));
   await act(async () => {
     await client.refetchQueries({ queryKey: ["session", "s1"] });
-    await new Promise((resolve) => setTimeout(resolve, 10));
+    await new Promise((resolve) => {
+      setTimeout(resolve, 10);
+    });
   });
   expect(renderer.root.findByProps({ "aria-label": "Draft" }).props.value).toBe("Still here");
   expect(JSON.stringify(renderer.toJSON())).toContain("Your draft is retained");
@@ -370,7 +387,9 @@ it("does not turn a session URL into a shell when its pane is reused", async () 
 it("resolves a refreshed session link to its live agent", async () => {
   await start("/sessions/s1/whiteboard");
   await act(async () => {
-    await new Promise((r) => setTimeout(r, 10));
+    await new Promise((r) => {
+      setTimeout(r, 10);
+    });
   });
   expect(getSession).toHaveBeenCalledWith("s1");
   expect(chat()).toHaveLength(1);
@@ -391,7 +410,9 @@ it("does not resume an inactive conversation just by opening a link", async () =
   });
   await start("/sessions/s1/chat");
   await act(async () => {
-    await new Promise((r) => setTimeout(r, 10));
+    await new Promise((r) => {
+      setTimeout(r, 10);
+    });
   });
   expect(JSON.stringify(renderer.toJSON())).toContain("This conversation is inactive");
   expect(renderer.root.findByProps({ id: "conversation-state-title" }).children).toEqual([
@@ -416,7 +437,9 @@ it("shows missing conversations without falling back to another pane", async () 
   vi.mocked(getSession).mockResolvedValue({ agent: null, chat: null });
   await start("/sessions/missing/chat");
   await act(async () => {
-    await new Promise((r) => setTimeout(r, 10));
+    await new Promise((r) => {
+      setTimeout(r, 10);
+    });
   });
   expect(chat()).toHaveLength(0);
   expect(JSON.stringify(renderer.toJSON())).toContain("Conversation or pane unavailable");
@@ -428,7 +451,9 @@ it("uses shared primary and secondary buttons for a failed session lookup", asyn
   vi.mocked(getSession).mockRejectedValue(new Error("Session lookup unavailable"));
   await start("/sessions/s1/chat");
   await act(async () => {
-    await new Promise((resolve) => setTimeout(resolve, 10));
+    await new Promise((resolve) => {
+      setTimeout(resolve, 10);
+    });
   });
   expect(JSON.stringify(renderer.toJSON())).toContain("Cannot open conversation");
   expect(

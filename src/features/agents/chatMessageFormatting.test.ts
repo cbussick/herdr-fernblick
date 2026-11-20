@@ -1,7 +1,8 @@
 import { describe, expect, it } from "vitest";
-import { formatMessageText, type MessagePart } from "./chatMessageFormatting";
+import { formatMessageText } from "./chatMessageFormatting";
+import type { MessagePart } from "./chatMessageFormatting";
 
-function leaves(parts: MessagePart[]): MessagePart[] {
+function leaves(parts: Array<MessagePart>): Array<MessagePart> {
   return parts.flatMap((part) => ("children" in part ? leaves(part.children) : [part]));
 }
 
@@ -18,23 +19,29 @@ describe("formatMessageText source ranges", () => {
     "~~~\n\n  code\n\n~~~",
     "```\n```",
   ])("displays the same code payload it copies: %s", (text) => {
-    function findCode(parts: MessagePart[]): MessagePart | undefined {
+    function findCode(parts: Array<MessagePart>): MessagePart | undefined {
       for (const part of parts) {
-        if (part.kind === "codeBlock") return part;
+        if (part.kind === "codeBlock") {
+          return part;
+        }
         if ("children" in part) {
           const found = findCode(part.children);
-          if (found) return found;
+          if (found) {
+            return found;
+          }
         }
       }
     }
     const code = findCode(formatMessageText(text));
     expect(code && "children" in code).toBe(true);
-    if (!code || !("children" in code)) return;
+    if (!code || !("children" in code)) {
+      return;
+    }
     const visible = leaves(code.children)
       .filter((part) => part.kind === "text")
       .map((part) => text.slice(part.start, part.end))
       .join("")
-      .replace(/\r\n|\r/g, "\n");
+      .replaceAll(/\r\n|\r/g, "\n");
     expect(visible).toBe(code.value);
   });
   it.each([
@@ -54,9 +61,9 @@ describe("formatMessageText source ranges", () => {
     "[[https://example.com|Docs]] [[My note]]",
     "[[/tmp/note.md|Note]] ![[/tmp/Logo #1.png|Preview]]",
     "[[./notes/today.md]] ![[../design/a.webp]]",
-    "\\\\[[/tmp/note.md]] \\\\![[/tmp/a.png]]",
+    String.raw`\\[[/tmp/note.md]] \\![[/tmp/a.png]]`,
     "> - [[./note.md|Note]]\n>   ![[./a.png]]",
-    "\\[[https://example.com|Docs]] and &amp; and \\*literal\\*",
+    String.raw`\[[https://example.com|Docs]] and &amp; and \*literal\*`,
     "**incomplete [stream](https://example.com",
     "😀 [emoji](https://example.com)\r\nnext line",
     "3. first\n   continued\n   - nested\n\n4. second",

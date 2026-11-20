@@ -16,11 +16,13 @@ import {
   createTabRequestSchema,
   createTabResponseSchema,
   terminalOutputSchema,
-  type CreateAgentRequest,
-  type CreateWorkspaceRequest,
-  type CreateTabRequest,
-  type KeyName,
-  type TerminalReadSource,
+} from "./contracts";
+import type {
+  CreateAgentRequest,
+  CreateWorkspaceRequest,
+  CreateTabRequest,
+  KeyName,
+  TerminalReadSource,
 } from "./contracts";
 import {
   ackSchema,
@@ -36,9 +38,11 @@ import {
   defaultSavedResponseSchema,
   sameDefaultSelection,
   sameTarget,
-  type DefaultSelection,
-  type ThinkingLevel,
-  type Target,
+} from "../../../packages/pi-live-chat/protocol";
+import type {
+  DefaultSelection,
+  ThinkingLevel,
+  Target,
 } from "../../../packages/pi-live-chat/protocol";
 
 import { READ_RECEIPT_REQUEST_ID_HEADER } from "./readReceiptDiagnostics";
@@ -60,7 +64,9 @@ export class ApiError extends Error {
 
 async function readResponse(response: Response): Promise<unknown> {
   // Successful responses must be valid JSON. Error pages from proxies need not be.
-  if (response.ok) return response.json();
+  if (response.ok) {
+    return response.json();
+  }
   const body: unknown = await response.json().catch(() => null);
   const message =
     typeof body === "object" && body !== null && "error" in body && typeof body.error === "string"
@@ -116,8 +122,11 @@ export async function markAgentRead(input: { paneId: string; completionId: strin
     markAgentReadResponseSchema.parse(await readResponse(response));
     category = "success";
   } catch (error) {
-    if (signal?.aborted) category = signal.reason?.name === "TimeoutError" ? "timeout" : "aborted";
-    else if (error instanceof TypeError && category !== "request_validation") category = "network";
+    if (signal?.aborted) {
+      category = signal.reason?.name === "TimeoutError" ? "timeout" : "aborted";
+    } else if (error instanceof TypeError && category !== "request_validation") {
+      category = "network";
+    }
     throw error;
   } finally {
     logReadReceipt({
@@ -286,7 +295,9 @@ export async function getAgentSkills(pane: string, target: Target, signal?: Abor
       signal,
     }),
   );
-  if (!sameTarget(response.target, target)) throw new Error("Pi session changed. Reopen Skills.");
+  if (!sameTarget(response.target, target)) {
+    throw new Error("Pi session changed. Reopen Skills.");
+  }
   return response;
 }
 export async function getAgentModels(pane: string, target: Target, signal?: AbortSignal) {
@@ -298,8 +309,9 @@ export async function getAgentModels(pane: string, target: Target, signal?: Abor
       signal,
     }),
   );
-  if (!sameTarget(result.target, target))
+  if (!sameTarget(result.target, target)) {
     throw new Error("Pi session changed. Reopen the model picker.");
+  }
   return result;
 }
 export async function setAgentModel(
@@ -317,7 +329,9 @@ export async function setAgentModel(
       signal: AbortSignal.timeout(15_000),
     });
   } catch (error) {
-    if (error instanceof ApiError) throw error;
+    if (error instanceof ApiError) {
+      throw error;
+    }
     throw new Error("Model change outcome uncertain. Check Pi before trying again.", {
       cause: error,
     });
@@ -328,8 +342,9 @@ export async function setAgentModel(
     !sameTarget(result.data.target, target) ||
     result.data.model.provider !== provider ||
     result.data.model.id !== modelId
-  )
+  ) {
     throw new Error("No valid model change confirmation. Check Pi before trying again.");
+  }
   return result.data;
 }
 export async function getAgentThinkingLevels(pane: string, target: Target, signal?: AbortSignal) {
@@ -341,8 +356,9 @@ export async function getAgentThinkingLevels(pane: string, target: Target, signa
       signal,
     }),
   );
-  if (!sameTarget(result.target, target))
+  if (!sameTarget(result.target, target)) {
     throw new Error("Pi session changed. Reopen Thinking level.");
+  }
   return result;
 }
 export async function setAgentThinkingLevel(
@@ -361,7 +377,9 @@ export async function setAgentThinkingLevel(
       signal: AbortSignal.timeout(15_000),
     });
   } catch (error) {
-    if (error instanceof ApiError) throw error;
+    if (error instanceof ApiError) {
+      throw error;
+    }
     throw new Error("Thinking level change outcome uncertain. Check Pi before trying again.", {
       cause: error,
     });
@@ -373,8 +391,9 @@ export async function setAgentThinkingLevel(
     result.data.provider !== provider ||
     result.data.modelId !== modelId ||
     result.data.level !== level
-  )
+  ) {
     throw new Error("No valid thinking level confirmation. Check Pi before trying again.");
+  }
   return result.data;
 }
 export async function saveAgentGlobalDefault(
@@ -391,7 +410,9 @@ export async function saveAgentGlobalDefault(
       signal: AbortSignal.timeout(15_000),
     });
   } catch (error) {
-    if (error instanceof ApiError) throw error;
+    if (error instanceof ApiError) {
+      throw error;
+    }
     throw new Error("Default save outcome uncertain. Check Pi settings before trying again.", {
       cause: error,
     });
@@ -401,8 +422,9 @@ export async function saveAgentGlobalDefault(
     !result.success ||
     !sameTarget(result.data.target, target) ||
     !sameDefaultSelection(result.data.selection, selection)
-  )
+  ) {
     throw new Error("No valid default save confirmation. Check Pi settings before trying again.");
+  }
   return result.data;
 }
 export async function getAgentTreePage(
@@ -421,8 +443,9 @@ export async function getAgentTreePage(
         : AbortSignal.timeout(15_000),
     }),
   );
-  if (!sameTarget(response.target, target))
+  if (!sameTarget(response.target, target)) {
     throw new Error("Conversation session changed. Reopen conversation paths.");
+  }
   return response.page;
 }
 
@@ -446,14 +469,17 @@ export async function compactAgentConversation(pane: string, target: Target) {
       signal: AbortSignal.timeout(COMPACT_TIMEOUT_MS + 5000),
     });
   } catch (error) {
-    if (error instanceof ApiError) throw error;
+    if (error instanceof ApiError) {
+      throw error;
+    }
     throw new Error("Compaction outcome uncertain. Check Pi before trying again.", {
       cause: error,
     });
   }
   const result = compactionResponseSchema.safeParse(body);
-  if (!result.success || !sameTarget(result.data.target, target))
+  if (!result.success || !sameTarget(result.data.target, target)) {
     throw new Error("No valid compaction confirmation. Check Pi before trying again.");
+  }
   return result.data;
 }
 
@@ -462,7 +488,7 @@ export async function chatCommand(
   identity: Target,
   action: "prompt" | "stop",
   text?: string,
-  attachments: string[] = [],
+  attachments: Array<string> = [],
   requestId?: string,
 ) {
   let body: unknown;
@@ -474,18 +500,23 @@ export async function chatCommand(
       signal: AbortSignal.timeout(15_000),
     });
   } catch (error) {
-    if (error instanceof ApiError) throw error;
+    if (error instanceof ApiError) {
+      throw error;
+    }
     throw new Error(
       "Forwarding failed or timed out; delivery uncertain. Check Pi before retrying.",
       { cause: error },
     );
   }
   const ack = ackSchema.safeParse(body);
-  if (!ack.success || (requestId && ack.data.id !== requestId))
+  if (!ack.success || (requestId && ack.data.id !== requestId)) {
     throw new Error(
       "Invalid forwarding acknowledgement; delivery uncertain. Check Pi before retrying.",
     );
-  if (ack.data.outcome !== "invoked") throw new Error(ack.data.reason ?? "Pi rejected the command");
+  }
+  if (ack.data.outcome !== "invoked") {
+    throw new Error(ack.data.reason ?? "Pi rejected the command");
+  }
   return ack.data;
 }
 

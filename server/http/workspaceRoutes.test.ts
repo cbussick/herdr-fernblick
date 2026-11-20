@@ -14,7 +14,7 @@ let socketServer: net.Server;
 let httpServer: HttpServer;
 let base: string;
 let rejectMove: boolean;
-const requests: { method: string; params: unknown }[] = [];
+const requests: Array<{ method: string; params: unknown }> = [];
 
 beforeEach(async () => {
   requests.length = 0;
@@ -36,20 +36,28 @@ beforeEach(async () => {
       );
     });
   });
-  await new Promise<void>((done) => socketServer.listen(socketPath, done));
+  await new Promise<void>((done) => {
+    socketServer.listen(socketPath, done);
+  });
   httpServer = createHttpServer(
     new HerdrService(new HerdrClient(socketPath)),
     "/unused",
     new LiveBridge(join(directory, "pi.sock"), socketPath),
   );
-  await new Promise<void>((done) => httpServer.listen(0, "127.0.0.1", done));
+  await new Promise<void>((done) => {
+    httpServer.listen(0, "127.0.0.1", done);
+  });
   base = `http://127.0.0.1:${(httpServer.address() as { port: number }).port}`;
 });
 
 afterEach(async () => {
   httpServer.closeAllConnections();
-  await new Promise<void>((done) => httpServer.close(() => done()));
-  await new Promise<void>((done) => socketServer.close(() => done()));
+  await new Promise<void>((done) => {
+    httpServer.close(() => done());
+  });
+  await new Promise<void>((done) => {
+    socketServer.close(() => done());
+  });
   await rm(directory, { recursive: true, force: true });
 });
 

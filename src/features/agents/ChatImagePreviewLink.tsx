@@ -1,5 +1,7 @@
-import { useState, type ReactNode } from "react";
-import { ImageLightbox, type PreviewImage } from "./ImageLightbox";
+import { useState } from "react";
+import type { ReactNode } from "react";
+import { ImageLightbox } from "./ImageLightbox";
+import type { PreviewImage } from "./ImageLightbox";
 
 /** Keep a real destination for browser actions, but preview on ordinary activation. */
 export function ChatImagePreviewLink({
@@ -10,7 +12,7 @@ export function ChatImagePreviewLink({
   control = false,
 }: {
   href: string;
-  images: PreviewImage[];
+  images: Array<PreviewImage>;
   children: ReactNode;
   label?: string;
   control?: boolean;
@@ -32,8 +34,9 @@ export function ChatImagePreviewLink({
             event.ctrlKey ||
             event.shiftKey ||
             event.altKey
-          )
+          ) {
             return;
+          }
           event.preventDefault();
           const src = (event.target as Element).closest("img")?.getAttribute("src");
           setIndex(

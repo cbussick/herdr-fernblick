@@ -1,5 +1,6 @@
 import { act } from "react";
-import { create, type ReactTestRenderer } from "react-test-renderer";
+import { create } from "react-test-renderer";
+import type { ReactTestRenderer } from "react-test-renderer";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
 import { Snackbar } from "./Snackbar";
 
@@ -32,18 +33,18 @@ it("announces the confirmation politely and exposes a dismiss action", () => {
 });
 
 it("dismisses after six seconds, without being prolonged by parent refreshes", async () => {
-  await advance(2_000);
+  await advance(2000);
   await act(async () =>
     renderer.update(<Snackbar message="Session removed" onDismiss={dismiss} />),
   );
-  await advance(3_999);
+  await advance(3999);
   expect(dismiss).not.toHaveBeenCalled();
   await advance(1);
   expect(dismiss).toHaveBeenCalledOnce();
 });
 
 it("pauses while hovered or focused and grants a fresh reading interval afterward", async () => {
-  await advance(1_000);
+  await advance(1000);
   await act(async () => snackbar().props.onMouseEnter());
   await advance(10_000);
   expect(dismiss).not.toHaveBeenCalled();
@@ -54,7 +55,7 @@ it("pauses while hovered or focused and grants a fresh reading interval afterwar
   await act(async () =>
     snackbar().props.onBlur({ currentTarget: { contains: () => false }, relatedTarget: null }),
   );
-  await advance(5_999);
+  await advance(5999);
   expect(dismiss).not.toHaveBeenCalled();
   await advance(1);
   expect(dismiss).toHaveBeenCalledOnce();

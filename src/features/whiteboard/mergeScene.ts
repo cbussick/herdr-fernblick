@@ -1,14 +1,12 @@
-import {
-  MAX_BOARD_BYTES,
-  boardSceneSchema,
-  type BoardElement,
-  type BoardScene,
-} from "../../../packages/pi-live-chat/boardProtocol";
+import { MAX_BOARD_BYTES, boardSceneSchema } from "../../../packages/pi-live-chat/boardProtocol";
+import type { BoardElement, BoardScene } from "../../../packages/pi-live-chat/boardProtocol";
 import { validateFlowGraph } from "../../../packages/pi-live-chat/flowProtocol";
 
 export function canonical(value: unknown): string {
   return JSON.stringify(value, (_key, child: unknown) => {
-    if (!child || typeof child !== "object" || Array.isArray(child)) return child;
+    if (!child || typeof child !== "object" || Array.isArray(child)) {
+      return child;
+    }
     const object = child as Record<string, unknown>;
     return Object.fromEntries(
       Object.keys(object)
@@ -23,21 +21,27 @@ const removed = (base: BoardElement | undefined, value: BoardElement | undefined
 function tombstone(element: BoardElement): BoardElement {
   return { ...element, isDeleted: true };
 }
-function references(element: BoardElement): string[] {
-  const result: string[] = [];
-  if (element.type === "component" && typeof element.parentId === "string")
+function references(element: BoardElement): Array<string> {
+  const result: Array<string> = [];
+  if (element.type === "component" && typeof element.parentId === "string") {
     result.push(element.parentId);
+  }
   if (element.type === "connection") {
-    if (typeof element.source === "string") result.push(element.source);
-    if (typeof element.target === "string") result.push(element.target);
+    if (typeof element.source === "string") {
+      result.push(element.source);
+    }
+    if (typeof element.target === "string") {
+      result.push(element.target);
+    }
   }
   return result;
 }
 
 /** Local wins competing edits; deletions win. No field-wise native-record mixing. */
 export function mergeScene(base: BoardScene, local: BoardScene, remote: BoardScene): BoardScene {
-  if ([base, local, remote].some((scene) => scene.engine !== "react-flow"))
+  if ([base, local, remote].some((scene) => scene.engine !== "react-flow")) {
     throw new Error("Board engine changed; your drawing is retained for explicit recovery");
+  }
   const b = new Map(base.elements.map((e) => [e.id, e]));
   const l = new Map(local.elements.map((e) => [e.id, e]));
   const r = new Map(remote.elements.map((e) => [e.id, e]));
@@ -46,8 +50,9 @@ export function mergeScene(base: BoardScene, local: BoardScene, remote: BoardSce
     const before = b.get(id),
       mine = l.get(id),
       theirs = r.get(id);
-    if (!before && mine && theirs && !same(mine, theirs))
+    if (!before && mine && theirs && !same(mine, theirs)) {
       throw new Error("Concurrent shape ID collision; your drawing is retained");
+    }
     let winner: BoardElement | undefined;
     if (
       (removed(before, mine) && !same(before, mine)) ||
@@ -57,19 +62,22 @@ export function mergeScene(base: BoardScene, local: BoardScene, remote: BoardSce
     } else {
       winner = same(before, mine) ? theirs : mine;
     }
-    if (winner) chosen.set(id, structuredClone(winner));
+    if (winner) {
+      chosen.set(id, structuredClone(winner));
+    }
   }
 
   // Server array order is authoritative unless the human actually reordered
   // existing shapes. Insert independent local additions next to their local
   // predecessor.
-  const common = base.elements.map((e) => e.id).filter((id) => l.has(id) && r.has(id));
-  const projected = (s: BoardScene) =>
-    s.elements.map((e) => e.id).filter((id) => common.includes(id));
+  const common = new Set(base.elements.map((e) => e.id).filter((id) => l.has(id) && r.has(id)));
+  const projected = (s: BoardScene) => s.elements.map((e) => e.id).filter((id) => common.has(id));
   const reordered = !same(projected(base), projected(local));
-  let order = (reordered ? local : remote).elements.map((e) => e.id);
+  const order = (reordered ? local : remote).elements.map((e) => e.id);
   for (const e of (reordered ? remote : local).elements) {
-    if (order.includes(e.id)) continue;
+    if (order.includes(e.id)) {
+      continue;
+    }
     const source = (reordered ? remote : local).elements;
     const at = source.findIndex((item) => item.id === e.id);
     const previous = source
@@ -78,7 +86,11 @@ export function mergeScene(base: BoardScene, local: BoardScene, remote: BoardSce
       .find((item) => order.includes(item.id));
     order.splice(previous ? order.indexOf(previous.id) + 1 : order.length, 0, e.id);
   }
-  for (const id of chosen.keys()) if (!order.includes(id)) order.push(id);
+  for (const id of chosen.keys()) {
+    if (!order.includes(id)) {
+      order.push(id);
+    }
+  }
   const elements = order.flatMap((id) => (chosen.has(id) ? [chosen.get(id)!] : []));
 
   // Never publish dangling component/connection relations. Preserve whole
@@ -86,8 +98,9 @@ export function mergeScene(base: BoardScene, local: BoardScene, remote: BoardSce
   for (const element of elements.filter((e) => !e.isDeleted)) {
     for (const id of references(element)) {
       const target = chosen.get(id);
-      if (!target || target.isDeleted)
+      if (!target || target.isDeleted) {
         throw new Error("Concurrent relationship change needs recovery; your drawing is retained");
+      }
       const sources = [local, remote].filter((s) =>
         same(
           s.elements.find((e) => e.id === element.id),
@@ -96,10 +109,11 @@ export function mergeScene(base: BoardScene, local: BoardScene, remote: BoardSce
       );
       if (sources.length === 1) {
         const sourceTarget = sources[0].elements.find((e) => e.id === id);
-        if (!same(sourceTarget, target) && !same(b.get(id), sourceTarget))
+        if (!same(sourceTarget, target) && !same(b.get(id), sourceTarget)) {
           throw new Error(
             "Concurrent related-shape change needs recovery; your drawing is retained",
           );
+        }
       }
     }
   }
@@ -112,19 +126,25 @@ export function mergeScene(base: BoardScene, local: BoardScene, remote: BoardSce
         e.props &&
         typeof e.props === "object" &&
         !Array.isArray(e.props)
-      )
+      ) {
         return [e.props.imageId];
+      }
       return [];
     }),
   );
   for (const id of used) {
-    if (typeof id !== "string") continue;
+    if (typeof id !== "string") {
+      continue;
+    }
     const mine = local.files[id],
       theirs = remote.files[id];
-    if (mine && theirs && (mine.mimeType !== theirs.mimeType || mine.dataURL !== theirs.dataURL))
+    if (mine && theirs && (mine.mimeType !== theirs.mimeType || mine.dataURL !== theirs.dataURL)) {
       throw new Error("Concurrent image asset conflict; your drawing is retained");
+    }
     const file = mine ?? theirs ?? base.files[id];
-    if (!file) throw new Error("Missing image asset; your drawing is retained");
+    if (!file) {
+      throw new Error("Missing image asset; your drawing is retained");
+    }
     files[id] = structuredClone(file);
   }
   const scene = boardSceneSchema.parse({
@@ -134,7 +154,8 @@ export function mergeScene(base: BoardScene, local: BoardScene, remote: BoardSce
     engine: "react-flow",
   });
   validateFlowGraph(scene);
-  if (new TextEncoder().encode(JSON.stringify(scene)).byteLength > MAX_BOARD_BYTES)
+  if (new TextEncoder().encode(JSON.stringify(scene)).byteLength > MAX_BOARD_BYTES) {
     throw new Error("Merged board exceeds 12 MiB; your drawing is retained");
+  }
   return scene;
 }

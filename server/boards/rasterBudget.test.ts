@@ -85,8 +85,9 @@ it.each([
   expect(() => validateRasterBudget(scene(bytes(8000, 8000), mime))).toThrow("pre-decode");
 });
 it("rejects zero dimensions, excessive sides and truncated headers", () => {
-  for (const bytes of [png(0, 2), png(1, 33000), Buffer.alloc(8)])
+  for (const bytes of [png(0, 2), png(1, 33_000), Buffer.alloc(8)]) {
     expect(() => validateRasterBudget(scene(bytes, "image/png"))).toThrow();
+  }
   expect(() =>
     validateRasterBudget(scene(Buffer.from([0xff, 0xd8, 0xff, 0xc0, 0xff, 0xff]), "image/jpeg")),
   ).toThrow();

@@ -1,14 +1,16 @@
 import { act, createRef } from "react";
-import { create, type ReactTestRenderer } from "react-test-renderer";
+import { create } from "react-test-renderer";
+import type { ReactTestRenderer } from "react-test-renderer";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
-import { ConversationActionsMenu, type ConversationAction } from "./ConversationActionsMenu";
+import { ConversationActionsMenu } from "./ConversationActionsMenu";
+import type { ConversationAction } from "./ConversationActionsMenu";
 
 let renderer: ReactTestRenderer;
 const first = vi.fn();
 const second = vi.fn();
 const third = vi.fn();
 const triggerRef = createRef<HTMLButtonElement>();
-const actions: ConversationAction[] = [
+const actions: Array<ConversationAction> = [
   { id: "first", label: "First", onSelect: first },
   { id: "second", label: "Second", disabledReason: "Unavailable now", onSelect: second },
   { id: "third", label: "Third", onSelect: third },
@@ -78,8 +80,11 @@ it.each(["Escape", "Tab"])("closes with %s without choosing an action", async (v
   await act(async () => menu().props.onKeyDown(event));
   expect(items()).toHaveLength(0);
   expect(first).not.toHaveBeenCalled();
-  if (value === "Escape") expect(event.preventDefault).toHaveBeenCalledOnce();
-  else expect(event.preventDefault).not.toHaveBeenCalled();
+  if (value === "Escape") {
+    expect(event.preventDefault).toHaveBeenCalledOnce();
+  } else {
+    expect(event.preventDefault).not.toHaveBeenCalled();
+  }
 });
 it("synchronizes native light dismissal, context changes and a newly locked composer", async () => {
   await act(async () => trigger().props.onClick());

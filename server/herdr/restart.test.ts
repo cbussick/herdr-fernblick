@@ -15,16 +15,23 @@ const agent = {
   workspace_id: "w1",
   agent_session: { agent: "pi", kind: "path", source: "fixture", value: "/fixture/session.jsonl" },
 };
-function fixture(input?: (params: { text?: string; keys?: string[] }) => void) {
+function fixture(input?: (params: { text?: string; keys?: Array<string> }) => void) {
   const request = vi.fn(async <T>(method: string, params: unknown, schema: z.ZodType<T>) => {
-    if (method === "agent.get") return schema.parse({ type: "agent_info", agent });
-    if (method === "pane.send_input") input?.(params as { text?: string; keys?: string[] });
-    if (method === "session.snapshot")
+    if (method === "agent.get") {
+      return schema.parse({ type: "agent_info", agent });
+    }
+    if (method === "pane.send_input") {
+      input?.(params as { text?: string; keys?: Array<string> });
+    }
+    if (method === "session.snapshot") {
       return schema.parse({
         type: "session_snapshot",
         snapshot: { agents: [], panes: [], tabs: [], workspaces: [] },
       });
-    if (method === "agent.start") return schema.parse({ type: "agent_started", agent });
+    }
+    if (method === "agent.start") {
+      return schema.parse({ type: "agent_started", agent });
+    }
     return schema.parse({ type: "ok" });
   });
   return { request, service: new HerdrService({ request } as unknown as HerdrClient) };
@@ -52,11 +59,17 @@ it.each(["restartPiAgent", "exitPiAgent"] as const)(
     );
     const draft = "An older unsent prompt";
     editor.setText(draft);
-    const submitted: string[] = [];
+    const submitted: Array<string> = [];
     editor.onSubmit = (text) => submitted.push(text);
     const { service, request } = fixture(({ text, keys }) => {
-      if (text) editor.handleInput(`\x1b[200~${text}\x1b[201~`);
-      for (const key of keys ?? []) if (key === "enter") editor.handleInput("\r");
+      if (text) {
+        editor.handleInput(`\u001b[200~${text}\u001b[201~`);
+      }
+      for (const key of keys ?? []) {
+        if (key === "enter") {
+          editor.handleInput("\r");
+        }
+      }
     });
     const shutdown = vi.fn(async () => {
       throw new Error("Pi terminal has an unsent draft");
@@ -152,12 +165,15 @@ it.each(["restartPiAgent", "exitPiAgent"] as const)(
       const { service, request } = fixture();
       request.mockImplementation(
         async <T>(method: string, _params: unknown, schema: z.ZodType<T>) => {
-          if (method === "agent.get") return schema.parse({ type: "agent_info", agent });
-          if (method === "session.snapshot")
+          if (method === "agent.get") {
+            return schema.parse({ type: "agent_info", agent });
+          }
+          if (method === "session.snapshot") {
             return schema.parse({
               type: "session_snapshot",
               snapshot: { agents: [agent], panes: [], tabs: [], workspaces: [] },
             });
+          }
           throw new Error(`Unexpected request: ${method}`);
         },
       );

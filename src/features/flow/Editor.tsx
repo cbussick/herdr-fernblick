@@ -1,7 +1,9 @@
-import { useEffect, useRef, useState, type FormEvent, type ReactNode } from "react";
+import { useEffect, useRef, useState } from "react";
+import type { FormEvent, ReactNode } from "react";
 import { ArrowLeft, Palette, Plus, Trash2, Upload, X } from "lucide-react";
 import { ComponentContent, componentStyle, Icon, icons } from "./Components";
-import { catalog, colors, validData, type ComponentData } from "./model";
+import { catalog, colors, validData } from "./model";
+import type { ComponentData } from "./model";
 import { flowIcons } from "../../../packages/pi-live-chat/flowProtocol";
 import styles from "./Playground.module.css";
 
@@ -31,7 +33,9 @@ export function Modal({
       data-ui="flow-component-editor"
       data-size={size}
       onKeyDown={(event) => {
-        if (event.key === "Escape") event.stopPropagation();
+        if (event.key === "Escape") {
+          event.stopPropagation();
+        }
       }}
       className={styles["dialog"]}
       aria-label={title}
@@ -48,8 +52,9 @@ export function Modal({
             event.clientX > rect.right ||
             event.clientY < rect.top ||
             event.clientY > rect.bottom
-          )
+          ) {
             onClose();
+          }
         }
       }}
     >
@@ -90,12 +95,12 @@ function TextField({
       {multiline ? (
         <textarea
           value={value}
-          maxLength={10000}
+          maxLength={10_000}
           onChange={(e) => onChange(e.target.value)}
           rows={3}
         />
       ) : (
-        <input value={value} maxLength={10000} onChange={(e) => onChange(e.target.value)} />
+        <input value={value} maxLength={10_000} onChange={(e) => onChange(e.target.value)} />
       )}
     </label>
   );
@@ -165,7 +170,9 @@ export function ComponentEditor({
   const subtitle = ["icon", "detail", "table", "comment"].includes(kind);
   const title = `${isNew ? "Add" : "Edit"} ${catalog[kind].name}`;
   async function upload(file?: File) {
-    if (!file) return;
+    if (!file) {
+      return;
+    }
     if (!/^image\/(png|jpeg|webp|gif)$/.test(file.type) || file.size > 2 * 1024 * 1024) {
       setError("Choose a PNG, JPEG, WebP, or GIF smaller than 2 MiB.");
       return;
@@ -185,11 +192,17 @@ export function ComponentEditor({
         image.onerror = reject;
         image.src = url;
       });
-      if (alive.current) patch({ image: url });
+      if (alive.current) {
+        patch({ image: url });
+      }
     } catch {
-      if (alive.current) setError("That image could not be loaded. Try another file.");
+      if (alive.current) {
+        setError("That image could not be loaded. Try another file.");
+      }
     } finally {
-      if (alive.current) setLoading(false);
+      if (alive.current) {
+        setLoading(false);
+      }
     }
   }
   function submit(event: FormEvent) {
@@ -248,14 +261,14 @@ export function ComponentEditor({
                 {flowIcons
                   .filter(
                     (key) =>
-                      key !== "" && icons[key]!.label.toLowerCase().includes(query.toLowerCase()),
+                      key !== "" && icons[key].label.toLowerCase().includes(query.toLowerCase()),
                   )
                   .map((key) => (
                     <button
                       key={key}
                       type="button"
-                      title={icons[key]!.label}
-                      aria-label={`Icon: ${icons[key]!.label}`}
+                      title={icons[key].label}
+                      aria-label={`Icon: ${icons[key].label}`}
                       aria-pressed={draft.icon === key && !draft.image}
                       onClick={() => patch({ icon: key, image: "" })}
                     >
@@ -377,7 +390,7 @@ export function ComponentEditor({
                             <input
                               aria-label={`Column ${j + 1} name`}
                               value={column}
-                              maxLength={10000}
+                              maxLength={10_000}
                               onChange={(e) =>
                                 patch({
                                   columns: draft.columns.map((c, k) =>
@@ -412,7 +425,7 @@ export function ComponentEditor({
                               <input
                                 aria-label={`Row ${i + 1} column ${j + 1}`}
                                 value={cell}
-                                maxLength={10000}
+                                maxLength={10_000}
                                 onChange={(e) =>
                                   patch({
                                     rows: draft.rows.map((r, k) =>

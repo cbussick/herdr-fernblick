@@ -1,12 +1,5 @@
-import {
-  useEffect,
-  useRef,
-  useState,
-  type CSSProperties,
-  type KeyboardEvent,
-  type PointerEvent,
-  type RefObject,
-} from "react";
+import { useEffect, useRef, useState } from "react";
+import type { CSSProperties, KeyboardEvent, PointerEvent, RefObject } from "react";
 import { flushSync } from "react-dom";
 
 const widthKey = "fernblick:whiteboard-conversation-width";
@@ -17,7 +10,7 @@ const clamp = (value: number, min: number, max: number) => Math.min(max, Math.ma
 function savedWidth() {
   try {
     const value = Number(localStorage.getItem(widthKey));
-    return Number.isFinite(value) && value >= 320 && value <= 10000 ? value : null;
+    return Number.isFinite(value) && value >= 320 && value <= 10_000 ? value : null;
   } catch {
     return null;
   }
@@ -39,7 +32,9 @@ export function useConversationSize(dock: RefObject<HTMLElement | null>) {
   const dragFrame = useRef(0);
   useEffect(
     () => () => {
-      if (dragFrame.current) cancelAnimationFrame(dragFrame.current);
+      if (dragFrame.current) {
+        cancelAnimationFrame(dragFrame.current);
+      }
     },
     [],
   );
@@ -54,7 +49,9 @@ export function useConversationSize(dock: RefObject<HTMLElement | null>) {
 
   useEffect(() => {
     const workspace = dock.current?.parentElement;
-    if (!workspace) return;
+    if (!workspace) {
+      return;
+    }
     const media = window.matchMedia(desktopQuery);
     const measure = () => {
       const box = workspace.getBoundingClientRect();
@@ -95,7 +92,9 @@ export function useConversationSize(dock: RefObject<HTMLElement | null>) {
 
   function cancel() {
     const start = gesture.current;
-    if (!start) return;
+    if (!start) {
+      return;
+    }
     gesture.current = null;
     cancelAnimationFrame(dragFrame.current);
     setWidth(start.width);
@@ -103,7 +102,9 @@ export function useConversationSize(dock: RefObject<HTMLElement | null>) {
     setDragging(false);
   }
   function onPointerDown(event: PointerEvent<HTMLDivElement>) {
-    if (!event.isPrimary || event.button !== 0 || gesture.current) return;
+    if (!event.isPrimary || event.button !== 0 || gesture.current) {
+      return;
+    }
     event.preventDefault();
     event.currentTarget.focus();
     event.currentTarget.setPointerCapture(event.pointerId);
@@ -119,7 +120,9 @@ export function useConversationSize(dock: RefObject<HTMLElement | null>) {
   }
   function resize(event: PointerEvent<HTMLDivElement>, finish: boolean) {
     const start = gesture.current;
-    if (!start || start.id !== event.pointerId) return;
+    if (!start || start.id !== event.pointerId) {
+      return;
+    }
     if (start.desktop !== desktop) {
       cancel();
       return;
@@ -159,7 +162,9 @@ export function useConversationSize(dock: RefObject<HTMLElement | null>) {
     setDragging(false);
   }
   function onKeyDown(event: KeyboardEvent<HTMLDivElement>) {
-    if (event.nativeEvent.isComposing) return;
+    if (event.nativeEvent.isComposing) {
+      return;
+    }
     if (event.key === "Escape" && gesture.current) {
       event.preventDefault();
       event.stopPropagation();
@@ -168,7 +173,9 @@ export function useConversationSize(dock: RefObject<HTMLElement | null>) {
     }
     const grow = desktop ? "ArrowLeft" : "ArrowUp";
     const shrink = desktop ? "ArrowRight" : "ArrowDown";
-    if (![grow, shrink, "Home", "End"].includes(event.key)) return;
+    if (![grow, shrink, "Home", "End"].includes(event.key)) {
+      return;
+    }
     event.preventDefault();
     event.stopPropagation();
     if (desktop) {
@@ -205,12 +212,15 @@ export function useConversationSize(dock: RefObject<HTMLElement | null>) {
     }
   }
   function toggle() {
-    if (expanded) collapse();
-    else if (desktop) {
+    if (expanded) {
+      collapse();
+    } else if (desktop) {
       const next = clamp(viewport.width / 2, minWidth, maxWidth);
       setWidth(next);
       persistWidth(next);
-    } else setFraction(1);
+    } else {
+      setFraction(1);
+    }
   }
   return {
     expanded,
@@ -238,10 +248,14 @@ export function useConversationSize(dock: RefObject<HTMLElement | null>) {
       onPointerMove: (event: PointerEvent<HTMLDivElement>) => resize(event, false),
       onPointerUp: (event: PointerEvent<HTMLDivElement>) => resize(event, true),
       onPointerCancel: (event: PointerEvent<HTMLDivElement>) => {
-        if (gesture.current?.id === event.pointerId) cancel();
+        if (gesture.current?.id === event.pointerId) {
+          cancel();
+        }
       },
       onLostPointerCapture: (event: PointerEvent<HTMLDivElement>) => {
-        if (gesture.current?.id === event.pointerId) cancel();
+        if (gesture.current?.id === event.pointerId) {
+          cancel();
+        }
       },
       onKeyDown,
     },

@@ -5,7 +5,7 @@ import styles from "./ImageLightbox.module.css";
 
 export type PreviewImage = { url: string; alt: string };
 interface ImageLightboxProps {
-  images: PreviewImage[];
+  images: Array<PreviewImage>;
   index: number;
   onIndexChange: (index: number) => void;
   onClose: () => void;
@@ -38,16 +38,26 @@ export function ImageLightbox({
   useEffect(() => {
     const modal = lightbox.current;
     const opener = document.activeElement as HTMLElement | null;
-    if (modal && !modal.open) modal.showModal();
+    if (modal && !modal.open) {
+      modal.showModal();
+    }
     return () => {
-      if (modal?.open) modal.close();
-      if (opener?.isConnected) opener.focus();
+      if (modal?.open) {
+        modal.close();
+      }
+      if (opener?.isConnected) {
+        opener.focus();
+      }
     };
   }, []);
   function cycle(direction: number) {
-    if (multiple) onIndexChange((index + direction + images.length) % images.length);
+    if (multiple) {
+      onIndexChange((index + direction + images.length) % images.length);
+    }
   }
-  if (!image) return null;
+  if (!image) {
+    return null;
+  }
   return createPortal(
     <dialog
       ref={lightbox}
@@ -57,11 +67,15 @@ export function ImageLightbox({
       aria-label="Image preview"
       onClose={(event) => {
         // StrictMode cleanup may queue a close event before the modal reopens.
-        if (!event.currentTarget.open) onClose();
+        if (!event.currentTarget.open) {
+          onClose();
+        }
       }}
       onCancel={(event) => event.stopPropagation()}
       onKeyDown={(event) => {
-        if (event.key === "Escape") event.stopPropagation();
+        if (event.key === "Escape") {
+          event.stopPropagation();
+        }
         if (multiple && (event.key === "ArrowLeft" || event.key === "ArrowRight")) {
           event.preventDefault();
           event.stopPropagation();
@@ -69,7 +83,9 @@ export function ImageLightbox({
         }
       }}
       onClick={(event) => {
-        if (event.target === event.currentTarget) event.currentTarget.close();
+        if (event.target === event.currentTarget) {
+          event.currentTarget.close();
+        }
       }}
     >
       <div className={styles.toolbar}>

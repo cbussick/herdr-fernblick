@@ -1,6 +1,7 @@
 import type { ServerResponse } from "node:http";
 import type { Agent } from "../../src/shared/api/contracts.js";
-import { LiveChatError, type LiveBridge } from "./liveBridge.js";
+import { LiveChatError } from "./liveBridge.js";
+import type { LiveBridge } from "./liveBridge.js";
 import { browserFrame } from "../../packages/pi-live-chat/browserStream.js";
 import type { Snapshot } from "../../packages/pi-live-chat/protocol.js";
 import { MAX_FRAME } from "../../packages/pi-live-chat/protocol.js";
@@ -17,7 +18,9 @@ export function liveEvents(response: ServerResponse, agent: Agent, bridge: LiveB
   let paused = false;
   let pausedAt = 0;
   const write = (data: unknown, id?: string) => {
-    if (closed) return;
+    if (closed) {
+      return;
+    }
     const frame = `${id ? `id: ${id}\n` : ""}data: ${JSON.stringify(data)}\n\n`;
     if (Buffer.byteLength(frame) + response.writableLength > MAX_FRAME) {
       response.destroy();
@@ -30,15 +33,21 @@ export function liveEvents(response: ServerResponse, agent: Agent, bridge: LiveB
   };
   const refresh = async () => {
     dirty = true;
-    if (running || closed || paused) return;
+    if (running || closed || paused) {
+      return;
+    }
     running = true;
     try {
       while (dirty && !closed && !paused) {
         dirty = false;
         try {
           const peer = bridge.current(agent);
-          if (peer !== bound) bound = await bridge.resolve(agent);
-          if (closed) return;
+          if (peer !== bound) {
+            bound = await bridge.resolve(agent);
+          }
+          if (closed) {
+            return;
+          }
           const snapshot = bound.snapshot;
           const id = `${snapshot.epoch}:${snapshot.seq}`;
           if (id !== last) {
@@ -81,9 +90,9 @@ export function liveEvents(response: ServerResponse, agent: Agent, bridge: LiveB
   };
   response.on("drain", onDrain);
   const heartbeat = setInterval(() => {
-    if (response.writableLength > MAX_FRAME || (paused && Date.now() - pausedAt > 60_000))
+    if (response.writableLength > MAX_FRAME || (paused && Date.now() - pausedAt > 60_000)) {
       response.destroy();
-    else if (!paused && response.write(": heartbeat\n\n") === false) {
+    } else if (!paused && response.write(": heartbeat\n\n") === false) {
       paused = true;
       pausedAt = Date.now();
     }

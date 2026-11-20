@@ -108,7 +108,9 @@ it("reports queued persistence errors rather than treating flush completion as s
   const settings = SettingsManager.fromStorage(
     {
       withLock(_scope, update) {
-        if (update("{}") !== undefined) throw new Error("disk full");
+        if (update("{}") !== undefined) {
+          throw new Error("disk full");
+        }
       },
     },
     { projectTrusted: false },

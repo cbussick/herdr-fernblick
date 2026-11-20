@@ -1,5 +1,6 @@
 import { expect, it } from "vitest";
-import { boardSceneSchema, type BoardScene } from "../../../packages/pi-live-chat/boardProtocol";
+import { boardSceneSchema } from "../../../packages/pi-live-chat/boardProtocol";
+import type { BoardScene } from "../../../packages/pi-live-chat/boardProtocol";
 import { canonical, mergeScene } from "./mergeScene";
 import { scene } from "./testFixtures";
 

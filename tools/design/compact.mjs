@@ -85,7 +85,7 @@ for (const [engine, type] of [
         (url) => url.pathname.startsWith("/api/"),
         async (route) => {
           const url = new URL(route.request().url());
-          if (url.pathname === "/api/agents")
+          if (url.pathname === "/api/agents") {
             return route.fulfill({
               json: {
                 agents: [agent],
@@ -93,6 +93,7 @@ for (const [engine, type] of [
                 tabs: [],
               },
             });
+          }
           if (url.pathname.endsWith("/compact")) {
             compactions++;
             assert.deepEqual(route.request().postDataJSON(), { target });

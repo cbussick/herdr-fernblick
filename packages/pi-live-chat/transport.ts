@@ -19,7 +19,9 @@ export function receiveFrames(socket: Socket, receive: (value: unknown) => void)
         socket.destroy();
         return;
       }
-      if (socket.destroyed) return;
+      if (socket.destroyed) {
+        return;
+      }
       start = end + 1;
     }
     if (pending.length + chunk.length - start > MAX_FRAME) {
@@ -30,7 +32,9 @@ export function receiveFrames(socket: Socket, receive: (value: unknown) => void)
   });
 }
 export function writeFrame(socket: Socket, value: unknown): boolean {
-  if (socket.destroyed || !socket.writable) return false;
+  if (socket.destroyed || !socket.writable) {
+    return false;
+  }
   const frame = JSON.stringify(value) + "\n";
   if (Buffer.byteLength(frame) + socket.writableLength > MAX_FRAME) {
     socket.destroy();

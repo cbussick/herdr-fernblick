@@ -25,12 +25,15 @@ beforeEach(async () => {
     .mockImplementation(
       async <T>(method: string, params: Record<string, unknown>, schema: z.ZodType<T>) => {
         const current = { ...agent, agent_status: status };
-        if (method === "agent.get") return schema.parse({ type: "agent_info", agent: current });
-        if (method === "session.snapshot")
+        if (method === "agent.get") {
+          return schema.parse({ type: "agent_info", agent: current });
+        }
+        if (method === "session.snapshot") {
           return schema.parse({
             type: "session_snapshot",
             snapshot: { agents: [current], panes: [], tabs: [], workspaces: [] },
           });
+        }
         return schema.parse({
           type: "pane_read",
           read: {
@@ -48,14 +51,16 @@ beforeEach(async () => {
     "/unused",
     new LiveBridge("/unused/pi.sock", "/unused/herdr.sock"),
   );
-  await new Promise<void>((done) => server.listen(0, "127.0.0.1", done));
+  await new Promise<void>((done) => {
+    server.listen(0, "127.0.0.1", done);
+  });
   base = `http://127.0.0.1:${(server.address() as { port: number }).port}`;
 });
 afterEach(async () => {
   server.closeAllConnections();
-  await new Promise<void>((done, reject) =>
-    server.close((error) => (error ? reject(error) : done())),
-  );
+  await new Promise<void>((done, reject) => {
+    server.close((error) => (error ? reject(error) : done()));
+  });
 });
 
 it.each(["agents", "panes"])(

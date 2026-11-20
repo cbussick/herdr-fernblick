@@ -1,5 +1,6 @@
 import { act } from "react";
-import { create, type ReactTestRenderer } from "react-test-renderer";
+import { create } from "react-test-renderer";
+import type { ReactTestRenderer } from "react-test-renderer";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { ChatMessageText } from "./ChatMessageText";
 
@@ -7,7 +8,9 @@ describe("Markdown image loading", () => {
   let renderer: ReactTestRenderer | undefined;
   beforeEach(() => vi.stubGlobal("IS_REACT_ACT_ENVIRONMENT", true));
   afterEach(async () => {
-    if (renderer) await act(async () => renderer!.unmount());
+    if (renderer) {
+      await act(async () => renderer!.unmount());
+    }
     renderer = undefined;
     vi.unstubAllGlobals();
   });

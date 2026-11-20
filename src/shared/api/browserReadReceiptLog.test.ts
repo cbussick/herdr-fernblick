@@ -82,7 +82,7 @@ it("bounds shared-tab records, preserves unrelated storage, and expires seven-da
 
 it("strips injected fields and removes invalid, oversized, old-version and future records", () => {
   save();
-  const key = storage.key(0)!;
+  const key = storage.key(0);
   const original = JSON.parse(storage.getItem(key)!);
   storage.setItem(
     key,

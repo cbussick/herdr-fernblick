@@ -75,7 +75,7 @@ for (const [engine, browserType] of [
         (url) => url.pathname.startsWith("/api/"),
         async (route) => {
           const path = new URL(route.request().url()).pathname;
-          if (path === "/api/agents")
+          if (path === "/api/agents") {
             return route.fulfill({
               json: {
                 agents: [agent],
@@ -83,6 +83,7 @@ for (const [engine, browserType] of [
                 tabs: [],
               },
             });
+          }
           if (path === "/api/uploads/images") {
             uploads.push(route);
             return;
@@ -99,7 +100,9 @@ for (const [engine, browserType] of [
           window.fixtureStream.onmessage({ data: JSON.stringify(next) });
         }, state);
       const waitForCount = async (items, count) => {
-        for (let i = 0; i < 100 && items.length < count; i++) await page.waitForTimeout(20);
+        for (let i = 0; i < 100 && items.length < count; i++) {
+          await page.waitForTimeout(20);
+        }
         assert.equal(items.length, count);
       };
       await page.goto(base);
@@ -111,13 +114,16 @@ for (const [engine, browserType] of [
       const composer = page.locator("form").filter({ has: prompt });
       let composerBox;
       const checkComposer = async () => {
-        if (!composerBox) return;
+        if (!composerBox) {
+          return;
+        }
         const box = await composer.boundingBox();
-        for (const key of ["x", "y", "width", "height"])
+        for (const key of ["x", "y", "width", "height"]) {
           assert.ok(
             Math.abs(box[key] - composerBox[key]) < 1,
             `progress must not shift composer ${key}`,
           );
+        }
       };
       const checkStatus = async (text) => {
         await page.getByRole("status").filter({ hasText: text }).waitFor();
@@ -225,8 +231,9 @@ for (const [engine, browserType] of [
           "snackbar stays above the composer",
         );
         assert.equal(await snackbar.evaluate((el) => el.scrollWidth <= el.clientWidth), true);
-        for (const button of await snackbar.getByRole("button").all())
+        for (const button of await snackbar.getByRole("button").all()) {
           assert.ok((await button.boundingBox()).height >= 44);
+        }
         assert.equal(
           await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth),
           true,

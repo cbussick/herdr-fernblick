@@ -1,5 +1,6 @@
 import { act } from "react";
-import { create, type ReactTestInstance, type ReactTestRenderer } from "react-test-renderer";
+import { create } from "react-test-renderer";
+import type { ReactTestInstance, ReactTestRenderer } from "react-test-renderer";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
 import { App } from "./App";
@@ -20,7 +21,7 @@ vi.mock("../features/agents/AgentList", () => ({
   AgentList: (props: {
     onCreate: (workspaceId?: string) => void;
     onCreateWorkspace: () => void;
-    workspaces: Workspace[];
+    workspaces: Array<Workspace>;
   }) => (
     <nav>
       <button onClick={() => props.onCreate()}>New agent</button>
@@ -54,7 +55,9 @@ async function click(label: string, root?: ReactTestInstance) {
 async function submit(form: ReactTestInstance) {
   await act(async () => form.props.onSubmit({ preventDefault: vi.fn() }));
   await act(async () => {
-    await new Promise((resolve) => setTimeout(resolve, 20));
+    await new Promise((resolve) => {
+      setTimeout(resolve, 20);
+    });
   });
 }
 async function openNestedWorkspace() {
@@ -90,7 +93,9 @@ beforeEach(async () => {
       </QueryClientProvider>,
       {
         createNodeMock: (node) => {
-          if (node.type !== "dialog") return null;
+          if (node.type !== "dialog") {
+            return null;
+          }
           const props = node.props as {
             "aria-labelledby"?: string;
             onClose?: (event: { target: unknown; currentTarget: unknown }) => void;
@@ -101,7 +106,9 @@ beforeEach(async () => {
               this.open = true;
             },
             close() {
-              if (!this.open) return;
+              if (!this.open) {
+                return;
+              }
               this.open = false;
               queueMicrotask(() => props.onClose?.({ target: native, currentTarget: native }));
             },

@@ -15,7 +15,7 @@ let httpServer: HttpServer;
 let base: string;
 let label: string;
 let rejectRename: boolean;
-const requests: { method: string; params: Record<string, unknown> }[] = [];
+const requests: Array<{ method: string; params: Record<string, unknown> }> = [];
 
 beforeEach(async () => {
   label = "Original tab";
@@ -44,20 +44,28 @@ beforeEach(async () => {
       socket.end(`${JSON.stringify({ id: request.id, result })}\n`);
     });
   });
-  await new Promise<void>((done) => socketServer.listen(socketPath, done));
+  await new Promise<void>((done) => {
+    socketServer.listen(socketPath, done);
+  });
   httpServer = createHttpServer(
     new HerdrService(new HerdrClient(socketPath)),
     "/unused",
     new LiveBridge(join(directory, "pi.sock"), socketPath),
   );
-  await new Promise<void>((done) => httpServer.listen(0, "127.0.0.1", done));
+  await new Promise<void>((done) => {
+    httpServer.listen(0, "127.0.0.1", done);
+  });
   base = `http://127.0.0.1:${(httpServer.address() as { port: number }).port}`;
 });
 
 afterEach(async () => {
   httpServer.closeAllConnections();
-  await new Promise<void>((done) => httpServer.close(() => done()));
-  await new Promise<void>((done) => socketServer.close(() => done()));
+  await new Promise<void>((done) => {
+    httpServer.close(() => done());
+  });
+  await new Promise<void>((done) => {
+    socketServer.close(() => done());
+  });
   await rm(directory, { recursive: true, force: true });
 });
 

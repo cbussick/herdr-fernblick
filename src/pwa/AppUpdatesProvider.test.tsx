@@ -1,5 +1,6 @@
 import { act, useEffect } from "react";
-import { create, type ReactTestRenderer } from "react-test-renderer";
+import { create } from "react-test-renderer";
+import type { ReactTestRenderer } from "react-test-renderer";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
 import { AppUpdatesProvider } from "./AppUpdatesProvider";
 import { useAppUpdates } from "./useAppUpdates";

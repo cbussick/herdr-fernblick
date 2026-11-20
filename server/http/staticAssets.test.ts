@@ -54,10 +54,11 @@ test("serves the locally hosted Manrope font and its complete OFL license", asyn
       await readFile("src/styles/fonts/manrope-latin-wght-normal.woff2"),
     );
   } finally {
-    if (server.listening)
-      await new Promise<void>((resolve, reject) =>
-        server.close((error) => (error ? reject(error) : resolve())),
-      );
+    if (server.listening) {
+      await new Promise<void>((resolve, reject) => {
+        server.close((error) => (error ? reject(error) : resolve()));
+      });
+    }
     await rm(directory, { recursive: true, force: true });
   }
 });

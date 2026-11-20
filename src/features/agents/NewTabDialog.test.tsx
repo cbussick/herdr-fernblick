@@ -1,5 +1,6 @@
 import { act } from "react";
-import { create, type ReactTestRenderer } from "react-test-renderer";
+import { create } from "react-test-renderer";
+import type { ReactTestRenderer } from "react-test-renderer";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
 import { NewTabDialog } from "./NewTabDialog";
@@ -51,7 +52,9 @@ it("allows submitting a shell tab without naming it", async () => {
     renderer.root.findByType("form").props.onSubmit({ preventDefault: vi.fn() }),
   );
   await act(async () => {
-    await new Promise((resolve) => setTimeout(resolve, 20));
+    await new Promise((resolve) => {
+      setTimeout(resolve, 20);
+    });
   });
   expect(createTab).toHaveBeenCalledWith({ label: "", workspaceId: "w1" }, expect.anything());
   expect(onCreated).toHaveBeenCalledWith(expect.objectContaining({ label: "3" }));

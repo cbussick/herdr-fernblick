@@ -1,5 +1,6 @@
 import { act } from "react";
-import { create, type ReactTestRenderer } from "react-test-renderer";
+import { create } from "react-test-renderer";
+import type { ReactTestRenderer } from "react-test-renderer";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { SessionManager } from "@earendil-works/pi-coding-agent";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
@@ -19,9 +20,9 @@ const target = {
 let manager: SessionManager;
 let renderer: ReactTestRenderer;
 let client: QueryClient;
-const restore = vi.fn<(text: string, attachments: string[]) => void>();
+const restore = vi.fn<(text: string, attachments: Array<string>) => void>();
 const close = vi.fn<() => void>();
-let ids: string[];
+let ids: Array<string>;
 const render = (busy = false) => (
   <QueryClientProvider client={client}>
     <ConversationTreeDialog
@@ -36,7 +37,9 @@ const render = (busy = false) => (
 );
 async function flush(ms = 20) {
   await act(async () => {
-    await new Promise((done) => setTimeout(done, ms));
+    await new Promise((done) => {
+      setTimeout(done, ms);
+    });
   });
 }
 function button(text: string) {
@@ -63,7 +66,9 @@ beforeEach(async () => {
   ids = [];
   for (let i = 0; i < 354; i++) {
     ids.push(manager.appendMessage({ role: "user", content: `Prompt ${i}`, timestamp: i }));
-    for (let j = 0; j < 4; j++) manager.appendCustomEntry("state", {});
+    for (let j = 0; j < 4; j++) {
+      manager.appendCustomEntry("state", {});
+    }
   }
   api.page
     .mockReset()

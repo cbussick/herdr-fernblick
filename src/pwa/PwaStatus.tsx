@@ -4,7 +4,9 @@ import styles from "./PwaStatus.module.css";
 
 export function PwaStatus() {
   const updates = useAppUpdates();
-  if (!updates || (updates.online && !updates.noticeVisible)) return null;
+  if (!updates || (updates.online && !updates.noticeVisible)) {
+    return null;
+  }
   // Keep global update actions outside the app root, which whiteboard makes inert.
   return createPortal(
     <aside className={styles.notice} aria-label="App status" data-ui="app-status">

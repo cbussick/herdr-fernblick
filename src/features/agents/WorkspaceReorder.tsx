@@ -1,4 +1,5 @@
-import { useRef, useState, type ReactNode } from "react";
+import { useRef, useState } from "react";
+import type { ReactNode } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import {
   DndContext,
@@ -8,9 +9,8 @@ import {
   closestCenter,
   useSensor,
   useSensors,
-  type DragEndEvent,
-  type CollisionDetection,
 } from "@dnd-kit/core";
+import type { DragEndEvent, CollisionDetection } from "@dnd-kit/core";
 import {
   SortableContext,
   arrayMove,
@@ -36,8 +36,9 @@ const workspaceCollision: CollisionDetection = (args) => {
       !rects.some((rect) => x >= rect.left && x <= rect.right) ||
       y < 0 ||
       y > Math.max(...rects.map((rect) => rect.bottom)) + bottomDropZone
-    )
+    ) {
       return [];
+    }
     // Dnd-kit measures collisionRect from the visible drag overlay, not the
     // original (possibly expanded) card. Reorder when its center crosses a
     // target's center, independently of where the handle was grabbed.
@@ -47,7 +48,9 @@ const workspaceCollision: CollisionDetection = (args) => {
       ...args,
       droppableContainers: args.droppableContainers.filter((container) => {
         const rect = args.droppableRects.get(container.id);
-        if (!activeRect || !rect || container.id === args.active.id) return true;
+        if (!activeRect || !rect || container.id === args.active.id) {
+          return true;
+        }
         const midpoint = rect.top + rect.height / 2;
         return rect.top < activeRect.top ? centerY <= midpoint : centerY >= midpoint;
       }),
@@ -97,7 +100,9 @@ function SortableWorkspace({
             onClick={(event) => {
               event.preventDefault();
               event.stopPropagation();
-              if (!disabled) onChoose();
+              if (!disabled) {
+                onChoose();
+              }
             }}
           >
             <svg viewBox="0 0 16 24" width="16" height="24" aria-hidden="true">
@@ -120,12 +125,12 @@ export function WorkspaceReorder<T extends Workspace>({
   disabled,
   children,
 }: {
-  workspaces: T[];
+  workspaces: Array<T>;
   disabled: boolean;
   children: (workspace: T, handle: ReactNode) => ReactNode;
 }) {
   const client = useQueryClient();
-  const [optimistic, setOptimistic] = useState<string[] | null>(null);
+  const [optimistic, setOptimistic] = useState<Array<string> | null>(null);
   const [saving, setSaving] = useState(false);
   const savingRef = useRef(false);
   const [notice, setNotice] = useState("");
@@ -153,19 +158,24 @@ export function WorkspaceReorder<T extends Workspace>({
   const chosen = workspaces.find((workspace) => workspace.workspace_id === chosenId);
 
   async function move(workspaceId: string, beforeWorkspaceId: string | null) {
-    if (locked || savingRef.current) return;
+    if (locked || savingRef.current) {
+      return;
+    }
     const next = ids.filter((id) => id !== workspaceId);
     if (
       !ids.includes(workspaceId) ||
       (beforeWorkspaceId !== null && !next.includes(beforeWorkspaceId))
-    )
+    ) {
       return;
+    }
     next.splice(
       beforeWorkspaceId === null ? next.length : next.indexOf(beforeWorkspaceId),
       0,
       workspaceId,
     );
-    if (next.join() === ids.join()) return;
+    if (next.join() === ids.join()) {
+      return;
+    }
     savingRef.current = true;
     setSaving(true);
     setOptimistic(next);
@@ -175,9 +185,9 @@ export function WorkspaceReorder<T extends Workspace>({
     try {
       await moveWorkspace({ workspaceId, beforeWorkspaceId });
       setNotice(`${label} moved to position ${next.indexOf(workspaceId) + 1} of ${next.length}.`);
-    } catch (cause) {
+    } catch (error_) {
       setError(
-        `Could not save workspace order. ${cause instanceof Error ? cause.message : "Try again."}`,
+        `Could not save workspace order. ${error_ instanceof Error ? error_.message : "Try again."}`,
       );
       setNotice("");
       setOptimistic(null);
@@ -193,14 +203,18 @@ export function WorkspaceReorder<T extends Workspace>({
   function finishDrag({ active, over }: DragEndEvent) {
     setActiveId(null);
     setOverId(null);
-    if (!over || active.id === over.id || locked) return;
+    if (!over || active.id === over.id || locked) {
+      return;
+    }
     if (dragOrder.current !== workspaces.map((workspace) => workspace.workspace_id).join()) {
       setError("Workspace order changed while dragging. Please try again.");
       return;
     }
     const from = ids.indexOf(String(active.id));
     const to = ids.indexOf(String(over.id));
-    if (from < 0 || to < 0) return;
+    if (from < 0 || to < 0) {
+      return;
+    }
     const next = arrayMove(ids, from, to);
     void move(String(active.id), next[to + 1] ?? null);
   }
@@ -288,7 +302,9 @@ export function WorkspaceReorder<T extends Workspace>({
           onSubmit={(event) => {
             event.preventDefault();
             dialog.current?.close();
-            if (chosenId) void move(chosenId, beforeId || null);
+            if (chosenId) {
+              void move(chosenId, beforeId || null);
+            }
           }}
         >
           <h2>Move {chosen?.label}</h2>

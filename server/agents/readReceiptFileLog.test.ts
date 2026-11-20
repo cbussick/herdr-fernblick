@@ -70,7 +70,12 @@ async function records() {
 it("writes only safe structured records, with private files, surviving a new backend writer", async () => {
   writer = new ReadReceiptFileLog({ directory });
   const event = record();
-  writer.write({ ...event, ...{ body: "private chat", path: "/sessions/secret" } });
+  const unsafeEvent = {
+    ...event,
+    body: "private chat",
+    path: "/sessions/secret",
+  };
+  writer.write(unsafeEvent);
   await writer.close();
   writer = new ReadReceiptFileLog({ directory });
   writer.write(record());
@@ -79,8 +84,9 @@ it("writes only safe structured records, with private files, surviving a new bac
   expect(await records()).toContainEqual(event);
   expect(JSON.stringify(await records())).not.toMatch(/private chat|secret|sessions/);
   expect((await lstat(directory)).mode & 0o777).toBe(0o700);
-  for (const name of await readdir(directory))
+  for (const name of await readdir(directory)) {
     expect((await lstat(join(directory, name))).mode & 0o777).toBe(0o600);
+  }
 });
 
 it("rotates under a total budget and prunes expired segments on a later startup", async () => {
@@ -103,7 +109,9 @@ it("rotates under a total budget and prunes expired segments on a later startup"
 
 it("bounds queued records and counts dropped events without making callers wait for disk", async () => {
   writer = new ReadReceiptFileLog({ directory });
-  for (let i = 0; i < 300; i++) writer.write(record());
+  for (let i = 0; i < 300; i++) {
+    writer.write(record());
+  }
   await writer.flush();
   const saved = await records();
   expect(saved).toHaveLength(128);
@@ -132,8 +140,9 @@ it("does not follow directory or managed-file symlinks or touch unrelated files"
 
 it("keeps error capacity when routine records fill their queue allowance", async () => {
   writer = new ReadReceiptFileLog({ directory });
-  for (let i = 0; i < 128; i++)
+  for (let i = 0; i < 128; i++) {
     writer.write({ ...record(), category: "success", severity: "info" });
+  }
   writer.write(record());
   await writer.flush();
   const saved = await records();

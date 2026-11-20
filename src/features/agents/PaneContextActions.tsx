@@ -1,13 +1,7 @@
 import dialogStyles from "./Dialogs.module.css";
 import overviewStyles from "./agentOverview.module.css";
-import {
-  useEffect,
-  useLayoutEffect,
-  useRef,
-  useState,
-  type FormEvent,
-  type ReactNode,
-} from "react";
+import { useEffect, useLayoutEffect, useRef, useState } from "react";
+import type { FormEvent, ReactNode } from "react";
 import type * as React from "react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { closeTab, renameAgent, renameTab } from "../../shared/api/apiClient";
@@ -59,7 +53,9 @@ export function PaneContextActions({
     const popup = menuRef.current;
     const row = rowRef.current;
     const overlay = overlayRef.current;
-    if (!menuOpen || !popup || !row || !overlay) return;
+    if (!menuOpen || !popup || !row || !overlay) {
+      return;
+    }
     // Top-layer placement escapes workspace and overview overflow clipping.
     // Manual dismissal keeps the release of the opening long press/right click
     // from immediately light-dismissing a newly opened popover.
@@ -108,17 +104,23 @@ export function PaneContextActions({
       viewport?.removeEventListener("resize", position);
       viewport?.removeEventListener("scroll", position);
       observer.disconnect();
-      if (overlay.matches(":popover-open")) overlay.hidePopover();
+      if (overlay.matches(":popover-open")) {
+        overlay.hidePopover();
+      }
     };
   }, [menuOpen]);
   useEffect(() => {
     const activeDialog = dialog === "rename" ? renameDialogRef.current : removeDialogRef.current;
-    if (activeDialog && !activeDialog.open) activeDialog.showModal();
+    if (activeDialog && !activeDialog.open) {
+      activeDialog.showModal();
+    }
   }, [dialog]);
   const renameMutation = useMutation({
     mutationFn: async () => {
-      const updates: Promise<void>[] = [];
-      if (nextLabel.trim() !== label) updates.push(renameTab(tabId, nextLabel));
+      const updates: Array<Promise<void>> = [];
+      if (nextLabel.trim() !== label) {
+        updates.push(renameTab(tabId, nextLabel));
+      }
       if (agentRunning && agentTarget && nextAgentName && nextAgentName !== agentName) {
         updates.push(renameAgent(agentTarget, nextAgentName));
       }
@@ -147,17 +149,20 @@ export function PaneContextActions({
       setMenuOpen(true);
     },
     onPointerDown: (event: React.PointerEvent) => {
-      if (event.pointerType !== "mouse")
+      if (event.pointerType !== "mouse") {
         timer.current = setTimeout(() => {
           suppressClick.current = true;
           setMenuOpen(true);
           timer.current = null;
         }, 550);
+      }
     },
     onPointerMove: clear,
     onPointerUp: clear,
     onClickCapture: (event: React.MouseEvent) => {
-      if (!suppressClick.current) return;
+      if (!suppressClick.current) {
+        return;
+      }
       event.preventDefault();
       event.stopPropagation();
       suppressClick.current = false;
@@ -175,7 +180,9 @@ export function PaneContextActions({
           popover="manual"
           onKeyDown={(event) => {
             if (event.key === "Escape" || event.key === "Tab") {
-              if (event.key === "Escape") event.preventDefault();
+              if (event.key === "Escape") {
+                event.preventDefault();
+              }
               setMenuOpen(false);
               rowRef.current?.querySelector<HTMLButtonElement>("button")?.focus();
             }

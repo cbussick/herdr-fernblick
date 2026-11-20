@@ -60,7 +60,9 @@ it("keeps the HTTP 10 MiB upload limit and accepts image-only commands with ten 
   const request = vi.fn(async () => ({ type: "ack", id: randomUUID(), outcome: "invoked" }));
   const service = { getAgent: vi.fn(async () => ({ pane_id: "p1" })) } as unknown as HerdrService;
   const server = createHttpServer(service, dir, { request } as unknown as LiveBridge);
-  await new Promise<void>((done) => server.listen(0, "127.0.0.1", done));
+  await new Promise<void>((done) => {
+    server.listen(0, "127.0.0.1", done);
+  });
   const base = `http://127.0.0.1:${(server.address() as { port: number }).port}`;
   try {
     const bytes = Buffer.alloc(10 * 1024 * 1024);
@@ -74,7 +76,7 @@ it("keeps the HTTP 10 MiB upload limit and accepts image-only commands with ten 
     const saved = (await response.json()) as { id: string; url: string };
     expect((await (await fetch(base + saved.url)).arrayBuffer()).byteLength).toBe(bytes.length);
     const target = { runtime: randomUUID(), epoch: randomUUID(), sessionId: "session" };
-    const send = (attachments: string[]) =>
+    const send = (attachments: Array<string>) =>
       fetch(base + "/api/agents/p1/prompt", {
         method: "POST",
         headers: { Origin: base, "Content-Type": "application/json" },
@@ -96,6 +98,8 @@ it("keeps the HTTP 10 MiB upload limit and accepts image-only commands with ten 
     expect(oversized.status).toBe(413);
   } finally {
     server.closeAllConnections();
-    await new Promise<void>((done) => server.close(() => done()));
+    await new Promise<void>((done) => {
+      server.close(() => done());
+    });
   }
 });

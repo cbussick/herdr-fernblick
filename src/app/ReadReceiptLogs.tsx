@@ -25,10 +25,11 @@ export function ReadReceiptLogs() {
     return { ...history, text: value };
   }, []);
   useEffect(() => {
-    if (open)
+    if (open) {
       return subscribeReadReceiptHistory(() => {
         refresh();
       });
+    }
   }, [open, refresh]);
   return (
     <section className={styles.section} aria-labelledby={outputId + "-heading"}>
@@ -59,7 +60,9 @@ export function ReadReceiptLogs() {
                 return;
               }
               try {
-                if (!navigator.clipboard?.writeText) throw new Error("Unavailable");
+                if (!navigator.clipboard?.writeText) {
+                  throw new Error("Unavailable");
+                }
                 await navigator.clipboard.writeText(history.text);
                 setNotice("Logs copied.");
               } catch {

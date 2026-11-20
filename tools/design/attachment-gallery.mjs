@@ -80,7 +80,7 @@ for (const [engine, type] of [
         (url) => url.pathname.startsWith("/api/"),
         async (route) => {
           const path = new URL(route.request().url()).pathname;
-          if (path === "/api/agents")
+          if (path === "/api/agents") {
             return route.fulfill({
               json: {
                 agents: [agent],
@@ -88,12 +88,14 @@ for (const [engine, type] of [
                 tabs: [],
               },
             });
-          if (urls.includes(path))
+          }
+          if (urls.includes(path)) {
             return route.fulfill(
               path === urls[1]
                 ? { status: 404, body: "Unavailable" }
                 : { contentType: "image/png", body: png },
             );
+          }
           unexpected++;
           return route.fulfill({ status: 503, json: { error: "Unexpected fixture request" } });
         },

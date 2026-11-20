@@ -17,11 +17,13 @@ afterEach(() => {
 it("selects safe fields, rejects arbitrary correlation data, and never logs error payloads", () => {
   const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
   const log = createReadReceiptDiagnostics();
-  log({
+  const unsafeEvent = {
     ...event,
     requestId: "/secret/session.jsonl",
-    ...{ error: new Error("credential"), body: "chat content" },
-  });
+    error: new Error("credential"),
+    body: "chat content",
+  };
+  log(unsafeEvent);
   const record = JSON.parse(warn.mock.calls[0][0]);
   expect(record).toEqual({
     event: "read_receipt",
@@ -44,7 +46,9 @@ it("bounds failures and reports suppressed events in the next window", () => {
   vi.useFakeTimers();
   const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
   const log = createReadReceiptDiagnostics();
-  for (let i = 0; i < 100; i++) log(event);
+  for (let i = 0; i < 100; i++) {
+    log(event);
+  }
   expect(warn).toHaveBeenCalledTimes(30);
   vi.advanceTimersByTime(60_000);
   log(event);
@@ -54,7 +58,9 @@ it("bounds failures and reports suppressed events in the next window", () => {
 it("reserves failures even after routine messages exhaust their allowance", () => {
   const sink = vi.fn();
   const log = createReadReceiptDiagnostics({ sink });
-  for (let i = 0; i < 100; i++) log({ ...event, category: "success" });
+  for (let i = 0; i < 100; i++) {
+    log({ ...event, category: "success" });
+  }
   log(event);
   expect(sink).toHaveBeenCalledTimes(31);
   expect(sink.mock.lastCall![0]).toMatchObject({ category: "network", suppressed: 70 });

@@ -14,5 +14,7 @@ export function requireBoard(
   status: number,
   message: string,
 ): asserts condition {
-  if (!condition) throw new BoardError(status, message);
+  if (!condition) {
+    throw new BoardError(status, message);
+  }
 }

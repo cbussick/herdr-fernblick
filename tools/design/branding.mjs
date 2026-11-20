@@ -14,7 +14,9 @@ let unavailable = false;
 const server = createHttpServer(
   {
     getDashboard: () => {
-      if (unavailable) throw new Error("Synthetic connection failure");
+      if (unavailable) {
+        throw new Error("Synthetic connection failure");
+      }
       return pending;
     },
   },
@@ -23,7 +25,9 @@ const server = createHttpServer(
 );
 let browser;
 try {
-  await new Promise((done) => server.listen(0, "127.0.0.1", done));
+  await new Promise((done) => {
+    server.listen(0, "127.0.0.1", done);
+  });
   const base = `http://127.0.0.1:${server.address().port}`;
   browser = await chromium.launch({
     headless: true,
@@ -67,7 +71,9 @@ try {
           (animation) => animation.effect.target.getAttribute("data-part") === "pupils",
         );
         const label = animations.find((animation) => animation.effect.target.tagName === "P");
-        if (!eyes || !label) throw new Error("Loading animations missing");
+        if (!eyes || !label) {
+          throw new Error("Loading animations missing");
+        }
         eyes.pause();
         label.pause();
         const poses = [0, 400, 1200, 2000, 3200, 7999].map((time) => {
@@ -127,7 +133,7 @@ try {
       const header = page.getByTestId("overview-header");
       const headerBounds = await header.boundingBox();
       const rightPadding = await header.evaluate((element) =>
-        parseFloat(getComputedStyle(element).paddingRight),
+        Number.parseFloat(getComputedStyle(element).paddingRight),
       );
       assert.ok(
         statusBounds.x + statusBounds.width <=
@@ -245,8 +251,9 @@ try {
           if (
             asset.purpose === "maskable" &&
             Math.hypot(x - width / 2, y - height / 2) > width * 0.4
-          )
+          ) {
             withinSafeCircle &&= data[i] === 231 && data[i + 1] === 242 && data[i + 2] === 252;
+          }
         }
       }
       results.push({ src: asset.src, opaque, withinSafeCircle, width, height });
@@ -273,7 +280,9 @@ try {
     if ("opaque" in result) {
       assert.equal(result.opaque, true, result.src);
       assert.equal(result.withinSafeCircle, true, result.src);
-    } else assert.equal(result.transparentCorners, true, result.src);
+    } else {
+      assert.equal(result.transparentCorners, true, result.src);
+    }
   }
   await page.close();
   console.log(
@@ -282,5 +291,7 @@ try {
 } finally {
   await browser?.close();
   server.closeAllConnections();
-  await new Promise((done) => server.close(done));
+  await new Promise((done) => {
+    server.close(done);
+  });
 }

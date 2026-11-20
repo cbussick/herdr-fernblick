@@ -1,5 +1,6 @@
 import { act, createRef, useLayoutEffect } from "react";
-import { create, type ReactTestRenderer } from "react-test-renderer";
+import { create } from "react-test-renderer";
+import type { ReactTestRenderer } from "react-test-renderer";
 import { renderToStaticMarkup } from "react-dom/server";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { Snapshot } from "../../../packages/pi-live-chat/protocol";
@@ -9,9 +10,10 @@ import {
   annotationPrompt,
   positionAnnotationPopover,
   positionTouchAnnotationAction,
-  type Annotation,
 } from "./annotations";
-import { useChatAnnotations, type ChatAnnotations } from "./useChatAnnotations";
+import type { Annotation } from "./annotations";
+import { useChatAnnotations } from "./useChatAnnotations";
+import type { ChatAnnotations } from "./useChatAnnotations";
 import { ChatMessageText } from "./ChatMessageText";
 
 const entry = {
@@ -59,7 +61,7 @@ it("formats feedback labels and preserves raw assistant source text in hidden sy
   const assistant = renderToStaticMarkup(<ChatMessageText text={text} annotationSource="a1" />);
   expect(assistant).toContain("<strong>");
   expect(assistant).toContain('aria-hidden="true" data-message-syntax="true">**</span>');
-  expect(assistant.replace(/<[^>]+>/g, "")).toContain("**Comment 1**");
+  expect(assistant.replaceAll(/<[^>]+>/g, "")).toContain("**Comment 1**");
   const ordinary = renderToStaticMarkup(
     <ChatMessageText text="**Comment 1** (response a1)" annotationFeedback />,
   );
@@ -87,7 +89,7 @@ it("renders overlapping highlights across links without losing text, link behavi
   expect(html).toContain('target="_blank" rel="noopener noreferrer"');
   expect(html).toContain("<mark");
   expect(html).not.toContain("<script>");
-  expect(html.replace(/<[^>]+>/g, "")).toBe("See https://example.com &lt;script&gt;");
+  expect(html.replaceAll(/<[^>]+>/g, "")).toBe("See https://example.com &lt;script&gt;");
 });
 it("positions above a selection, flips below when needed, and clamps to the visual viewport", () => {
   const size = { width: 360, height: 220 };
@@ -244,7 +246,9 @@ describe("annotation draft ownership", () => {
   it.each([false, true])(
     "rejects blank and oversized comments without losing the editor (general: %s)",
     async (general) => {
-      if (general) await add();
+      if (general) {
+        await add();
+      }
       const saved = api!.entries;
       await add("   ", general);
       expect(api!.entries).toEqual(saved);
@@ -283,7 +287,9 @@ describe("annotation draft ownership", () => {
   it.each([false, true])(
     "does not save feedback captured before a conversation change (general: %s)",
     async (general) => {
-      if (general) await add();
+      if (general) {
+        await add();
+      }
       const saved = api!.entries;
       await act(async () => api.begin(general ? null : entry, anchor));
       await act(async () => api.setComment("Old response"));

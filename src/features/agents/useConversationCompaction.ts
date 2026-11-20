@@ -1,6 +1,7 @@
 import { useLayoutEffect, useRef, useState } from "react";
 import { compactAgentConversation } from "../../shared/api/apiClient";
-import { matchesTarget, type Snapshot, type Target } from "../../../packages/pi-live-chat/protocol";
+import { matchesTarget } from "../../../packages/pi-live-chat/protocol";
+import type { Snapshot, Target } from "../../../packages/pi-live-chat/protocol";
 
 const uncertain = "Compaction outcome uncertain. Check Pi before trying again; no automatic retry.";
 
@@ -59,8 +60,9 @@ export function useConversationCompaction(
       !live.snapshot.capabilities?.compact ||
       live.snapshot.busy ||
       live.snapshot.sendPending
-    )
+    ) {
       return;
+    }
     const op = { target, invalidated: false };
     operation.current = op; // Synchronous guard for repeated taps before React renders.
     setLastOperation({ ...op });
@@ -69,7 +71,7 @@ export function useConversationCompaction(
     try {
       await compactAgentConversation(pane, target);
       const latest = current.current;
-      if (mounted.current)
+      if (mounted.current) {
         setNotice(
           op.invalidated ||
             !latest.connected ||
@@ -81,17 +83,21 @@ export function useConversationCompaction(
                 error: false,
               },
         );
+      }
     } catch (error) {
-      if (mounted.current)
+      if (mounted.current) {
         setNotice({
           text: op.invalidated
             ? uncertain
             : `${error instanceof Error ? error.message : "Compaction failed"}. Draft unchanged; check Pi before trying again.`,
           error: true,
         });
+      }
     } finally {
       operation.current = null;
-      if (mounted.current) setPending(false);
+      if (mounted.current) {
+        setPending(false);
+      }
     }
   }
   // A live activity report is stronger than a transport warning about progress,

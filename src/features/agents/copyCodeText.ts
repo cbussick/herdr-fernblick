@@ -24,11 +24,17 @@ export async function copyCodeText(value: string) {
   document.body.append(textarea);
   try {
     textarea.select();
-    if (!document.execCommand("copy")) throw new Error("Clipboard unavailable");
+    if (!document.execCommand("copy")) {
+      throw new Error("Clipboard unavailable");
+    }
   } finally {
     textarea.remove();
-    if (focused instanceof HTMLElement) focused.focus({ preventScroll: true });
+    if (focused instanceof HTMLElement) {
+      focused.focus({ preventScroll: true });
+    }
     selection?.removeAllRanges();
-    for (const range of ranges) selection?.addRange(range);
+    for (const range of ranges) {
+      selection?.addRange(range);
+    }
   }
 }

@@ -27,7 +27,7 @@ it("downloads binary PNG with explicit quality and current draft without saving"
     "/api/agents/w%3Ap/board/export",
     expect.objectContaining({ method: "POST" }),
   );
-  expect(JSON.parse(fetch.mock.calls[0]![1].body)).toEqual({
+  expect(JSON.parse(fetch.mock.calls[0][1].body)).toEqual({
     target,
     boardId: board().id,
     scene: board().scene,

@@ -1,12 +1,5 @@
-import {
-  useCallback,
-  useRef,
-  useState,
-  type ComponentProps,
-  type Dispatch,
-  type RefCallback,
-  type SetStateAction,
-} from "react";
+import { useCallback, useRef, useState } from "react";
+import type { ComponentProps, Dispatch, RefCallback, SetStateAction } from "react";
 import type { ShellTab } from "../../shared/api/contracts";
 import { AgentConsole } from "./AgentConsole";
 import { ShellConsole } from "./ShellConsole";
@@ -31,7 +24,9 @@ export function PaneConsole({ agent, tab, ...props }: Props) {
     direction: "forward" | "backward" | "none";
   } | null>(null);
   const inputRef = useCallback<RefCallback<HTMLTextAreaElement>>((node) => {
-    if (!node) return;
+    if (!node) {
+      return;
+    }
     if (selection.current) {
       const { start, end, direction } = selection.current;
       selection.current = null;

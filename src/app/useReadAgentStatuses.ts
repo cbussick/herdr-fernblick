@@ -4,7 +4,9 @@ import type { Agent } from "../shared/api/contracts";
 import { ApiError, markAgentRead } from "../shared/api/apiClient";
 
 function subscribeVisibility(onChange: () => void) {
-  if (typeof document === "undefined") return () => {};
+  if (typeof document === "undefined") {
+    return () => {};
+  }
   document.addEventListener("visibilitychange", onChange);
   return () => document.removeEventListener("visibilitychange", onChange);
 }
@@ -16,7 +18,7 @@ function staleCompletion(error: unknown) {
 }
 
 /** Persist Fernblick receipts without changing Herdr's status or the raw query cache. */
-export function useReadAgentStatuses(agents: Agent[], selectedPaneId: string | null) {
+export function useReadAgentStatuses(agents: Array<Agent>, selectedPaneId: string | null) {
   const visible = useSyncExternalStore(subscribeVisibility, isVisible, () => false);
   const queryClient = useQueryClient();
   const attempted = useRef(new Set<string>());
@@ -31,7 +33,9 @@ export function useReadAgentStatuses(agents: Agent[], selectedPaneId: string | n
       // A failed write may be retried when this answer is opened again. Removing
       // the guard alone does not retrigger the effect on a mutation rerender.
       attempted.current.delete(input.completionId);
-      if (staleCompletion(error)) void queryClient.invalidateQueries({ queryKey: ["agents"] });
+      if (staleCompletion(error)) {
+        void queryClient.invalidateQueries({ queryKey: ["agents"] });
+      }
     },
   });
   const selected = agents.find((agent) => agent.pane_id === selectedPaneId);
@@ -47,8 +51,9 @@ export function useReadAgentStatuses(agents: Agent[], selectedPaneId: string | n
       !completionId ||
       alreadyRead ||
       attempted.current.has(completionId)
-    )
+    ) {
       return;
+    }
     attempted.current.add(completionId);
     mutate({ paneId: selectedPaneId, completionId });
   }, [visible, selectedPaneId, completionId, alreadyRead, mutate]);
@@ -65,7 +70,9 @@ export function useReadAgentStatuses(agents: Agent[], selectedPaneId: string | n
     // Clear only the warning; the receipt remains unread and can be retried on reopening.
     dismissError: mutation.reset,
     retry: () => {
-      if (mutation.variables) mutate(mutation.variables);
+      if (mutation.variables) {
+        mutate(mutation.variables);
+      }
     },
   };
 }

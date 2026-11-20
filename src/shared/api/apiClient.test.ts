@@ -142,9 +142,9 @@ it("does not retry failed, timed-out or disconnected compaction", async () => {
   await expect(compactAgentConversation("w1:p1", target)).rejects.toThrow("uncertain");
   fetchMock.mockImplementationOnce(
     (_url, init) =>
-      new Promise((_done, reject) =>
-        init.signal.addEventListener("abort", () => reject(init.signal.reason)),
-      ),
+      new Promise((_done, reject) => {
+        init.signal.addEventListener("abort", () => reject(init.signal.reason));
+      }),
   );
   const pending = compactAgentConversation("w1:p1", target);
   const assertion = expect(pending).rejects.toThrow("uncertain");
@@ -316,9 +316,9 @@ it("preserves explicit backend rejection errors", async () => {
 it("reports timeout and network loss as uncertain and never retries", async () => {
   fetchMock.mockImplementationOnce(
     (_url, init) =>
-      new Promise((_done, reject) =>
-        init.signal.addEventListener("abort", () => reject(init.signal.reason)),
-      ),
+      new Promise((_done, reject) => {
+        init.signal.addEventListener("abort", () => reject(init.signal.reason));
+      }),
   );
   const result = chatCommand("w1:p1", target, "prompt", "hello");
   const assertion = expect(result).rejects.toThrow("delivery uncertain");

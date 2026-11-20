@@ -3,7 +3,8 @@ import { mkdtemp, rm } from "node:fs/promises";
 import type { AddressInfo } from "node:net";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { createServer as createViteServer, type ViteDevServer } from "vite";
+import { createServer as createViteServer } from "vite";
+import type { ViteDevServer } from "vite";
 import { expect, test, vi } from "vitest";
 import config from "../../vite.config.js";
 import { createHttpServer } from "./server.js";
@@ -22,7 +23,9 @@ test("the configured dev proxy accepts browser-origin prompts without weakening 
   } as unknown as LiveBridge);
   let frontend: ViteDevServer | undefined;
   try {
-    await new Promise<void>((resolve) => backend.listen(0, "127.0.0.1", resolve));
+    await new Promise<void>((resolve) => {
+      backend.listen(0, "127.0.0.1", resolve);
+    });
     const target = `http://127.0.0.1:${(backend.address() as AddressInfo).port}`;
     const options = config.server?.proxy?.["/api"];
     expect(options).toBeDefined();
@@ -71,7 +74,11 @@ test("the configured dev proxy accepts browser-origin prompts without weakening 
   } finally {
     await frontend?.close();
     backend.closeAllConnections();
-    if (backend.listening) await new Promise<void>((resolve) => backend.close(() => resolve()));
+    if (backend.listening) {
+      await new Promise<void>((resolve) => {
+        backend.close(() => resolve());
+      });
+    }
     await rm(directory, { recursive: true, force: true });
   }
 });

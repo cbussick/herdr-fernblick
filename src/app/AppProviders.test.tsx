@@ -1,11 +1,8 @@
 import { act } from "react";
-import { create, type ReactTestRenderer } from "react-test-renderer";
-import {
-  MutationObserver,
-  onlineManager,
-  useQueryClient,
-  type QueryClient,
-} from "@tanstack/react-query";
+import { create } from "react-test-renderer";
+import type { ReactTestRenderer } from "react-test-renderer";
+import { MutationObserver, onlineManager, useQueryClient } from "@tanstack/react-query";
+import type { QueryClient } from "@tanstack/react-query";
 import { afterEach, expect, it, vi } from "vitest";
 import { AppProviders } from "./AppProviders";
 

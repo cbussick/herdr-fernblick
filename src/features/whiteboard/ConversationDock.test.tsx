@@ -1,7 +1,9 @@
 import { act } from "react";
-import { create, type ReactTestRenderer } from "react-test-renderer";
+import { create } from "react-test-renderer";
+import type { ReactTestRenderer } from "react-test-renderer";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
-import { ConversationDock, type WhiteboardConversation } from "./ConversationDock";
+import { ConversationDock } from "./ConversationDock";
+import type { WhiteboardConversation } from "./ConversationDock";
 
 let renderer: ReactTestRenderer;
 let conversation: Omit<WhiteboardConversation, "onSend"> & { onSend: () => void };

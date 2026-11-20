@@ -6,7 +6,7 @@ import { afterEach, describe, expect, it } from "vitest";
 import { z } from "zod";
 import { HerdrClient, HerdrRequestError } from "./HerdrClient.js";
 
-const temporaryDirectories: string[] = [];
+const temporaryDirectories: Array<string> = [];
 
 afterEach(async () => {
   await Promise.all(temporaryDirectories.splice(0).map((path) => rm(path, { recursive: true })));
@@ -34,7 +34,9 @@ async function createSocketServer(
     });
   });
 
-  await new Promise<void>((resolve) => server.listen(socketPath, resolve));
+  await new Promise<void>((resolve) => {
+    server.listen(socketPath, resolve);
+  });
   return { server, socketPath };
 }
 
@@ -65,7 +67,7 @@ describe("HerdrClient", () => {
     const client = new HerdrClient(socketPath);
     const error = await client
       .request("agent.prompt", {}, z.unknown())
-      .catch((cause: unknown) => cause);
+      .catch((error_: unknown) => error_);
 
     expect(error).toBeInstanceOf(HerdrRequestError);
     expect(error).toMatchObject({ code: "agent_blocked", message: "agent needs input" });

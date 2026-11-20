@@ -4,8 +4,8 @@ import {
   createRootRoute,
   createRoute,
   createRouter,
-  type RouterHistory,
 } from "@tanstack/react-router";
+import type { RouterHistory } from "@tanstack/react-router";
 import { useEffect, useState } from "react";
 import { RouterProvider, useNavigate, useRouterState } from "@tanstack/react-router";
 import { App } from "./App";
@@ -37,7 +37,9 @@ function RouteShell() {
   const navigation = usePaneNavigation();
   useEffect(() => {
     const link = readWhiteboardLink(navigation.location.searchStr);
-    if (link) navigation.selectSession(link.session, "whiteboard", true);
+    if (link) {
+      navigation.selectSession(link.session, "whiteboard", true);
+    }
   }, [navigation]);
   const notFound = useRouterState({
     select: (state) =>

@@ -1,5 +1,6 @@
 import { act } from "react";
-import { create, type ReactTestRenderer } from "react-test-renderer";
+import { create } from "react-test-renderer";
+import type { ReactTestRenderer } from "react-test-renderer";
 import { onlineManager, QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
 import { App } from "./App";
@@ -39,7 +40,10 @@ async function render() {
   });
 }
 const logo = () => renderer.root.findAllByType(ScoutLogo);
-const settle = () => new Promise<void>((resolve) => setTimeout(resolve, 20));
+const settle = () =>
+  new Promise<void>((resolve) => {
+    setTimeout(resolve, 20);
+  });
 
 it("shows the full playful logo only while the first dashboard request is pending", async () => {
   let complete!: (value: typeof dashboard) => void;

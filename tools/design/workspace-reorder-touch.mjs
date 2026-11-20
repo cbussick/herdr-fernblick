@@ -28,9 +28,12 @@ try {
     await page.route("**/api/**", async (route) => {
       const request = route.request();
       const path = new URL(request.url()).pathname;
-      if (!path.startsWith("/api/")) return route.continue();
-      if (path === "/api/agents")
+      if (!path.startsWith("/api/")) {
+        return route.continue();
+      }
+      if (path === "/api/agents") {
         return route.fulfill({ json: { agents: [], tabs: [], workspaces } });
+      }
       if (path === "/api/workspaces/move" && request.method() === "POST") {
         const body = request.postDataJSON();
         mutations.push(body);
@@ -91,19 +94,22 @@ try {
       ? await page.locator('[data-marker="before"]').evaluate((element) => {
           const style = getComputedStyle(element, "::after");
           const rect = element.getBoundingClientRect();
-          const top = rect.top + parseFloat(style.top);
-          const bottom = top + parseFloat(style.height);
+          const top = rect.top + Number.parseFloat(style.top);
+          const bottom = top + Number.parseFloat(style.height);
           for (let parent = element.parentElement; parent; parent = parent.parentElement) {
             if (/(auto|scroll|hidden|clip)/.test(getComputedStyle(parent).overflowY)) {
               const clip = parent.getBoundingClientRect();
-              if (top < clip.top || bottom > clip.bottom) return false;
+              if (top < clip.top || bottom > clip.bottom) {
+                return false;
+              }
             }
           }
           return style.backgroundColor !== "rgba(0, 0, 0, 0)";
         })
       : false;
-    if (process.env.REORDER_SCREENSHOTS)
+    if (process.env.REORDER_SCREENSHOTS) {
       await page.screenshot({ path: `/tmp/workspace-drop-${destination}.png` });
+    }
     await send("touchEnd", 0, 0);
     try {
       if (shouldMove) {

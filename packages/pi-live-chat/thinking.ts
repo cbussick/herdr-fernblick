@@ -6,7 +6,9 @@ import { thinkingStateSchema } from "./protocol.js";
 // Never probe capabilities by changing the live agent's level.
 export function thinkingState(pi: ExtensionAPI, ctx: ExtensionContext) {
   const model = ctx.model;
-  if (!model) throw new Error("Select a model in Pi before choosing a thinking level");
+  if (!model) {
+    throw new Error("Select a model in Pi before choosing a thinking level");
+  }
   return thinkingStateSchema.parse({
     provider: model.provider,
     modelId: model.id,

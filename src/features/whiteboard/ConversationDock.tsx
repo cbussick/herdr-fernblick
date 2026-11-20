@@ -1,5 +1,6 @@
 import { PanelRightClose, PanelRightOpen, PanelBottomClose, PanelBottomOpen } from "lucide-react";
-import { useRef, useState, type ReactNode } from "react";
+import { useRef, useState } from "react";
+import type { ReactNode } from "react";
 import type { Snapshot } from "../../../packages/pi-live-chat/protocol";
 import { ChatTranscript } from "../agents/ChatTranscript";
 import { StatusIndicator } from "../../shared/ui";
@@ -51,14 +52,17 @@ export function ConversationDock({
   // An unavailable chat frame is not a new conversation. The enclosing board
   // unmounts on confirmed identity replacement, so this cache cannot cross targets.
   const [retained, setRetained] = useState(conversation.snapshot);
-  if (conversation.snapshot && conversation.snapshot !== retained)
+  if (conversation.snapshot && conversation.snapshot !== retained) {
     setRetained(conversation.snapshot);
+  }
   const snapshot = conversation.snapshot ?? retained;
   const messages = snapshot?.messages ?? [];
   const expandButton = useRef<HTMLButtonElement>(null);
   const blocked = disabled || inert || conversation.sending || !conversation.draft.trim();
   function submit() {
-    if (!blocked) conversation.onSend();
+    if (!blocked) {
+      conversation.onSend();
+    }
   }
   return (
     <section
@@ -156,7 +160,7 @@ export function ConversationDock({
           value={conversation.draft}
           readOnly={conversation.sending}
           rows={1}
-          maxLength={29000}
+          maxLength={29_000}
           onChange={(event) => conversation.onDraftChange(event.target.value)}
           onKeyDown={(event) => {
             if (
@@ -166,7 +170,9 @@ export function ConversationDock({
               event.nativeEvent.keyCode !== 229
             ) {
               event.preventDefault();
-              if (!event.repeat) submit();
+              if (!event.repeat) {
+                submit();
+              }
             }
           }}
         />

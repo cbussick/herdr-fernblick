@@ -59,7 +59,10 @@ for (const [name, engine] of [
       });
       const settle = () =>
         page.evaluate(
-          () => new Promise((done) => requestAnimationFrame(() => requestAnimationFrame(done))),
+          () =>
+            new Promise((done) => {
+              requestAnimationFrame(() => requestAnimationFrame(done));
+            }),
         );
       await page.addInitScript(
         ({ initial, screenSize }) => {
@@ -92,7 +95,7 @@ for (const [name, engine] of [
         (url) => url.pathname.startsWith("/api/"),
         (route) => {
           const path = new URL(route.request().url()).pathname;
-          if (path === "/api/agents")
+          if (path === "/api/agents") {
             return route.fulfill({
               json: {
                 agents: [agent],
@@ -100,7 +103,8 @@ for (const [name, engine] of [
                 tabs: [],
               },
             });
-          if (path.endsWith("/skills"))
+          }
+          if (path.endsWith("/skills")) {
             return route.fulfill({
               json: {
                 type: "skills",
@@ -117,6 +121,7 @@ for (const [name, engine] of [
                 ],
               },
             });
+          }
           return route.fulfill({ status: 403, json: { error: "Unexpected fixture request" } });
         },
       );

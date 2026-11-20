@@ -68,7 +68,9 @@ export class BoardDisk {
         constants.O_RDONLY | constants.O_NOFOLLOW | constants.O_NONBLOCK,
       );
     } catch (error) {
-      if (missing(error)) return null;
+      if (missing(error)) {
+        return null;
+      }
       throw new BoardError(500, "Cannot safely open board data");
     }
     try {
@@ -87,7 +89,9 @@ export class BoardDisk {
       let size = 0;
       while (size < bytes.length) {
         const result = await file.read(bytes, size, bytes.length - size, size);
-        if (!result.bytesRead) break;
+        if (!result.bytesRead) {
+          break;
+        }
         size += result.bytesRead;
       }
       const after = await file.stat();
@@ -143,7 +147,9 @@ export class BoardDisk {
           "Unsafe board destination",
         );
       } catch (error) {
-        if (!missing(error)) throw error;
+        if (!missing(error)) {
+          throw error;
+        }
       }
       const directory = openSync(
         this.directory,
@@ -163,7 +169,7 @@ export class BoardDisk {
     }
   }
 
-  async names(): Promise<string[]> {
+  async names(): Promise<Array<string>> {
     await this.prepare();
     return (await readdir(this.directory)).filter((name) =>
       /^[a-f0-9]{64}(?:\.[a-f0-9-]{36}\.snapshot)?\.json$/.test(name),
@@ -173,7 +179,9 @@ export class BoardDisk {
   async removeSnapshot(name: string): Promise<void> {
     this.checkDirectory();
     await unlink(this.path(name)).catch((error) => {
-      if (!missing(error)) throw error;
+      if (!missing(error)) {
+        throw error;
+      }
     });
   }
 }

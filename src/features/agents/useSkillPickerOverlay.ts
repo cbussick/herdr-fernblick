@@ -15,7 +15,9 @@ export function useSkillPickerOverlay(open: boolean) {
   const dialogRef = useRef<HTMLDialogElement>(null);
   useLayoutEffect(() => {
     const dialog = dialogRef.current;
-    if (!open || !mobile || !dialog) return;
+    if (!open || !mobile || !dialog) {
+      return;
+    }
     const viewport = window.visualViewport;
     const fit = () => {
       // dvh alone can include the keyboard on browsers that resize only their
@@ -29,13 +31,17 @@ export function useSkillPickerOverlay(open: boolean) {
     viewport?.addEventListener("resize", fit);
     viewport?.addEventListener("scroll", fit);
     window.addEventListener("resize", fit);
-    if (!dialog.open) dialog.showModal();
+    if (!dialog.open) {
+      dialog.showModal();
+    }
     dialog.querySelector<HTMLInputElement>("input")?.focus({ preventScroll: true });
     return () => {
       viewport?.removeEventListener("resize", fit);
       viewport?.removeEventListener("scroll", fit);
       window.removeEventListener("resize", fit);
-      if (dialog.open) dialog.close();
+      if (dialog.open) {
+        dialog.close();
+      }
     };
   }, [open, mobile]);
   return { mobile, dialogRef };

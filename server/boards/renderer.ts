@@ -1,11 +1,10 @@
-import { chromium, type Browser, type Request } from "playwright";
+import { chromium } from "playwright";
+import type { Browser, Request } from "playwright";
 import type { BoardScene } from "../../packages/pi-live-chat/boardProtocol.js";
 import { validateScene } from "./scene.js";
 
-import {
-  boardImageLimits,
-  type BoardImageQuality,
-} from "../../packages/pi-live-chat/boardImageExport.js";
+import { boardImageLimits } from "../../packages/pi-live-chat/boardImageExport.js";
+import type { BoardImageQuality } from "../../packages/pi-live-chat/boardImageExport.js";
 type Limits = ReturnType<typeof boardImageLimits>;
 const TIMEOUT_MS = 30_000;
 const MAX_PENDING = 4; // Includes the active render.
@@ -33,7 +32,9 @@ type Job = {
 // No general same-origin allowlist: board/API/upload endpoints are off limits too.
 function allowedAsset(request: Request, origin: string): boolean {
   const url = new URL(request.url());
-  if (url.origin !== origin || request.method() !== "GET" || url.search) return false;
+  if (url.origin !== origin || request.method() !== "GET" || url.search) {
+    return false;
+  }
   const path = url.pathname;
   return (
     (request.resourceType() === "script" && /^\/assets\/[\w.-]+\.js$/.test(path)) ||
@@ -48,8 +49,9 @@ function validatePng(png: Buffer, limits: Limits): Buffer {
     png.length > limits.maxBytes ||
     !png.subarray(0, 8).equals(pngMagic) ||
     png.toString("ascii", 12, 16) !== "IHDR"
-  )
+  ) {
     throw new Error("Board renderer returned an invalid or oversized PNG");
+  }
   const width = png.readUInt32BE(16);
   const height = png.readUInt32BE(20);
   if (
@@ -58,8 +60,9 @@ function validatePng(png: Buffer, limits: Limits): Buffer {
     width > limits.maxSide ||
     height > limits.maxSide ||
     width * height > limits.maxPixels
-  )
+  ) {
     throw new Error("Board renderer exceeded the pixel limit");
+  }
   return png;
 }
 
@@ -70,21 +73,25 @@ function validatePng(png: Buffer, limits: Limits): Buffer {
 export class BoardRenderer {
   readonly #origin: string;
   #closed = false;
-  #queue: Job[] = [];
+  #queue: Array<Job> = [];
   #active?: { job: Job; done: Promise<void> };
   #closing?: Promise<void>;
 
   constructor(origin: string) {
     const url = new URL(origin);
-    if (!/^https?:$/.test(url.protocol) || url.username || url.password || url.origin !== origin)
+    if (!/^https?:$/.test(url.protocol) || url.username || url.password || url.origin !== origin) {
       throw new Error("Board renderer requires an HTTP(S) origin without a path");
+    }
     this.#origin = origin;
   }
 
   render(scene: BoardScene, quality?: BoardImageQuality): Promise<Buffer> {
-    if (this.#closed) return Promise.reject(new Error("Board renderer is closed"));
-    if (this.#queue.length + (this.#active ? 1 : 0) >= MAX_PENDING)
+    if (this.#closed) {
+      return Promise.reject(new Error("Board renderer is closed"));
+    }
+    if (this.#queue.length + (this.#active ? 1 : 0) >= MAX_PENDING) {
       return Promise.reject(new Error("Board renderer is busy"));
+    }
     let snapshot: BoardScene;
     let limits: Limits;
     try {
@@ -116,9 +123,13 @@ export class BoardRenderer {
   }
 
   #pump(): void {
-    if (this.#closed || this.#active) return;
+    if (this.#closed || this.#active) {
+      return;
+    }
     const job = this.#queue.shift();
-    if (!job) return;
+    if (!job) {
+      return;
+    }
     if (Date.now() >= job.deadline) {
       clearTimeout(job.timer);
       const error = new Error("Board rendering timed out");
@@ -159,7 +170,9 @@ export class BoardRenderer {
       const page = await context.newPage();
       page.on("dialog", (dialog) => void dialog.dismiss().catch(() => {}));
       context.on("page", (popup) => {
-        if (popup !== page) void popup.close().catch(() => {});
+        if (popup !== page) {
+          void popup.close().catch(() => {});
+        }
       });
       await context.routeWebSocket(/.*/, (socket) => socket.close());
       const entry = `${this.#origin}/flow-board-render.html`;
@@ -188,8 +201,11 @@ export class BoardRenderer {
           }
           const response = await route.fetch({ maxRedirects: 0, timeout: 10_000 });
           try {
-            if (response.ok()) await route.fulfill({ response });
-            else await route.abort("blockedbyclient");
+            if (response.ok()) {
+              await route.fulfill({ response });
+            } else {
+              await route.abort("blockedbyclient");
+            }
           } finally {
             await response.dispose();
           }
@@ -201,7 +217,9 @@ export class BoardRenderer {
         waitUntil: "load",
         timeout: TIMEOUT_MS,
       });
-      if (!response?.ok()) throw new Error("Board renderer entry could not load");
+      if (!response?.ok()) {
+        throw new Error("Board renderer entry could not load");
+      }
       await page.waitForFunction(
         () =>
           typeof (globalThis as unknown as FlowRenderFunction).prepareFlowBoardScene === "function",
@@ -225,8 +243,9 @@ export class BoardRenderer {
           size.width > limits.maxSide ||
           size.height > limits.maxSide ||
           size.width * size.height > limits.maxPixels
-        )
+        ) {
           throw new Error("Board renderer exceeded the pixel limit");
+        }
         await page.setViewportSize(size);
         const png = await page.screenshot({
           type: "png",
@@ -241,7 +260,9 @@ export class BoardRenderer {
         }
         scale *= Math.min(0.8, Math.sqrt(limits.maxBytes / png.length) * 0.9);
       }
-      if (!output) throw new Error("Board renderer could not fit PNG within the output limit");
+      if (!output) {
+        throw new Error("Board renderer could not fit PNG within the output limit");
+      }
     } catch (error) {
       failure = error instanceof Error ? error : new Error("Board rendering failed");
     } finally {
@@ -249,12 +270,17 @@ export class BoardRenderer {
       signal.removeEventListener("abort", abort);
       await browser?.close().catch(() => {});
     }
-    if (failure) job.reject(failure);
-    else if (output) job.resolve(output);
+    if (failure) {
+      job.reject(failure);
+    } else if (output) {
+      job.resolve(output);
+    }
   }
 
   close(): Promise<void> {
-    if (this.#closing) return this.#closing;
+    if (this.#closing) {
+      return this.#closing;
+    }
     this.#closed = true;
     const error = new Error("Board renderer is closed");
     for (const job of [...this.#queue, ...(this.#active ? [this.#active.job] : [])]) {

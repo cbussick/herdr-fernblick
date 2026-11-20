@@ -29,29 +29,19 @@ import {
   ReactFlow,
   ReactFlowProvider,
   useReactFlow,
-  type Connection,
-  type Edge,
-  type Viewport,
 } from "@xyflow/react";
+import type { Connection, Edge, Viewport } from "@xyflow/react";
 import { Copy, Download, Pencil, RotateCcw, Search, Trash2, X } from "lucide-react";
 import { ComponentView, EditContext, Icon } from "./Components";
 import { PrimitiveView } from "./Primitives";
 import { ColorPicker, ComponentEditor, Modal } from "./Editor";
-import { DrawingTools, InkContext, InkSurface, InkView, type Tool } from "./Drawing";
-import { applyInkCommand, isInk, maxBoardPoints, type InkNode } from "./ink";
+import { DrawingTools, InkContext, InkSurface, InkView } from "./Drawing";
+import type { Tool } from "./Drawing";
+import { applyInkCommand, isInk, maxBoardPoints } from "./ink";
+import type { InkNode } from "./ink";
 import { useBoardHistory } from "./history";
-import {
-  catalog,
-  defaults,
-  edgeOptions,
-  kinds,
-  makeId,
-  makeNode,
-  type ComponentData,
-  type ComponentNode,
-  type CanvasNode,
-  type Kind,
-} from "./model";
+import { catalog, defaults, edgeOptions, kinds, makeId, makeNode } from "./model";
+import type { ComponentData, ComponentNode, CanvasNode, Kind } from "./model";
 import styles from "./Playground.module.css";
 
 const nodeTypes = { component: ComponentView, ink: InkView, primitive: PrimitiveView };
@@ -94,10 +84,14 @@ function Playground(props: BoardEditorProps) {
   const [revision, setRevision] = useState(0);
   const touch = useCallback(() => {
     historyGroup.current ??= Symbol("local board edit");
-    if (historyFrame.current !== null) cancelAnimationFrame(historyFrame.current);
+    if (historyFrame.current !== null) {
+      cancelAnimationFrame(historyFrame.current);
+    }
     historyFrame.current = requestAnimationFrame(() => {
       historyFrame.current = null;
-      if (!pointerIds.current.size) historyGroup.current = undefined;
+      if (!pointerIds.current.size) {
+        historyGroup.current = undefined;
+      }
     });
     changed.current = true;
     setRevision((v) => v + 1);
@@ -106,7 +100,9 @@ function Playground(props: BoardEditorProps) {
   const history = useBoardHistory(
     () => base.current,
     (next) => {
-      if (callbacks.current.locked || pointerIds.current.size) return false;
+      if (callbacks.current.locked || pointerIds.current.size) {
+        return false;
+      }
       const diagram = toDiagram(next);
       base.current = next;
       changed.current = false;
@@ -127,8 +123,10 @@ function Playground(props: BoardEditorProps) {
     setNodes((current) => current.map((n) => ({ ...n, selected: false })));
     setEdges((current) => current.map((e) => ({ ...e, selected: false })));
   }
-  function commitInk(before: InkNode[], after: InkNode[]) {
-    if (!before.length && !after.length) return;
+  function commitInk(before: Array<InkNode>, after: Array<InkNode>) {
+    if (!before.length && !after.length) {
+      return;
+    }
     setNodes((current) => applyInkCommand(current, { before, after }, false));
     touch();
   }
@@ -143,7 +141,9 @@ function Playground(props: BoardEditorProps) {
   const modalRef = useRef(modal);
   useEffect(() => {
     if (!modal && pickerTrigger.current) {
-      if (!locked) pickerTrigger.current.focus({ preventScroll: true });
+      if (!locked) {
+        pickerTrigger.current.focus({ preventScroll: true });
+      }
       pickerTrigger.current = null;
     }
   }, [modal, locked]);
@@ -158,12 +158,16 @@ function Playground(props: BoardEditorProps) {
         modal ||
         (event.target instanceof Element &&
           event.target.closest("input, textarea, select, [contenteditable=true]"))
-      )
+      ) {
         return;
+      }
       if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === "z") {
         event.preventDefault();
-        if (event.shiftKey) history.redo();
-        else history.undo();
+        if (event.shiftKey) {
+          history.redo();
+        } else {
+          history.undo();
+        }
       } else if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === "y") {
         event.preventDefault();
         history.redo();
@@ -177,7 +181,9 @@ function Playground(props: BoardEditorProps) {
   });
   // Effects are ordered: publish final edits before announcing gesture/modal idle.
   useLayoutEffect(() => {
-    if (!changed.current || appliedGeneration.current !== generation) return;
+    if (!changed.current || appliedGeneration.current !== generation) {
+      return;
+    }
     changed.current = false;
     try {
       const next = fromDiagram({ nodes, edges }, base.current);
@@ -192,7 +198,9 @@ function Playground(props: BoardEditorProps) {
     }
   }, [nodes, edges, revision, generation, history]);
   useLayoutEffect(() => {
-    if (appliedGeneration.current === generation) return;
+    if (appliedGeneration.current === generation) {
+      return;
+    }
     try {
       const next = toDiagram(scene);
       history.reconcile(base.current, scene);
@@ -219,8 +227,12 @@ function Playground(props: BoardEditorProps) {
     });
     return () => {
       callbacks.current.onReady(null);
-      if (idleFrame.current !== null) cancelAnimationFrame(idleFrame.current);
-      if (historyFrame.current !== null) cancelAnimationFrame(historyFrame.current);
+      if (idleFrame.current !== null) {
+        cancelAnimationFrame(idleFrame.current);
+      }
+      if (historyFrame.current !== null) {
+        cancelAnimationFrame(historyFrame.current);
+      }
       callbacks.current.onInteraction?.(false);
     };
   }, [flow]);
@@ -232,13 +244,17 @@ function Playground(props: BoardEditorProps) {
     const clearPointers = () => {
       pointerIds.current.clear();
       historyGroup.current = undefined;
-      if (idleFrame.current !== null) cancelAnimationFrame(idleFrame.current);
+      if (idleFrame.current !== null) {
+        cancelAnimationFrame(idleFrame.current);
+      }
       idleFrame.current = requestAnimationFrame(() =>
         callbacks.current.onInteraction?.(modalRef.current),
       );
     };
     const visibility = () => {
-      if (document.hidden) clearPointers();
+      if (document.hidden) {
+        clearPointers();
+      }
     };
     window.addEventListener("blur", clearPointers);
     document.addEventListener("visibilitychange", visibility);
@@ -259,12 +275,16 @@ function Playground(props: BoardEditorProps) {
   const edit = useCallback(
     (id: string) => {
       const node = flow.getNode(id);
-      if (!locked && node?.type === "component") setEditing({ id, data: node.data });
+      if (!locked && node?.type === "component") {
+        setEditing({ id, data: node.data });
+      }
     },
     [flow, locked],
   );
   function add(kind: Kind) {
-    if (locked) return;
+    if (locked) {
+      return;
+    }
     setPicking(false);
     if (nodes.length >= 300) {
       setMessage("This playground is limited to 300 components.");
@@ -284,17 +304,21 @@ function Playground(props: BoardEditorProps) {
     });
   }
   function save(data: ComponentData) {
-    if (locked || !editing) return;
-    if (editing.id)
+    if (locked || !editing) {
+      return;
+    }
+    if (editing.id) {
       setNodes((current) =>
         current.map((node) =>
           node.id === editing.id && node.type === "component" ? { ...node, data } : node,
         ),
       );
-    else {
+    } else {
       const node = makeNode(data.kind, editing.position!.x, editing.position!.y, data);
       node.selected = true;
-      if (editing.parentId) node.parentId = editing.parentId;
+      if (editing.parentId) {
+        node.parentId = editing.parentId;
+      }
       setNodes((current) =>
         [...current.map((n) => ({ ...n, selected: false })), node].toSorted(
           (a, b) => Number(b.data.kind === "boundary") - Number(a.data.kind === "boundary"),
@@ -305,7 +329,9 @@ function Playground(props: BoardEditorProps) {
     setEditing(null);
   }
   function connect(connection: Connection) {
-    if (locked) return;
+    if (locked) {
+      return;
+    }
     if (edges.length >= 1000) {
       setMessage("This playground is limited to 1,000 connections.");
       return;
@@ -314,7 +340,9 @@ function Playground(props: BoardEditorProps) {
     touch();
   }
   function duplicate() {
-    if (locked) return;
+    if (locked) {
+      return;
+    }
     const originals = nodes.filter(
       (n) => n.selected || (n.parentId && selected.some((parent) => parent.id === n.parentId)),
     );
@@ -323,7 +351,7 @@ function Playground(props: BoardEditorProps) {
       return;
     }
     const ids = new Map(originals.map((n) => [n.id, makeId()]));
-    const copies: CanvasNode[] = originals.map((n) => ({
+    const copies: Array<CanvasNode> = originals.map((n) => ({
       ...structuredClone(n),
       id: ids.get(n.id)!,
       selected: true,
@@ -358,7 +386,9 @@ function Playground(props: BoardEditorProps) {
     touch();
   }
   function reparent(parentId: string) {
-    if (locked || one?.type !== "component" || one.data.kind === "boundary") return;
+    if (locked || one?.type !== "component" || one.data.kind === "boundary") {
+      return;
+    }
     const oldParent = nodes.find((n) => n.id === one.parentId);
     const parent = nodes.find((n) => n.id === parentId);
     setNodes((current) =>
@@ -378,7 +408,9 @@ function Playground(props: BoardEditorProps) {
     touch();
   }
   function clearDrawing() {
-    if (locked || replacementInFlight.current) return;
+    if (locked || replacementInFlight.current) {
+      return;
+    }
     chooseTool("select");
     setNodes([]);
     setEdges([]);
@@ -386,14 +418,17 @@ function Playground(props: BoardEditorProps) {
     setResetting(false);
   }
   async function replaceDrawing(source: BoardScene) {
-    if (locked || replacementInFlight.current) return;
+    if (locked || replacementInFlight.current) {
+      return;
+    }
     const before = base.current;
     replacementInFlight.current = true;
     setReplacementBusy(true);
     try {
       await callbacks.current.onBeforeReplace?.();
-      if (callbacks.current.locked || base.current !== before)
+      if (callbacks.current.locked || base.current !== before) {
         throw new Error("Drawing changed while preserving recovery. Try again.");
+      }
       const next = replacementScene(source, before);
       const diagram = toDiagram(next);
       base.current = next;
@@ -477,12 +512,18 @@ function Playground(props: BoardEditorProps) {
             void (async () => {
               const file = e.target.files?.[0];
               e.target.value = "";
-              if (!file) return;
+              if (!file) {
+                return;
+              }
               try {
-                if (file.size > MAX_FLOW_BACKUP_BYTES) throw new Error("Import exceeds 12 MiB");
+                if (file.size > MAX_FLOW_BACKUP_BYTES) {
+                  throw new Error("Import exceeds 12 MiB");
+                }
                 const next = importFlowScene(await file.text());
                 await verifySceneImages(next);
-                if (!callbacks.current.locked) setPendingImport(next);
+                if (!callbacks.current.locked) {
+                  setPendingImport(next);
+                }
               } catch (error) {
                 onError(String(error));
               }
@@ -521,34 +562,53 @@ function Playground(props: BoardEditorProps) {
       data-testid="flow-board-editor"
       tabIndex={-1}
       onPointerDownCapture={(e) => {
-        if (!(e.target instanceof Element && e.target.closest("input,textarea,select,button")))
+        if (!(e.target instanceof Element && e.target.closest("input,textarea,select,button"))) {
           e.currentTarget.focus({ preventScroll: true });
-        if (locked) return;
-        if (!pointerIds.current.size) historyGroup.current = Symbol("pointer edit");
+        }
+        if (locked) {
+          return;
+        }
+        if (!pointerIds.current.size) {
+          historyGroup.current = Symbol("pointer edit");
+        }
         pointerIds.current.add(e.pointerId);
         callbacks.current.onInteraction?.(true);
       }}
       onPointerUpCapture={(e) => {
         pointerIds.current.delete(e.pointerId);
-        if (idleFrame.current !== null) cancelAnimationFrame(idleFrame.current);
+        if (idleFrame.current !== null) {
+          cancelAnimationFrame(idleFrame.current);
+        }
         idleFrame.current = requestAnimationFrame(() => {
-          if (!pointerIds.current.size) historyGroup.current = undefined;
+          if (!pointerIds.current.size) {
+            historyGroup.current = undefined;
+          }
           callbacks.current.onInteraction?.(modalRef.current || pointerIds.current.size > 0);
         });
       }}
       onPointerCancelCapture={(e) => {
         pointerIds.current.delete(e.pointerId);
-        if (idleFrame.current !== null) cancelAnimationFrame(idleFrame.current);
+        if (idleFrame.current !== null) {
+          cancelAnimationFrame(idleFrame.current);
+        }
         idleFrame.current = requestAnimationFrame(() => {
-          if (!pointerIds.current.size) historyGroup.current = undefined;
+          if (!pointerIds.current.size) {
+            historyGroup.current = undefined;
+          }
           callbacks.current.onInteraction?.(modalRef.current || pointerIds.current.size > 0);
         });
       }}
       onLostPointerCaptureCapture={(e) => {
-        if (!pointerIds.current.delete(e.pointerId)) return;
-        if (idleFrame.current !== null) cancelAnimationFrame(idleFrame.current);
+        if (!pointerIds.current.delete(e.pointerId)) {
+          return;
+        }
+        if (idleFrame.current !== null) {
+          cancelAnimationFrame(idleFrame.current);
+        }
         idleFrame.current = requestAnimationFrame(() => {
-          if (!pointerIds.current.size) historyGroup.current = undefined;
+          if (!pointerIds.current.size) {
+            historyGroup.current = undefined;
+          }
           callbacks.current.onInteraction?.(modalRef.current || pointerIds.current.size > 0);
         });
       }}
@@ -584,7 +644,9 @@ function Playground(props: BoardEditorProps) {
                 edges={edges}
                 nodeTypes={nodeTypes}
                 onNodesChange={(changes) => {
-                  if (locked && changes.some((c) => c.type !== "dimensions" || c.resizing)) return;
+                  if (locked && changes.some((c) => c.type !== "dimensions" || c.resizing)) {
+                    return;
+                  }
                   setNodes((current) => applyNodeChanges(changes, current));
                   if (
                     changes.some(
@@ -592,13 +654,18 @@ function Playground(props: BoardEditorProps) {
                         (c.type !== "select" && c.type !== "dimensions") ||
                         (c.type === "dimensions" && c.resizing !== undefined),
                     )
-                  )
+                  ) {
                     touch();
+                  }
                 }}
                 onEdgesChange={(changes) => {
-                  if (locked) return;
+                  if (locked) {
+                    return;
+                  }
                   setEdges((current) => applyEdgeChanges(changes, current));
-                  if (changes.some((c) => c.type !== "select")) touch();
+                  if (changes.some((c) => c.type !== "select")) {
+                    touch();
+                  }
                 }}
                 onConnect={connect}
                 connectionMode={ConnectionMode.Loose}
@@ -609,13 +676,17 @@ function Playground(props: BoardEditorProps) {
                 }
                 onNodeDoubleClick={(_, node) => edit(node.id)}
                 onEdgeDoubleClick={(_, edge) => {
-                  if (!locked) setEdgeEditing({ ...edge });
+                  if (!locked) {
+                    setEdgeEditing({ ...edge });
+                  }
                 }}
                 defaultEdgeOptions={edgeOptions}
                 fitView
                 fitViewOptions={{ padding: 0.18 }}
                 onMoveEnd={(_, next) => {
-                  if (changed.current) setViewport(next);
+                  if (changed.current) {
+                    setViewport(next);
+                  }
                 }}
                 minZoom={0.15}
                 maxZoom={2}
@@ -699,7 +770,7 @@ function Playground(props: BoardEditorProps) {
                     {!selected.length && selectedEdges.length === 1 && (
                       <button
                         className={styles["secondary"]}
-                        onClick={() => setEdgeEditing({ ...selectedEdges[0]! })}
+                        onClick={() => setEdgeEditing({ ...selectedEdges[0] })}
                       >
                         <Pencil size={15} /> Edit connection
                       </button>
@@ -785,7 +856,9 @@ function Playground(props: BoardEditorProps) {
             className={styles["connection-form"]}
             onSubmit={(event) => {
               event.preventDefault();
-              if (locked) return;
+              if (locked) {
+                return;
+              }
               setEdges((current) =>
                 current.map((edge) => (edge.id === edgeEditing.id ? edgeEditing : edge)),
               );
@@ -832,7 +905,9 @@ function Playground(props: BoardEditorProps) {
         <Modal
           title="Replace this drawing?"
           onClose={() => {
-            if (!replacementInFlight.current) setPendingImport(null);
+            if (!replacementInFlight.current) {
+              setPendingImport(null);
+            }
           }}
         >
           <div className={styles["reset-body"]}>
@@ -864,7 +939,9 @@ function Playground(props: BoardEditorProps) {
           title="Clear canvas?"
           size="compact"
           onClose={() => {
-            if (!replacementInFlight.current) setResetting(false);
+            if (!replacementInFlight.current) {
+              setResetting(false);
+            }
           }}
         >
           <div className={styles["confirmation-body"]}>

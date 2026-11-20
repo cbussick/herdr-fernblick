@@ -1,4 +1,5 @@
-import { NodeResizer, type NodeProps } from "@xyflow/react";
+import { NodeResizer } from "@xyflow/react";
+import type { NodeProps } from "@xyflow/react";
 import type {
   PrimitiveKind,
   PrimitiveProps,

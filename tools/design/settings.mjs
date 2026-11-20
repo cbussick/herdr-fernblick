@@ -21,7 +21,9 @@ for (const [name, engine] of [
   let browser;
   try {
     await cp(resolve("dist"), directory, { recursive: true });
-    await new Promise((done) => server.listen(0, "127.0.0.1", done));
+    await new Promise((done) => {
+      server.listen(0, "127.0.0.1", done);
+    });
     browser = await engine.launch({ headless: true });
     const page = await browser.newPage({ viewport: { width: 834, height: 1194 }, hasTouch: true });
     const errors = [];
@@ -169,7 +171,10 @@ for (const [name, engine] of [
         running.revision,
       );
       await page.evaluate(
-        () => new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve))),
+        () =>
+          new Promise((resolve) => {
+            requestAnimationFrame(() => requestAnimationFrame(resolve));
+          }),
       );
       await page.screenshot({ path: `design-gallery/settings/${name}-${label}.png` });
       await page.keyboard.press("Escape");
@@ -275,7 +280,9 @@ for (const [name, engine] of [
     );
   } finally {
     await browser?.close();
-    await new Promise((done) => server.close(done));
+    await new Promise((done) => {
+      server.close(done);
+    });
     await rm(directory, { recursive: true, force: true });
   }
 }

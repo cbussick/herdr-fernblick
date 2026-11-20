@@ -36,16 +36,24 @@ export function watchForAppUpdates(onAvailable: () => void) {
   const ready = serviceWorker
     .register("/sw.js", { scope: "/", updateViaCache: "none" })
     .then((value) => {
-      if (disposed) return;
+      if (disposed) {
+        return;
+      }
       registration = value;
       const notifyWaiting = () => {
-        if (registration?.waiting) onAvailable();
+        if (registration?.waiting) {
+          onAvailable();
+        }
       };
       const watchInstalling = () => {
         const worker = value.installing;
-        if (!worker) return;
+        if (!worker) {
+          return;
+        }
         const stateChange = () => {
-          if (worker.state === "installed" && serviceWorker.controller) onAvailable();
+          if (worker.state === "installed" && serviceWorker.controller) {
+            onAvailable();
+          }
         };
         worker.addEventListener("statechange", stateChange);
         cleanups.push(() => worker.removeEventListener("statechange", stateChange));
@@ -64,13 +72,16 @@ export function watchForAppUpdates(onAvailable: () => void) {
   return {
     async checkNow() {
       await ready;
-      if (disposed) throw new Error("Update checking was stopped. Try again.");
-      if (!registration)
+      if (disposed) {
+        throw new Error("Update checking was stopped. Try again.");
+      }
+      if (!registration) {
         throw new Error(
           registrationError instanceof Error
             ? registrationError.message
             : "App update storage is unavailable.",
         );
+      }
       await registration.update();
       const worker = registration.installing;
       if (worker && worker.state !== "installed" && worker.state !== "activated") {
@@ -97,17 +108,23 @@ export function watchForAppUpdates(onAvailable: () => void) {
         });
       }
       const available = Boolean(registration.waiting || controllerChanged);
-      if (available) onAvailable();
+      if (available) {
+        onAvailable();
+      }
       return available;
     },
     async apply() {
-      if (!navigator.onLine) throw new Error("Reconnect before refreshing.");
+      if (!navigator.onLine) {
+        throw new Error("Reconnect before refreshing.");
+      }
       if (controllerChanged) {
         window.location.reload();
         return;
       }
       const waiting = registration?.waiting;
-      if (!waiting) throw new Error("The update is not ready. Try again shortly.");
+      if (!waiting) {
+        throw new Error("The update is not ready. Try again shortly.");
+      }
       applying = true;
       await new Promise<void>((resolve, reject) => {
         finish = resolve;

@@ -11,8 +11,8 @@ it("renders both full footer lines as escaped text with colors rather than the a
         totalTokens: 999,
         cost: 999,
         footerLines: [
-          "\x1b[38;2;246;226;183mreal-model high\x1b[0m · ~/full/path",
-          "\x1b[2m↑20k R500 CH50.0% $1.234 <img src=x onerror=alert(1)>\x1b[0m",
+          "\u001b[38;2;246;226;183mreal-model high\u001b[0m · ~/full/path",
+          "\u001b[2m↑20k R500 CH50.0% $1.234 <img src=x onerror=alert(1)>\u001b[0m",
         ],
       }}
     />,
@@ -26,5 +26,5 @@ it("renders both full footer lines as escaped text with colors rather than the a
   expect(html).not.toContain("<img");
   expect(html).not.toContain("fallback-model");
   expect(html).not.toContain("displayed tokens");
-  expect(html).not.toContain("\x1b");
+  expect(html).not.toContain("\u001b");
 });

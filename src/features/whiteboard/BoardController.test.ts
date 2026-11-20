@@ -1,11 +1,12 @@
 import { afterEach, expect, it, vi } from "vitest";
 import { BoardController } from "./BoardController";
-import { boardApi, type BoardEvent } from "./boardApi";
+import { boardApi } from "./boardApi";
+import type { BoardEvent } from "./boardApi";
 import type { DraftStore, LocalDraft } from "./draftStore";
 import { board, deferred, scene, target } from "./testFixtures";
 import { ApiError } from "../../shared/api/apiClient";
 
-const owners: BoardController[] = [];
+const owners: Array<BoardController> = [];
 afterEach(() => {
   owners.splice(0).forEach((owner) => owner.dispose());
 });
@@ -69,7 +70,7 @@ it("exports an unsynced draft without saving or clearing dirty state and cancels
     "high",
     expect.any(AbortSignal),
   );
-  const signal = api.exportPng.mock.calls[0]![5] as AbortSignal;
+  const signal = api.exportPng.mock.calls[0][5] as AbortSignal;
   owner.dispose();
   expect(signal.aborted).toBe(true);
 });

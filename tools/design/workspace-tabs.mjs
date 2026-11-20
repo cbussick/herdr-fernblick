@@ -236,7 +236,9 @@ for (const [engine, browserType] of Object.entries({ chromium, webkit })) {
         .getByTestId("tab-group")
         .filter({ hasText: "Oculus Quest 3 Anatomy Skill" })
         .getByTestId("pane-row");
-      if ((await cards.nth(1).getAttribute("open")) === null) await workspaceHeader(1).click();
+      if ((await cards.nth(1).getAttribute("open")) === null) {
+        await workspaceHeader(1).click();
+      }
       await shellRow.click();
       await page.getByText("Synthetic terminal w2:p2", { exact: true }).waitFor();
       await page.getByRole("button", { name: "Back to overview", exact: true }).click();

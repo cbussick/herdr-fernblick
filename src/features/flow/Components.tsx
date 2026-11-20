@@ -1,5 +1,7 @@
-import { createContext, useContext, type CSSProperties } from "react";
-import { Handle, NodeResizer, Position, type NodeProps } from "@xyflow/react";
+import { createContext, useContext } from "react";
+import type { CSSProperties } from "react";
+import { Handle, NodeResizer, Position } from "@xyflow/react";
+import type { NodeProps } from "@xyflow/react";
 import {
   Box,
   Cloud,
@@ -21,8 +23,8 @@ import {
   User,
   Users,
   Zap,
-  type LucideIcon,
 } from "lucide-react";
+import type { LucideIcon } from "lucide-react";
 import type { ComponentData, ComponentNode } from "./model";
 import styles from "./Playground.module.css";
 
@@ -62,14 +64,15 @@ function Picture({ data }: { data: ComponentData }) {
 }
 export function ComponentContent({ data }: { data: ComponentData }) {
   const showPicture = !!(data.image || data.icon);
-  if (data.kind === "boundary")
+  if (data.kind === "boundary") {
     return (
       <div className={styles["boundary-label"]}>
         {showPicture && <Picture data={data} />}
         <span>{data.title || "Boundary"}</span>
       </div>
     );
-  if (data.kind === "icon")
+  }
+  if (data.kind === "icon") {
     return (
       <div className={styles["icon-content"]}>
         <div className={styles["icon-tile"]}>{showPicture && <Picture data={data} />}</div>
@@ -77,6 +80,7 @@ export function ComponentContent({ data }: { data: ComponentData }) {
         {data.subtitle && <span className={styles["subtitle"]}>{data.subtitle}</span>}
       </div>
     );
+  }
   return (
     <>
       <header className={styles["node-heading"]}>

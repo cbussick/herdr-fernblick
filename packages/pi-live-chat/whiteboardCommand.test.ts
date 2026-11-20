@@ -30,7 +30,9 @@ it.each([{}, { DISPLAY: ":0", SSH_CONNECTION: "remote" }, { DISPLAY: ":0" }])(
         shell: false,
       });
       expect(child.unref).toHaveBeenCalled();
-    } else expect(launch).not.toHaveBeenCalled();
+    } else {
+      expect(launch).not.toHaveBeenCalled();
+    }
   },
 );
 
@@ -43,7 +45,7 @@ it("prints actionable backend setup errors without opening a browser", async () 
       throw new Error("Set FERNBLICK_PUBLIC_URL on the backend");
     },
     { DISPLAY: ":0" },
-    launch as unknown as typeof spawn,
+    launch,
   );
   expect(notify).toHaveBeenCalledWith("Set FERNBLICK_PUBLIC_URL on the backend", "error");
   expect(launch).not.toHaveBeenCalled();

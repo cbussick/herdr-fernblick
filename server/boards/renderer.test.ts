@@ -47,7 +47,7 @@ function fakeBrowser() {
   launch.mockResolvedValue(browser);
   return { page, context, browser };
 }
-const renderers: BoardRenderer[] = [];
+const renderers: Array<BoardRenderer> = [];
 function renderer() {
   const result = new BoardRenderer("http://127.0.0.1:9191");
   renderers.push(result);
@@ -75,8 +75,9 @@ describe("BoardRenderer", () => {
       "http://user:secret@localhost",
       "http://localhost/",
       "http://localhost/api",
-    ])
+    ]) {
       expect(() => new BoardRenderer(origin)).toThrow(/origin/);
+    }
     const value = renderer();
     expect(launch).not.toHaveBeenCalled();
     await expect(
@@ -223,8 +224,9 @@ describe("BoardRenderer", () => {
       ["/assets/chunk-abc.js", "script"],
       ["/assets/flow-abc.css", "stylesheet"],
       ["/assets/Manrope-abc.woff2", "font"],
-    ])
+    ]) {
       expect((await request(`${base}${path}`, type)).fulfill).toHaveBeenCalled();
+    }
     const redirected = await request(`${base}/assets/redirect.js`);
     expect(redirected.fetch).toHaveBeenCalledWith({ maxRedirects: 0, timeout: 10_000 });
     expect(redirected.abort).toHaveBeenCalled();
@@ -240,8 +242,9 @@ describe("BoardRenderer", () => {
       `${base}/flow-board-render.html`,
       `${base}/assets/image.png`,
       `${base}/assets/bad.css?query=1`,
-    ])
+    ]) {
       expect((await request(url)).abort).toHaveBeenCalled();
+    }
     expect(
       (await request(`${base}/assets/a.js`, "script", false, "POST")).abort,
     ).toHaveBeenCalled();

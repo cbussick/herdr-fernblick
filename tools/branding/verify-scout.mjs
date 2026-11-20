@@ -15,7 +15,9 @@ const { data, info } = await sharp(
 let gaps = 0;
 for (let y = 360; y < 660; y++) {
   for (let x = 360; x < 820; x++) {
-    if (data[(y * info.width + x) * 4 + 3] < 250) gaps++;
+    if (data[(y * info.width + x) * 4 + 3] < 250) {
+      gaps++;
+    }
   }
 }
 assert.equal(gaps, 0, `Found ${gaps} translucent pixels inside the goggles`);
@@ -32,7 +34,9 @@ let palePixels = 0;
 for (const left of [280, 468]) {
   for (let y = 272 * 4; y < 288 * 4; y++) {
     for (let x = left * 4; x < (left + 10) * 4; x++) {
-      if (closeup.data[(y * closeup.info.width + x) * 4] > 30) palePixels++;
+      if (closeup.data[(y * closeup.info.width + x) * 4] > 30) {
+        palePixels++;
+      }
     }
   }
 }

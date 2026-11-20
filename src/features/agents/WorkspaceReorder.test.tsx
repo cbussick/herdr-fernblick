@@ -1,5 +1,6 @@
 import { act } from "react";
-import { create, type ReactTestRenderer } from "react-test-renderer";
+import { create } from "react-test-renderer";
+import type { ReactTestRenderer } from "react-test-renderer";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
 import { WorkspaceReorder } from "./WorkspaceReorder";
@@ -145,12 +146,14 @@ it.each([
   });
   expect(collisions[0]?.id).toBe(target);
   await drag("w1", collisions[0]?.id ?? null);
-  if (target === "w1") expect(moveWorkspace).not.toHaveBeenCalled();
-  else
+  if (target === "w1") {
+    expect(moveWorkspace).not.toHaveBeenCalled();
+  } else {
     expect(moveWorkspace).toHaveBeenCalledWith({
       workspaceId: "w1",
       beforeWorkspaceId: target === "w2" ? "w3" : null,
     });
+  }
 });
 
 it.each([
@@ -180,8 +183,11 @@ it.each([
   });
   expect(collisions[0]?.id).toBe(target);
   await drag("w3", collisions[0]?.id ?? null);
-  if (target === "w3") expect(moveWorkspace).not.toHaveBeenCalled();
-  else expect(moveWorkspace).toHaveBeenCalledWith({ workspaceId: "w3", beforeWorkspaceId: target });
+  if (target === "w3") {
+    expect(moveWorkspace).not.toHaveBeenCalled();
+  } else {
+    expect(moveWorkspace).toHaveBeenCalledWith({ workspaceId: "w3", beforeWorkspaceId: target });
+  }
 });
 
 it.each([
@@ -216,12 +222,14 @@ it.each([
     });
     expect(collisions[0]?.id).toBe(target);
     await drag(from, collisions[0]?.id ?? null);
-    if (target === from) expect(moveWorkspace).not.toHaveBeenCalled();
-    else
+    if (target === from) {
+      expect(moveWorkspace).not.toHaveBeenCalled();
+    } else {
       expect(moveWorkspace).toHaveBeenCalledWith({
         workspaceId: from,
         beforeWorkspaceId: from === "w1" ? "w3" : "w2",
       });
+    }
   },
 );
 

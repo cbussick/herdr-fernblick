@@ -1,12 +1,15 @@
 import { SettingsManager } from "@earendil-works/pi-coding-agent";
-import { globalDefaultsSchema, type DefaultSelection } from "./protocol.js";
+import { globalDefaultsSchema } from "./protocol.js";
+import type { DefaultSelection } from "./protocol.js";
 
 // Read only explicit global defaults, never project overrides or the active
 // session's settings. Only allowlisted metadata leaves the Pi process.
 export function globalDefaultInfo(cwd: string) {
   try {
     const settings = SettingsManager.create(cwd, undefined, { projectTrusted: false });
-    if (settings.drainErrors().length) throw new Error("Settings unavailable");
+    if (settings.drainErrors().length) {
+      throw new Error("Settings unavailable");
+    }
     const global = settings.getGlobalSettings();
     return {
       defaults: globalDefaultsSchema.parse({
@@ -30,17 +33,20 @@ export function globalDefaultInfo(cwd: string) {
 export async function saveGlobalDefault(cwd: string, selection: DefaultSelection) {
   const settings = SettingsManager.create(cwd, undefined, { projectTrusted: false });
   const checkErrors = () => {
-    if (settings.drainErrors().length)
+    if (settings.drainErrors().length) {
       throw new Error(
         "Could not save Pi global defaults. Check settings JSON and file permissions.",
       );
+    }
   };
   checkErrors();
   // Pi merges only modified fields under its settings lock, preserving other
   // processes' preferences. Provider and model are saved in one operation.
-  if (selection.kind === "model")
+  if (selection.kind === "model") {
     settings.setDefaultModelAndProvider(selection.provider, selection.modelId);
-  else settings.setDefaultThinkingLevel(selection.level);
+  } else {
+    settings.setDefaultThinkingLevel(selection.level);
+  }
   await settings.flush();
   checkErrors();
 }

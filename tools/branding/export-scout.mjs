@@ -11,7 +11,9 @@ const { data, info } = await sharp(source)
   .ensureAlpha()
   .raw()
   .toBuffer({ resolveWithObject: true });
-if (info.width !== 1254 || info.height !== 1254) throw new Error("Unexpected approved source size");
+if (info.width !== 1254 || info.height !== 1254) {
+  throw new Error("Unexpected approved source size");
+}
 
 // Remove only the edge-connected pale-blue background around the mascot.
 // Its white wool, pale lens interiors and enclosed pale-blue ear remain opaque.
@@ -25,7 +27,9 @@ const backgroundPixel = (pixel) => {
   return Math.hypot(data[i] - 225, data[i + 1] - 240, data[i + 2] - 252) < 12;
 };
 function visit(pixel) {
-  if (removed[pixel] || !backgroundPixel(pixel)) return;
+  if (removed[pixel] || !backgroundPixel(pixel)) {
+    return;
+  }
   removed[pixel] = 1;
   queue[end++] = pixel;
 }
@@ -40,10 +44,18 @@ for (let y = 0; y < height; y++) {
 while (start < end) {
   const pixel = queue[start++];
   const x = pixel % width;
-  if (x > 0) visit(pixel - 1);
-  if (x < width - 1) visit(pixel + 1);
-  if (pixel >= width) visit(pixel - width);
-  if (pixel < width * (height - 1)) visit(pixel + width);
+  if (x > 0) {
+    visit(pixel - 1);
+  }
+  if (x < width - 1) {
+    visit(pixel + 1);
+  }
+  if (pixel >= width) {
+    visit(pixel - width);
+  }
+  if (pixel < width * (height - 1)) {
+    visit(pixel + width);
+  }
 }
 const original = Buffer.from(data);
 const matte = [225, 240, 252];
@@ -62,11 +74,14 @@ function unmatte(pixel, colours) {
       (sum, channel, i) => sum + (matte[i] + alpha * channel - rgb[i]) ** 2,
       0,
     );
-    if (!best || error < best.error) best = { colour, alpha, error };
+    if (!best || error < best.error) {
+      best = { colour, alpha, error };
+    }
   }
   const i = pixel * 4;
-  if (best.alpha < 0.04) data.fill(0, i, i + 4);
-  else {
+  if (best.alpha < 0.04) {
+    data.fill(0, i, i + 4);
+  } else {
     data.set(best.colour, i);
     data[i + 3] = Math.round(best.alpha * 255);
   }
@@ -87,13 +102,15 @@ for (let pixel = 0; pixel < width * height; pixel++) {
       [-2, -1, 1, 2, -width, width, -2 * width, 2 * width].some(
         (offset) => removed[pixel + offset] !== removed[pixel],
       );
-    if (boundary)
+    if (boundary) {
       unmatte(pixel, [
         [254, 254, 254],
         [24, 54, 79],
         [26, 108, 169],
       ]);
-    else if (removed[pixel]) data.fill(0, pixel * 4, pixel * 4 + 4);
+    } else if (removed[pixel]) {
+      data.fill(0, pixel * 4, pixel * 4 + 4);
+    }
   }
 }
 const transparent = await sharp(data, { raw: { width, height, channels: 4 } })
@@ -131,13 +148,15 @@ async function icon(name, size, artworkFraction) {
   const artwork = await sharp(head).resize(artworkSize, artworkSize).png().toBuffer();
   if (name === "scout-maskable-512") {
     const pixels = await sharp(artwork).ensureAlpha().raw().toBuffer();
-    for (let y = 0; y < artworkSize; y++)
-      for (let x = 0; x < artworkSize; x++)
+    for (let y = 0; y < artworkSize; y++) {
+      for (let x = 0; x < artworkSize; x++) {
         if (
           pixels[(y * artworkSize + x) * 4 + 3] &&
           Math.hypot(x - artworkSize / 2, y - artworkSize / 2) > size * 0.4
         )
           throw new Error("Scout extends beyond the maskable safe circle");
+      }
+    }
   }
   await sharp({ create: { width: size, height: size, channels: 4, background } })
     .composite([{ input: artwork, gravity: "centre" }])

@@ -10,7 +10,9 @@ for (const [name, engine, mobile] of [
   ["webkit", webkit, false],
   ["touch", chromium, true],
 ]) {
-  if (process.env.REORDER_ENGINE && process.env.REORDER_ENGINE !== name) continue;
+  if (process.env.REORDER_ENGINE && process.env.REORDER_ENGINE !== name) {
+    continue;
+  }
   const browser = await engine.launch();
   try {
     const page = await browser.newPage({
@@ -31,14 +33,21 @@ for (const [name, engine, mobile] of [
     await page.route("**/api/**", async (route) => {
       const request = route.request();
       const pathname = new URL(request.url()).pathname;
-      if (!pathname.startsWith("/api/")) return route.continue();
-      if (pathname === "/api/agents" && request.method() === "GET")
+      if (!pathname.startsWith("/api/")) {
+        return route.continue();
+      }
+      if (pathname === "/api/agents" && request.method() === "GET") {
         return route.fulfill({ json: { agents: [], tabs: [], workspaces } });
+      }
       if (pathname === "/api/workspaces/move" && request.method() === "POST") {
         const body = request.postDataJSON();
         mutations.push(body);
-        await new Promise((resolve) => setTimeout(resolve, 150));
-        if (fail) return route.fulfill({ status: 502, json: { error: "Synthetic Herdr failure" } });
+        await new Promise((resolve) => {
+          setTimeout(resolve, 150);
+        });
+        if (fail) {
+          return route.fulfill({ status: 502, json: { error: "Synthetic Herdr failure" } });
+        }
         const moved = workspaces.find((w) => w.workspace_id === body.workspaceId);
         workspaces = workspaces.filter((w) => w !== moved);
         const index =
@@ -100,8 +109,8 @@ for (const [name, engine, mobile] of [
       await moveTouch(b.y + b.height / 4, b.y + (b.height * 3) / 4);
       const gap = await page.locator('[data-marker="after"]').evaluate((element) => {
         const style = getComputedStyle(element, "::after");
-        const top = element.getBoundingClientRect().top + parseFloat(style.top);
-        const bottom = top + parseFloat(style.height);
+        const top = element.getBoundingClientRect().top + Number.parseFloat(style.top);
+        const bottom = top + Number.parseFloat(style.height);
         const card = element.querySelector("details").getBoundingClientRect();
         const next = element.nextElementSibling.querySelector("details").getBoundingClientRect();
         return { top, bottom, cardBottom: card.bottom, nextTop: next.top };
@@ -113,8 +122,9 @@ for (const [name, engine, mobile] of [
         Math.abs((gap.top + gap.bottom - gap.cardBottom - gap.nextTop) / 2) <= 1,
         "line must be centered in the gap",
       );
-      if (process.env.REORDER_SCREENSHOTS)
+      if (process.env.REORDER_SCREENSHOTS) {
         await page.screenshot({ path: "design-gallery/workspace-reorder/touch-between-cards.png" });
+      }
       const preview = await page.getByTestId("workspace-drag-preview").boundingBox();
       const lastCard = await cards.last().boundingBox();
       const pointerY = b.y + (b.height * 3) / 4;

@@ -17,7 +17,9 @@ it("retains a browser-only failure across closing and reopening a browser profil
         name: "empty-log-fixture",
         configureServer(server) {
           server.middlewares.use((request, response, next) => {
-            if (request.url !== "/log-fixture") return next();
+            if (request.url !== "/log-fixture") {
+              return next();
+            }
             response.setHeader("Content-Type", "text/html");
             response.end("<!doctype html><title>Isolated log fixture</title>");
           });
