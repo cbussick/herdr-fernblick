@@ -62,14 +62,18 @@ export function ChatMessageText({
     }
     // Generated annotation prompts keep their original quotes literal.
     let offset = 0;
-    return splitMessageLinks(text).map((part) => {
+    const result: Array<MessagePart> = [];
+    for (const part of splitMessageLinks(text)) {
       const value = typeof part === "string" ? part : part.text;
       const content = { kind: "text" as const, start: offset, end: offset + value.length };
       offset += value.length;
-      return typeof part === "string"
-        ? content
-        : { ...content, kind: "link", href: part.href, children: [content] };
-    });
+      result.push(
+        typeof part === "string"
+          ? content
+          : { ...content, kind: "link", href: part.href, children: [content] },
+      );
+    }
+    return result;
   }, [text, cwd, emphasizeLabels]);
 
   function highlighted(start: number, end: number) {
@@ -207,6 +211,7 @@ export function ChatMessageText({
               <input
                 type="checkbox"
                 checked={part.checked}
+                readOnly
                 disabled
                 aria-label={part.checked ? "Completed task" : "Incomplete task"}
               />
