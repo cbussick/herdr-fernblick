@@ -61,6 +61,9 @@ interface Peer {
   boardRequests: number;
   boardRun?: { id: string; revoked: boolean; expiresAt: number | null };
 }
+function hasSnapshot(peer: Peer): peer is Peer & { snapshot: Snapshot } {
+  return peer.snapshot !== undefined;
+}
 // Every non-ACK response confirms exactly one command. Keep this exhaustive so
 // new protocol responses cannot silently fall through to navigation validation.
 const responseActions = {
@@ -90,7 +93,7 @@ async function removeStaleSocket(path: string) {
   try {
     before = await validateSocket(path);
   } catch (error) {
-    if ((error as NodeJS.ErrnoException).code === "ENOENT") {
+    if (error instanceof Error && "code" in error && error.code === "ENOENT") {
       return;
     }
     throw error;
@@ -152,7 +155,10 @@ export class LiveBridge {
     if (peer.boardRun && !peer.boardRun.revoked) {
       peer.boardRun.revoked = true;
       if (!peer.socket.destroyed) {
-        writeFrame(peer.socket, { type: "board-run-revoke", runId: peer.boardRun.id });
+        writeFrame(peer.socket, {
+          type: "board-run-revoke",
+          runId: peer.boardRun.id,
+        });
       }
     }
     const grant = peer.boardGrant;
@@ -175,6 +181,9 @@ export class LiveBridge {
   }
   private async validateBoardPeer(peer: Peer, target: Target, check: () => void) {
     const snapshot = peer.snapshot;
+    if (!snapshot) {
+      throw new LiveChatError(403, "Board connection is not current");
+    }
     const validate = () => {
       check();
       if (
@@ -192,13 +201,13 @@ export class LiveBridge {
       }
     };
     validate();
-    const info = await this.inspectProcess(snapshot!.identity.pid);
+    const info = await this.inspectProcess(snapshot.identity.pid);
     validate();
     if (
       !info.alive ||
       !info.foreground ||
-      info.start !== snapshot!.identity.processStart ||
-      info.pane !== snapshot!.identity.pane ||
+      info.start !== snapshot.identity.processStart ||
+      info.pane !== snapshot.identity.pane ||
       !info.herdrSocket ||
       resolve(info.herdrSocket) !== resolve(this.herdrSocket)
     ) {
@@ -207,7 +216,7 @@ export class LiveBridge {
     if (!this.boardAgent) {
       throw new LiveChatError(503, "Board session validation unavailable");
     }
-    const agent = await this.boardAgent(snapshot!.identity.pane);
+    const agent = await this.boardAgent(snapshot.identity.pane);
     validate();
     if (this.current(agent) !== peer) {
       throw new LiveChatError(403, "Herdr and Pi board sessions do not match");
@@ -259,9 +268,20 @@ export class LiveBridge {
           throw new LiveChatError(403, "Whiteboard extension capability unavailable");
         }
       });
-      let data: unknown;
-      if (request.action === "begin") {
-        data = { expiresAt: run!.expiresAt };
+      const boards = this.boards;
+      const snapshot = peer.snapshot;
+      if (!boards || !snapshot) {
+        throw new LiveChatError(403, "Board connection is not current");
+      }
+      if ((request.action === "begin" || request.action === "grant") && !run) {
+        throw new LiveChatError(403, "Whiteboard request ended or was revoked; send a new request");
+      }
+      let data:
+        | { expiresAt: number | null; grant?: BoardGrant }
+        | { revoked: boolean }
+        | { url: string };
+      if (request.action === "begin" && run) {
+        data = { expiresAt: run.expiresAt };
       } else if (request.action === "end") {
         data = { revoked: true };
       } else {
@@ -282,27 +302,27 @@ export class LiveBridge {
             );
           }
           url.search = new URLSearchParams({
-            pane: peer.snapshot!.identity.pane,
+            pane: snapshot.identity.pane,
             session: request.target.sessionId,
             whiteboard: "1",
           }).toString();
           url.hash = "";
         }
-        const state = await this.boards!.open(boardSessionKey(peer.snapshot!), validate);
+        const state = await boards.open(boardSessionKey(snapshot), validate);
         validate();
         if (url) {
           data = { url: url.toString() };
-        } else {
+        } else if (run) {
           // Concurrent tool calls share one lease and its idempotence ledger.
           if (!peer.boardGrant) {
-            peer.boardGrant = this.boards!.grant(
+            peer.boardGrant = boards.grant(
               state.id,
               request.target,
               "edit",
               state.revision,
-              run!.expiresAt === null ? "connection" : "request",
+              run.expiresAt === null ? "connection" : "request",
             );
-            await this.boards!.handle(
+            await boards.handle(
               {
                 type: "board-request",
                 id: randomUUID(),
@@ -314,11 +334,21 @@ export class LiveBridge {
             );
             validate();
           }
-          data = { grant: peer.boardGrant, expiresAt: run!.expiresAt };
+          data = { grant: peer.boardGrant, expiresAt: run.expiresAt };
+        } else {
+          throw new LiveChatError(
+            403,
+            "Whiteboard request ended or was revoked; send a new request",
+          );
         }
       }
       validate();
-      writeFrame(peer.socket, { type: "board-reply", id: request.id, ok: true, data });
+      writeFrame(peer.socket, {
+        type: "board-reply",
+        id: request.id,
+        ok: true,
+        data,
+      });
     } catch (error) {
       // Reply first: revocation rejects pending extension RPCs synchronously and
       // would otherwise replace the actionable error with "request revoked".
@@ -362,10 +392,19 @@ export class LiveBridge {
     try {
       validate();
       const check = await this.validateBoardPeer(peer, request.target, validate);
-      const data = await this.boards!.handle(request, check, this.boardRenderer);
+      const boards = this.boards;
+      if (!boards) {
+        throw new LiveChatError(403, "Board access is not authorized for this request");
+      }
+      const data = await boards.handle(request, check, this.boardRenderer);
       await this.validateBoardPeer(peer, request.target, check);
       check();
-      writeFrame(peer.socket, { type: "board-reply", id: request.id, ok: true, data });
+      writeFrame(peer.socket, {
+        type: "board-reply",
+        id: request.id,
+        ok: true,
+        data,
+      });
       if (request.action === "revoke") {
         this.clearBoardAccess(peer);
       }
@@ -568,11 +607,14 @@ export class LiveBridge {
       );
     }
     const peer = candidates[0];
-    const snapshot = peer.snapshot!;
+    if (!peer || !hasSnapshot(peer)) {
+      throw new LiveChatError(409, "Pi live chat extension unavailable");
+    }
+    const snapshot = peer.snapshot;
     if (resolve(snapshot.identity.sessionFile) !== resolve(agent.agent_session.value)) {
       throw new LiveChatError(409, "Herdr and Pi session identities do not match");
     }
-    return peer as Peer & { snapshot: Snapshot };
+    return peer;
   }
   async resolve(agent: Agent): Promise<Peer & { snapshot: Snapshot }> {
     const peer = this.current(agent);
@@ -613,7 +655,9 @@ export class LiveBridge {
   }
   async shutdownAgent(agent: Agent): Promise<void> {
     const { snapshot } = await this.resolve(agent);
-    const response = await this.request(agent, targetOf(snapshot), { action: "shutdown" });
+    const response = await this.request(agent, targetOf(snapshot), {
+      action: "shutdown",
+    });
     if (response.type === "ack" && response.outcome === "rejected") {
       throw new LiveChatError(409, response.reason ?? "Pi refused to shut down");
     }
@@ -643,7 +687,12 @@ export class LiveBridge {
             | "thinking-levels"
             | "shutdown";
         }
-      | { action: "set-thinking-level"; provider: string; modelId: string; level: ThinkingLevel }
+      | {
+          action: "set-thinking-level";
+          provider: string;
+          modelId: string;
+          level: ThinkingLevel;
+        }
       | { action: "set-model"; provider: string; modelId: string }
       | { action: "save-default"; selection: DefaultSelection }
       | { action: "navigate"; entryId: string }
