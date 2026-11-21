@@ -34,8 +34,16 @@ function references(element: BoardElement): Array<string> {
   return result;
 }
 
+// Saved scenes can predate the current engine. Keep their content contract but
+// require engine compatibility at the merge boundary, before reading any shapes.
+type MergeSceneInput = Omit<BoardScene, "engine"> & { engine?: string };
+
 /** Local wins competing edits; deletions win. No field-wise native-record mixing. */
-export function mergeScene(base: BoardScene, local: BoardScene, remote: BoardScene): BoardScene {
+export function mergeScene(
+  base: MergeSceneInput,
+  local: MergeSceneInput,
+  remote: MergeSceneInput,
+): BoardScene {
   if ([base, local, remote].some((scene) => scene.engine !== "react-flow")) {
     throw new Error("Board engine changed; your drawing is retained for explicit recovery");
   }
@@ -72,7 +80,8 @@ export function mergeScene(base: BoardScene, local: BoardScene, remote: BoardSce
   // existing shapes. Insert independent local additions next to their local
   // predecessor.
   const common = new Set(base.elements.map((e) => e.id).filter((id) => l.has(id) && r.has(id)));
-  const projected = (s: BoardScene) => s.elements.map((e) => e.id).filter((id) => common.has(id));
+  const projected = (s: MergeSceneInput) =>
+    s.elements.map((e) => e.id).filter((id) => common.has(id));
   const reordered = !same(projected(base), projected(local));
   const order = (reordered ? local : remote).elements.map((e) => e.id);
   for (const e of (reordered ? remote : local).elements) {

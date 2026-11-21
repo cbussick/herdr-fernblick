@@ -4,6 +4,7 @@ import { join, resolve } from "node:path";
 import { pathToFileURL } from "node:url";
 import { promisify } from "node:util";
 import { expect, it } from "vitest";
+import { z } from "zod";
 
 const exec = promisify(execFile);
 it("installs a local package into an isolated Pi directory and loads .js-to-.ts imports with pinned Pi jiti", async () => {
@@ -20,7 +21,9 @@ it("installs a local package into an isolated Pi directory and loads .js-to-.ts 
       env,
       timeout: 30_000,
     });
-    const settings = JSON.parse(await readFile(join(dir, "agent/settings.json"), "utf8"));
+    const settings = z
+      .object({ packages: z.array(z.string()) })
+      .parse(JSON.parse(await readFile(join(dir, "agent/settings.json"), "utf8")));
     expect(settings.packages.map((source: string) => resolve(dir, "agent", source))).toContain(
       packagePath,
     );

@@ -71,14 +71,14 @@ beforeAll(async () => {
           throw new Error("Invalid path");
         }
         const data = await readFile(join(directory, path));
-        const mime: Record<string, string> = {
-          ".html": "text/html",
-          ".js": "text/javascript",
-          ".css": "text/css",
-          ".woff2": "font/woff2",
-        };
+        const mime = new Map([
+          [".html", "text/html"],
+          [".js", "text/javascript"],
+          [".css", "text/css"],
+          [".woff2", "font/woff2"],
+        ]);
         response.writeHead(200, {
-          "Content-Type": mime[extname(path)] ?? "application/octet-stream",
+          "Content-Type": mime.get(extname(path)) ?? "application/octet-stream",
         });
         response.end(data);
       } catch {
