@@ -1,4 +1,5 @@
 import { z } from "zod";
+import type { Node } from "@xyflow/react";
 import { boardSceneSchema, MAX_BOARD_BYTES } from "../../../packages/pi-live-chat/boardProtocol";
 import type { BoardScene } from "../../../packages/pi-live-chat/boardProtocol";
 import { validateFlowGraph } from "../../../packages/pi-live-chat/flowProtocol";
@@ -72,13 +73,12 @@ export function toDiagram(input: BoardScene): Diagram {
           Number(a.type === "component" && a.kind === "boundary"),
       )
       .map((e) => {
-        const common = {
+        const fixedHeight = e.type === "ink" || e.type === "primitive" || e.kind === "boundary";
+        const common: Pick<Node, "id" | "position" | "width" | "height" | "style"> = {
           id: e.id,
           position: { x: e.x, y: e.y },
           width: e.width,
-          ...(e.type === "ink" || e.type === "primitive" || e.kind === "boundary"
-            ? { height: e.height }
-            : {}),
+          height: fixedHeight ? e.height : undefined,
           style: {
             width: e.width,
             ...(e.type === "ink" || e.type === "primitive" || e.kind === "boundary"
@@ -104,13 +104,18 @@ export function toDiagram(input: BoardScene): Diagram {
           };
         }
         const { imageId, ...props } = e.props;
-        return {
+        const node: Diagram["nodes"][number] = {
           ...common,
-          type: "component" as const,
+          type: "component",
           data: { ...props, kind: e.kind, image: imageId ? scene.files[imageId].dataURL : "" },
-          ...(e.parentId ? { parentId: e.parentId } : {}),
-          ...(e.kind === "boundary" ? { zIndex: -1 } : {}),
         };
+        if (e.parentId) {
+          node.parentId = e.parentId;
+        }
+        if (e.kind === "boundary") {
+          node.zIndex = -1;
+        }
+        return node;
       }),
     edges: elements
       .filter((e) => e.type === "connection")
@@ -155,7 +160,9 @@ export function fromDiagram(diagram: Diagram, base: BoardScene): BoardScene {
         if (!files[imageId]) {
           files[imageId] = {
             id: imageId,
-            mimeType: image.slice(5, image.indexOf(";")) as BoardScene["files"][string]["mimeType"],
+            mimeType: z
+              .enum(["image/png", "image/jpeg", "image/gif", "image/webp"])
+              .parse(image.slice(5, image.indexOf(";"))),
             dataURL: image,
             created: Date.now(),
           };
@@ -189,9 +196,9 @@ export function fromDiagram(diagram: Diagram, base: BoardScene): BoardScene {
         version: 1,
         source: e.source,
         target: e.target,
-        sourceHandle: (e.sourceHandle || "right") as "right",
-        targetHandle: (e.targetHandle || "left") as "left",
-        label: String(e.label ?? ""),
+        sourceHandle: z.enum(["top", "right", "bottom", "left"]).parse(e.sourceHandle || "right"),
+        targetHandle: z.enum(["top", "right", "bottom", "left"]).parse(e.targetHandle || "left"),
+        label: String(z.union([z.string(), z.number(), z.boolean()]).parse(e.label ?? "")),
         color: String(e.style?.stroke || edgeOptions.style.stroke),
       });
     }
@@ -201,11 +208,10 @@ export function fromDiagram(diagram: Diagram, base: BoardScene): BoardScene {
     if (!old) {
       return e;
     }
-    const comparable = {
-      ...e,
-      version: old.version,
-      ...(old.isDeleted === false ? { isDeleted: false } : {}),
-    };
+    const comparable: FlowElement = { ...e, version: old.version };
+    if (old.isDeleted === false) {
+      comparable.isDeleted = false;
+    }
     return JSON.stringify(comparable) === JSON.stringify(old) || equalRecord(comparable, old)
       ? old
       : { ...e, version: old.version + 1 };
@@ -234,7 +240,15 @@ function liveFiles(elements: Array<FlowElement>, files: BoardScene["files"]): Bo
 function equalRecord(a: FlowElement, b: FlowElement) {
   return JSON.stringify(sort(a)) === JSON.stringify(sort(b));
 }
-function sort(v: unknown): unknown {
+type SortedValue =
+  | string
+  | number
+  | boolean
+  | null
+  | undefined
+  | Array<SortedValue>
+  | { [key: string]: SortedValue };
+function sort(v: SortedValue): SortedValue {
   if (Array.isArray(v)) {
     return v.map(sort);
   }

@@ -20,6 +20,7 @@ function entries(storage: Storage) {
       const parsed =
         raw && raw.length <= MAX_BYTES ? storedRecordSchema.safeParse(JSON.parse(raw)) : null;
       if (
+        !raw ||
         !parsed?.success ||
         parsed.data.boundary !== "client" ||
         key !== PREFIX + parsed.data.requestId ||
@@ -29,7 +30,7 @@ function entries(storage: Storage) {
         storage.removeItem(key);
         continue;
       }
-      found.push({ key, record: parsed.data, bytes: raw!.length + key.length + 1 });
+      found.push({ key, record: parsed.data, bytes: raw.length + key.length + 1 });
     } catch {
       storage.removeItem(key);
     }
@@ -39,14 +40,21 @@ function entries(storage: Storage) {
   );
   let bytes = found.reduce((total, item) => total + item.bytes, 2);
   while (found.length > MAX_RECORDS || bytes > MAX_BYTES) {
-    const oldest = found.shift()!;
+    const oldest = found.shift();
+    if (!oldest) {
+      break;
+    }
     bytes -= oldest.bytes;
     storage.removeItem(oldest.key);
   }
   return found.map((item) => item.record);
 }
 
-export function getReadReceiptHistory(): { available: boolean; records: Array<ReadReceiptRecord> } {
+interface ReadReceiptHistory {
+  available: boolean;
+  records: Array<ReadReceiptRecord>;
+}
+export function getReadReceiptHistory(): ReadReceiptHistory {
   try {
     return { available: true, records: entries(localStorage) };
   } catch {

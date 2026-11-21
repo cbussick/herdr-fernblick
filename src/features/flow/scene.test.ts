@@ -14,6 +14,44 @@ import {
 const empty: BoardScene = { engine: "react-flow", elements: [], files: {}, background: "#ffffff" };
 const card = () => makeNode("card", 10, 20, defaults("card"), "card");
 describe("production flow scene boundary", () => {
+  it("validates connector handles and keeps scalar labels at the scene boundary", () => {
+    const nodes = [card(), makeNode("card", 500, 20, defaults("card"), "other")];
+    for (const handle of ["left", "right", "top", "bottom"]) {
+      const scene = fromDiagram(
+        {
+          nodes,
+          edges: [
+            {
+              id: "edge",
+              source: "card",
+              target: "other",
+              sourceHandle: handle,
+              targetHandle: handle,
+              label: 42,
+            },
+          ],
+        },
+        empty,
+      );
+      expect(scene.elements.find((e) => e.id === "edge")).toMatchObject({
+        sourceHandle: handle,
+        targetHandle: handle,
+        label: "42",
+      });
+    }
+    expect(() =>
+      fromDiagram(
+        {
+          nodes,
+          edges: [{ id: "edge", source: "card", target: "other", sourceHandle: "invalid" }],
+        },
+        empty,
+      ),
+    ).toThrow();
+    const image = card();
+    image.data.image = "data:image/svg+xml;base64,PHN2Zz4=";
+    expect(() => fromDiagram({ nodes: [image], edges: [] }, empty)).toThrow();
+  });
   it("uses black 2px connectors by default and preserves explicitly saved colors", () => {
     expect(edgeOptions.style).toEqual({ stroke: "#000000", strokeWidth: 2 });
     const scene = fromDiagram(

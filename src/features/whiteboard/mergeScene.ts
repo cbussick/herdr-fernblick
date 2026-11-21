@@ -7,11 +7,8 @@ export function canonical(value: unknown): string {
     if (!child || typeof child !== "object" || Array.isArray(child)) {
       return child;
     }
-    const object = child as Record<string, unknown>;
     return Object.fromEntries(
-      Object.keys(object)
-        .sort()
-        .map((key) => [key, object[key]]),
+      Object.entries(child).sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0)),
     );
   });
 }
@@ -58,7 +55,11 @@ export function mergeScene(base: BoardScene, local: BoardScene, remote: BoardSce
       (removed(before, mine) && !same(before, mine)) ||
       (removed(before, theirs) && !same(before, theirs))
     ) {
-      winner = tombstone(mine ?? theirs ?? before!);
+      const deleted = mine ?? theirs ?? before;
+      if (!deleted) {
+        throw new Error("Missing deleted shape");
+      }
+      winner = tombstone(deleted);
     } else {
       winner = same(before, mine) ? theirs : mine;
     }
@@ -91,7 +92,10 @@ export function mergeScene(base: BoardScene, local: BoardScene, remote: BoardSce
       order.push(id);
     }
   }
-  const elements = order.flatMap((id) => (chosen.has(id) ? [chosen.get(id)!] : []));
+  const elements = order.flatMap((id) => {
+    const element = chosen.get(id);
+    return element ? [element] : [];
+  });
 
   // Never publish dangling component/connection relations. Preserve whole
   // dependency sets; incompatible concurrent edits use explicit recovery.
