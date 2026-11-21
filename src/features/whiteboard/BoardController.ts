@@ -426,12 +426,14 @@ export class BoardController {
           } catch (error) {
             if (
               !(error instanceof ApiError && error.status === 409 && error.code === "board_stale")
-            )
+            ) {
               throw error;
+            }
             // This code is emitted only before a write. Never infer safety from
             // a generic HTTP 409, timeout, invalid ACK, or matching-looking scene.
-            if (++reconciliations > 3)
+            if (++reconciliations > 3) {
               throw new Error("Board keeps changing; review before saving again", { cause: error });
+            }
             const latest = await this.api.open(this.pane, this.target, this.abort.signal);
             if (this.disposed) {
               return;

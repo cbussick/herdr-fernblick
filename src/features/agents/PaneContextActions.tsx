@@ -1,8 +1,7 @@
 import dialogStyles from "./Dialogs.module.css";
 import overviewStyles from "./agentOverview.module.css";
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
-import type { FormEvent, ReactNode } from "react";
-import type * as React from "react";
+import type { FormEvent, MouseEvent, PointerEvent, ReactNode } from "react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { closeTab, renameAgent, renameTab } from "../../shared/api/apiClient";
 import { TrashIcon } from "../../shared/ui/Icons";
@@ -23,11 +22,11 @@ export function PaneContextActions({
   agentName?: string | null;
   agentTarget?: string;
   children: (handlers: {
-    onContextMenu: (event: React.MouseEvent) => void;
-    onPointerDown: (event: React.PointerEvent) => void;
+    onContextMenu: (event: MouseEvent) => void;
+    onPointerDown: (event: PointerEvent) => void;
     onPointerMove: () => void;
     onPointerUp: () => void;
-    onClickCapture: (event: React.MouseEvent) => void;
+    onClickCapture: (event: MouseEvent) => void;
   }) => ReactNode;
 }) {
   const [menuOpen, setMenuOpen] = useState(false);
@@ -66,7 +65,7 @@ export function PaneContextActions({
       const minY = (viewport?.offsetTop ?? 0) + 8;
       const maxX = minX + (viewport?.width ?? window.innerWidth) - 16;
       const maxY = minY + (viewport?.height ?? window.innerHeight) - 16;
-      const rect = row!.getBoundingClientRect();
+      const rect = row.getBoundingClientRect();
       popup.style.setProperty("--pane-menu-max-width", `${maxX - minX}px`);
       popup.style.setProperty("--pane-menu-max-height", `${maxY - minY}px`);
       const { width, height } = popup.getBoundingClientRect();
@@ -143,12 +142,12 @@ export function PaneContextActions({
     renameMutation.mutate();
   }
   const handlers = {
-    onContextMenu: (event: React.MouseEvent) => {
+    onContextMenu: (event: MouseEvent) => {
       event.preventDefault();
       clear();
       setMenuOpen(true);
     },
-    onPointerDown: (event: React.PointerEvent) => {
+    onPointerDown: (event: PointerEvent) => {
       if (event.pointerType !== "mouse") {
         timer.current = setTimeout(() => {
           suppressClick.current = true;
@@ -159,7 +158,7 @@ export function PaneContextActions({
     },
     onPointerMove: clear,
     onPointerUp: clear,
-    onClickCapture: (event: React.MouseEvent) => {
+    onClickCapture: (event: MouseEvent) => {
       if (!suppressClick.current) {
         return;
       }

@@ -207,7 +207,9 @@ export class BoardStore {
     };
   }
   private notify(id: string): void {
-    for (const listener of [...(this.listeners.get(id) ?? [])]) {
+    // Snapshot recipients: subscriptions can change while a listener is running.
+    const recipients = Array.from(this.listeners.get(id) ?? []);
+    for (const listener of recipients) {
       // Notification consumers cannot undo or turn a durable commit into failure.
       try {
         listener();

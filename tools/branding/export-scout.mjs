@@ -153,8 +153,9 @@ async function icon(name, size, artworkFraction) {
         if (
           pixels[(y * artworkSize + x) * 4 + 3] &&
           Math.hypot(x - artworkSize / 2, y - artworkSize / 2) > size * 0.4
-        )
+        ) {
           throw new Error("Scout extends beyond the maskable safe circle");
+        }
       }
     }
   }

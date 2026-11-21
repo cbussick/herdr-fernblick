@@ -933,6 +933,19 @@ it("reports unsupported and malformed operations rather than ignoring fields", a
   expect((await store.read(boardId)).revision).toBe(0);
 });
 
+it("snapshots notification recipients before listeners add subscriptions", async () => {
+  const added = vi.fn();
+  const addDuringNotification = () => {
+    store.subscribe(boardId, added);
+  };
+  const unsubscribe = store.subscribe(boardId, addDuringNotification);
+  await store.save(boardId, 0, blank());
+  expect(added).not.toHaveBeenCalled();
+  unsubscribe();
+  await store.save(boardId, 1, blank());
+  expect(added).toHaveBeenCalledOnce();
+});
+
 it("notifies subscriptions for durable saves/captures and grant lifecycle changes", async () => {
   const listener = vi.fn();
   const unsubscribe = store.subscribe(boardId, listener);
