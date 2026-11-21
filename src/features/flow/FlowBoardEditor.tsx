@@ -944,7 +944,7 @@ function Playground(props: BoardEditorProps) {
               >
                 Cancel
               </button>
-              <button type="button" className={styles["primary"]}>
+              <button type="submit" className={styles["primary"]}>
                 Save connection
               </button>
             </footer>

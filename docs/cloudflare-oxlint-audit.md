@@ -106,6 +106,15 @@ claimed. Raw evidence: `/tmp/cf-fair-valid-timings.log` and per-run logs.
 
 ## Review and provenance
 
+Initial independent Standards and Spec reviewers both identified the same P1:
+`Save connection` had become a non-submit button. A production-browser regression
+clicked the actual button, failed with the dialog remaining open, and passed
+after restoring `type="submit"`; label and color persistence are asserted.
+Evidence: `/tmp/cf-connection-red.log`, `/tmp/cf-connection-green.log`.
+Final post-review-fix fresh install/check/lint evidence is recorded in
+`/tmp/cf-accept-ci.log`, `/tmp/cf-accept-check.log`, `/tmp/cf-accept-lint.log`
+and their `.exit` files; the full suite now contains 1,457 tests.
+
 Two fresh independent local read-only Pi processes review the complete exact
 base-to-committed-tip diff, not just the last fixture changes: Standards and
 Spec/behavior/coverage. Final review outcomes and exact endpoint are reported in

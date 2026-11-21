@@ -287,6 +287,39 @@ describe("isolated production editor and DOM renderer", { timeout: 30_000 }, () 
     expect(await page.evaluate(() => window.flowTest.errors)).toEqual([]);
   });
 
+  it("saves connection label and color through the dialog submit button", async () => {
+    await loadEditor();
+    const scene = fromDiagram(
+      {
+        nodes: [
+          makeNode("card", 100, 100, defaults("card"), "source"),
+          makeNode("comment", 600, 100, defaults("comment"), "target"),
+        ],
+        edges: [{ ...edgeOptions, id: "editable", source: "source", target: "target" }],
+      },
+      empty,
+    );
+    await page.evaluate((raw) => window.flowTest.setScene(JSON.parse(raw)), JSON.stringify(scene));
+    await page
+      .locator('.react-flow__edge[data-id="editable"] .react-flow__edge-interaction')
+      .dispatchEvent("dblclick");
+    const dialog = page.getByRole("dialog", { name: "Edit connection" });
+    await dialog.getByLabel("Label", { exact: true }).fill("Reviewed connection");
+    await dialog.getByLabel("Custom accent color").fill("#123456");
+    await dialog.getByRole("button", { name: "Save connection", exact: true }).click();
+    await expect.poll(() => dialog.count()).toBe(0);
+    await expect
+      .poll(() =>
+        page.evaluate(() => {
+          const edge = window.flowTest.changes
+            .at(-1)
+            ?.elements.find((element) => element.id === "editable");
+          return edge?.type === "connection" ? { label: edge.label, color: edge.color } : null;
+        }),
+      )
+      .toEqual({ label: "Reviewed connection", color: "#123456" });
+  });
+
   it("undoes a resize and a node/connection deletion as separate complete gestures", async () => {
     await loadEditor();
     const first = fromDiagram(
