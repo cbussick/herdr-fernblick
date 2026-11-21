@@ -2,7 +2,11 @@ import { act } from "react";
 import { create } from "react-test-renderer";
 import type { ReactTestRenderer } from "react-test-renderer";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
-import { dispatchOptionalTestEvent, dispatchTestEvent } from "./dispatchTestEvent";
+import {
+  captureTestEvent,
+  dispatchOptionalTestEvent,
+  dispatchTestEvent,
+} from "./dispatchTestEvent";
 
 let renderer: ReactTestRenderer | undefined;
 function Harness({ onTest }: { onTest: unknown }) {
@@ -29,6 +33,20 @@ it("passes event arguments and the original props receiver", async () => {
   await dispatchTestEvent(instance, "onTest", event);
   expect(handler).toHaveBeenCalledWith(event);
   expect(handler.mock.contexts[0]).toBe(instance.props);
+});
+it("retains a captured handler and receiver when the component updates", async () => {
+  const original = vi.fn();
+  const replacement = vi.fn();
+  const instance = await mount(original);
+  const props = instance.props;
+  const captured = captureTestEvent(instance, "onTest");
+  await act(async () => renderer?.update(<Harness onTest={replacement} />));
+  await captured("stale");
+  expect(original).toHaveBeenCalledWith("stale");
+  expect(original.mock.contexts[0]).toBe(props);
+  expect(replacement).not.toHaveBeenCalled();
+  await dispatchTestEvent(instance, "onTest", "current");
+  expect(replacement).toHaveBeenCalledWith("current");
 });
 it("does not finish dispatch until the asynchronous handler settles", async () => {
   let release: (() => void) | undefined;

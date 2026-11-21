@@ -6,12 +6,8 @@ type TestEventHandler = (...args: ReadonlyArray<unknown>) => void;
 function isTestEventHandler(value: unknown): value is TestEventHandler {
   return typeof value === "function";
 }
-/** Validate the renderer's untyped event boundary before dispatching a test event. */
-export async function dispatchTestEvent(
-  instance: ReactTestInstance,
-  name: string,
-  ...args: ReadonlyArray<unknown>
-): Promise<void> {
+/** Capture a validated callback, including its original receiver, for stale-handler tests. */
+export function captureTestEvent(instance: ReactTestInstance, name: string) {
   const props: unknown = instance.props;
   if (typeof props !== "object" || props === null) {
     throw new Error(`Missing test event ${name}`);
@@ -24,7 +20,18 @@ export async function dispatchTestEvent(
   if (!isTestEventHandler(handler)) {
     throw new TypeError(`Test prop ${name} is not callable`);
   }
-  await Promise.resolve(handler.call(props, ...args));
+  return async (...args: ReadonlyArray<unknown>): Promise<void> => {
+    await Promise.resolve(handler.call(props, ...args));
+  };
+}
+
+/** Validate the renderer's untyped event boundary before dispatching a test event. */
+export async function dispatchTestEvent(
+  instance: ReactTestInstance,
+  name: string,
+  ...args: ReadonlyArray<unknown>
+): Promise<void> {
+  await captureTestEvent(instance, name)(...args);
 }
 
 /** Optional handlers retain React's absence semantics but still validate present values. */

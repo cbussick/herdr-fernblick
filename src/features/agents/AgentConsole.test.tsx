@@ -1,5 +1,5 @@
 import { testText } from "../../shared/lib/testText";
-import { dispatchTestEvent } from "../../shared/lib/dispatchTestEvent";
+import { captureTestEvent, dispatchTestEvent } from "../../shared/lib/dispatchTestEvent";
 import { act } from "react";
 import type { ReactNode } from "react";
 import { create } from "react-test-renderer";
@@ -448,10 +448,11 @@ it("explains and compacts separately from Skills, waits for completion and prese
   });
   await confirmCompact();
   expect(JSON.stringify(renderer.toJSON())).toContain("does not clear the conversation");
-  const click = compactNow().props.onClick;
+  const click = captureTestEvent(compactNow(), "onClick");
   await act(async () => {
-    click();
-    click();
+    const first = click();
+    const second = click();
+    await Promise.all([first, second]);
   });
   await flush();
   expect(mocks.compact).toHaveBeenCalledOnce();
@@ -607,7 +608,7 @@ it.each(["unsupported", "disconnected"])("disables compact when %s", async (mode
 it("invalidates an open compact confirmation on replacement and rechecks busy state before execution", async () => {
   await enableCompact();
   await confirmCompact();
-  const oldClick = compactNow().props.onClick;
+  const oldClick = captureTestEvent(compactNow(), "onClick");
   mocks.live.snapshot = { ...mocks.live.snapshot!, busy: true };
   await act(async () => renderer.update(render()));
   expect(compactNow().props.disabled).toBe(true);
@@ -1051,15 +1052,15 @@ it("submits on Enter only when sendable, without interfering with newlines or IM
       target: { value: "hello" },
     }),
   );
-  const keydown = renderer.root.findByType("textarea").props.onKeyDown;
+  const keydown = captureTestEvent(renderer.root.findByType("textarea"), "onKeyDown");
   preventDefault.mockClear();
-  keydown({ ...event, shiftKey: true });
-  keydown({ ...event, nativeEvent: { isComposing: true } });
-  keydown({ ...event, nativeEvent: { isComposing: false, keyCode: 229 } });
+  await keydown({ ...event, shiftKey: true });
+  await keydown({ ...event, nativeEvent: { isComposing: true } });
+  await keydown({ ...event, nativeEvent: { isComposing: false, keyCode: 229 } });
   expect(preventDefault).not.toHaveBeenCalled();
-  keydown({ ...event, repeat: true });
+  await keydown({ ...event, repeat: true });
   expect(requestSubmit).not.toHaveBeenCalled();
-  keydown(event);
+  await keydown(event);
   expect(requestSubmit).toHaveBeenCalledOnce();
 });
 
@@ -1585,7 +1586,7 @@ it.each(["text", "image"])(
       );
     }
     expect(viewport.scrollTop).toBe(300);
-    const submit = renderer.root.findByType("form").props.onSubmit;
+    const submit = captureTestEvent(renderer.root.findByType("form"), "onSubmit");
     await act(async () => submit({ preventDefault() {} }));
     expect(viewport.scrollTop).toBe(800);
     // The live echo grows the transcript without another explicit follow request.
