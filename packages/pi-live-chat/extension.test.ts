@@ -26,10 +26,11 @@ import {
   treePageResponseSchema,
   targetOf,
 } from "./protocol.js";
-import type { Snapshot } from "./protocol.js";
 import { receiveFrames, writeFrame } from "./transport.js";
 import { boardControlSchema, boardRequestSchema } from "./boardProtocol.js";
-import type { BoardGrant, BoardRequest } from "./boardProtocol.js";
+import type { BoardGrant } from "./boardProtocol.js";
+import { z } from "zod";
+const footerRequestSchema = z.object({ sessionId: z.string(), sessionFile: z.string() });
 
 vi.mock("node:fs/promises", async (importOriginal) => {
   const fs = await importOriginal<typeof import("node:fs/promises")>();
@@ -1694,11 +1695,10 @@ it("coalesces large transcript updates through a brief socket stall without reco
     await vi.waitFor(() => expect(t.latest()?.messages.at(-1)?.text).toBe("streaming-5"));
     expect(t.latest()?.epoch).toBe(initial.epoch);
     expect(
-      t.frames.some(
-        (frame) =>
-          snapshotSchema.safeParse(frame).success &&
-          /streaming-[1-4]/.test((frame as Snapshot).messages.at(-1)?.text ?? ""),
-      ),
+      t.frames.some((frame) => {
+        const parsed = snapshotSchema.safeParse(frame);
+        return parsed.success && /streaming-[1-4]/.test(parsed.data.messages.at(-1)?.text ?? "");
+      }),
     ).toBe(false);
     const received = t.frames.length;
     await new Promise((done) => {
@@ -1807,10 +1807,10 @@ it.each(["interactive", "extension"])(
       }),
     );
     const controls = () =>
-      t.frames.filter(
-        (frame) =>
-          !!frame && typeof frame === "object" && "type" in frame && frame.type === "board-control",
-      ) as Array<{ id: string; action: string; runId: string }>;
+      t.frames.flatMap((frame) => {
+        const parsed = boardControlSchema.safeParse(frame);
+        return parsed.success ? [parsed.data] : [];
+      });
     await vi.waitFor(() => expect(controls().at(-1)?.action).toBe("begin"));
     writeFrame(t.connections.at(-1)!, {
       type: "board-reply",
@@ -1879,9 +1879,10 @@ async function stageBoard(
   return board;
 }
 function boardRequests(t: Awaited<ReturnType<typeof setup>>) {
-  return t.frames.filter(
-    (frame) => boardRequestSchema.safeParse(frame).success,
-  ) as Array<BoardRequest>;
+  return t.frames.flatMap((frame) => {
+    const parsed = boardRequestSchema.safeParse(frame);
+    return parsed.success ? [parsed.data] : [];
+  });
 }
 async function activateBoard(
   t: Awaited<ReturnType<typeof setup>>,
@@ -2072,7 +2073,11 @@ it("requests footer replay on startup/reconnect and forwards session-bound updat
   const t = await setup(({ pi, ctx }) => {
     pi.events.on(footerRequestEvent, (request) => {
       replay(request);
-      pi.events.emit(footerUpdateEvent, { version: 1, ...(request as object), lines });
+      pi.events.emit(footerUpdateEvent, {
+        version: 1,
+        ...footerRequestSchema.parse(request),
+        lines,
+      });
     });
     expect(ctx.mode).toBe("tui");
   });
