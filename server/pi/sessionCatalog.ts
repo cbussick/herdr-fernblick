@@ -241,6 +241,8 @@ export class SessionCatalog {
     }
   }
 
+  async delete<T>(id: string, cleanup: (chat: CatalogChat) => Promise<T>): Promise<T>;
+  async delete(id: string): Promise<undefined>;
   async delete<T>(id: string, cleanup?: (chat: CatalogChat) => Promise<T>): Promise<T | undefined> {
     const chat = await this.get(id);
     // Rename into a private directory, then verify what actually moved before

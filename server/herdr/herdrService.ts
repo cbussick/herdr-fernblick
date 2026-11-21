@@ -13,7 +13,12 @@ import {
   terminalOutputSchema,
   workspaceSchema,
 } from "../../src/shared/api/contracts.js";
-import type { Agent, KeyName, TerminalReadSource } from "../../src/shared/api/contracts.js";
+import type {
+  Agent,
+  KeyName,
+  TerminalReadSource,
+  savedChatsResponseSchema,
+} from "../../src/shared/api/contracts.js";
 import { getDefaultPiAgentName } from "../../src/shared/agentNaming.js";
 import type { HerdrClient } from "./HerdrClient.js";
 import { HerdrRequestError } from "./HerdrClient.js";
@@ -100,6 +105,21 @@ const workspaceCreatedResultSchema = z.object({
   workspace: workspaceSchema,
 });
 
+type TabCreateParams = {
+  workspace_id: string;
+  focus: false;
+  label?: string;
+  cwd?: string;
+};
+type TerminalReadParams = {
+  pane_id?: string;
+  target?: string;
+  format: "text";
+  strip_ansi: true;
+  source: TerminalReadSource;
+  lines?: number;
+};
+
 export class HerdrService {
   private readonly resuming = new Map<string, Promise<Agent>>();
   private readonly sessionChanges = new Set<string>();
@@ -124,8 +144,7 @@ export class HerdrService {
       snapshot ? Promise.resolve(snapshot.chats) : this.sessions.list(),
       this.getDashboard(),
     ]);
-    return {
-      ...(snapshot ? { indexing: snapshot.indexing, indexError: snapshot.indexError } : {}),
+    const result: z.infer<typeof savedChatsResponseSchema> = {
       chats: chats.map((chat) =>
         savedChatSchema.parse({
           ...chat,
@@ -133,6 +152,11 @@ export class HerdrService {
         }),
       ),
     };
+    if (snapshot) {
+      result.indexing = snapshot.indexing;
+      result.indexError = snapshot.indexError;
+    }
+    return result;
   }
 
   async getSession(sessionId: string) {
@@ -251,7 +275,7 @@ export class HerdrService {
         : { sessionId: current.sessionId, boardIds: [] },
     );
     this.sessionIndex?.forget(id);
-    return result!;
+    return result;
   }
 
   resumeChat(id: string, workspaceId: string) {
@@ -350,16 +374,14 @@ export class HerdrService {
     tabLabel?: string,
     session?: { path: string; cwd: string },
   ) {
-    const createdTab = await this.client.request(
-      "tab.create",
-      {
-        workspace_id: workspaceId,
-        ...(tabLabel ? { label: tabLabel } : {}),
-        ...(session ? { cwd: session.cwd } : {}),
-        focus: false,
-      },
-      tabCreatedResultSchema,
-    );
+    const params: TabCreateParams = { workspace_id: workspaceId, focus: false };
+    if (tabLabel) {
+      params.label = tabLabel;
+    }
+    if (session) {
+      params.cwd = session.cwd;
+    }
+    const createdTab = await this.client.request("tab.create", params, tabCreatedResultSchema);
     const agentName = name ?? getDefaultPiAgentName(createdTab.root_pane.pane_id);
     const startParams = {
       name: agentName,
@@ -418,11 +440,11 @@ export class HerdrService {
   }
 
   async createTab(workspaceId: string, label?: string) {
-    const result = await this.client.request(
-      "tab.create",
-      { workspace_id: workspaceId, ...(label ? { label } : {}), focus: false },
-      tabCreatedResultSchema,
-    );
+    const params: TabCreateParams = { workspace_id: workspaceId, focus: false };
+    if (label) {
+      params.label = label;
+    }
+    const result = await this.client.request("tab.create", params, tabCreatedResultSchema);
     return shellTabSchema.parse({
       label: result.tab.label,
       pane_id: result.root_pane.pane_id,
@@ -437,7 +459,7 @@ export class HerdrService {
   }
 
   async restartPiAgent(target: string, requestShutdown: (agent: Agent) => Promise<void>) {
-    return (await this.changePiSession(target, requestShutdown, true))!;
+    return this.changePiSession(target, requestShutdown, true);
   }
 
   async exitPiAgent(target: string, requestShutdown: (agent: Agent) => Promise<void>) {
@@ -447,8 +469,18 @@ export class HerdrService {
   private async changePiSession(
     target: string,
     requestShutdown: (agent: Agent) => Promise<void>,
+    restart: true,
+  ): Promise<Agent>;
+  private async changePiSession(
+    target: string,
+    requestShutdown: (agent: Agent) => Promise<void>,
+    restart: false,
+  ): Promise<void>;
+  private async changePiSession(
+    target: string,
+    requestShutdown: (agent: Agent) => Promise<void>,
     restart: boolean,
-  ) {
+  ): Promise<Agent | void> {
     const { agent } = await this.client.request("agent.get", { target }, agentInfoResultSchema);
     if (agent.agent !== "pi" || agent.agent_session?.kind !== "path") {
       throw new HerdrRequestError(
@@ -542,17 +574,16 @@ export class HerdrService {
     lines: number,
     source: TerminalReadSource,
   ) {
-    const result = await this.client.request(
-      method,
-      {
-        ...target,
-        format: "text",
-        strip_ansi: true,
-        source,
-        ...(source === "recent_unwrapped" ? { lines } : {}),
-      },
-      agentReadResultSchema,
-    );
+    const params: TerminalReadParams = {
+      ...target,
+      format: "text",
+      strip_ansi: true,
+      source,
+    };
+    if (source === "recent_unwrapped") {
+      params.lines = lines;
+    }
+    const result = await this.client.request(method, params, agentReadResultSchema);
     return result.read;
   }
 
