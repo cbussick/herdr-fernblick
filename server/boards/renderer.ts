@@ -1,5 +1,6 @@
 import { chromium } from "playwright";
-import type { Browser, Request } from "playwright";
+import type { Browser } from "playwright";
+import { RenderRequests } from "./renderRequests.js";
 import type { BoardScene } from "../../packages/pi-live-chat/boardProtocol.js";
 import type {} from "../../packages/pi-live-chat/boardRenderContract.js";
 import { validateScene } from "./scene.js";
@@ -21,21 +22,6 @@ type Job = {
   deadline: number;
   timer: ReturnType<typeof setTimeout>;
 };
-
-// Only the built dedicated document and its bundled scripts/fonts are reachable.
-// No general same-origin allowlist: board/API/upload endpoints are off limits too.
-function allowedAsset(request: Request, origin: string): boolean {
-  const url = new URL(request.url());
-  if (url.origin !== origin || request.method() !== "GET" || url.search) {
-    return false;
-  }
-  const path = url.pathname;
-  return (
-    (request.resourceType() === "script" && /^\/assets\/[\w.-]+\.js$/.test(path)) ||
-    (request.resourceType() === "stylesheet" && /^\/assets\/[\w.-]+\.css$/.test(path)) ||
-    (request.resourceType() === "font" && /^\/assets\/[\w.-]+\.woff2$/.test(path))
-  );
-}
 
 function validatePng(png: Buffer, limits: Limits): Buffer {
   if (
@@ -170,43 +156,13 @@ export class BoardRenderer {
       });
       await context.routeWebSocket(/.*/, (socket) => socket.close());
       const entry = `${this.#origin}/flow-board-render.html`;
-      let documentAllowed = true;
-      await context.route("**/*", async (route) => {
-        const request = route.request();
-        let allowed = false;
-        if (
-          documentAllowed &&
-          request.isNavigationRequest() &&
-          request.frame() === page.mainFrame() &&
-          request.method() === "GET" &&
-          request.url() === entry
-        ) {
-          documentAllowed = false;
-          allowed = true;
-        } else if (!request.isNavigationRequest() && allowedAsset(request, this.#origin)) {
-          allowed = true;
-        }
-        // route.continue() can follow redirects without re-running interception.
-        // Fetch at most the allowed URL, then fulfill only a successful response.
-        try {
-          if (!allowed) {
-            await route.abort("blockedbyclient");
-            return;
-          }
-          const response = await route.fetch({ maxRedirects: 0, timeout: 10_000 });
-          try {
-            if (response.ok()) {
-              await route.fulfill({ response });
-            } else {
-              await route.abort("blockedbyclient");
-            }
-          } finally {
-            await response.dispose();
-          }
-        } catch {
-          await route.abort("blockedbyclient").catch(() => {});
-        }
-      });
+      const requests = new RenderRequests(this.#origin);
+      await context.route("**/*", (route) =>
+        requests.handle(
+          route,
+          route.request().isNavigationRequest() && route.request().frame() === page.mainFrame(),
+        ),
+      );
       const response = await page.goto(entry, {
         waitUntil: "load",
         timeout: TIMEOUT_MS,

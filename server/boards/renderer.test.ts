@@ -1,4 +1,4 @@
-import type { Browser, Request, Route } from "playwright";
+import { RenderRequests } from "./renderRequests.js";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { BoardRenderer } from "./renderer.js";
 import { emptyScene } from "./scene.js";
@@ -192,17 +192,23 @@ describe("BoardRenderer", () => {
     const { context, page } = fakeBrowser();
     const value = renderer();
     await value.render(emptyScene());
-    const handle = context.route.mock.calls[0][1] as (route: Route) => Promise<void>;
-    async function request(url: string, type = "script", navigation = false, method = "GET") {
+    expect(context.route).toHaveBeenCalled();
+    const requests = new RenderRequests("http://127.0.0.1:9191");
+    async function request(
+      url: string,
+      type = "script",
+      navigation = false,
+      method = "GET",
+      mainFrame = true,
+    ) {
       const route = {
-        request: () =>
-          ({
-            url: () => url,
-            method: () => method,
-            resourceType: () => type,
-            isNavigationRequest: () => navigation,
-            frame: () => page.mainFrame(),
-          }) as unknown as Request,
+        request: () => ({
+          url: () => url,
+          method: () => method,
+          resourceType: () => type,
+          isNavigationRequest: () => navigation,
+          frame: () => page.mainFrame(),
+        }),
         fetch: vi.fn().mockResolvedValue({
           ok: () => !url.includes("redirect"),
           dispose: vi.fn().mockResolvedValue(undefined),
@@ -210,10 +216,13 @@ describe("BoardRenderer", () => {
         fulfill: vi.fn().mockResolvedValue(undefined),
         abort: vi.fn().mockResolvedValue(undefined),
       };
-      await handle(route as unknown as Route);
+      await requests.handle(route, mainFrame);
       return route;
     }
     const base = "http://127.0.0.1:9191";
+    expect(
+      (await request(`${base}/flow-board-render.html`, "document", true, "GET", false)).abort,
+    ).toHaveBeenCalled();
     expect(
       (await request(`${base}/flow-board-render.html`, "document", true)).fulfill,
     ).toHaveBeenCalled();
@@ -298,12 +307,12 @@ describe("BoardRenderer", () => {
 
   it("does not leak a browser whose launch finishes after shutdown", async () => {
     const { browser } = fakeBrowser();
-    const gate = deferred<Browser>();
+    const gate = deferred<typeof browser>();
     launch.mockReturnValue(gate.promise);
     const value = renderer();
     const result = value.render(emptyScene()).catch((error: unknown) => error);
     const closing = value.close();
-    gate.resolve(browser as unknown as Browser);
+    gate.resolve(browser);
     await closing;
     expect(await result).toBeInstanceOf(Error);
     expect(browser.newContext).not.toHaveBeenCalled();
