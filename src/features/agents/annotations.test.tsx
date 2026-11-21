@@ -153,13 +153,27 @@ describe("touch selection action placement", () => {
   });
 });
 
+function annotationAnchor(): DOMRect {
+  return {
+    x: 0,
+    y: 0,
+    width: 0,
+    height: 0,
+    left: 0,
+    right: 0,
+    top: 0,
+    bottom: 0,
+    toJSON: () => ({ x: 0, y: 0, width: 0, height: 0 }),
+  };
+}
+
 describe("annotation draft ownership", () => {
   let api: ChatAnnotations;
   let renderer: ReactTestRenderer;
   let snapshot: Snapshot | undefined;
   let sending = false;
   const transcript = createRef<HTMLElement>();
-  const anchor = () => ({ left: 0, top: 0, bottom: 0 }) as DOMRect;
+  const anchor = annotationAnchor;
   function Harness() {
     const value = useChatAnnotations(snapshot, true, transcript, sending);
     useLayoutEffect(() => {
@@ -177,10 +191,25 @@ describe("annotation draft ownership", () => {
     vi.stubGlobal("window", { getSelection: () => null });
     sending = false;
     snapshot = {
-      identity: { runtime: "runtime", sessionId: "session" },
+      type: "snapshot",
+      version: 2,
+      identity: {
+        runtime: "runtime",
+        sessionId: "session",
+        pid: 1,
+        processStart: "start",
+        pane: "w1:p1",
+        herdrSocket: "/test/herdr.sock",
+        sessionFile: "/test/session.jsonl",
+      },
       epoch: "epoch",
+      seq: 0,
+      busy: false,
+      sendPending: false,
+      truncated: false,
+      status: { cwd: "/test", totalTokens: 0, cost: 0 },
       messages: [],
-    } as unknown as Snapshot;
+    };
     await act(async () => {
       renderer = create(<Harness />);
     });
