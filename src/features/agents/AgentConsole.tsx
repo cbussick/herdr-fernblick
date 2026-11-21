@@ -146,7 +146,9 @@ function PiAgentConsole({
     null,
   );
   const [boardTarget, setBoardTarget] = useState<Target | null>(null);
-  const [retiredBoardSession, setRetiredBoardSession] = useState<string | null>(null);
+  const [retiredBoardSession, setRetiredBoardSession] = useState<{ sessionId: string } | null>(
+    null,
+  );
   const [boardLink, setBoardLink] = useState(() =>
     typeof window === "undefined" ? null : readWhiteboardLink(window.location?.search ?? ""),
   );
@@ -225,7 +227,7 @@ function PiAgentConsole({
   const reportRetiredBoard = useEffectEvent((id: string) => onViewChange?.("chat", id));
   useEffect(() => {
     if (retiredBoardSession) {
-      reportRetiredBoard(retiredBoardSession);
+      reportRetiredBoard(retiredBoardSession.sessionId);
     }
   }, [retiredBoardSession]);
   const [consumedBoardLink, setConsumedBoardLink] = useState<typeof boardLink>(null);
@@ -311,7 +313,7 @@ function PiAgentConsole({
     // the board. Unmount then aborts in-flight work and retains the old draft.
     setBoardTarget(null);
     if (routeView === "whiteboard" && snapshot.identity.sessionId === boardTarget.sessionId) {
-      setRetiredBoardSession(boardTarget.sessionId);
+      setRetiredBoardSession({ sessionId: boardTarget.sessionId });
     }
   }
   const send = useMutation({

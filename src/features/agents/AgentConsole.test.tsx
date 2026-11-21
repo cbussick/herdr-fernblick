@@ -2006,6 +2006,36 @@ it("uses routed board views without losing the shared draft", async () => {
   expect(renderer.root.findByType("textarea").props.value).toBe("Keep my draft");
 });
 
+it("reports both retirements when a saved conversation board is explicitly reopened", async () => {
+  const onViewChange = vi.fn();
+  const routed = (routeView: "chat" | "whiteboard") => (
+    <QueryClientProvider client={client}>
+      <AgentConsole
+        agent={agent}
+        onBack={() => {}}
+        routeView={routeView}
+        onViewChange={onViewChange}
+      />
+    </QueryClientProvider>
+  );
+  for (let cycle = 0; cycle < 2; cycle++) {
+    await act(async () => renderer.update(routed("whiteboard")));
+    expect(renderer.root.findAllByType(Whiteboard)).toHaveLength(1);
+    const initial = mocks.live.snapshot;
+    if (!initial) {
+      throw new Error("Expected initial snapshot");
+    }
+    mocks.whiteboard.mockClear();
+    mocks.live = { snapshot: { ...initial, epoch: randomUUID() } };
+    await act(async () => renderer.update(routed("whiteboard")));
+    expect(mocks.whiteboard).not.toHaveBeenCalled();
+    expect(renderer.root.findAllByType(Whiteboard)).toHaveLength(0);
+    expect(onViewChange).toHaveBeenCalledTimes(cycle + 1);
+    expect(onViewChange).toHaveBeenLastCalledWith("chat", initial.identity.sessionId);
+    await act(async () => renderer.update(routed("chat")));
+  }
+});
+
 function routedWhiteboard() {
   return (
     <QueryClientProvider client={client}>
