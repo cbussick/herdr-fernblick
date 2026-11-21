@@ -5,6 +5,17 @@ import assert from "node:assert/strict";
 import { mkdir } from "node:fs/promises";
 const { chromium, webkit } = await import(process.env.PLAYWRIGHT_MODULE || "playwright");
 const base = process.argv[2] || "http://127.0.0.1:5212";
+// Serialized by Playwright and evaluated in the page, not in Node.
+const groupStyle = (group) => {
+  const header = group.querySelector("small").parentElement;
+  const panes = group.querySelector('[data-testid="pane-row"]').parentElement.parentElement;
+  return {
+    border: getComputedStyle(group).borderTopWidth,
+    background: getComputedStyle(header).backgroundColor,
+    headerHeight: header.getBoundingClientRect().height,
+    indentation: getComputedStyle(panes).paddingLeft,
+  };
+};
 const out = "design-gallery/workspace-tabs";
 await mkdir(out, { recursive: true });
 const workspaces = [
@@ -143,16 +154,6 @@ for (const [engine, browserType] of Object.entries({ chromium, webkit })) {
         await single.getByTestId("pane-row").locator("strong").textContent(),
         "Agent w1:p5",
       );
-      const groupStyle = (group) => {
-        const header = group.querySelector("small").parentElement;
-        const panes = group.querySelector('[data-testid="pane-row"]').parentElement.parentElement;
-        return {
-          border: getComputedStyle(group).borderTopWidth,
-          background: getComputedStyle(header).backgroundColor,
-          headerHeight: header.getBoundingClientRect().height,
-          indentation: getComputedStyle(panes).paddingLeft,
-        };
-      };
       assert.deepEqual(await single.evaluate(groupStyle), await orchestrator.evaluate(groupStyle));
       assert.equal(await cards.nth(1).getByTestId("tab-group").count(), 2);
       assert.equal(await cards.nth(1).locator("summary").count(), 3);

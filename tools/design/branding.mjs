@@ -30,16 +30,17 @@ try {
     server.listen(0, "127.0.0.1", done);
   });
   const base = `http://127.0.0.1:${server.address().port}`;
-  browser = await chromium.launch({
-    headless: true,
-    ...(process.env.CHROMIUM_EXECUTABLE ? { executablePath: process.env.CHROMIUM_EXECUTABLE } : {}),
-  });
-  for (const [name, viewport] of [
-    ["small-phone", { width: 320, height: 568 }],
-    ["phone", { width: 390, height: 844 }],
-    ["tablet", { width: 834, height: 1194 }],
-    ["narrow-sidebar", { width: 900, height: 800 }],
-    ["desktop", { width: 1440, height: 1000 }],
+  const launchOptions = { headless: true };
+  if (process.env.CHROMIUM_EXECUTABLE) {
+    launchOptions.executablePath = process.env.CHROMIUM_EXECUTABLE;
+  }
+  browser = await chromium.launch(launchOptions);
+  for (const { name, viewport } of [
+    { name: "small-phone", viewport: { width: 320, height: 568 } },
+    { name: "phone", viewport: { width: 390, height: 844 } },
+    { name: "tablet", viewport: { width: 834, height: 1194 } },
+    { name: "narrow-sidebar", viewport: { width: 900, height: 800 } },
+    { name: "desktop", viewport: { width: 1440, height: 1000 } },
   ]) {
     const context = await browser.newContext({
       viewport,

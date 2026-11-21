@@ -106,13 +106,16 @@ for (const [engine, browserType] of [
         } else if (url.pathname === "/api/chats" && method === "GET") {
           await historyReady;
           body = {
-            chats: chats
-              .filter((chat) => !deleted || chat.id !== chats[1].id)
-              .map((chat) =>
+            chats: chats.flatMap((chat) => {
+              if (deleted && chat.id === chats[1].id) {
+                return [];
+              }
+              return [
                 resumed && chat.id === chats[0].id
                   ? { ...chat, activePaneId: agent.pane_id }
                   : chat,
-              ),
+              ];
+            }),
           };
         } else if (url.pathname === `/api/chats/${chats[1].id}` && method === "DELETE") {
           deletionAttempts++;

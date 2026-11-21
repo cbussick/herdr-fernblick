@@ -41,6 +41,7 @@ for (let i = 0; i < count; i++) {
     masks[color][i] = 1;
   }
 }
+/** @returns {Promise<string>} */
 async function trace(mask) {
   const pixels = Buffer.alloc(count, 255);
   mask.forEach((on, i) => {
@@ -58,6 +59,9 @@ async function trace(mask) {
         return reject(error);
       }
       const svg = tracer.getSVG();
+      if (typeof svg !== "string") {
+        return reject(new Error("Trace produced non-text SVG"));
+      }
       const path = svg.match(/<path d="([^"]*)"/);
       if (!path) {
         return reject(new Error("Trace produced no path"));
@@ -78,12 +82,12 @@ const wool = masks[3].map(
 );
 const layers = await Promise.all(
   [
-    ["wool-and-mouth", "#fff", wool],
-    ["face-and-wordmark", "#17374f", face],
-    ["inner-ear", "#dceefc", masks[2]],
-    ["binoculars", "#196daa", goggles],
-    ["eyes", "#f5f9fd", eyes],
-  ].map(async ([id, fill, mask]) => ({ id, fill, path: await trace(mask) })),
+    { id: "wool-and-mouth", fill: "#fff", mask: wool },
+    { id: "face-and-wordmark", fill: "#17374f", mask: face },
+    { id: "inner-ear", fill: "#dceefc", mask: masks[2] },
+    { id: "binoculars", fill: "#196daa", mask: goggles },
+    { id: "eyes", fill: "#f5f9fd", mask: eyes },
+  ].map(async ({ id, fill, mask }) => ({ id, fill, path: await trace(mask) })),
 );
 const artwork = {
   width,

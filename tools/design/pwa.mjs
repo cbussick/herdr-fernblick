@@ -23,12 +23,15 @@ try {
     server.listen(0, "127.0.0.1", resolve);
   });
   const base = `http://127.0.0.1:${server.address().port}`;
-  browser = await chromium.launchPersistentContext(profile, {
-    ...(process.env.CHROMIUM_EXECUTABLE ? { executablePath: process.env.CHROMIUM_EXECUTABLE } : {}),
+  const launchOptions = {
     viewport: { width: 390, height: 844 },
     isMobile: true,
     headless: true,
-  });
+  };
+  if (process.env.CHROMIUM_EXECUTABLE) {
+    launchOptions.executablePath = process.env.CHROMIUM_EXECUTABLE;
+  }
+  browser = await chromium.launchPersistentContext(profile, launchOptions);
   const context = browser;
   const page = await context.newPage();
   const errors = [];

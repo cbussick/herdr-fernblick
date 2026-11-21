@@ -747,7 +747,9 @@ for (const size of sizes) {
       });
       report(`${phase}: ${size.id}/${id}`);
     } catch (error) {
-      reportError(`FAILED ${size.id}/${id}: ${error}`);
+      reportError(
+        `FAILED ${size.id}/${id}: ${error instanceof Error ? error.message : String(error)}`,
+      );
       await page.screenshot({ path: `${out}/failure.png` });
       process.exitCode = 1;
       break;

@@ -108,10 +108,10 @@ try {
     }
     const browser = await engine.launch({ headless: true });
     try {
-      for (const [layout, viewport] of [
-        ["mobile", { width: 390, height: 844 }],
-        ["portrait", { width: 820, height: 1180 }],
-        ["desktop", { width: 1440, height: 900 }],
+      for (const { layout, viewport } of [
+        { layout: "mobile", viewport: { width: 390, height: 844 } },
+        { layout: "portrait", viewport: { width: 820, height: 1180 } },
+        { layout: "desktop", viewport: { width: 1440, height: 900 } },
       ]) {
         if (process.env.WHITEBOARD_LAYOUT && process.env.WHITEBOARD_LAYOUT !== layout) {
           continue;
