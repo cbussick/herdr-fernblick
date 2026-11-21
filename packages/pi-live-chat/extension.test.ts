@@ -1,4 +1,14 @@
 import { randomUUID } from "node:crypto";
+import type { processIdentity } from "./security.js";
+import type {
+  createAgentSession,
+  DefaultResourceLoader,
+  SessionManager,
+  SettingsManager,
+} from "@earendil-works/pi-coding-agent";
+import { TuiMainScreen } from "@earendil-works/pi-tui";
+import type { Editor } from "@earendil-works/pi-tui";
+import type { Model, Api } from "@earendil-works/pi-ai";
 import { mkdtemp, rm, writeFile, open } from "node:fs/promises";
 import { createServer } from "node:net";
 import type { Socket } from "node:net";
@@ -33,13 +43,23 @@ import type { BoardGrant } from "./boardProtocol.js";
 import { z } from "zod";
 const frameIdSchema = z.object({ id: z.string().optional() });
 const footerRequestSchema = z.object({ sessionId: z.string(), sessionFile: z.string() });
+const identity = (text: string) => text;
+type FileSystemReads = { open: typeof open };
+type SecurityIdentity = { processIdentity: typeof processIdentity };
+type AgentRuntime = {
+  createAgentSession: typeof createAgentSession;
+  DefaultResourceLoader: typeof DefaultResourceLoader;
+  SessionManager: typeof SessionManager;
+  SettingsManager: typeof SettingsManager;
+};
+type EditorRuntime = { Editor: typeof Editor };
 
 vi.mock("node:fs/promises", async (importOriginal) => {
-  const fs = await importOriginal<typeof import("node:fs/promises")>();
+  const fs = await importOriginal<FileSystemReads>();
   return { ...fs, open: vi.fn(fs.open) };
 });
 vi.mock("./security.js", async (importOriginal) => {
-  const original = await importOriginal<typeof import("./security.js")>();
+  const original = await importOriginal<SecurityIdentity>();
   return {
     ...original,
     processIdentity: vi.fn(async () => ({
@@ -52,6 +72,9 @@ vi.mock("./security.js", async (importOriginal) => {
   };
 });
 type Handler = (event: Record<string, unknown>, ctx: ExtensionContext) => unknown;
+function unsupportedContextOperation(): never {
+  throw new Error("This fixture does not support unrelated session operations");
+}
 function fakePi(session = "session") {
   const handlers = new Map<string, Array<Handler>>();
   const branch: Array<unknown> = [];
@@ -63,19 +86,39 @@ function fakePi(session = "session") {
   let thinkingLevel = "medium";
   let activeTools = ["read", "bash"];
   const tools = new Map<string, ToolDefinition>();
+  const model: Model<Api> = {
+    id: "model",
+    provider: "provider",
+    name: "Test model",
+    reasoning: true,
+    api: "openai-completions",
+    baseUrl: "https://example.invalid",
+    input: ["text", "image"],
+    contextWindow: 100_000,
+    maxTokens: 4096,
+    cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
+  };
+  const mocks = {
+    getAvailable: vi.fn<() => Array<Model<Api>>>(() => [model]),
+    abort: vi.fn<ExtensionContext["abort"]>(),
+    compact: vi.fn<ExtensionContext["compact"]>(),
+    shutdown: vi.fn<ExtensionContext["shutdown"]>(),
+    getEditorText: vi.fn<ExtensionContext["ui"]["getEditorText"]>(() => ""),
+    setEditorText: vi.fn<ExtensionContext["ui"]["setEditorText"]>(),
+  };
   const ctx = {
     mode: "tui",
     cwd: "/test",
-    model: { id: "model", provider: "provider", reasoning: true },
+    model,
     modelRegistry: {
-      getAvailable: vi.fn(() => [{ id: "model", provider: "provider", name: "Test model" }]),
+      getAvailable: mocks.getAvailable,
     },
     isIdle: () => idle,
     hasPendingMessages: () => false,
-    abort: vi.fn(),
-    compact: vi.fn(),
-    shutdown: vi.fn(),
-    ui: { getEditorText: vi.fn(() => ""), setEditorText: vi.fn() },
+    abort: mocks.abort,
+    compact: mocks.compact,
+    shutdown: mocks.shutdown,
+    ui: { getEditorText: mocks.getEditorText, setEditorText: mocks.setEditorText },
     sessionManager: {
       getBranch: () => branch,
       getEntries: () => branch,
@@ -106,7 +149,7 @@ function fakePi(session = "session") {
     on: (event: string, handler: Handler) => {
       handlers.set(event, [...(handlers.get(event) ?? []), handler]);
     },
-    sendUserMessage: vi.fn(),
+    sendUserMessage: vi.fn<ExtensionAPI["sendUserMessage"]>(),
     getThinkingLevel: vi.fn(() => thinkingLevel),
     setThinkingLevel: vi.fn((level: string) => {
       thinkingLevel = level;
@@ -139,7 +182,24 @@ function fakePi(session = "session") {
     commands,
     tools,
     ctx,
+    mocks,
+    model,
     branch,
+    commandContext(navigateTree: ExtensionCommandContext["navigateTree"]): ExtensionCommandContext {
+      return {
+        ...ctx,
+        navigateTree,
+        getSystemPromptOptions: unsupportedContextOperation,
+        waitForIdle: unsupportedContextOperation,
+        newSession: unsupportedContextOperation,
+        fork: unsupportedContextOperation,
+        switchSession: unsupportedContextOperation,
+        reload: unsupportedContextOperation,
+      };
+    },
+    toolContext(): ExtensionToolContext {
+      return { ...ctx, tools: [], executeTool: unsupportedContextOperation };
+    },
     emit,
     setIdle: (value: boolean) => {
       idle = value;
@@ -256,14 +316,14 @@ it.each(["Old draft", "  ", "Line one\nLine two", "[Image attachment]"])(
   "refuses shutdown without submitting or discarding editor text: %j",
   async (draft) => {
     const t = await setup();
-    vi.mocked(t.ctx.ui.getEditorText).mockReturnValue(draft);
+    t.mocks.getEditorText.mockReturnValue(draft);
     expect(await t.ack(t.command("shutdown"))).toMatchObject({
       type: "ack",
       outcome: "rejected",
       reason: expect.stringContaining("unsent draft"),
     });
-    expect(t.ctx.shutdown).not.toHaveBeenCalled();
-    expect(t.ctx.ui.setEditorText).not.toHaveBeenCalled();
+    expect(t.mocks.shutdown).not.toHaveBeenCalled();
+    expect(t.mocks.setEditorText).not.toHaveBeenCalled();
     expect(t.pi.sendUserMessage).not.toHaveBeenCalled();
     expect(t.branch).toEqual([]);
   },
@@ -274,24 +334,24 @@ it("requests orderly shutdown once with correlated confirmation, never a prompt"
   const target = targetOf(t.latest()!);
   const id = t.command("shutdown");
   expect(await t.ack(id)).toMatchObject({ type: "shutdown-requested", id, target });
-  expect(t.ctx.shutdown).toHaveBeenCalledOnce();
+  expect(t.mocks.shutdown).toHaveBeenCalledOnce();
   expect(await t.ack(t.command("send"))).toMatchObject({
     outcome: "rejected",
     reason: "Pi is shutting down",
   });
   expect(await t.ack(t.command("shutdown"))).toMatchObject({ outcome: "rejected" });
   expect(t.pi.sendUserMessage).not.toHaveBeenCalled();
-  expect(t.ctx.ui.setEditorText).not.toHaveBeenCalled();
+  expect(t.mocks.setEditorText).not.toHaveBeenCalled();
   expect(t.branch).toEqual([]);
 });
 
 it("delivers shutdown confirmation even when cleanup closes the socket immediately", async () => {
   const t = await setup();
-  vi.mocked(t.ctx.shutdown).mockImplementation(() => {
+  t.mocks.shutdown.mockImplementation(() => {
     t.emit("session_shutdown");
   });
   expect(await t.ack(t.command("shutdown"))).toMatchObject({ type: "shutdown-requested" });
-  expect(t.ctx.shutdown).toHaveBeenCalledOnce();
+  expect(t.mocks.shutdown).toHaveBeenCalledOnce();
 });
 
 it.each(["busy", "queued", "send-pending", "stale", "unreadable-editor"])(
@@ -308,7 +368,7 @@ it.each(["busy", "queued", "send-pending", "stale", "unreadable-editor"])(
       await t.ack(t.command("send"));
     }
     if (condition === "unreadable-editor") {
-      vi.mocked(t.ctx.ui.getEditorText).mockImplementation(() => {
+      t.mocks.getEditorText.mockImplementation(() => {
         throw new Error("Editor unavailable");
       });
     }
@@ -320,15 +380,21 @@ it.each(["busy", "queued", "send-pending", "stale", "unreadable-editor"])(
       type: "ack",
       outcome: "rejected",
     });
-    expect(t.ctx.shutdown).not.toHaveBeenCalled();
-    expect(t.ctx.ui.setEditorText).not.toHaveBeenCalled();
+    expect(t.mocks.shutdown).not.toHaveBeenCalled();
+    expect(t.mocks.setEditorText).not.toHaveBeenCalled();
     expect(t.pi.sendUserMessage).toHaveBeenCalledTimes(condition === "send-pending" ? 1 : 0);
   },
 );
 
+type DefaultSelectionInput = {
+  kind: string;
+  provider: string;
+  modelId: string;
+  level?: string;
+};
 function defaultCommand(
   t: Awaited<ReturnType<typeof setup>>,
-  selection: object = { kind: "model", provider: "provider", modelId: "model" },
+  selection: DefaultSelectionInput = { kind: "model", provider: "provider", modelId: "model" },
   target = targetOf(t.latest()!),
 ) {
   const id = randomUUID();
@@ -343,7 +409,7 @@ function defaultCommand(
 }
 it("saves any available model or supported level without switching the current session or prompting", async () => {
   const t = await setup();
-  vi.mocked(t.ctx.modelRegistry.getAvailable).mockReturnValue([
+  t.mocks.getAvailable.mockReturnValue([
     { ...t.ctx.model!, id: "other", provider: "other-provider", name: "Other" },
   ]);
   expect(t.latest()?.capabilities?.defaults).toBe(true);
@@ -404,7 +470,7 @@ it("rejects busy, stale, model-mismatched, unavailable and unsupported default s
       }),
     ),
   ).toMatchObject({ outcome: "rejected", reason: expect.stringContaining("not supported") });
-  vi.mocked(t.ctx.modelRegistry.getAvailable).mockReturnValue([]);
+  t.mocks.getAvailable.mockReturnValue([]);
   expect(await t.ack(defaultCommand(t))).toMatchObject({
     outcome: "rejected",
     reason: expect.stringContaining("no longer available"),
@@ -635,16 +701,17 @@ it("serializes thinking requests with pending model changes", async () => {
 });
 it("lists bounded display-only model metadata from this session without invoking a model", async () => {
   const t = await setup();
-  const getAvailable = vi.mocked(t.ctx.modelRegistry.getAvailable);
+  const getAvailable = t.mocks.getAvailable;
   getAvailable.mockReturnValue(
     Array.from({ length: 1001 }, (_, i) => ({
+      ...t.model,
       id: `model-${i}`,
       name: `Model ${i}`,
       provider: "provider",
       apiKey: "secret",
       baseUrl: "private",
       headers: { Authorization: "secret" },
-    })) as unknown as ReturnType<typeof getAvailable>,
+    })),
   );
   t.setIdle(false); // Discovery itself is read-only and allowed while busy.
   const reply = modelsResponseSchema.parse(await t.ack(modelCommand(t, "models")));
@@ -764,7 +831,7 @@ it("rejects busy, stale and repeated compaction commands without invoking Pi", a
     await t.ack(t.command("compact", { ...targetOf(t.latest()!), epoch: randomUUID() })),
   ).toMatchObject({ outcome: "rejected", reason: expect.stringContaining("Stale") });
   const id = t.command("compact");
-  await vi.waitFor(() => expect(t.ctx.compact).toHaveBeenCalledOnce());
+  await vi.waitFor(() => expect(t.mocks.compact).toHaveBeenCalledOnce());
   writeFrame(t.connections.at(-1)!, {
     type: "command",
     action: "compact",
@@ -775,14 +842,14 @@ it("rejects busy, stale and repeated compaction commands without invoking Pi", a
     outcome: "rejected",
     reason: expect.stringContaining("already seen"),
   });
-  expect(t.ctx.compact).toHaveBeenCalledOnce();
+  expect(t.mocks.compact).toHaveBeenCalledOnce();
 });
 
 it("keeps compaction locked across disconnect, never replays, and cannot confirm on the new socket", async () => {
   const t = await setup();
   const id = t.command("compact");
-  await vi.waitFor(() => expect(t.ctx.compact).toHaveBeenCalledOnce());
-  const options = vi.mocked(t.ctx.compact).mock.calls[0][0]!;
+  await vi.waitFor(() => expect(t.mocks.compact).toHaveBeenCalledOnce());
+  const options = t.mocks.compact.mock.calls[0][0]!;
   t.connections.at(-1)!.destroy();
   await vi.waitFor(() => expect(t.connections).toHaveLength(2));
   await vi.waitFor(() => expect(t.latest()?.sendPending).toBe(true));
@@ -790,14 +857,14 @@ it("keeps compaction locked across disconnect, never replays, and cannot confirm
   options.onComplete!({ summary: "Compacted", firstKeptEntryId: "kept", tokensBefore: 100 });
   await vi.waitFor(() => expect(t.latest()?.sendPending).toBe(false));
   expect(t.frames.some((v) => typeof v === "object" && v && "id" in v && v.id === id)).toBe(false);
-  expect(t.ctx.compact).toHaveBeenCalledOnce();
+  expect(t.mocks.compact).toHaveBeenCalledOnce();
 });
 
 it("does not report compaction success after a target change or shutdown", async () => {
   const t = await setup();
   const id = t.command("compact");
-  await vi.waitFor(() => expect(t.ctx.compact).toHaveBeenCalledOnce());
-  const options = vi.mocked(t.ctx.compact).mock.calls[0][0]!;
+  await vi.waitFor(() => expect(t.mocks.compact).toHaveBeenCalledOnce());
+  const options = t.mocks.compact.mock.calls[0][0]!;
   t.emit("session_tree");
   options.onComplete!({ summary: "Compacted", firstKeptEntryId: "kept", tokensBefore: 100 });
   expect(await t.ack(id)).toMatchObject({
@@ -805,9 +872,9 @@ it("does not report compaction success after a target change or shutdown", async
     reason: expect.stringContaining("uncertain"),
   });
   const second = t.command("compact");
-  await vi.waitFor(() => expect(t.ctx.compact).toHaveBeenCalledTimes(2));
+  await vi.waitFor(() => expect(t.mocks.compact).toHaveBeenCalledTimes(2));
   t.emit("session_shutdown");
-  vi.mocked(t.ctx.compact).mock.calls[1][0]!.onError!(new Error("cancelled"));
+  t.mocks.compact.mock.calls[1][0]!.onError!(new Error("cancelled"));
   expect(t.frames.some((v) => typeof v === "object" && v && "id" in v && v.id === second)).toBe(
     false,
   );
@@ -825,7 +892,7 @@ it("restores a root prompt through real Pi even when a tree hook appends extensi
   const { createAgentSession, DefaultResourceLoader, SessionManager, SettingsManager } =
     (await import(
       process.env.PI_TREE_TEST_MODULE ?? "@earendil-works/pi-coding-agent"
-    )) as typeof import("@earendil-works/pi-coding-agent");
+    )) as AgentRuntime;
   const manager = SessionManager.create(t.dir, join(t.dir, "sessions"));
   const rootPrompt = "original root prompt ".repeat(100);
   const root = manager.appendMessage({
@@ -977,16 +1044,29 @@ it("uses real Pi shutdown bindings without submitting or changing a terminal dra
   const { createAgentSession, DefaultResourceLoader, SessionManager, SettingsManager } =
     (await import(
       process.env.PI_TREE_TEST_MODULE ?? "@earendil-works/pi-coding-agent"
-    )) as typeof import("@earendil-works/pi-coding-agent");
+    )) as AgentRuntime;
   const { Editor } = (await import(
     process.env.PI_EDITOR_TEST_MODULE ?? "@earendil-works/pi-tui"
-  )) as typeof import("@earendil-works/pi-tui");
-  const identity = (text: string) => text;
+  )) as EditorRuntime;
   const editor = new Editor(
-    {
-      requestRender() {},
-      terminal: { rows: 24, columns: 80 },
-    } as unknown as import("@earendil-works/pi-tui").TUI,
+    new TuiMainScreen({
+      rows: 24,
+      columns: 80,
+      kittyProtocolActive: false,
+      start() {},
+      stop() {},
+      async drainInput() {},
+      write() {},
+      moveBy() {},
+      hideCursor() {},
+      showCursor() {},
+      clearLine() {},
+      clearFromCursor() {},
+      clearScreen() {},
+      setTitle() {},
+      setProgress() {},
+      setProgramStatus() {},
+    }),
     {
       borderColor: identity,
       selectList: {
@@ -1355,11 +1435,11 @@ it("navigates through its private command context and replies only after navigat
   );
   t.pi.sendUserMessage.mockImplementation((text, options) => {
     expect(options).toEqual({ expandPromptTemplates: true });
-    const [name, nonce] = (text as string).slice(1).split(" ");
-    void t.commands.get(name)!.handler(nonce, {
-      ...t.ctx,
-      navigateTree,
-    } as unknown as ExtensionCommandContext);
+    if (typeof text !== "string") {
+      throw new Error("Expected a private command string");
+    }
+    const [name, nonce] = text.slice(1).split(" ");
+    void t.commands.get(name)!.handler(nonce, t.commandContext(navigateTree));
   });
   const id = randomUUID();
   writeFrame(t.connections[0], {
@@ -1404,11 +1484,10 @@ it("sends ten 10 MiB image-only uploads as Pi ImageContent without putting base6
   // Wait for the actual command outcome before inspecting Pi's image content.
   expect(await t.ack(id, 10_000)).toMatchObject({ outcome: "invoked" });
   expect(t.pi.sendUserMessage).toHaveBeenCalledOnce();
-  const content = t.pi.sendUserMessage.mock.calls[0][0] as Array<{
-    type: string;
-    data: string;
-    mimeType: string;
-  }>;
+  const content = t.pi.sendUserMessage.mock.calls[0][0];
+  if (typeof content === "string") {
+    throw new Error("Expected structured image content, not text");
+  }
   expect(content.filter((b) => b.type === "image")).toHaveLength(10);
   for (const image of content.filter((b) => b.type === "image")) {
     expect(image.mimeType).toBe("image/png");
@@ -1433,15 +1512,18 @@ it("sends ten 10 MiB image-only uploads as Pi ImageContent without putting base6
   t.emit("agent_settled");
   t.pi.sendUserMessage.mockImplementationOnce((text, options) => {
     expect(options).toEqual({ expandPromptTemplates: true });
-    const [name, nonce] = (text as string).slice(1).split(" ");
-    void t.commands.get(name)!.handler(nonce, {
-      ...t.ctx,
-      navigateTree: async () => {
+    if (typeof text !== "string") {
+      throw new Error("Expected a private command string");
+    }
+    const [name, nonce] = text.slice(1).split(" ");
+    void t.commands.get(name)!.handler(
+      nonce,
+      t.commandContext(async () => {
         t.branch.length = 0;
         t.emit("session_tree");
         return { cancelled: false };
-      },
-    } as unknown as ExtensionCommandContext);
+      }),
+    );
   });
   const navId = randomUUID();
   writeFrame(t.connections[0], {
@@ -1475,7 +1557,7 @@ it.each(["epoch", "session", "busy", "input", "stop", "compact"] as const)(
     const started = new Promise<void>((done) => {
       entered = done;
     });
-    const fs = await vi.importActual<typeof import("node:fs/promises")>("node:fs/promises");
+    const fs = await vi.importActual<FileSystemReads>("node:fs/promises");
     vi.mocked(open).mockImplementationOnce(async (...args) => {
       const file = await fs.open(...args);
       const read = vi.spyOn(file, "read");
@@ -1558,11 +1640,11 @@ it("rejects missing handlers, busy and missing entries without navigating or lea
   const t = await setup();
   const navigateTree = vi.fn();
   t.pi.sendUserMessage.mockImplementation((text) => {
-    const [name, nonce] = (text as string).slice(1).split(" ");
-    void t.commands.get(name)!.handler(nonce, {
-      ...t.ctx,
-      navigateTree,
-    } as unknown as ExtensionCommandContext);
+    if (typeof text !== "string") {
+      throw new Error("Expected a private command string");
+    }
+    const [name, nonce] = text.slice(1).split(" ");
+    void t.commands.get(name)!.handler(nonce, t.commandContext(navigateTree));
   });
   const send = () => {
     const id = randomUUID();
@@ -1612,7 +1694,7 @@ it("uses void send/abort, rejects busy and concurrent sends, and waits for settl
   t.emit("agent_end");
   expect(await t.ack(t.command("send"))).toMatchObject({ outcome: "rejected" });
   expect(await t.ack(t.command("stop"))).toMatchObject({ outcome: "invoked" });
-  expect(t.ctx.abort).toHaveBeenCalledOnce();
+  expect(t.mocks.abort).toHaveBeenCalledOnce();
   t.emit("agent_settled");
   t.setIdle(false);
   expect(await t.ack(t.command("send"))).toMatchObject({ outcome: "rejected" });
@@ -1817,7 +1899,7 @@ it.each(["interactive", "extension"])(
     t.emit("agent_start");
     const reading = t.tools
       .get("board_read")!
-      .execute("read", {}, undefined, undefined, t.ctx as ExtensionToolContext);
+      .execute("read", {}, undefined, undefined, t.toolContext());
     await vi.waitFor(() => expect(controls().at(-1)?.action).toBe("grant"));
     const grant = { boardId: "a".repeat(64), grantId: randomUUID(), mode: "edit", revision: 0 };
     writeFrame(t.connections.at(-1)!, {
@@ -1969,7 +2051,7 @@ it("advertises boards, dispatches private RPCs before commands, and gates read-o
   t.emit("agent_start");
   const read = t.tools
     .get("board_read")!
-    .execute("read", { limit: 4 }, undefined, undefined, t.ctx as ExtensionToolContext);
+    .execute("read", { limit: 4 }, undefined, undefined, t.toolContext());
   await vi.waitFor(() => expect(boardRequests(t).at(-1)?.action).toBe("read"));
   const request = boardRequests(t).at(-1)!;
   expect(request).toMatchObject({
@@ -2029,9 +2111,7 @@ it.each([
   await vi.waitFor(() => expect(t.pi.getActiveTools()).not.toContain("board_read"));
   expect(t.tools.get("board_apply")?.exposure).toBe("hidden");
   await expect(
-    t.tools
-      .get("board_read")!
-      .execute("stale", {}, undefined, undefined, t.ctx as ExtensionToolContext),
+    t.tools.get("board_read")!.execute("stale", {}, undefined, undefined, t.toolContext()),
   ).rejects.toThrow("No active");
 });
 

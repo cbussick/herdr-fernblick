@@ -225,6 +225,9 @@ try {
   const page = await browser.newPage();
   await page.goto(base);
   const assetChecks = await page.evaluate(async () => {
+    // Playwright serializes only this callback; a module-scoped helper would not exist
+    // in the browser realm where Image and canvas must be constructed.
+    // oxlint-disable-next-line unicorn/consistent-function-scoping
     async function pixels(src) {
       const image = new Image();
       image.src = src;
