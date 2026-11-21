@@ -127,16 +127,16 @@ export function hitsInk(
 }
 export type InkCommand = { before: Array<InkNode>; after: Array<InkNode> };
 export function cleanInk(nodes: Array<InkNode>): Array<InkNode> {
-  return nodes.map(({ selected: _s, dragging: _d, measured: _m, resizing: _r, ...n }) =>
-    structuredClone({
-      ...n,
-      style: {
-        ...n.style,
-        ...(n.width !== undefined ? { width: n.width } : {}),
-        ...(n.height !== undefined ? { height: n.height } : {}),
-      },
-    }),
-  );
+  return nodes.map(({ selected: _s, dragging: _d, measured: _m, resizing: _r, ...n }) => {
+    const style = { ...n.style };
+    if (n.width !== undefined) {
+      style.width = n.width;
+    }
+    if (n.height !== undefined) {
+      style.height = n.height;
+    }
+    return structuredClone({ ...n, style });
+  });
 }
 /** Apply only the touched stroke IDs. Component edits never get reverted by drawing undo. */
 export function applyInkCommand(

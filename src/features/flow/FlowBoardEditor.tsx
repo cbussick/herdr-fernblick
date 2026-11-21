@@ -42,7 +42,7 @@ import type { Tool } from "./Drawing";
 import { applyInkCommand, isInk, maxBoardPoints } from "./ink";
 import type { InkNode } from "./ink";
 import { useBoardHistory } from "./history";
-import { catalog, defaults, edgeOptions, kinds, makeId, makeNode } from "./model";
+import { catalogEntry, defaults, edgeOptions, kinds, makeId, makeNode } from "./model";
 import type { ComponentData, ComponentNode, CanvasNode, Kind } from "./model";
 import styles from "./Playground.module.css";
 
@@ -477,7 +477,7 @@ function Playground(props: BoardEditorProps) {
       <div className={styles["library-items"]}>
         {kinds
           .filter((kind) =>
-            `${catalog[kind].name} ${catalog[kind].description}`
+            `${catalogEntry(kind).name} ${catalogEntry(kind).description}`
               .toLowerCase()
               .includes(query.toLowerCase()),
           )
@@ -488,14 +488,14 @@ function Playground(props: BoardEditorProps) {
               className={styles["library-item"]}
               disabled={locked}
               onClick={() => add(kind)}
-              aria-label={`Add ${catalog[kind].name}`}
+              aria-label={`Add ${catalogEntry(kind).name}`}
             >
               <span className={styles["library-icon"]}>
-                <Icon name={catalog[kind].icon} size={21} />
+                <Icon name={catalogEntry(kind).icon} size={21} />
               </span>
               <span>
-                <strong>{catalog[kind].name}</strong>
-                <small>{catalog[kind].description}</small>
+                <strong>{catalogEntry(kind).name}</strong>
+                <small>{catalogEntry(kind).description}</small>
               </span>
             </button>
           ))}

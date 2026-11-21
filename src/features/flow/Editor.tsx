@@ -3,7 +3,7 @@ import type { FormEvent, ReactNode } from "react";
 import { ArrowLeft, Palette, Plus, Trash2, Upload, X } from "lucide-react";
 import { ComponentContent, Icon } from "./Components";
 import { componentStyle, icons } from "./componentPresentation";
-import { catalog, colors, validData } from "./model";
+import { catalogEntry, colors, validData } from "./model";
 import type { ComponentData } from "./model";
 import { flowIcons } from "../../../packages/pi-live-chat/flowProtocol";
 import styles from "./Playground.module.css";
@@ -169,7 +169,7 @@ export function ComponentEditor({
   const patch = (change: Partial<ComponentData>) => setDraft((d) => ({ ...d, ...change }));
   const kind = draft.kind;
   const subtitle = ["icon", "detail", "table", "comment"].includes(kind);
-  const title = `${isNew ? "Add" : "Edit"} ${catalog[kind].name}`;
+  const title = `${isNew ? "Add" : "Edit"} ${catalogEntry(kind).name}`;
   async function upload(file?: File) {
     if (!file) {
       return;
