@@ -1,6 +1,5 @@
 import { randomUUID } from "node:crypto";
 import { mkdtemp, rm } from "node:fs/promises";
-import type { AddressInfo } from "node:net";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { createServer as createViteServer } from "vite";
@@ -8,25 +7,45 @@ import type { ViteDevServer } from "vite";
 import { expect, test, vi } from "vitest";
 import config from "../../vite.config.js";
 import { createHttpServer } from "./server.js";
-import type { HerdrService } from "../herdr/herdrService.js";
-import type { LiveBridge } from "../pi/liveBridge.js";
+import { HerdrService } from "../herdr/herdrService.js";
+import { LiveBridge } from "../pi/liveBridge.js";
+import { agentSchema } from "../../src/shared/api/contracts.js";
+import { ackSchema } from "../../packages/pi-live-chat/protocol.js";
 
 test("the configured dev proxy accepts browser-origin prompts without weakening the origin guard", async () => {
   const directory = await mkdtemp(join(tmpdir(), "fernblick-proxy-"));
   const requestId = randomUUID();
-  const ack = { type: "ack", id: requestId, outcome: "invoked" };
-  const getAgent = vi.fn(async () => ({ name: "fixture" }));
-  const forward = vi.fn(async () => ack);
+  const ack = ackSchema.parse({ type: "ack", id: requestId, outcome: "invoked" });
+  const service = new HerdrService({
+    request: async () => {
+      throw new Error("Unexpected Herdr request");
+    },
+  });
+  const getAgent = vi.spyOn(service, "getAgent").mockResolvedValue(
+    agentSchema.parse({
+      pane_id: "fixture",
+      name: "fixture",
+      agent_status: "idle",
+      focused: false,
+      revision: 0,
+      tab_id: "t1",
+      workspace_id: "w1",
+    }),
+  );
+  const bridge = new LiveBridge(join(directory, "pi.sock"), join(directory, "herdr.sock"));
+  const forward = vi.spyOn(bridge, "request").mockResolvedValue(ack);
   // Real HTTP handler and Vite proxy, but no Herdr/Pi connections or agent commands.
-  const backend = createHttpServer({ getAgent } as unknown as HerdrService, directory, {
-    request: forward,
-  } as unknown as LiveBridge);
+  const backend = createHttpServer(service, directory, bridge);
   let frontend: ViteDevServer | undefined;
   try {
     await new Promise<void>((resolve) => {
       backend.listen(0, "127.0.0.1", resolve);
     });
-    const target = `http://127.0.0.1:${(backend.address() as AddressInfo).port}`;
+    const backendAddress = backend.address();
+    if (!backendAddress || typeof backendAddress === "string") {
+      throw new Error("Expected backend TCP address");
+    }
+    const target = `http://127.0.0.1:${backendAddress.port}`;
     const options = config.server?.proxy?.["/api"];
     expect(options).toBeDefined();
     frontend = await createViteServer({
@@ -46,7 +65,11 @@ test("the configured dev proxy accepts browser-origin prompts without weakening 
       },
     });
     await frontend.listen();
-    const base = `http://127.0.0.1:${(frontend.httpServer!.address() as AddressInfo).port}`;
+    const frontendAddress = frontend.httpServer?.address();
+    if (!frontendAddress || typeof frontendAddress === "string") {
+      throw new Error("Expected frontend TCP address");
+    }
+    const base = `http://127.0.0.1:${frontendAddress.port}`;
     const body = JSON.stringify({
       text: "Synthetic annotation feedback",
       target: { runtime: randomUUID(), epoch: randomUUID(), sessionId: "fixture" },
@@ -55,9 +78,13 @@ test("the configured dev proxy accepts browser-origin prompts without weakening 
     for (const origin of [base, "https://untrusted.invalid", undefined]) {
       getAgent.mockClear();
       forward.mockClear();
+      const headers = new Headers({ "Content-Type": "application/json" });
+      if (origin) {
+        headers.set("Origin", origin);
+      }
       const response = await fetch(`${base}/api/agents/fixture/prompt`, {
         method: "POST",
-        headers: { "Content-Type": "application/json", ...(origin ? { Origin: origin } : {}) },
+        headers,
         body,
       });
       if (origin === base) {

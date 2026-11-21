@@ -5,8 +5,8 @@ import { join } from "node:path";
 import { promisify } from "node:util";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
 import { createHttpServer } from "./server.js";
-import type { HerdrService } from "../herdr/herdrService.js";
-import type { LiveBridge } from "../pi/liveBridge.js";
+import { HerdrService } from "../herdr/herdrService.js";
+import { LiveBridge } from "../pi/liveBridge.js";
 import { MAX_IMAGE_BYTES } from "../../packages/pi-live-chat/protocol.js";
 import { formatMessageText } from "../../src/features/agents/chatMessageFormatting.js";
 import type { MessagePart } from "../../src/features/agents/chatMessageFormatting.js";
@@ -21,11 +21,23 @@ let server: ReturnType<typeof createHttpServer>;
 beforeEach(async () => {
   directory = await mkdtemp(join(tmpdir(), "fernblick-local-images-"));
   vi.stubEnv("FERNBLICK_UPLOAD_DIR", join(directory, "unused-uploads"));
-  server = createHttpServer({} as HerdrService, directory, {} as LiveBridge);
+  server = createHttpServer(
+    new HerdrService({
+      request: async () => {
+        throw new Error("Artifact route must not contact Herdr");
+      },
+    }),
+    directory,
+    new LiveBridge(join(directory, "pi.sock"), join(directory, "herdr.sock")),
+  );
   await new Promise<void>((done) => {
     server.listen(0, "127.0.0.1", done);
   });
-  base = `http://127.0.0.1:${(server.address() as { port: number }).port}`;
+  const address = server.address();
+  if (!address || typeof address === "string") {
+    throw new Error("Expected listening TCP server");
+  }
+  base = `http://127.0.0.1:${address.port}`;
 });
 afterEach(async () => {
   server.closeAllConnections();

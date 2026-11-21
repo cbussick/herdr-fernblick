@@ -1,15 +1,22 @@
 import { mkdtemp, mkdir, copyFile, readFile, writeFile, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import type { AddressInfo } from "node:net";
 import { expect, test } from "vitest";
 import { createHttpServer } from "./server.js";
-import type { HerdrService } from "../herdr/herdrService.js";
-import type { LiveBridge } from "../pi/liveBridge.js";
+import { HerdrService } from "../herdr/herdrService.js";
+import { LiveBridge } from "../pi/liveBridge.js";
 
 test("serves the locally hosted Manrope font and its complete OFL license", async () => {
   const directory = await mkdtemp(join(tmpdir(), "fernblick-static-"));
-  const server = createHttpServer({} as HerdrService, directory, {} as LiveBridge);
+  const server = createHttpServer(
+    new HerdrService({
+      request: async () => {
+        throw new Error("Artifact route must not contact Herdr");
+      },
+    }),
+    directory,
+    new LiveBridge(join(directory, "pi.sock"), join(directory, "herdr.sock")),
+  );
   try {
     await mkdir(join(directory, "licenses"));
     await copyFile("public/licenses/Manrope-OFL.txt", join(directory, "licenses/Manrope-OFL.txt"));
@@ -21,7 +28,11 @@ test("serves the locally hosted Manrope font and its complete OFL license", asyn
       server.once("error", reject);
       server.listen(0, "127.0.0.1", () => resolve(undefined));
     });
-    const base = `http://127.0.0.1:${(server.address() as AddressInfo).port}`;
+    const address = server.address();
+    if (!address || typeof address === "string") {
+      throw new Error("Expected listening TCP server");
+    }
+    const base = `http://127.0.0.1:${address.port}`;
     const license = await fetch(`${base}/licenses/Manrope-OFL.txt`);
     expect(license.status).toBe(200);
     const policy = license.headers.get("content-security-policy");
