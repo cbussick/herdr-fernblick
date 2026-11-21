@@ -1,6 +1,6 @@
 # Conversation whiteboard
 
-One persistent board belongs to each Pi conversation, not a browser mode. It is created lazily by opening it or by agent tool use. The existing Pi extension provides the same tools for terminal input, normal Fernblick chat and this board panel. See [the behavior and security contract](../../../docs/whiteboard.md) and [headless rendering](../../../docs/whiteboard-rendering.md).
+One persistent board belongs to each Pi conversation, not a browser mode. It is created lazily by opening it or by agent tool use. The existing Pi extension provides the same tools for terminal input, normal Fernblick chat and this board panel.
 
 ## Ownership and layout
 

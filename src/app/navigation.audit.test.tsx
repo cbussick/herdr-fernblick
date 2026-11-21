@@ -1,5 +1,5 @@
 // @vitest-environment happy-dom
-// Passing navigation-history regressions from docs/session-navigation-audit.md.
+// Conversation-scoped navigation-history regressions.
 import { act } from "react";
 import { create, type ReactTestRenderer } from "react-test-renderer";
 import { createMemoryHistory, RouterProvider } from "@tanstack/react-router";

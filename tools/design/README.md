@@ -302,8 +302,7 @@ PLAYWRIGHT_MODULE=/path/to/playwright/index.mjs \
   node --import tsx tools/design/tree-pages.mjs http://127.0.0.1:<static-port>
 ```
 
-See [conversation path paging](../../docs/conversation-paths.md) for the fixture
-scope and protocol. Results are in ignored `design-gallery/tree-pages/`.
+Results are in ignored `design-gallery/tree-pages/`.
 
 ## Proposal regression comparison
 

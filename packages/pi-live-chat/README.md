@@ -87,8 +87,7 @@ only print the URL. It does not send a prompt or change the terminal draft.
 Set `FERNBLICK_PUBLIC_URL` on the backend to the browser-reachable app base URL.
 A browser is unnecessary for agent edits; the backend and Pi connection must be
 available. Install/reload the updated extension in directly Herdr-created Pi
-sessions as well as Fernblick-created sessions. See the repository's
-`docs/whiteboard.md` and `docs/whiteboard-rendering.md` for the full contract.
+sessions as well as Fernblick-created sessions.
 
 ## Custom footer mirror
 
@@ -253,5 +252,3 @@ process group. Browser commands carry runtime/session/epoch identity, revalidate
 Herdr and the process, and are checked again inside Pi immediately before
 invocation. This is fail-closed best-effort process association, not an OS atomic
 transaction with Herdr: same-user process changes can race a foreground check.
-
-See the repository's `docs/pi-live-chat.md` for API and verification details.

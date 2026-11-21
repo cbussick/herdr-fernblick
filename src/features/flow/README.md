@@ -12,7 +12,7 @@
 
 ## SVG primitives
 
-`Primitives.tsx` shares explicit trusted SVG tags between the interactive node view and headless renderer. The wire contract is `type: "primitive"`, a five-value shape kind, and bounded typed `props`; operations use `drawing` to avoid overloading component props. Path commands are numeric tuples, never markup or raw path strings. `scene.ts` maps these to fixed-size, non-connectable nodes; standard React Flow selection, drag, resize, duplicate and delete preserve versions/tombstones. There is no manual drawing-props dialog or component parenting for primitives. See [agent syntax and limits](../../../docs/react-flow-boards.md#safe-svg-primitives).
+`Primitives.tsx` shares explicit trusted SVG tags between the interactive node view and headless renderer. The wire contract is `type: "primitive"`, a five-value shape kind, and bounded typed `props`; operations use `drawing` to avoid overloading component props. Path commands are numeric tuples, never markup or raw path strings. `scene.ts` maps these to fixed-size, non-connectable nodes; standard React Flow selection, drag, resize, duplicate and delete preserve versions/tombstones. There is no manual drawing-props dialog or component parenting for primitives.
 
 ## Headless entry
 

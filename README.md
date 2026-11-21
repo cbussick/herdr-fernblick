@@ -38,9 +38,7 @@ page reloads and Fernblick backend restarts and are shared by browsers using the
 same backend storage. Polling does not bring back the same badge; a later answer
 is unread again. Herdr's underlying status, focus, and native UI receipts are
 never changed. Answers arriving in a hidden browser tab remain unread until you
-return. Failed saves keep the answer unread and offer **Retry**. See
-[read-receipt diagnostics](docs/read-receipt-diagnostics.md) for privacy-safe
-saved browser/server logs and request correlation when troubleshooting save failures.
+return. Failed saves keep the answer unread and offer **Retry**.
 Settings → **Read-status logs** offers View, Copy and Clear, including offline.
 This browser keeps up to 200 redacted records for seven days (best effort); nothing
 is uploaded. Server history uses `FERNBLICK_LOG_DIR`, default
@@ -208,7 +206,7 @@ on the backend to omit explicit loading when installed globally.
 The extension connects persistently to
 `~/.local/share/fernblick/live/pi.sock`. Set `FERNBLICK_PI_SOCKET` consistently on
 both the backend and Pi/Herdr environment for a separate instance. No additional
-TCP port is opened. [Protocol, safety, and limitations](docs/pi-live-chat.md).
+TCP port is opened.
 
 Chat uses public Pi branch history and live events, **not JSONL files, pane text,
 or footer scraping**. Busy/concurrent sends are rejected; there is no queue.
@@ -225,7 +223,7 @@ paths page long histories with short previews, whole-session search, labels and
 explicit branch exploration. Paging and viewing another path do not change Pi’s
 active conversation. **Edit and branch** restores the full prompt and available
 images. Existing Pi sessions need `/reload` for paged paths; older peers show a
-reload notice. [Paging and limits](docs/conversation-paths.md). Tree data and navigation use
+reload notice. Tree data and navigation use
 the direct Pi bridge, never session-file reads or terminal command injection.
 
 ### Local images in chat
@@ -355,7 +353,7 @@ after an explicit delete confirmation; browsing never rewrites them.
 
 ### Whiteboard
 
-Open **Whiteboard** from live Chat for a fullscreen, persistent canvas identified by agent and workspace. Boards use structured React Flow components plus freehand drawing. Legacy Excalidraw boards are unsupported and left untouched on disk. See [structured boards and isolated dogfooding](docs/react-flow-boards.md). One lazy board belongs to each Pi conversation: the same agent can read/edit it from ordinary Fernblick chat, the board's expandable conversation panel, or Herdr terminal, without a special sending mode. Tools fetch fresh structure and image on demand; prompts do not automatically send screenshots. Back changes view, not access. The Pi extension's `/whiteboard` command opens a conversation-specific browser link (`FERNBLICK_PUBLIC_URL` on the backend); SSH receives a printable URL. Request-scoped authorization, revocation and conversation isolation remain backend-enforced. [Behavior, persistence, conflicts and limits](docs/whiteboard.md); [headless renderer setup](docs/whiteboard-rendering.md).
+Open **Whiteboard** from live Chat for a fullscreen, persistent canvas identified by agent and workspace. Boards use structured React Flow components plus freehand drawing. Legacy Excalidraw boards are unsupported and left untouched on disk. One lazy board belongs to each Pi conversation: the same agent can read/edit it from ordinary Fernblick chat, the board's expandable conversation panel, or Herdr terminal, without a special sending mode. Tools fetch fresh structure and image on demand; prompts do not automatically send screenshots. Back changes view, not access. The Pi extension's `/whiteboard` command opens a conversation-specific browser link (`FERNBLICK_PUBLIC_URL` on the backend); SSH receives a printable URL. Request-scoped authorization, revocation and conversation isolation remain backend-enforced.
 
 ### Skills
 
@@ -404,7 +402,7 @@ No Pi-native queue was added.
 - Load up to 600 lines of terminal history on demand when the agent is idle. History is a scrollable snapshot; **Return to live** resumes the current screen. Shell history can also be loaded, subject to Herdr's safe-read restrictions.
 - Stream ordinary Pi model chat, thinking and tool output; send idle text prompts and request Stop
 - Send terminal keys only from Terminal view
-- Select assistant text in Chat, tap **Comment**, then send the pending comments directly without changing the ordinary draft. No annotation mode is required. [Interaction and limitations](docs/annotation-mode.md).
+- Select assistant text in Chat, tap **Comment**, then send the pending comments directly without changing the ordinary draft. No annotation mode is required.
 
 The HTTP API does not expose a shell or arbitrary Herdr method proxy. Access to this application still grants effective control of the agents, which may execute commands and modify files with their Unix account's permissions.
 
