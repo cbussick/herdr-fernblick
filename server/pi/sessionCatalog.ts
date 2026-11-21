@@ -19,6 +19,11 @@ import type { SavedChat } from "../../src/shared/api/contracts.js";
 import { uploadIdSchema } from "../../packages/pi-live-chat/protocol.js";
 
 const receiptSchema = deleteChatResponseSchema.omit({ ok: true });
+const uploadReferenceSchema = z.object({ id: uploadIdSchema });
+const textBlockSchema = z.object({ type: z.literal("text"), text: z.string() });
+function isMissing(error: unknown): boolean {
+  return typeof error === "object" && error !== null && "code" in error && error.code === "ENOENT";
+}
 const headerSchema = z.object({
   type: z.literal("session"),
   id: z.string().min(1),
@@ -118,8 +123,8 @@ export class SessionCatalog {
         } else if (entry.isDirectory()) {
           const children = await readdir(join(this.root, entry.name), {
             withFileTypes: true,
-          }).catch((error: NodeJS.ErrnoException) => {
-            if (error.code === "ENOENT") {
+          }).catch((error: unknown) => {
+            if (isMissing(error)) {
               return [];
             }
             throw error;
@@ -132,7 +137,7 @@ export class SessionCatalog {
         }
       }
     } catch (error) {
-      if ((error as NodeJS.ErrnoException).code === "ENOENT") {
+      if (isMissing(error)) {
         cache.clear();
         return [];
       }
@@ -198,8 +203,8 @@ export class SessionCatalog {
     const file = await open(
       join(this.root, `.fernblick-deleted-${id}.json`),
       constants.O_RDONLY | constants.O_NOFOLLOW | constants.O_NONBLOCK,
-    ).catch((error: NodeJS.ErrnoException) => {
-      if (error.code === "ENOENT") {
+    ).catch((error: unknown) => {
+      if (isMissing(error)) {
         return null;
       }
       throw new SavedChatError(503, "Cannot read the session deletion receipt.");
@@ -285,7 +290,7 @@ export class SessionCatalog {
       if (error instanceof SavedChatError) {
         throw error;
       }
-      if ((error as NodeJS.ErrnoException).code === "ENOENT") {
+      if (isMissing(error)) {
         throw new SavedChatError(
           404,
           "This saved session is no longer available. Refresh the list.",
@@ -364,9 +369,9 @@ export class SessionCatalog {
           Array.isArray(entry.data)
         ) {
           for (const ref of entry.data) {
-            const parsed = uploadIdSchema.safeParse(ref?.id);
+            const parsed = uploadReferenceSchema.safeParse(ref);
             if (parsed.success) {
-              uploadIds.add(parsed.data);
+              uploadIds.add(parsed.data.id);
             }
           }
         }
@@ -380,8 +385,10 @@ export class SessionCatalog {
               ? content
               : Array.isArray(content)
                 ? content
-                    .filter((block) => block?.type === "text" && typeof block.text === "string")
-                    .map((block) => block.text)
+                    .flatMap((block: unknown) => {
+                      const parsed = textBlockSchema.safeParse(block);
+                      return parsed.success ? [parsed.data.text] : [];
+                    })
                     .join(" ")
                 : ""
           )
