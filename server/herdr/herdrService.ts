@@ -204,7 +204,12 @@ export class HerdrService {
     const agent = agents[0] ?? null;
     return {
       agent,
-      chat: chat ? savedChatSchema.parse({ ...chat, activePaneId: agent?.pane_id ?? null }) : null,
+      chat: chat
+        ? savedChatSchema.parse({
+            ...chat,
+            activePaneId: agent?.pane_id ?? null,
+          })
+        : null,
     };
   }
 
@@ -315,7 +320,10 @@ export class HerdrService {
       path: chat.path,
       cwd: chat.cwd,
     });
-    this.recentlyResumed.set(chat.path, { paneId: agent.pane_id, expires: Date.now() + 30_000 });
+    this.recentlyResumed.set(chat.path, {
+      paneId: agent.pane_id,
+      expires: Date.now() + 30_000,
+    });
     return { ...agent, pi_session_id: chat.sessionId };
   }
 
@@ -597,6 +605,24 @@ export class HerdrService {
 
   async sendPaneKey(paneId: string, key: KeyName) {
     await this.client.request("pane.send_keys", { pane_id: paneId, keys: [key] }, okResultSchema);
+  }
+
+  async hasForegroundProcess(agent: Agent, pid: number) {
+    const result = await this.client.request(
+      "pane.process_info",
+      { pane_id: agent.pane_id },
+      z.object({
+        type: z.literal("pane_process_info"),
+        process_info: z.object({
+          pane_id: z.string(),
+          foreground_processes: z.array(z.object({ pid: z.number().int().positive() })),
+        }),
+      }),
+    );
+    return (
+      result.process_info.pane_id === agent.pane_id &&
+      result.process_info.foreground_processes.some((process) => process.pid === pid)
+    );
   }
 
   async getAgent(target: string) {

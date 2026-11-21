@@ -94,7 +94,27 @@ const sendSchema = ownedSchema.extend({
 export function createBoardRoutes(service: HerdrService, bridge: LiveBridge, boards: BoardStore) {
   // Native terminal requests must use the same authoritative saved-session
   // association as browser routes, not just a self-reported socket snapshot.
-  bridge.setBoardAgentResolver((pane) => service.getAgent(pane));
+  bridge.setBoardAgentResolver(async (pane, sessionFile) => {
+    try {
+      const agent = await service.getAgent(pane);
+      if (agent.agent_session?.kind === "path" && agent.agent_session.value === sessionFile) {
+        return agent;
+      }
+    } catch {
+      // A cross-workspace move removes the original public pane handle.
+    }
+    const { agents } = await service.getDashboard();
+    const matches = agents.filter(
+      (agent) =>
+        agent.agent === "pi" &&
+        agent.agent_session?.kind === "path" &&
+        agent.agent_session.value === sessionFile,
+    );
+    if (matches.length !== 1) {
+      throw new LiveChatError(403, "Board live session host is unavailable or ambiguous");
+    }
+    return matches[0];
+  });
   const sending = new Set<string>();
   const streams = new Set<ServerResponse>();
   async function context(pane: string, target: Target) {
@@ -138,7 +158,11 @@ export function createBoardRoutes(service: HerdrService, bridge: LiveBridge, boa
           `attachment; filename="whiteboard-${snapshot.revision}.flow.json"`,
         );
         response.end(
-          JSON.stringify({ format: "fernblick-flow", version: 1, scene: snapshot.scene }),
+          JSON.stringify({
+            format: "fernblick-flow",
+            version: 1,
+            scene: snapshot.scene,
+          }),
         );
       }
       return true;

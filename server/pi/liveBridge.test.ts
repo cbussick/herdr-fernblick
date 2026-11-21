@@ -284,6 +284,37 @@ it("fails closed for absent, stale, ambiguous and background mappings", async ()
   });
   await vi.waitFor(() => expect(() => bridge.current(agent)).toThrow("Ambiguous"));
 });
+it("resolves a moved conversation by session and verifies its live host process", async () => {
+  const p = await peer();
+  const moved = { ...agent, pane_id: "w2:p9" };
+  const verifyHost = vi.fn(async (_agent: Agent, pid: number) => pid === 123);
+  bridge.setProcessResolver(verifyHost);
+  expect((await bridge.resolve(moved)).snapshot).toEqual(p.snapshot);
+  expect(verifyHost).toHaveBeenCalledWith(moved, 123);
+  const updated = vi.fn();
+  const unsubscribe = bridge.subscribe(updated, moved.pane_id);
+  writeFrame(p.socket, { ...p.snapshot, seq: 2 });
+  await vi.waitFor(() => expect(updated).toHaveBeenCalled());
+  expect(bridge.current(moved).snapshot.seq).toBe(2);
+  unsubscribe();
+  const commands: Array<Command> = [];
+  receiveFrames(p.socket, (value) => commands.push(commandSchema.parse(value)));
+  const pending = bridge.command(moved, targetOf(p.snapshot), "stop");
+  await vi.waitFor(() => expect(commands).toHaveLength(1));
+  writeFrame(p.socket, { type: "ack", id: commands[0].id, outcome: "invoked" });
+  await expect(pending).resolves.toMatchObject({ type: "ack", outcome: "invoked" });
+  inspect.mockResolvedValueOnce({
+    start: "reused-pid",
+    foreground: true,
+    alive: true,
+    pane: agent.pane_id,
+    herdrSocket: "/herdr.sock",
+  });
+  await expect(bridge.resolve(moved)).rejects.toThrow("stale");
+  verifyHost.mockResolvedValue(false);
+  await expect(bridge.resolve(moved)).rejects.toThrow("stale");
+});
+
 it("accepts updated snapshots during an awaited process check, but rejects epoch changes", async () => {
   const { socket, snapshot } = await peer();
   let release!: (value: Awaited<ReturnType<typeof inspect>>) => void;

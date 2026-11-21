@@ -14,6 +14,25 @@ const agent = {
   workspace_id: "w1",
 };
 
+it("checks the exact foreground PID and returned pane for a moved live host", async () => {
+  let pane = agent.pane_id;
+  const request = vi.fn(async <T>(_method: string, _params: unknown, schema: z.ZodType<T>) =>
+    schema.parse({
+      type: "pane_process_info",
+      process_info: { pane_id: pane, foreground_processes: [{ pid: 123 }] },
+    }),
+  );
+  const service = new HerdrService({
+    request: async (method, params, schema) => schema.parse(await request(method, params, schema)),
+  });
+  const current = { ...agent, agent_status: "idle" as const };
+  await expect(service.hasForegroundProcess(current, 123)).resolves.toBe(true);
+  expect(request).toHaveBeenCalledWith("pane.process_info", { pane_id: pane }, expect.anything());
+  await expect(service.hasForegroundProcess(current, 999)).resolves.toBe(false);
+  pane = "w9:p9";
+  await expect(service.hasForegroundProcess(current, 123)).resolves.toBe(false);
+});
+
 it("adds workspace and tab labels to agents from the session snapshot", async () => {
   const request = vi.fn(async <T>(_method: string, _params: unknown, schema: z.ZodType<T>) =>
     schema.parse({

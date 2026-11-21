@@ -326,7 +326,9 @@ async function handleApi(
   if (request.method === "POST" && resumeMatch) {
     requireSameOrigin(request);
     const body = resumeChatRequestSchema.parse(await readJson(request));
-    sendJson(response, 200, { agent: await service.resumeChat(resumeMatch[1], body.workspaceId) });
+    sendJson(response, 200, {
+      agent: await service.resumeChat(resumeMatch[1], body.workspaceId),
+    });
     return true;
   }
 
@@ -550,7 +552,11 @@ async function handleApi(
     } else if (route.action === "set-model") {
       const body = modelSelectionSchema.extend({ target: chatTargetSchema }).parse(raw);
       target = body.target;
-      input = { action: "set-model", provider: body.provider, modelId: body.modelId };
+      input = {
+        action: "set-model",
+        provider: body.provider,
+        modelId: body.modelId,
+      };
     } else {
       const body = treeRequestSchema.parse(raw);
       target = body.target;
@@ -635,6 +641,7 @@ export function createHttpServer(
   if (boards) {
     bridge.setBoardStore(boards);
   }
+  bridge.setProcessResolver?.((agent, pid) => service.hasForegroundProcess(agent, pid));
   const handleBoard = boards ? createBoardRoutes(service, bridge, boards) : undefined;
   return createServer((request, response) => {
     void (async () => {
@@ -672,7 +679,10 @@ export function createHttpServer(
         if (error instanceof HerdrRequestError) {
           const status =
             error.code === "unavailable" ? 503 : error.code === "agent_busy" ? 409 : 502;
-          sendJson(response, status, { error: error.message, code: error.code });
+          sendJson(response, status, {
+            error: error.message,
+            code: error.code,
+          });
           return;
         }
 

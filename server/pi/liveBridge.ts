@@ -137,8 +137,12 @@ export class LiveBridge {
   setBoardStore(boards: BoardStore) {
     this.boards = boards;
   }
-  private boardAgent?: (pane: string) => Promise<Agent>;
-  setBoardAgentResolver(resolveAgent: (pane: string) => Promise<Agent>) {
+  private processResolver?: (agent: Agent, pid: number) => Promise<boolean>;
+  setProcessResolver(resolveProcess: (agent: Agent, pid: number) => Promise<boolean>) {
+    this.processResolver = resolveProcess;
+  }
+  private boardAgent?: (pane: string, sessionFile: string) => Promise<Agent>;
+  setBoardAgentResolver(resolveAgent: (pane: string, sessionFile: string) => Promise<Agent>) {
     this.boardAgent = resolveAgent;
   }
   private boardRenderer?: (scene: BoardScene, quality?: BoardImageQuality) => Promise<Buffer>;
@@ -216,9 +220,10 @@ export class LiveBridge {
     if (!this.boardAgent) {
       throw new LiveChatError(503, "Board session validation unavailable");
     }
-    const agent = await this.boardAgent(snapshot.identity.pane);
+    const agent = await this.boardAgent(snapshot.identity.pane, snapshot.identity.sessionFile);
+    const current = await this.resolve(agent);
     validate();
-    if (this.current(agent) !== peer) {
+    if (current !== peer) {
       throw new LiveChatError(403, "Herdr and Pi board sessions do not match");
     }
     return validate;
@@ -454,11 +459,8 @@ export class LiveBridge {
     };
   }
   private notify(pane: string | undefined) {
-    if (!pane) {
-      return;
-    }
     for (const [listener, filter] of this.listeners) {
-      if (!filter || filter === pane) {
+      if (!pane || !filter || filter === pane) {
         listener();
       }
     }
@@ -493,7 +495,7 @@ export class LiveBridge {
           );
         }
       }
-      this.notify(peer.snapshot?.identity.pane);
+      this.notify(undefined);
     });
     receiveFrames(socket, (raw) => {
       const control = boardControlSchema.safeParse(raw);
@@ -581,7 +583,7 @@ export class LiveBridge {
       }
       peer.snapshot = next;
       clearTimeout(handshake);
-      this.notify(next.identity.pane);
+      this.notify(undefined);
     });
   }
   current(agent: Agent): Peer & { snapshot: Snapshot } {
@@ -592,11 +594,21 @@ export class LiveBridge {
         (!agent.agent || agent.agent === "pi") && !agent.agent_session,
       );
     }
-    const candidates = [...this.peers].filter(
-      (p) =>
-        p.snapshot?.identity.pane === agent.pane_id &&
-        resolve(p.snapshot.identity.herdrSocket) === resolve(this.herdrSocket),
+    const connected = [...this.peers].filter(
+      (p) => p.snapshot && resolve(p.snapshot.identity.herdrSocket) === resolve(this.herdrSocket),
     );
+    // A pane is a location, not a durable conversation identity. Keep same-pane
+    // candidates so stale session associations still fail closed below.
+    const local = connected.filter((p) => p.snapshot?.identity.pane === agent.pane_id);
+    const candidates = local.length
+      ? local
+      : connected.filter(
+          (p) =>
+            p.snapshot &&
+            agent.agent_session?.kind === "path" &&
+            resolve(p.snapshot.identity.sessionFile) === resolve(agent.agent_session.value) &&
+            (!agent.pi_session_id || p.snapshot.identity.sessionId === agent.pi_session_id),
+        );
     if (candidates.length !== 1) {
       throw new LiveChatError(
         409,
@@ -614,6 +626,9 @@ export class LiveBridge {
     if (resolve(snapshot.identity.sessionFile) !== resolve(agent.agent_session.value)) {
       throw new LiveChatError(409, "Herdr and Pi session identities do not match");
     }
+    if (agent.pi_session_id && snapshot.identity.sessionId !== agent.pi_session_id) {
+      throw new LiveChatError(409, "Herdr and Pi session identities do not match");
+    }
     return peer;
   }
   async resolve(agent: Agent): Promise<Peer & { snapshot: Snapshot }> {
@@ -625,14 +640,18 @@ export class LiveBridge {
     } catch {
       throw new LiveChatError(409, "Pi process unavailable");
     }
+    const moved = snapshot.identity.pane !== agent.pane_id;
+    const hostMatches =
+      !moved || (await this.processResolver?.(agent, snapshot.identity.pid)) === true;
     if (
+      !hostMatches ||
       !this.peers.has(peer) ||
       this.current(agent) !== peer ||
       peer.snapshot?.epoch !== snapshot.epoch ||
       !process.alive ||
       !process.foreground ||
       process.start !== snapshot.identity.processStart ||
-      process.pane !== agent.pane_id ||
+      process.pane !== snapshot.identity.pane ||
       !process.herdrSocket ||
       resolve(process.herdrSocket) !== resolve(this.herdrSocket)
     ) {
