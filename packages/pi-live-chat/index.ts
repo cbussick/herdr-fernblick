@@ -793,6 +793,7 @@ export default function liveChat(pi: ExtensionAPI) {
           // compact() returns void and aborts active work internally. Guard before
           // invocation, then retain serialization until a terminal callback, even
           // if the socket disconnects or the backend deadline expires.
+          const compactContext = context;
           preparing = true;
           boards?.compacting();
           let settled = false;
@@ -820,7 +821,7 @@ export default function liveChat(pi: ExtensionAPI) {
               if (error) {
                 reject(error.message.slice(0, 512));
               } else {
-                projector.reconcile(context!.sessionManager.getBranch());
+                projector.reconcile(compactContext.sessionManager.getBranch());
                 requestFooter();
                 writeFrame(client, { type: "compacted", id: command.id, target: command.target });
               }
@@ -829,7 +830,7 @@ export default function liveChat(pi: ExtensionAPI) {
           };
           publish();
           try {
-            context.compact({ onComplete: () => finish(), onError: finish });
+            compactContext.compact({ onComplete: () => finish(), onError: finish });
           } catch (error) {
             finish(error instanceof Error ? error : new Error("Compaction failed"));
           }

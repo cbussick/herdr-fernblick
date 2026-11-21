@@ -490,14 +490,28 @@ function WhiteboardSession({
             recovery={
               <>
                 {state.recovery ? (
-                  <button type="button" onClick={() => downloadScene(state.recovery!)}>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      if (state.recovery) {
+                        downloadScene(state.recovery);
+                      }
+                    }}
+                  >
                     Download previous local drawing
                   </button>
                 ) : null}
                 {state.conflict || leave ? (
                   <div className={styles.recovery}>
                     {state.scene ? (
-                      <button type="button" onClick={() => downloadScene(state.scene!)}>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          if (state.scene) {
+                            downloadScene(state.scene);
+                          }
+                        }}
+                      >
                         Download my drawing
                       </button>
                     ) : null}

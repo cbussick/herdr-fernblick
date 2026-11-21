@@ -1,4 +1,4 @@
-import { useCallback, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { createRoot } from "react-dom/client";
 import FlowBoardEditor from "./FlowBoardEditor";
 import type { BoardScene } from "../../../packages/pi-live-chat/boardProtocol";
@@ -19,15 +19,21 @@ declare global {
   }
 }
 window.flowTest = test;
-function Fixture() {
+export function Fixture() {
   const [scene, setScene] = useState(empty),
     [generation, setGeneration] = useState(0),
     [locked, setLocked] = useState(false);
-  test.setScene = (scene) => {
-    setScene(scene);
-    setGeneration((v) => v + 1);
-  };
-  test.setLocked = setLocked;
+  useEffect(() => {
+    test.setScene = (next) => {
+      setScene(next);
+      setGeneration((value) => value + 1);
+    };
+    test.setLocked = setLocked;
+    return () => {
+      test.setScene = () => {};
+      test.setLocked = () => {};
+    };
+  }, []);
   const ready = useCallback((handle: EditorHandle | null) => {
     test.ready = !!handle;
   }, []);
@@ -57,4 +63,8 @@ function Fixture() {
     />
   );
 }
-createRoot(document.getElementById("root")!).render(<Fixture />);
+const root = document.getElementById("root");
+if (!root) {
+  throw new Error("Flow editor fixture root is missing");
+}
+createRoot(root).render(<Fixture />);

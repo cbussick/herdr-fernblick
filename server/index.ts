@@ -82,10 +82,11 @@ server.listen(port, host, () => {
   const address = server.address();
   const renderHost = host === "0.0.0.0" || host === "::" ? "127.0.0.1" : host;
   const hostname = renderHost.includes(":") ? `[${renderHost}]` : renderHost;
-  renderer = new BoardRenderer(
+  const activeRenderer = new BoardRenderer(
     process.env.FERNBLICK_RENDER_ORIGIN ??
       `http://${hostname}:${typeof address === "object" && address ? address.port : port}`,
   );
-  bridge.setBoardRenderer((scene, quality) => renderer!.render(scene, quality));
+  renderer = activeRenderer;
+  bridge.setBoardRenderer((scene, quality) => activeRenderer.render(scene, quality));
   process.stdout.write(`Fernblick listening on http://${host}:${port}\n`);
 });
