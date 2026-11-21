@@ -61,7 +61,7 @@ async function records() {
           .trim()
           .split("\n")
           .filter(Boolean)
-          .map((line) => JSON.parse(line)),
+          .map((line) => readReceiptRecordSchema.parse(JSON.parse(line))),
       ),
     )
   ).flat();

@@ -5,6 +5,9 @@ import { createServer as createSocketServer } from "node:net";
 import type { Server as SocketServer } from "node:net";
 import type { Server } from "node:http";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
+import { z } from "zod";
+import { agentsResponseSchema } from "../../src/shared/api/contracts.js";
+import { readReceiptRecordSchema } from "../../src/shared/api/readReceiptDiagnostics.js";
 import { HerdrClient } from "../herdr/HerdrClient.js";
 import { HerdrService } from "../herdr/herdrService.js";
 import { LiveBridge } from "../pi/liveBridge.js";
@@ -27,7 +30,18 @@ async function receiptIds() {
   return (await readdir(join(directory, "receipts")))
     .filter((name) => name.endsWith(".read"))
     .map((name) => name.split(".").at(-2))
-    .sort();
+    .sort((a, b) => {
+      if (a === b) {
+        return 0;
+      }
+      if (a === undefined) {
+        return 1;
+      }
+      if (b === undefined) {
+        return -1;
+      }
+      return a < b ? -1 : 1;
+    });
 }
 
 function createHerdrSocket() {
@@ -91,8 +105,15 @@ async function createBackend(path = socketPath, log?: ReadReceiptFileLog) {
   });
   return {
     server: instance,
-    base: `http://127.0.0.1:${(instance.address() as { port: number }).port}`,
+    base: backendUrl(instance),
   };
+}
+function backendUrl(instance: Server) {
+  const address = instance.address();
+  if (!address || typeof address === "string") {
+    throw new Error("Expected a listening TCP backend");
+  }
+  return `http://127.0.0.1:${address.port}`;
 }
 async function startBackend() {
   ({ server, base } = await createBackend());
@@ -106,7 +127,7 @@ async function stopBackend(instance = server) {
 async function dashboard(origin = base) {
   const response = await fetch(`${origin}/api/agents`);
   expect(response.status).toBe(200);
-  return (await response.json()) as { agents: Array<Agent> };
+  return agentsResponseSchema.parse(await response.json());
 }
 async function markRead(paneId: string, completionId: string, origin = base) {
   return fetch(`${origin}/api/agents/${encodeURIComponent(paneId)}/read`, {
@@ -380,9 +401,13 @@ it("rejects missing agents, invalid receipts and cross-origin writes", async () 
   expect((await markRead(first.pane_id, "../unsafe")).status).toBe(400);
   expect((await markRead("w1:p99", first.completion!.id)).status).toBe(404);
   for (const origin of [undefined, "https://other.example"]) {
+    const headers = new Headers({ "Content-Type": "application/json" });
+    if (origin) {
+      headers.set("Origin", origin);
+    }
     const response = await fetch(`${base}/api/agents/w1%3Ap1/read`, {
       method: "POST",
-      headers: { "Content-Type": "application/json", ...(origin ? { Origin: origin } : {}) },
+      headers,
       body: JSON.stringify({ completionId: first.completion!.id }),
     });
     expect(response.status).toBe(403);
@@ -417,6 +442,9 @@ it("refuses symlink receipt files rather than reading or writing their targets",
   expect((await dashboard()).agents[0].completion!.read).toBe(false);
 });
 
+function parseLogRecord(line: unknown) {
+  return readReceiptRecordSchema.parse(JSON.parse(z.string().parse(line)));
+}
 let diagnosticTime = Date.now();
 function captureDiagnostics() {
   diagnosticTime += 120_000;
@@ -426,7 +454,7 @@ function captureDiagnostics() {
   return {
     warn,
     info,
-    records: () => [...warn.mock.calls, ...info.mock.calls].map(([line]) => JSON.parse(line)),
+    records: () => [...warn.mock.calls, ...info.mock.calls].map(([line]) => parseLogRecord(line)),
   };
 }
 
@@ -504,7 +532,9 @@ it("separates stale requests, validation and dependency failures and replaces un
       expect.objectContaining({ category: "dependency", status: 503, requestId }),
     ]),
   );
-  expect(logs.warn.mock.calls.map(([line]) => JSON.parse(line).category)).not.toContain("stale");
+  expect(logs.warn.mock.calls.map(([line]) => parseLogRecord(line).category)).not.toContain(
+    "stale",
+  );
   expect(JSON.stringify(logs.records())).not.toContain("/secret/");
 });
 
@@ -530,7 +560,7 @@ it("retrieves a correlated save failure from disk after restarting the backend",
     const records = lines
       .trim()
       .split("\n")
-      .map((line) => JSON.parse(line));
+      .map((line) => parseLogRecord(line));
     expect(records).toEqual(
       expect.arrayContaining([
         expect.objectContaining({ requestId, boundary: "request", status: 500 }),

@@ -163,8 +163,11 @@ export class ReadReceiptFileLog {
     }
     files.sort((a, b) => a.started - b.started || a.name.localeCompare(b.name));
     let bytes = files.reduce((sum, file) => sum + file.bytes, incoming);
-    while (bytes > this.maxBytes && files.length) {
-      const oldest = files.shift()!;
+    while (bytes > this.maxBytes) {
+      const oldest = files.shift();
+      if (!oldest) {
+        break;
+      }
       await unlink(join(this.directory, oldest.name));
       if (this.active?.name === oldest.name) {
         this.active = undefined;
@@ -237,8 +240,7 @@ export class ReadReceiptFileLog {
         this.warn(error);
       }
     }
-    while (this.queue.length) {
-      const record = this.queue.shift()!;
+    for (let record = this.queue.shift(); record; record = this.queue.shift()) {
       try {
         await this.append(record);
       } catch (error) {
