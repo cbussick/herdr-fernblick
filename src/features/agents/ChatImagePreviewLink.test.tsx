@@ -8,6 +8,14 @@ import { ChatMessageText } from "./ChatMessageText";
 
 vi.mock("react-dom", () => ({ createPortal: (children: ReactNode) => children }));
 
+function click(src?: string) {
+  return {
+    button: 0,
+    preventDefault: vi.fn(),
+    target: { closest: () => (src ? { getAttribute: () => src } : null) },
+  };
+}
+
 describe("Markdown image previews", () => {
   let renderer: ReactTestRenderer;
   const opener = { isConnected: true, focus: vi.fn() };
@@ -36,13 +44,6 @@ describe("Markdown image previews", () => {
         createNodeMock: (element) => (element.type === "dialog" ? dialog : null),
       });
     });
-  }
-  function click(src?: string) {
-    return {
-      button: 0,
-      preventDefault: vi.fn(),
-      target: { closest: () => (src ? { getAttribute: () => src } : null) },
-    };
   }
 
   it.each([

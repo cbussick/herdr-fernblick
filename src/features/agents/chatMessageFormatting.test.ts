@@ -6,6 +6,20 @@ function leaves(parts: Array<MessagePart>): Array<MessagePart> {
   return parts.flatMap((part) => ("children" in part ? leaves(part.children) : [part]));
 }
 
+function findCode(parts: Array<MessagePart>): MessagePart | undefined {
+  for (const part of parts) {
+    if (part.kind === "codeBlock") {
+      return part;
+    }
+    if ("children" in part) {
+      const found = findCode(part.children);
+      if (found) {
+        return found;
+      }
+    }
+  }
+}
+
 describe("formatMessageText source ranges", () => {
   it.each([
     "```js\nx\n",
@@ -19,19 +33,6 @@ describe("formatMessageText source ranges", () => {
     "~~~\n\n  code\n\n~~~",
     "```\n```",
   ])("displays the same code payload it copies: %s", (text) => {
-    function findCode(parts: Array<MessagePart>): MessagePart | undefined {
-      for (const part of parts) {
-        if (part.kind === "codeBlock") {
-          return part;
-        }
-        if ("children" in part) {
-          const found = findCode(part.children);
-          if (found) {
-            return found;
-          }
-        }
-      }
-    }
     const code = findCode(formatMessageText(text));
     expect(code && "children" in code).toBe(true);
     if (!code || !("children" in code)) {
