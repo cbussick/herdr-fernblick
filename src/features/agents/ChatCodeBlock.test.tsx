@@ -1,3 +1,34 @@
+function legacyClipboard(success: boolean) {
+  const owner = new Window();
+  const focused = owner.document.createElement("div");
+  owner.document.body.append(focused);
+  const focus = vi.spyOn(focused, "focus").mockImplementation(() => {});
+  const range = { cloneRange: () => "saved range" };
+  const selection = {
+    rangeCount: 1,
+    getRangeAt: () => range,
+    removeAllRanges: vi.fn(),
+    addRange: vi.fn(),
+  };
+  const textarea = {
+    value: "",
+    className: "",
+    setAttribute: vi.fn(),
+    select: vi.fn(),
+    remove: vi.fn(),
+  };
+  const execCommand = vi.fn(() => success);
+  vi.stubGlobal("window", { setTimeout, clearTimeout, getSelection: () => selection });
+  vi.stubGlobal("document", {
+    activeElement: focused,
+    createElement: () => textarea,
+    body: { append: vi.fn() },
+    execCommand,
+  });
+  return { textarea, execCommand, focus, selection };
+}
+
+import { Window } from "happy-dom";
 import { testText } from "../../shared/lib/testText";
 import { dispatchTestEvent } from "../../shared/lib/dispatchTestEvent";
 import { act } from "react";
@@ -43,37 +74,6 @@ describe("copying code blocks", () => {
     expect(renderer!.root.findByType("button").children).toEqual(["Copy"]);
   });
 
-  function legacyClipboard(success: boolean) {
-    class Element {
-      focus = vi.fn();
-    }
-    const focused = new Element();
-    const range = { cloneRange: () => "saved range" };
-    const selection = {
-      rangeCount: 1,
-      getRangeAt: () => range,
-      removeAllRanges: vi.fn(),
-      addRange: vi.fn(),
-    };
-    const textarea = {
-      value: "",
-      className: "",
-      setAttribute: vi.fn(),
-      select: vi.fn(),
-      remove: vi.fn(),
-    };
-    const execCommand = vi.fn(() => success);
-    vi.stubGlobal("HTMLElement", Element);
-    vi.stubGlobal("window", { setTimeout, clearTimeout, getSelection: () => selection });
-    vi.stubGlobal("document", {
-      activeElement: focused,
-      createElement: () => textarea,
-      body: { append: vi.fn() },
-      execCommand,
-    });
-    return { textarea, execCommand, focused, selection };
-  }
-
   it.each(["unavailable", "rejected"])(
     "uses the HTTP-compatible fallback when Clipboard API is %s",
     async (mode) => {
@@ -82,12 +82,12 @@ describe("copying code blocks", () => {
       } else {
         writeText.mockRejectedValue(new Error("Permission denied"));
       }
-      const { textarea, execCommand, focused, selection } = legacyClipboard(true);
+      const { textarea, execCommand, focus, selection } = legacyClipboard(true);
       await copyCodeText("exact\n  payload");
       expect(textarea.value).toBe("exact\n  payload");
       expect(execCommand).toHaveBeenCalledWith("copy");
       expect(textarea.remove).toHaveBeenCalledOnce();
-      expect(focused.focus).toHaveBeenCalledWith({ preventScroll: true });
+      expect(focus).toHaveBeenCalledWith({ preventScroll: true });
       expect(selection.addRange).toHaveBeenCalledWith("saved range");
     },
   );

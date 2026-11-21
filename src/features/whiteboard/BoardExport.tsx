@@ -1,3 +1,4 @@
+import { isDomNode } from "../../shared/lib/dom";
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import type { BoardScene } from "../../../packages/pi-live-chat/boardProtocol";
 import type { BoardImageQuality } from "../../../packages/pi-live-chat/boardImageExport";
@@ -24,7 +25,10 @@ export function BoardExport({
   const menu = useRef<HTMLDialogElement>(null);
   const request = useRef<AbortController | null>(null);
   useLayoutEffect(() => {
-    const element = menu.current!;
+    const element = menu.current;
+    if (!element) {
+      return;
+    }
     const position = () => {
       const target = anchor.getBoundingClientRect();
       const box = element.getBoundingClientRect();
@@ -58,7 +62,7 @@ export function BoardExport({
   useEffect(() => {
     const outside = (event: PointerEvent) => {
       if (
-        event.target instanceof Node &&
+        isDomNode(event.target) &&
         !menu.current?.contains(event.target) &&
         !anchor.contains(event.target)
       ) {
@@ -118,11 +122,11 @@ export function BoardExport({
           return;
         }
         const items = Array.from(
-          menu.current!.querySelectorAll<HTMLButtonElement>(
+          event.currentTarget.querySelectorAll<HTMLButtonElement>(
             'button[role="menuitem"]:not(:disabled)',
           ),
         );
-        const current = items.indexOf(document.activeElement as HTMLButtonElement);
+        const current = items.findIndex((item) => item === document.activeElement);
         const index =
           event.key === "Home"
             ? 0

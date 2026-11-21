@@ -1,3 +1,13 @@
+function code(value: string, language?: string) {
+  return renderToStaticMarkup(
+    <ChatCodeText
+      value={value}
+      language={language}
+      renderRange={(start, end) => value.slice(start, end)}
+    />,
+  );
+}
+
 import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it } from "vitest";
 import { ChatMessageText } from "./ChatMessageText";
@@ -5,16 +15,6 @@ import { ChatCodeText } from "./ChatCodeText";
 import styles from "./ChatCodeText.module.css";
 
 describe("chat syntax highlighting", () => {
-  function code(value: string, language?: string) {
-    return renderToStaticMarkup(
-      <ChatCodeText
-        value={value}
-        language={language}
-        renderRange={(start, end) => value.slice(start, end)}
-      />,
-    );
-  }
-
   it.each(["ts", "typescript", "TS", "js", "javascript"])(
     "colors %s keywords, strings and comments",
     (language) => {

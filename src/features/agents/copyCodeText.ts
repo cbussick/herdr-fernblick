@@ -1,3 +1,4 @@
+import { isHtmlElement } from "../../shared/lib/dom";
 import styles from "./ChatMessageText.module.css";
 
 // Fernblick can run on an HTTP tailnet address, where Clipboard API is absent.
@@ -29,7 +30,7 @@ export async function copyCodeText(value: string) {
     }
   } finally {
     textarea.remove();
-    if (focused instanceof HTMLElement) {
+    if (isHtmlElement(focused)) {
       focused.focus({ preventScroll: true });
     }
     selection?.removeAllRanges();

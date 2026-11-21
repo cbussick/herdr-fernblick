@@ -323,7 +323,11 @@ export function ChatTranscript({
                       <ChatAttachment
                         key={url + index}
                         url={url}
-                        onOpen={() => setImage({ urls: message.attachments!, index })}
+                        onOpen={() => {
+                          if (message.attachments) {
+                            setImage({ urls: message.attachments, index });
+                          }
+                        }}
                       />
                     ))}
                   </div>

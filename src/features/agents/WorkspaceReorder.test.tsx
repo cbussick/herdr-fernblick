@@ -1,3 +1,12 @@
+const rect = (top: number, height: number) => ({
+  left: 10,
+  right: 300,
+  top,
+  bottom: top + height,
+  width: 290,
+  height,
+});
+
 import { testText } from "../../shared/lib/testText";
 import { dispatchTestEvent } from "../../shared/lib/dispatchTestEvent";
 import { act } from "react";
@@ -93,14 +102,6 @@ it("rolls back errors and reports them without retrying", async () => {
 it.each([140, 92, 56, 20, 0])(
   "moves a tall workspace to first position at preview center y=%s",
   async (y) => {
-    const rect = (top: number, height: number) => ({
-      left: 10,
-      right: 300,
-      top,
-      bottom: top + height,
-      width: 290,
-      height,
-    });
     const droppableRects = new Map([
       ["w1", rect(100, 80)],
       ["w2", rect(200, 800)],

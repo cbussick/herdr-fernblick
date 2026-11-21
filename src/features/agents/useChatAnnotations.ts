@@ -1,3 +1,4 @@
+import { isDomElement } from "../../shared/lib/dom";
 import { useEffect, useEffectEvent, useRef, useState } from "react";
 import type { RefObject } from "react";
 import { MAX_TEXT, matchesTarget, targetOf } from "../../../packages/pi-live-chat/protocol";
@@ -124,7 +125,7 @@ export function useChatAnnotations(
     let dragging = false;
     function inAnnotationUI(target: EventTarget | null) {
       return (
-        target instanceof Element &&
+        isDomElement(target) &&
         target.closest('[data-ui="annotation-action"], [data-ui="annotation-popover"]')
       );
     }

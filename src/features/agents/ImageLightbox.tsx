@@ -1,3 +1,4 @@
+import { isHtmlElement } from "../../shared/lib/dom";
 import { useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { BackIcon, ChevronIcon, CloseIcon, ImageIcon } from "../../shared/ui/Icons";
@@ -37,7 +38,7 @@ export function ImageLightbox({
   const multiple = images.length > 1;
   useEffect(() => {
     const modal = lightbox.current;
-    const opener = document.activeElement as HTMLElement | null;
+    const opener = document.activeElement;
     if (modal && !modal.open) {
       modal.showModal();
     }
@@ -45,7 +46,7 @@ export function ImageLightbox({
       if (modal?.open) {
         modal.close();
       }
-      if (opener?.isConnected) {
+      if (isHtmlElement(opener) && opener.isConnected) {
         opener.focus();
       }
     };

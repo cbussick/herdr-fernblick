@@ -1,3 +1,4 @@
+import { isHtmlElement } from "../../shared/lib/dom";
 import { useEffect, useRef, useState } from "react";
 import type { FormEvent } from "react";
 import { useQueryClient } from "@tanstack/react-query";
@@ -52,7 +53,7 @@ export function ResumeChatDialog({
         dialog.close();
       }
       const opener = openerRef.current;
-      if (opener && opener instanceof HTMLElement && opener.isConnected) {
+      if (opener && isHtmlElement(opener) && opener.isConnected) {
         opener.focus({ preventScroll: true });
       }
     };

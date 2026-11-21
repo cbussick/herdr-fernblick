@@ -66,7 +66,12 @@ export function SkillComposer(props: Props) {
   const { mobile, dialogRef } = useSkillPickerOverlay(open);
   const catalog = useQuery({
     queryKey: ["agent-skills", props.pane, target?.runtime, target?.sessionId, target?.epoch],
-    queryFn: ({ signal }) => getAgentSkills(props.pane, target!, signal),
+    queryFn: ({ signal }) => {
+      if (!target) {
+        throw new Error("No active session for skills");
+      }
+      return getAgentSkills(props.pane, target, signal);
+    },
     enabled: open && connected && available && Boolean(target),
     retry: false,
     staleTime: 0,

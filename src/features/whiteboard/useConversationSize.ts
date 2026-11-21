@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import type { CSSProperties, KeyboardEvent, PointerEvent, RefObject } from "react";
+import type { KeyboardEvent, PointerEvent, RefObject } from "react";
 import { flushSync } from "react-dom";
 
 const widthKey = "fernblick:whiteboard-conversation-width";
@@ -231,7 +231,7 @@ export function useConversationSize(dock: RefObject<HTMLElement | null>) {
     style: {
       "--conversation-width": viewport.width ? `${actualWidth}px` : undefined,
       "--conversation-height": `${actualFraction * 100}%`,
-    } as CSSProperties,
+    },
     separator: {
       role: "separator" as const,
       tabIndex: 0,

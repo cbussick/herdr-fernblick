@@ -1,3 +1,4 @@
+import { isDomElement } from "../../shared/lib/dom";
 import { useState } from "react";
 import type { ReactNode } from "react";
 import { ImageLightbox } from "./ImageLightbox";
@@ -38,7 +39,9 @@ export function ChatImagePreviewLink({
             return;
           }
           event.preventDefault();
-          const src = (event.target as Element).closest("img")?.getAttribute("src");
+          const src = isDomElement(event.target)
+            ? event.target.closest("img")?.getAttribute("src")
+            : undefined;
           setIndex(
             Math.max(
               0,

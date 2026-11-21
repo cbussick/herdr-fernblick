@@ -1,3 +1,4 @@
+import { isHtmlElement } from "../../shared/lib/dom";
 import dialogStyles from "./Dialogs.module.css";
 import { useEffect, useRef, useState } from "react";
 import type { FormEvent } from "react";
@@ -42,7 +43,7 @@ export function NewWorkspaceDialog({
       if (dialog.open) {
         dialog.close();
       }
-      if (opener && opener instanceof HTMLElement && opener.isConnected) {
+      if (opener && isHtmlElement(opener) && opener.isConnected) {
         opener.focus({ preventScroll: true });
       }
     };

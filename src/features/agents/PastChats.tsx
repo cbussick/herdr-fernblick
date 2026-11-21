@@ -129,7 +129,14 @@ export function PastChats({
             <li key={chat.id} className={styles.chat} data-testid="saved-chat">
               <h2>
                 {chat.sessionId && onOpenSession ? (
-                  <button type="button" onClick={() => onOpenSession(chat.sessionId!)}>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      if (chat.sessionId) {
+                        onOpenSession(chat.sessionId);
+                      }
+                    }}
+                  >
                     {chat.title}
                   </button>
                 ) : (

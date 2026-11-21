@@ -1,7 +1,8 @@
+import { isDomNode } from "../lib/dom";
 import a11yStyles from "../../styles/accessibility.module.css";
 import uiStyles from "./ui.module.css";
 import { useEffect, useRef, useState } from "react";
-import type { ButtonHTMLAttributes, CSSProperties, InputHTMLAttributes, ReactNode } from "react";
+import type { ButtonHTMLAttributes, InputHTMLAttributes, ReactNode } from "react";
 import type { AgentStatus } from "../../shared/api/contracts";
 import { CloseIcon, PlusIcon, SearchIcon } from "./Icons";
 
@@ -88,7 +89,7 @@ export function SegmentedTabs<T extends string>({
       className={uiStyles["segmented-tabs"]}
       role="tablist"
       aria-label={label}
-      style={{ "--tab-count": options.length } as CSSProperties}
+      style={{ "--tab-count": options.length }}
     >
       {options.map((option) => (
         <button
@@ -152,7 +153,7 @@ export function SpeedDial({ actions }: { actions: Array<SpeedDialAction> }) {
       return;
     }
     const close = (event: PointerEvent) => {
-      if (!rootRef.current?.contains(event.target as Node)) {
+      if (!isDomNode(event.target) || !rootRef.current?.contains(event.target)) {
         setOpen(false);
       }
     };

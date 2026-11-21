@@ -61,7 +61,12 @@ export function CloseTabButton({
     },
   });
   const restartMutation = useMutation({
-    mutationFn: () => restartAgent(agentTarget!),
+    mutationFn: () => {
+      if (!agentTarget) {
+        throw new Error("No running agent to restart");
+      }
+      return restartAgent(agentTarget);
+    },
     retry: false,
     onSuccess: () => {
       void queryClient.invalidateQueries({ queryKey: ["agents"] });
@@ -70,7 +75,12 @@ export function CloseTabButton({
     },
   });
   const exitMutation = useMutation({
-    mutationFn: () => exitAgentSession(agentTarget!),
+    mutationFn: () => {
+      if (!agentTarget) {
+        throw new Error("No running agent to exit");
+      }
+      return exitAgentSession(agentTarget);
+    },
     retry: false,
     onSuccess: () => {
       dialogRef.current?.close();

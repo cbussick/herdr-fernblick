@@ -1,3 +1,4 @@
+import { isDomNode, isHtmlElement } from "../../shared/lib/dom";
 import {
   Component,
   Suspense,
@@ -114,7 +115,7 @@ function WhiteboardSession({
     const background = modal
       ? Array.from(document.body.children).filter(
           (element): element is HTMLElement =>
-            element instanceof HTMLElement &&
+            isHtmlElement(element) &&
             element !== modal &&
             !element.matches('[data-ui="app-status"]'),
         )
@@ -134,7 +135,7 @@ function WhiteboardSession({
       if (
         event.key === "Escape" &&
         !nativeDialog &&
-        !(event.target instanceof Node && appStatus?.contains(event.target))
+        !(isDomNode(event.target) && appStatus?.contains(event.target))
       ) {
         event.preventDefault();
         dismiss.current();
@@ -189,7 +190,7 @@ function WhiteboardSession({
       previous.forEach(([element, inert]) => {
         element.inert = inert;
       });
-      if (focused instanceof HTMLElement) {
+      if (isHtmlElement(focused)) {
         focused.focus();
       }
     };

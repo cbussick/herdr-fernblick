@@ -1,3 +1,4 @@
+import { Window } from "happy-dom";
 import { testText } from "../../shared/lib/testText";
 import { dispatchTestEvent } from "../../shared/lib/dispatchTestEvent";
 import { act, StrictMode, useState } from "react";
@@ -10,7 +11,10 @@ import { ImageLightbox } from "./ImageLightbox";
 vi.mock("react-dom", () => ({ createPortal: (children: ReactNode) => children }));
 let renderer: ReactTestRenderer;
 const onClose = vi.fn();
-const opener = { isConnected: true, focus: vi.fn() };
+const openerWindow = new Window();
+const opener = openerWindow.document.createElement("div");
+openerWindow.document.body.append(opener);
+const focusOpener = vi.spyOn(opener, "focus").mockImplementation(() => {});
 const nativeDialog = {
   open: false,
   showModal: vi.fn(() => {
@@ -75,7 +79,7 @@ it("opens a native modal once, cycles with buttons and arrows, wraps and restore
   expect(onClose).not.toHaveBeenCalled();
   await act(async () => renderer.unmount());
   expect(nativeDialog.close).toHaveBeenCalledOnce();
-  expect(opener.focus).toHaveBeenCalledOnce();
+  expect(focusOpener).toHaveBeenCalledOnce();
 });
 it("isolates Escape and cancel, dismisses with Close or backdrop, but not image clicks", async () => {
   const stopPropagation = vi.fn();

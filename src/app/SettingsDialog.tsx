@@ -1,3 +1,4 @@
+import { isHtmlElement } from "../shared/lib/dom";
 import { useCallback, useEffect, useId, useRef, useState } from "react";
 import { runningBuild } from "../pwa/buildInfo";
 import type { BuildInfo } from "../pwa/buildInfo";
@@ -57,7 +58,7 @@ export function SettingsDialog({ onClose }: { onClose: () => void }) {
       if (dialog.open) {
         dialog.close();
       }
-      if (opener instanceof HTMLElement && opener.isConnected) {
+      if (isHtmlElement(opener) && opener.isConnected) {
         opener.focus({ preventScroll: true });
       }
     };

@@ -1,3 +1,4 @@
+import { isDomElement, isHtmlElement } from "../../shared/lib/dom";
 import { createPortal } from "react-dom";
 import type { BoardEditorProps } from "../whiteboard/editorTypes";
 import type { BoardScene } from "../../../packages/pi-live-chat/boardProtocol";
@@ -154,11 +155,11 @@ function Playground(props: BoardEditorProps) {
       if (
         locked ||
         !(
-          document.activeElement instanceof Element &&
+          isDomElement(document.activeElement) &&
           document.activeElement.closest('[data-testid="flow-board-editor"]')
         ) ||
         modal ||
-        (event.target instanceof Element &&
+        (isDomElement(event.target) &&
           event.target.closest("input, textarea, select, [contenteditable=true]"))
       ) {
         return;
@@ -567,7 +568,7 @@ function Playground(props: BoardEditorProps) {
       data-testid="flow-board-editor"
       tabIndex={-1}
       onPointerDownCapture={(e) => {
-        if (!(e.target instanceof Element && e.target.closest("input,textarea,select,button"))) {
+        if (!(isDomElement(e.target) && e.target.closest("input,textarea,select,button"))) {
           e.currentTarget.focus({ preventScroll: true });
         }
         if (locked) {
@@ -756,8 +757,9 @@ function Playground(props: BoardEditorProps) {
                 disabled={locked || modal}
                 picking={picking}
                 onAddComponent={() => {
-                  pickerTrigger.current =
-                    document.activeElement instanceof HTMLElement ? document.activeElement : null;
+                  pickerTrigger.current = isHtmlElement(document.activeElement)
+                    ? document.activeElement
+                    : null;
                   setQuery("");
                   setPicking(true);
                 }}

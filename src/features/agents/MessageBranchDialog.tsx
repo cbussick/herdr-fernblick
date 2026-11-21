@@ -1,3 +1,4 @@
+import { isHtmlElement } from "../../shared/lib/dom";
 import { useEffect, useRef } from "react";
 import type { ChatMessage } from "../../../packages/pi-live-chat/protocol";
 import styles from "./Dialogs.module.css";
@@ -31,7 +32,7 @@ export function MessageBranchDialog({
     cancel.current?.focus();
     return () => {
       dialog.close();
-      if (opener instanceof HTMLElement && opener.isConnected) {
+      if (isHtmlElement(opener) && opener.isConnected) {
         opener.focus({ preventScroll: true });
       }
     };

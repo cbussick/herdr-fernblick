@@ -26,7 +26,7 @@ export class ReadStatusError extends Error {
 }
 
 function missing(error: unknown) {
-  return (error as NodeJS.ErrnoException).code === "ENOENT";
+  return typeof error === "object" && error !== null && "code" in error && error.code === "ENOENT";
 }
 
 /** Fernblick-owned receipts. This module only reads Herdr; it never focuses or reports state. */

@@ -1,3 +1,4 @@
+import { isHtmlElement } from "../../shared/lib/dom";
 import { useEffect, useRef } from "react";
 import type { RefObject } from "react";
 import type { SavedChat } from "../../shared/api/contracts";
@@ -35,7 +36,7 @@ export function DeleteChatDialog({
       if (dialog.open) {
         dialog.close();
       }
-      if (opener && opener instanceof HTMLElement && opener.isConnected) {
+      if (opener && isHtmlElement(opener) && opener.isConnected) {
         opener.focus({ preventScroll: true });
       } else {
         fallbackFocus?.focus({ preventScroll: true });
