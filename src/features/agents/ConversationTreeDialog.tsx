@@ -243,7 +243,11 @@ export function ConversationTreeDialog({
                     type="button"
                     className={treeStyles["conversation-tree__page"]}
                     disabled={locked}
-                    onClick={() => load(page.previousOffset!)}
+                    onClick={() => {
+                      if (page.previousOffset !== null) {
+                        load(page.previousOffset);
+                      }
+                    }}
                   >
                     {page.mode === "path" ? "Load earlier" : "Previous results"}
                   </button>
@@ -329,7 +333,11 @@ export function ConversationTreeDialog({
                     type="button"
                     className={treeStyles["conversation-tree__page"]}
                     disabled={locked}
-                    onClick={() => load(page.nextOffset!)}
+                    onClick={() => {
+                      if (page.nextOffset !== null) {
+                        load(page.nextOffset);
+                      }
+                    }}
                   >
                     {page.mode === "path" ? "Load later" : "More results"}
                   </button>

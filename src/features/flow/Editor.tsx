@@ -23,7 +23,10 @@ export function Modal({
 }) {
   const ref = useRef<HTMLDialogElement>(null);
   useEffect(() => {
-    const dialog = ref.current!;
+    const dialog = ref.current;
+    if (!dialog) {
+      return;
+    }
     dialog.showModal();
     dialog.querySelector<HTMLElement>("[data-autofocus]")?.focus();
     return () => dialog.close();
@@ -183,7 +186,13 @@ export function ComponentEditor({
     try {
       const url = await new Promise<string>((resolve, reject) => {
         const reader = new FileReader();
-        reader.onload = () => resolve(String(reader.result));
+        reader.onload = () => {
+          if (typeof reader.result === "string") {
+            resolve(reader.result);
+          } else {
+            reject(new TypeError("Expected an image data URL"));
+          }
+        };
         reader.onerror = reject;
         reader.readAsDataURL(file);
       });
@@ -334,7 +343,12 @@ export function ComponentEditor({
                         <span>Type</span>
                         <select
                           value={field.type}
-                          onChange={(e) => update({ type: e.target.value as "text" | "group" })}
+                          onChange={(e) => {
+                            const type = e.target.value;
+                            if (type === "text" || type === "group") {
+                              update({ type });
+                            }
+                          }}
                         >
                           <option value="text">Text</option>
                           <option value="group">Grouped text</option>

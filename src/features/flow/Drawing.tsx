@@ -1,5 +1,10 @@
 import { useContext, useEffect, useEffectEvent, useRef, useState } from "react";
 import type { PointerEvent as ReactPointerEvent } from "react";
+
+function local(event: ReactPointerEvent<SVGSVGElement>) {
+  const rect = event.currentTarget.getBoundingClientRect();
+  return { x: event.clientX - rect.left, y: event.clientY - rect.top };
+}
 import { NodeResizer, useReactFlow, useViewport } from "@xyflow/react";
 import type { NodeProps, Viewport } from "@xyflow/react";
 import { Blocks, Eraser, Hand, MousePointer2, Pencil, Redo2, Undo2 } from "lucide-react";
@@ -247,7 +252,10 @@ export function InkSurface({
     };
   }, [tool]);
   useEffect(() => {
-    const element = svg.current!;
+    const element = svg.current;
+    if (!element) {
+      return;
+    }
     const wheel = (event: WheelEvent) => {
       event.preventDefault();
       event.stopPropagation();
@@ -293,10 +301,6 @@ export function InkSurface({
       }
     };
   }, [flow, onViewport]);
-  function local(event: { clientX: number; clientY: number }) {
-    const rect = svg.current!.getBoundingClientRect();
-    return { x: event.clientX - rect.left, y: event.clientY - rect.top };
-  }
   function point(event: { clientX: number; clientY: number; pressure: number }): InkPoint {
     const p = flow.screenToFlowPosition({ x: event.clientX, y: event.clientY });
     return [
@@ -357,7 +361,7 @@ export function InkSurface({
     }
     // Recover from a native selection left by an older build or interrupted gesture.
     window.getSelection()?.removeAllRanges();
-    svg.current!.setPointerCapture(event.pointerId);
+    event.currentTarget.setPointerCapture(event.pointerId);
     pointers.current.set(event.pointerId, local(event));
     if (pointers.current.size > 1) {
       reset();
@@ -466,8 +470,8 @@ export function InkSurface({
       }
       reset();
     }
-    if (svg.current!.hasPointerCapture(event.pointerId)) {
-      svg.current!.releasePointerCapture(event.pointerId);
+    if (event.currentTarget.hasPointerCapture(event.pointerId)) {
+      event.currentTarget.releasePointerCapture(event.pointerId);
     }
   }
   return (
