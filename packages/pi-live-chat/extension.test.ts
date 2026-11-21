@@ -28,7 +28,7 @@ import {
 } from "./protocol.js";
 import type { Snapshot } from "./protocol.js";
 import { receiveFrames, writeFrame } from "./transport.js";
-import { boardRequestSchema } from "./boardProtocol.js";
+import { boardControlSchema, boardRequestSchema } from "./boardProtocol.js";
 import type { BoardGrant, BoardRequest } from "./boardProtocol.js";
 
 vi.mock("node:fs/promises", async (importOriginal) => {
@@ -165,12 +165,13 @@ async function setup(
     connections.push(socket);
     receiveFrames(socket, (value) => {
       frames.push(value);
-      const frame = value as Record<string, unknown>;
+      const parsed = boardControlSchema.safeParse(value);
       if (
-        frame.type === "board-control" &&
-        frame.action === "begin" &&
-        frame.lifetime === "connection"
+        parsed.success &&
+        parsed.data.action === "begin" &&
+        parsed.data.lifetime === "connection"
       ) {
+        const frame = parsed.data;
         void (async () => {
           await beforeBoardBeginReply?.();
           if (!socket.destroyed) {
@@ -210,7 +211,13 @@ async function setup(
     pi.emit("session_shutdown");
   });
   function latest() {
-    return frames.filter((v) => snapshotSchema.safeParse(v).success).at(-1) as Snapshot | undefined;
+    for (let index = frames.length - 1; index >= 0; index--) {
+      const parsed = snapshotSchema.safeParse(frames[index]);
+      if (parsed.success) {
+        return parsed.data;
+      }
+    }
+    return undefined;
   }
   beforeStart?.(pi);
   expect(pi.emit("session_start")).toEqual([undefined]);
@@ -222,13 +229,17 @@ async function setup(
     text = "hello",
   ) => {
     const id = randomUUID();
-    writeFrame(connections.at(-1)!, {
-      type: "command",
-      action,
-      target,
-      id,
-      ...(action === "send" ? { text } : {}),
-    });
+    const frame: {
+      type: "command";
+      action: typeof action;
+      target: typeof target;
+      id: string;
+      text?: string;
+    } = { type: "command", action, target, id };
+    if (action === "send") {
+      frame.text = text;
+    }
+    writeFrame(connections.at(-1)!, frame);
     return id;
   };
   const ack = async (id: string, timeout = 1000) => {
