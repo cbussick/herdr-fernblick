@@ -1,3 +1,4 @@
+import { z } from "zod";
 import { boardSceneSchema, MAX_BOARD_BYTES } from "../../../packages/pi-live-chat/boardProtocol";
 import type { BoardScene } from "../../../packages/pi-live-chat/boardProtocol";
 import { validateFlowGraph } from "../../../packages/pi-live-chat/flowProtocol";
@@ -31,7 +32,7 @@ export function validateScene(input: unknown): BoardScene {
       throw new Error("Invalid image asset (maximum 2 MiB)");
     }
     const bytes = atob(match[2]);
-    const signatures: Record<string, boolean> = {
+    const signatures = {
       "image/png": bytes.startsWith("\u0089PNG\r\n\u001a\n"),
       "image/jpeg": bytes.startsWith("\u00ff\u00d8\u00ff"),
       "image/gif": bytes.startsWith("GIF87a") || bytes.startsWith("GIF89a"),
@@ -251,19 +252,29 @@ export const MAX_FLOW_BACKUP_BYTES = MAX_BOARD_BYTES + 128;
 export function exportFlowScene(scene: BoardScene): string {
   return JSON.stringify({ format: "fernblick-flow", version: 1, scene: validateScene(scene) });
 }
+const flowBackupSchema = z
+  .object({
+    format: z.literal("fernblick-flow"),
+    version: z.literal(1),
+    scene: boardSceneSchema,
+  })
+  .strict();
 export function importFlowScene(raw: string): BoardScene {
   if (new TextEncoder().encode(raw).length > MAX_FLOW_BACKUP_BYTES) {
     throw new Error("Import exceeds 12 MiB");
   }
-  const data = JSON.parse(raw);
-  if (
-    data?.format !== "fernblick-flow" ||
-    data.version !== 1 ||
-    Object.keys(data).some((k) => !["format", "version", "scene"].includes(k))
-  ) {
+  const data = flowBackupSchema.safeParse(JSON.parse(raw));
+  if (!data.success) {
     throw new Error("Unsupported flow backup");
   }
-  return validateScene(data.scene);
+  return validateScene(data.data.scene);
+}
+function requiredIdentity(ids: Map<string, string>, id: string): string {
+  const fresh = ids.get(id);
+  if (fresh === undefined) {
+    throw new Error(`Missing replacement identity: ${id}`);
+  }
+  return fresh;
 }
 /** Replacement gets fresh identities; old records remain tombstones in the controller's history. */
 export function replacementScene(imported: BoardScene, base: BoardScene): BoardScene {
@@ -282,17 +293,26 @@ export function replacementScene(imported: BoardScene, base: BoardScene): BoardS
   const fresh = elements
     .filter((e) => !e.isDeleted)
     .map((e): FlowElement => {
-      const id = ids.get(e.id)!;
+      const id = requiredIdentity(ids, e.id);
       if (e.type === "connection") {
-        return { ...e, id, version: 1, source: ids.get(e.source)!, target: ids.get(e.target)! };
+        return {
+          ...e,
+          id,
+          version: 1,
+          source: requiredIdentity(ids, e.source),
+          target: requiredIdentity(ids, e.target),
+        };
       }
       if (e.type === "component") {
         return {
           ...e,
           id,
           version: 1,
-          parentId: e.parentId ? ids.get(e.parentId)! : null,
-          props: { ...e.props, imageId: e.props.imageId ? assetIds.get(e.props.imageId)! : null },
+          parentId: e.parentId ? requiredIdentity(ids, e.parentId) : null,
+          props: {
+            ...e.props,
+            imageId: e.props.imageId ? requiredIdentity(assetIds, e.props.imageId) : null,
+          },
         };
       }
       return { ...e, id, version: 1 };

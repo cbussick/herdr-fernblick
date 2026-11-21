@@ -104,6 +104,15 @@ describe("production flow scene boundary", () => {
     expect(raw).not.toContain("grantId");
     expect(importFlowScene(raw)).toEqual(base);
     expect(() => importFlowScene(JSON.stringify(base))).toThrow();
+    for (const invalid of [
+      null,
+      [],
+      {},
+      { format: "fernblick-flow", version: 1 },
+      { format: "fernblick-flow", version: 1, scene: base, grantId: "forbidden" },
+    ]) {
+      expect(() => importFlowScene(JSON.stringify(invalid))).toThrow("Unsupported flow backup");
+    }
     expect(() => importFlowScene(raw.replace('"version":1', '"version":2'))).toThrow();
     const replaced = replacementScene(base, base);
     expect(replaced.elements.find((e) => e.id === "card")!.isDeleted).toBe(true);
