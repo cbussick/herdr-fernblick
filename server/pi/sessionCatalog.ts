@@ -14,10 +14,16 @@ import {
 import { homedir } from "node:os";
 import { dirname, isAbsolute, join, resolve } from "node:path";
 import { z } from "zod";
-import { deleteChatResponseSchema, type SavedChat } from "../../src/shared/api/contracts.js";
+import { deleteChatResponseSchema } from "../../src/shared/api/contracts.js";
+import type { SavedChat } from "../../src/shared/api/contracts.js";
 import { uploadIdSchema } from "../../packages/pi-live-chat/protocol.js";
 
 const receiptSchema = deleteChatResponseSchema.omit({ ok: true });
+const uploadReferenceSchema = z.object({ id: uploadIdSchema });
+const textBlockSchema = z.object({ type: z.literal("text"), text: z.string() });
+function isMissing(error: unknown): boolean {
+  return typeof error === "object" && error !== null && "code" in error && error.code === "ENOENT";
+}
 const headerSchema = z.object({
   type: z.literal("session"),
   id: z.string().min(1),
@@ -43,8 +49,8 @@ export class SavedChatError extends Error {
 export type CatalogChat = Omit<SavedChat, "activePaneId"> & {
   path: string;
   sessionId: string;
-  uploadIds: string[];
-  boardIds: string[];
+  uploadIds: Array<string>;
+  boardIds: Array<string>;
   fileIdentity: string;
 };
 
@@ -69,9 +75,13 @@ export class SessionCatalog {
       resolve(path),
       constants.O_RDONLY | constants.O_NOFOLLOW | constants.O_NONBLOCK,
     ).catch(() => null);
-    if (!file) return null;
+    if (!file) {
+      return null;
+    }
     try {
-      if (!(await file.stat()).isFile()) return null;
+      if (!(await file.stat()).isFile()) {
+        return null;
+      }
       const buffer = Buffer.alloc(16 * 1024);
       const { bytesRead } = await file.read(buffer, 0, buffer.length, 0);
       const header = headerSchema.safeParse(
@@ -93,7 +103,7 @@ export class SessionCatalog {
     return this.read(resolve(path));
   }
 
-  list(strict = false): Promise<CatalogChat[]> {
+  list(strict = false): Promise<Array<CatalogChat>> {
     return this.scan(strict);
   }
 
@@ -102,29 +112,32 @@ export class SessionCatalog {
     await this.scan(false, cache);
   }
 
-  private async scan(strict: boolean, metadataCache?: CatalogCache): Promise<CatalogChat[]> {
+  private async scan(strict: boolean, metadataCache?: CatalogCache): Promise<Array<CatalogChat>> {
     const cache = metadataCache ?? this.cache;
-    const files: string[] = [];
+    const files: Array<string> = [];
     try {
       // Pi's default layout has one project-directory level; custom roots may be flat.
       for (const entry of await readdir(this.root, { withFileTypes: true })) {
-        if (entry.isFile() && entry.name.endsWith(".jsonl"))
+        if (entry.isFile() && entry.name.endsWith(".jsonl")) {
           files.push(join(this.root, entry.name));
-        else if (entry.isDirectory()) {
+        } else if (entry.isDirectory()) {
           const children = await readdir(join(this.root, entry.name), {
             withFileTypes: true,
-          }).catch((error: NodeJS.ErrnoException) => {
-            if (error.code === "ENOENT") return [];
+          }).catch((error: unknown) => {
+            if (isMissing(error)) {
+              return [];
+            }
             throw error;
           });
           for (const child of children) {
-            if (child.isFile() && child.name.endsWith(".jsonl"))
+            if (child.isFile() && child.name.endsWith(".jsonl")) {
               files.push(join(this.root, entry.name, child.name));
+            }
           }
         }
       }
     } catch (error) {
-      if ((error as NodeJS.ErrnoException).code === "ENOENT") {
+      if (isMissing(error)) {
         cache.clear();
         return [];
       }
@@ -134,17 +147,23 @@ export class SessionCatalog {
       );
     }
     const present = new Set(files);
-    for (const path of cache.keys()) if (!present.has(path)) cache.delete(path);
-    const chats: CatalogChat[] = [];
+    for (const path of cache.keys()) {
+      if (!present.has(path)) {
+        cache.delete(path);
+      }
+    }
+    const chats: Array<CatalogChat> = [];
     // Sequential reads bound file descriptors and memory; unchanged files use cached metadata.
     for (const path of files) {
       const chat = await this.read(path, metadataCache);
-      if (chat) chats.push(chat);
-      else if (strict && !(await this.isEmpty(path)))
+      if (chat) {
+        chats.push(chat);
+      } else if (strict && !(await this.isEmpty(path))) {
         throw new SavedChatError(
           503,
           "Cannot verify shared files because a saved session is unreadable or invalid.",
         );
+      }
     }
     return chats.sort((a, b) => b.updatedAt.localeCompare(a.updatedAt) || a.id.localeCompare(b.id));
   }
@@ -156,7 +175,9 @@ export class SessionCatalog {
       path,
       constants.O_RDONLY | constants.O_NOFOLLOW | constants.O_NONBLOCK,
     ).catch(() => null);
-    if (!file) return false;
+    if (!file) {
+      return false;
+    }
     try {
       const stats = await file.stat();
       return stats.isFile() && stats.size === 0;
@@ -169,21 +190,28 @@ export class SessionCatalog {
 
   async get(id: string) {
     const chat = (await this.list()).find((candidate) => candidate.id === id);
-    if (!chat)
+    if (!chat) {
       throw new SavedChatError(404, "This saved session is no longer available. Refresh the list.");
+    }
     return chat;
   }
 
   async deletionReceipt(id: string) {
-    if (!/^[a-f0-9]{64}$/.test(id)) return null;
+    if (!/^[a-f0-9]{64}$/.test(id)) {
+      return null;
+    }
     const file = await open(
       join(this.root, `.fernblick-deleted-${id}.json`),
       constants.O_RDONLY | constants.O_NOFOLLOW | constants.O_NONBLOCK,
-    ).catch((error: NodeJS.ErrnoException) => {
-      if (error.code === "ENOENT") return null;
+    ).catch((error: unknown) => {
+      if (isMissing(error)) {
+        return null;
+      }
       throw new SavedChatError(503, "Cannot read the session deletion receipt.");
     });
-    if (!file) return null;
+    if (!file) {
+      return null;
+    }
     try {
       const stats = await file.stat();
       if (
@@ -192,22 +220,29 @@ export class SessionCatalog {
         (stats.mode & 0o077) !== 0 ||
         stats.nlink !== 1 ||
         stats.size > 256 * 1024
-      )
+      ) {
         throw new SavedChatError(503, "Unsafe session deletion receipt.");
+      }
       const bytes = Buffer.alloc(stats.size + 1);
       let size = 0;
       while (size < bytes.length) {
         const result = await file.read(bytes, size, bytes.length - size, size);
-        if (!result.bytesRead) break;
+        if (!result.bytesRead) {
+          break;
+        }
         size += result.bytesRead;
       }
-      if (size !== stats.size) throw new SavedChatError(503, "Session deletion receipt changed.");
+      if (size !== stats.size) {
+        throw new SavedChatError(503, "Session deletion receipt changed.");
+      }
       return receiptSchema.parse(JSON.parse(bytes.subarray(0, size).toString("utf8")));
     } finally {
       await file.close();
     }
   }
 
+  async delete<T>(id: string, cleanup: (chat: CatalogChat) => Promise<T>): Promise<T>;
+  async delete(id: string): Promise<undefined>;
   async delete<T>(id: string, cleanup?: (chat: CatalogChat) => Promise<T>): Promise<T | undefined> {
     const chat = await this.get(id);
     // Rename into a private directory, then verify what actually moved before
@@ -224,8 +259,9 @@ export class SessionCatalog {
         !stats.isFile() ||
         `${stats.dev}:${stats.ino}` !== chat.fileIdentity ||
         staged?.sessionId !== chat.sessionId
-      )
+      ) {
         throw new SavedChatError(409, "This session changed during deletion. Refresh the list.");
+      }
       const result = await cleanup?.(staged);
       const receipt = receiptSchema.safeParse(result);
       if (receipt.success) {
@@ -253,19 +289,24 @@ export class SessionCatalog {
           );
         }
       }
-      if (error instanceof SavedChatError) throw error;
-      if ((error as NodeJS.ErrnoException).code === "ENOENT")
+      if (error instanceof SavedChatError) {
+        throw error;
+      }
+      if (isMissing(error)) {
         throw new SavedChatError(
           404,
           "This saved session is no longer available. Refresh the list.",
         );
+      }
       throw new SavedChatError(
         503,
         "Session cleanup failed. Some related files may already be removed. Try again.",
       );
     } finally {
       this.cache.delete(stagedPath);
-      if (!moved) await rmdir(staging).catch(() => {});
+      if (!moved) {
+        await rmdir(staging).catch(() => {});
+      }
     }
   }
 
@@ -288,7 +329,9 @@ export class SessionCatalog {
       }
       const stamp = `${stats.dev}:${stats.ino}:${stats.size}:${stats.mtimeMs}:${stats.ctimeMs}`;
       const cached = cache.get(path);
-      if (cached?.stamp === stamp) return cached.chat;
+      if (cached?.stamp === stamp) {
+        return cached.chat;
+      }
       let header: z.infer<typeof headerSchema> | undefined;
       let first = true;
       let title = "";
@@ -307,8 +350,9 @@ export class SessionCatalog {
           !first &&
           !value.includes('"session_info"') &&
           (preview || !value.includes('"user"'))
-        )
+        ) {
           return;
+        }
         let raw: unknown;
         try {
           raw = JSON.parse(value);
@@ -327,12 +371,15 @@ export class SessionCatalog {
           Array.isArray(entry.data)
         ) {
           for (const ref of entry.data) {
-            const parsed = uploadIdSchema.safeParse(ref?.id);
-            if (parsed.success) uploadIds.add(parsed.data);
+            const parsed = uploadReferenceSchema.safeParse(ref);
+            if (parsed.success) {
+              uploadIds.add(parsed.data.id);
+            }
           }
         }
-        if (entry?.type === "session_info" && entry.name !== undefined)
+        if (entry?.type === "session_info" && entry.name !== undefined) {
           title = entry.name.slice(0, 160);
+        }
         if (!preview && entry?.type === "message" && entry.message?.role === "user") {
           const content = entry.message.content;
           preview = (
@@ -340,12 +387,14 @@ export class SessionCatalog {
               ? content
               : Array.isArray(content)
                 ? content
-                    .filter((block) => block?.type === "text" && typeof block.text === "string")
-                    .map((block) => block.text)
+                    .flatMap((block: unknown) => {
+                      const parsed = textBlockSchema.safeParse(block);
+                      return parsed.success ? [parsed.data.text] : [];
+                    })
                     .join(" ")
                 : ""
           )
-            .replace(/\s+/g, " ")
+            .replaceAll(/\s+/g, " ")
             .trim()
             .slice(0, 240);
         }
@@ -354,19 +403,24 @@ export class SessionCatalog {
         // References in oversized image/message lines must still protect shared assets.
         if (!metadataOnly) {
           const references = referenceTail + String(chunk);
-          for (const match of references.matchAll(/\/api\/boards\/([a-f0-9]{64})\/snapshots\//g))
+          for (const match of references.matchAll(/\/api\/boards\/([a-f0-9]{64})\/snapshots\//g)) {
             boardIds.add(match[1]);
+          }
           for (const match of references.matchAll(
             /\/api\/uploads\/([0-9a-f-]{36}\.(?:png|jpg|gif|webp))/g,
           )) {
             const parsed = uploadIdSchema.safeParse(match[1]);
-            if (parsed.success) uploadIds.add(parsed.data);
+            if (parsed.success) {
+              uploadIds.add(parsed.data);
+            }
           }
           referenceTail = references.slice(-128);
         }
         for (const [index, part] of String(chunk).split("\n").entries()) {
           if (index > 0) {
-            if (!oversized) consume(line);
+            if (!oversized) {
+              consume(line);
+            }
             first = false;
             line = "";
             oversized = false;
@@ -384,7 +438,9 @@ export class SessionCatalog {
           }
         }
       }
-      if (line && !oversized) consume(line);
+      if (line && !oversized) {
+        consume(line);
+      }
       if (!header) {
         cache.delete(path);
         return null;
@@ -404,7 +460,7 @@ export class SessionCatalog {
         uploadIds: [...uploadIds],
         boardIds: [...boardIds],
         fileIdentity: `${stats.dev}:${stats.ino}`,
-        title: title.replace(/\s+/g, " ").trim() || preview || "Untitled session",
+        title: title.replaceAll(/\s+/g, " ").trim() || preview || "Untitled session",
         preview,
         cwd: header.cwd,
         updatedAt: stats.mtime.toISOString(),

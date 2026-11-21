@@ -1,3 +1,4 @@
+import { report, reportError } from "../report.mjs";
 // Synthetic fixtures only; no Herdr/Pi socket is used.
 // node tools/design/workspace-reorder-touch.mjs http://127.0.0.1:5237
 import assert from "node:assert/strict";
@@ -28,9 +29,12 @@ try {
     await page.route("**/api/**", async (route) => {
       const request = route.request();
       const path = new URL(request.url()).pathname;
-      if (!path.startsWith("/api/")) return route.continue();
-      if (path === "/api/agents")
+      if (!path.startsWith("/api/")) {
+        return route.continue();
+      }
+      if (path === "/api/agents") {
         return route.fulfill({ json: { agents: [], tabs: [], workspaces } });
+      }
       if (path === "/api/workspaces/move" && request.method() === "POST") {
         const body = request.postDataJSON();
         mutations.push(body);
@@ -91,19 +95,22 @@ try {
       ? await page.locator('[data-marker="before"]').evaluate((element) => {
           const style = getComputedStyle(element, "::after");
           const rect = element.getBoundingClientRect();
-          const top = rect.top + parseFloat(style.top);
-          const bottom = top + parseFloat(style.height);
+          const top = rect.top + Number.parseFloat(style.top);
+          const bottom = top + Number.parseFloat(style.height);
           for (let parent = element.parentElement; parent; parent = parent.parentElement) {
             if (/(auto|scroll|hidden|clip)/.test(getComputedStyle(parent).overflowY)) {
               const clip = parent.getBoundingClientRect();
-              if (top < clip.top || bottom > clip.bottom) return false;
+              if (top < clip.top || bottom > clip.bottom) {
+                return false;
+              }
             }
           }
           return style.backgroundColor !== "rgba(0, 0, 0, 0)";
         })
       : false;
-    if (process.env.REORDER_SCREENSHOTS)
+    if (process.env.REORDER_SCREENSHOTS) {
       await page.screenshot({ path: `/tmp/workspace-drop-${destination}.png` });
+    }
     await send("touchEnd", 0, 0);
     try {
       if (shouldMove) {
@@ -131,10 +138,10 @@ try {
         await cards.locator(":scope > summary strong").allTextContents(),
         shouldMove ? ["Gamma", "Alpha", "Beta"] : ["Alpha", "Beta", "Gamma"],
       );
-      console.log(`${destination}: PASS touch indicator and persisted order`);
+      report(`${destination}: PASS touch indicator and persisted order`);
     } catch (error) {
       failures.push(`${destination}: ${error.message}`);
-      console.error(`${destination}: ${error.message}`);
+      reportError(`${destination}: ${error.message}`);
     }
     await page.close();
   }

@@ -1,3 +1,4 @@
+import { isDomNode, isHtmlElement } from "../../shared/lib/dom";
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import type { BoardScene } from "../../../packages/pi-live-chat/boardProtocol";
 import type { BoardImageQuality } from "../../../packages/pi-live-chat/boardImageExport";
@@ -24,7 +25,10 @@ export function BoardExport({
   const menu = useRef<HTMLDialogElement>(null);
   const request = useRef<AbortController | null>(null);
   useLayoutEffect(() => {
-    const element = menu.current!;
+    const element = menu.current;
+    if (!element) {
+      return;
+    }
     const position = () => {
       const target = anchor.getBoundingClientRect();
       const box = element.getBoundingClientRect();
@@ -50,13 +54,15 @@ export function BoardExport({
       cancelAnimationFrame(frame);
       request.current?.abort();
       onInteraction(false);
-      if (anchor.isConnected) anchor.focus({ preventScroll: true });
+      if (anchor.isConnected) {
+        anchor.focus({ preventScroll: true });
+      }
     };
   }, [anchor, onInteraction]);
   useEffect(() => {
     const outside = (event: PointerEvent) => {
       if (
-        event.target instanceof Node &&
+        isDomNode(event.target) &&
         !menu.current?.contains(event.target) &&
         !anchor.contains(event.target)
       ) {
@@ -70,7 +76,9 @@ export function BoardExport({
     return () => document.removeEventListener("pointerdown", outside, true);
   }, [anchor, onClose]);
   async function png(quality: BoardImageQuality) {
-    if (request.current) return;
+    if (request.current) {
+      return;
+    }
     const controller = new AbortController();
     request.current = controller;
     setBusy(true);
@@ -81,9 +89,10 @@ export function BoardExport({
         downloadBlob(blob, quality === "high" ? "whiteboard-high.png" : "whiteboard.png");
         onClose();
       }
-    } catch (reason) {
-      if (!controller.signal.aborted)
-        setError(reason instanceof Error ? reason.message : "Could not download PNG");
+    } catch (error_) {
+      if (!controller.signal.aborted) {
+        setError(error_ instanceof Error ? error_.message : "Could not download PNG");
+      }
     } finally {
       if (!controller.signal.aborted) {
         request.current = null;
@@ -103,7 +112,9 @@ export function BoardExport({
       data-ui="board-export"
       onKeyDown={(event) => {
         const keys = ["Escape", "Tab", "ArrowDown", "ArrowUp", "Home", "End"];
-        if (!keys.includes(event.key)) return;
+        if (!keys.includes(event.key)) {
+          return;
+        }
         event.preventDefault();
         event.stopPropagation();
         if (event.key === "Escape" || event.key === "Tab") {
@@ -111,11 +122,12 @@ export function BoardExport({
           return;
         }
         const items = Array.from(
-          menu.current!.querySelectorAll<HTMLButtonElement>(
+          event.currentTarget.querySelectorAll<HTMLElement>(
             'button[role="menuitem"]:not(:disabled)',
           ),
         );
-        const current = items.indexOf(document.activeElement as HTMLButtonElement);
+        const active = document.activeElement;
+        const current = isHtmlElement(active) ? items.indexOf(active) : -1;
         const index =
           event.key === "Home"
             ? 0
@@ -132,8 +144,8 @@ export function BoardExport({
           try {
             downloadScene(scene);
             onClose();
-          } catch (reason) {
-            setError(reason instanceof Error ? reason.message : "Could not download JSON");
+          } catch (error_) {
+            setError(error_ instanceof Error ? error_.message : "Could not download JSON");
           }
         }}
       >

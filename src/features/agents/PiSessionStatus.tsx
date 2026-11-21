@@ -3,6 +3,18 @@ import type { Snapshot } from "../../../packages/pi-live-chat/protocol";
 import { terminalTextSpans } from "../../shared/lib/terminalText";
 import styles from "./PiSessionStatus.module.css";
 
+type TerminalStyle = CSSProperties & {
+  "--terminal-foreground": string | undefined;
+  "--terminal-background": string | undefined;
+};
+
+function terminalStyle(
+  foreground: string | undefined,
+  background: string | undefined,
+): TerminalStyle {
+  return { "--terminal-foreground": foreground, "--terminal-background": background };
+}
+
 export function PiSessionStatus({ status }: { status: Snapshot["status"] }) {
   return (
     <div
@@ -18,12 +30,7 @@ export function PiSessionStatus({ status }: { status: Snapshot["status"] }) {
               <span
                 key={position}
                 className={styles.segment}
-                style={
-                  {
-                    "--terminal-foreground": span.style.color,
-                    "--terminal-background": span.style.backgroundColor,
-                  } as CSSProperties
-                }
+                style={terminalStyle(span.style.color, span.style.backgroundColor)}
                 data-bold={span.style.bold ? "" : undefined}
                 data-dim={span.style.dim ? "" : undefined}
                 data-italic={span.style.italic ? "" : undefined}

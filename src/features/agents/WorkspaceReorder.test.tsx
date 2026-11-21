@@ -1,8 +1,51 @@
+const rect = (top: number, height: number) => ({
+  left: 10,
+  right: 300,
+  top,
+  bottom: top + height,
+  width: 290,
+  height,
+});
+
+import { testText } from "../../shared/lib/testText";
+import { dispatchTestEvent } from "../../shared/lib/dispatchTestEvent";
 import { act } from "react";
-import { create, type ReactTestRenderer } from "react-test-renderer";
+import { create } from "react-test-renderer";
+import type { ReactTestRenderer } from "react-test-renderer";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
 import { WorkspaceReorder } from "./WorkspaceReorder";
+import { workspaceCollision } from "./workspaceCollision";
+import type { CollisionDetection, UniqueIdentifier } from "@dnd-kit/core";
+
+type CollisionInput = Parameters<CollisionDetection>[0];
+type PreviewInput = {
+  active?: Pick<CollisionInput["active"], "id">;
+  collisionRect?: CollisionInput["collisionRect"];
+  droppableRects: CollisionInput["droppableRects"];
+  droppableContainers?: Array<Pick<CollisionInput["droppableContainers"][number], "id">>;
+  pointerCoordinates?: CollisionInput["pointerCoordinates"];
+};
+function detectCollision(input: PreviewInput) {
+  return workspaceCollision({
+    active: {
+      id: input.active?.id ?? "w1",
+      data: { current: undefined },
+      rect: { current: { initial: null, translated: null } },
+    },
+    collisionRect: input.collisionRect ?? rect(0, 80),
+    droppableRects: input.droppableRects,
+    droppableContainers: (input.droppableContainers ?? []).map(({ id }) => ({
+      id,
+      key: id,
+      data: { current: undefined },
+      disabled: false,
+      node: { current: null },
+      rect: { current: input.droppableRects.get(id) ?? null },
+    })),
+    pointerCoordinates: input.pointerCoordinates ?? null,
+  });
+}
 import { moveWorkspace } from "../../shared/api/apiClient";
 
 vi.mock("../../shared/api/apiClient", () => ({ moveWorkspace: vi.fn() }));
@@ -26,13 +69,16 @@ const render = (disabled = false, items = workspaces) => (
     </WorkspaceReorder>
   </QueryClientProvider>
 );
-const order = () => renderer.root.findAllByType("h3").map((node) => node.children.join(""));
+const order = () => renderer.root.findAllByType("h3").map((node) => testText(node));
 const context = () =>
   renderer.root.find((node) => !!node.props.onDragEnd && !!node.props.onDragStart);
-async function drag(from = "w1", to: string | null = "w3") {
-  await act(async () => context().props.onDragStart({ active: { id: from } }));
+async function drag(from = "w1", to: UniqueIdentifier | null = "w3") {
+  await act(async () => dispatchTestEvent(context(), "onDragStart", { active: { id: from } }));
   await act(async () =>
-    context().props.onDragEnd({ active: { id: from }, over: to ? { id: to } : null }),
+    dispatchTestEvent(context(), "onDragEnd", {
+      active: { id: from },
+      over: to ? { id: to } : null,
+    }),
   );
 }
 
@@ -72,7 +118,7 @@ it("shows the new order while saving, serializes moves, then reconciles server o
   expect(moveWorkspace).toHaveBeenCalledTimes(1);
   await act(async () => finish());
   expect(order()).toEqual(["Beta", "Gamma", "Alpha"]);
-  expect(renderer.root.findByType("p").children.join("")).toContain("position 3 of 3");
+  expect(testText(renderer.root.findByType("p"))).toContain("position 3 of 3");
 });
 
 it("rolls back errors and reports them without retrying", async () => {
@@ -80,29 +126,19 @@ it("rolls back errors and reports them without retrying", async () => {
   await drag("w3", "w1");
   expect(moveWorkspace).toHaveBeenCalledWith({ workspaceId: "w3", beforeWorkspaceId: "w1" });
   expect(order()).toEqual(["Alpha", "Beta", "Gamma"]);
-  expect(renderer.root.findByProps({ role: "alert" }).children.join("")).toContain(
-    "Herdr unavailable",
-  );
+  expect(testText(renderer.root.findByProps({ role: "alert" }))).toContain("Herdr unavailable");
   expect(moveWorkspace).toHaveBeenCalledTimes(1);
 });
 
 it.each([140, 92, 56, 20, 0])(
   "moves a tall workspace to first position at preview center y=%s",
   async (y) => {
-    const rect = (top: number, height: number) => ({
-      left: 10,
-      right: 300,
-      top,
-      bottom: top + height,
-      width: 290,
-      height,
-    });
     const droppableRects = new Map([
       ["w1", rect(100, 80)],
       ["w2", rect(200, 800)],
       ["w3", rect(1020, 80)],
     ]);
-    const collisions = context().props.collisionDetection({
+    const collisions = detectCollision({
       active: { id: "w2" },
       pointerCoordinates: { x: 40, y },
       collisionRect: rect(y - 27, 54),
@@ -136,7 +172,7 @@ it.each([
       return [id, { left: 10, right: 300, top, bottom: top + 80, width: 290, height: 80 }];
     }),
   );
-  const collisions = context().props.collisionDetection({
+  const collisions = detectCollision({
     active: { id: "w1" },
     pointerCoordinates: { x: 40, y },
     collisionRect: { left: 10, right: 300, top: y - 40, bottom: y + 40, width: 290, height: 80 },
@@ -145,12 +181,14 @@ it.each([
   });
   expect(collisions[0]?.id).toBe(target);
   await drag("w1", collisions[0]?.id ?? null);
-  if (target === "w1") expect(moveWorkspace).not.toHaveBeenCalled();
-  else
+  if (target === "w1") {
+    expect(moveWorkspace).not.toHaveBeenCalled();
+  } else {
     expect(moveWorkspace).toHaveBeenCalledWith({
       workspaceId: "w1",
       beforeWorkspaceId: target === "w2" ? "w3" : null,
     });
+  }
 });
 
 it.each([
@@ -171,7 +209,7 @@ it.each([
       return [id, { left: 10, right: 300, top, bottom: top + 80, width: 290, height: 80 }];
     }),
   );
-  const collisions = context().props.collisionDetection({
+  const collisions = detectCollision({
     active: { id: "w3" },
     pointerCoordinates: { x: 40, y },
     collisionRect: { left: 10, right: 300, top: y - 40, bottom: y + 40, width: 290, height: 80 },
@@ -180,8 +218,11 @@ it.each([
   });
   expect(collisions[0]?.id).toBe(target);
   await drag("w3", collisions[0]?.id ?? null);
-  if (target === "w3") expect(moveWorkspace).not.toHaveBeenCalled();
-  else expect(moveWorkspace).toHaveBeenCalledWith({ workspaceId: "w3", beforeWorkspaceId: target });
+  if (target === "w3") {
+    expect(moveWorkspace).not.toHaveBeenCalled();
+  } else {
+    expect(moveWorkspace).toHaveBeenCalledWith({ workspaceId: "w3", beforeWorkspaceId: target });
+  }
 });
 
 it.each([
@@ -200,7 +241,7 @@ it.each([
         return [id, { left: 10, right: 300, top, bottom: top + 80, width: 290, height: 80 }];
       }),
     );
-    const collisions = context().props.collisionDetection({
+    const collisions = detectCollision({
       active: { id: from },
       pointerCoordinates: { x: 40, y: pointer },
       collisionRect: {
@@ -216,12 +257,14 @@ it.each([
     });
     expect(collisions[0]?.id).toBe(target);
     await drag(from, collisions[0]?.id ?? null);
-    if (target === from) expect(moveWorkspace).not.toHaveBeenCalled();
-    else
+    if (target === from) {
+      expect(moveWorkspace).not.toHaveBeenCalled();
+    } else {
       expect(moveWorkspace).toHaveBeenCalledWith({
         workspaceId: from,
         beforeWorkspaceId: from === "w1" ? "w3" : "w2",
       });
+    }
   },
 );
 
@@ -236,7 +279,7 @@ it("targets expanded rows, keeps gaps droppable and preserves keyboard detection
     droppableRects,
     droppableContainers: [...droppableRects.keys()].map((id) => ({ id })),
   };
-  const collisionDetection = context().props.collisionDetection;
+  const collisionDetection = detectCollision;
   const atCenter = (center: number) =>
     collisionDetection({
       ...args,
@@ -252,32 +295,36 @@ it("targets expanded rows, keeps gaps droppable and preserves keyboard detection
 });
 
 it("does not consider the rest of the page a drop destination", () => {
-  const droppableRects = new Map([["w1", { left: 10, right: 300, top: 100, bottom: 170 }]]);
+  const droppableRects = new Map([
+    ["w1", { left: 10, right: 300, top: 100, bottom: 170, width: 290, height: 70 }],
+  ]);
   for (const pointerCoordinates of [
     { x: 900, y: 120 },
     { x: 20, y: -1 },
     { x: 20, y: 215 },
     { x: 20, y: 500 },
   ]) {
-    expect(context().props.collisionDetection({ pointerCoordinates, droppableRects })).toEqual([]);
+    expect(detectCollision({ pointerCoordinates, droppableRects })).toEqual([]);
   }
 });
 
 it("does not save cancelled, outside or unchanged drops", async () => {
   await drag("w1", null);
   await drag("w1", "w1");
-  await act(async () => context().props.onDragCancel());
+  await act(async () => dispatchTestEvent(context(), "onDragCancel"));
   expect(moveWorkspace).not.toHaveBeenCalled();
 });
 
 it("rejects stale drops if another client changes the order", async () => {
-  await act(async () => context().props.onDragStart({ active: { id: "w1" } }));
+  await act(async () => dispatchTestEvent(context(), "onDragStart", { active: { id: "w1" } }));
   await act(async () =>
     renderer.update(render(false, [workspaces[1], workspaces[0], workspaces[2]])),
   );
-  await act(async () => context().props.onDragEnd({ active: { id: "w1" }, over: { id: "w3" } }));
+  await act(async () =>
+    dispatchTestEvent(context(), "onDragEnd", { active: { id: "w1" }, over: { id: "w3" } }),
+  );
   expect(moveWorkspace).not.toHaveBeenCalled();
-  expect(renderer.root.findByProps({ role: "alert" }).children.join("")).toContain(
+  expect(testText(renderer.root.findByProps({ role: "alert" }))).toContain(
     "changed while dragging",
   );
 });
@@ -286,17 +333,20 @@ it("provides a click-only destination picker without expanding a workspace", asy
   const preventDefault = vi.fn();
   const stopPropagation = vi.fn();
   await act(async () =>
-    renderer.root
-      .findByProps({ "aria-label": "Reorder Gamma" })
-      .props.onClick({ preventDefault, stopPropagation }),
+    dispatchTestEvent(renderer.root.findByProps({ "aria-label": "Reorder Gamma" }), "onClick", {
+      preventDefault,
+      stopPropagation,
+    }),
   );
   expect(showModal).toHaveBeenCalledOnce();
   expect(preventDefault).toHaveBeenCalledOnce();
   expect(stopPropagation).toHaveBeenCalledOnce();
   await act(async () =>
-    renderer.root.findByType("select").props.onChange({ target: { value: "w1" } }),
+    dispatchTestEvent(renderer.root.findByType("select"), "onChange", { target: { value: "w1" } }),
   );
-  await act(async () => renderer.root.findByType("form").props.onSubmit({ preventDefault }));
+  await act(async () =>
+    dispatchTestEvent(renderer.root.findByType("form"), "onSubmit", { preventDefault }),
+  );
   expect(moveWorkspace).toHaveBeenCalledWith({ workspaceId: "w3", beforeWorkspaceId: "w1" });
   expect(close).toHaveBeenCalledOnce();
 });

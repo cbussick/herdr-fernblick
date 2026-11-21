@@ -1,3 +1,4 @@
+import { report } from "../report.mjs";
 // Synthetic-only inactive-session layout checks; no Herdr/Pi sockets or commands.
 // Run after npm run build: node tools/design/inactive-conversation.mjs
 import assert from "node:assert/strict";
@@ -22,7 +23,9 @@ const chat = {
   activePaneId: null,
 };
 const server = createHttpServer({ getDashboard: async () => dashboard }, resolve("dist"), {});
-await new Promise((done) => server.listen(0, "127.0.0.1", done));
+await new Promise((done) => {
+  server.listen(0, "127.0.0.1", done);
+});
 try {
   for (const [name, engine] of [
     ["chromium", chromium],
@@ -49,12 +52,13 @@ try {
             "GET",
             "Opening/resuming the screen must not mutate a session",
           );
-          if (pathname === "/api/agents") await route.fulfill({ json: dashboard });
-          else if (pathname === "/api/sessions/inactive-session")
+          if (pathname === "/api/agents") {
+            await route.fulfill({ json: dashboard });
+          } else if (pathname === "/api/sessions/inactive-session") {
             await route.fulfill({ json: { agent: null, chat } });
-          else if (pathname === "/api/sessions/missing-session")
+          } else if (pathname === "/api/sessions/missing-session") {
             await route.fulfill({ json: { agent: null, chat: null } });
-          else {
+          } else {
             errors.push(`Unexpected API call: ${pathname}`);
             await route.fulfill({ status: 500, json: { error: "Unexpected fixture request" } });
           }
@@ -123,9 +127,11 @@ try {
       await browser.close();
     }
   }
-  console.log(
+  report(
     "PASS: inactive/unavailable conversation and 404 layouts, shared actions, keyboard recovery and overview navigation across five widths in Chromium and WebKit.",
   );
 } finally {
-  await new Promise((done) => server.close(done));
+  await new Promise((done) => {
+    server.close(done);
+  });
 }

@@ -71,11 +71,22 @@ it("posts a validated relative workspace move and preserves API failures", async
 });
 
 const target = { runtime: randomUUID(), epoch: randomUUID(), sessionId: "s" };
-const fetchMock = vi.fn();
+const fetchMock = vi.fn<
+  (
+    url: string,
+    init: {
+      signal: AbortSignal;
+      body: string;
+      headers: Record<string, string>;
+      keepalive?: boolean;
+    },
+  ) => Promise<Response>
+>();
+let timeout: ReturnType<typeof vi.fn<typeof AbortSignal.timeout>>;
 let controller: AbortController;
 beforeEach(() => {
   controller = new AbortController();
-  vi.spyOn(AbortSignal, "timeout").mockReturnValue(controller.signal);
+  timeout = vi.spyOn(AbortSignal, "timeout").mockReturnValue(controller.signal);
   vi.stubGlobal("fetch", fetchMock);
   fetchMock.mockReset();
 });
@@ -124,7 +135,7 @@ it("requires confirmed compaction for the current target, not a forwarding ACK",
   expect(await compactAgentConversation("w1:p1", target)).toEqual(reply);
   expect(fetchMock.mock.calls[0][0]).toBe("/api/agents/w1%3Ap1/compact");
   expect(JSON.parse(fetchMock.mock.calls[0][1].body)).toEqual({ target });
-  expect(AbortSignal.timeout).toHaveBeenCalledWith(125_000);
+  expect(timeout).toHaveBeenCalledWith(125_000);
   for (const invalid of [
     { type: "ack", id: randomUUID(), outcome: "invoked" },
     { ...reply, target: { ...target, epoch: randomUUID() } },
@@ -142,9 +153,9 @@ it("does not retry failed, timed-out or disconnected compaction", async () => {
   await expect(compactAgentConversation("w1:p1", target)).rejects.toThrow("uncertain");
   fetchMock.mockImplementationOnce(
     (_url, init) =>
-      new Promise((_done, reject) =>
-        init.signal.addEventListener("abort", () => reject(init.signal.reason)),
-      ),
+      new Promise((_done, reject) => {
+        init.signal.addEventListener("abort", () => reject(init.signal.reason));
+      }),
   );
   const pending = compactAgentConversation("w1:p1", target);
   const assertion = expect(pending).rejects.toThrow("uncertain");
@@ -290,7 +301,7 @@ it("validates a correlated forwarding ACK and uses a bounded HTTP deadline", asy
     id,
     outcome: "invoked",
   });
-  expect(AbortSignal.timeout).toHaveBeenCalledWith(15_000);
+  expect(timeout).toHaveBeenCalledWith(15_000);
   expect(fetchMock.mock.calls[0][1].signal).toBe(controller.signal);
 });
 it("rejects a wrong or malformed ACK rather than clearing a draft", async () => {
@@ -316,9 +327,9 @@ it("preserves explicit backend rejection errors", async () => {
 it("reports timeout and network loss as uncertain and never retries", async () => {
   fetchMock.mockImplementationOnce(
     (_url, init) =>
-      new Promise((_done, reject) =>
-        init.signal.addEventListener("abort", () => reject(init.signal.reason)),
-      ),
+      new Promise((_done, reject) => {
+        init.signal.addEventListener("abort", () => reject(init.signal.reason));
+      }),
   );
   const result = chatCommand("w1:p1", target, "prompt", "hello");
   const assertion = expect(result).rejects.toThrow("delivery uncertain");

@@ -1,3 +1,4 @@
+import { report } from "../report.mjs";
 // Synthetic browser checks only. Every API request and SSE stream is replaced;
 // this script never sends a prompt to a real agent.
 import assert from "node:assert/strict";
@@ -76,7 +77,7 @@ const snapshot = {
     cwd: "/projects/fernblick",
     model: "GPT-6.1",
     provider: "OpenAI",
-    totalTokens: 12480,
+    totalTokens: 12_480,
     cost: 0.18,
   },
 };
@@ -95,7 +96,9 @@ const agent = {
   revision: 1,
 };
 for (const engine of [chromium, webkit]) {
-  if (only && !only.startsWith(`${engine.name()}:`)) continue;
+  if (only && !only.startsWith(`${engine.name()}:`)) {
+    continue;
+  }
   const browser = await engine.launch({ headless: true });
   for (const { touch, ...viewport } of [
     { width: 390, height: 844, touch: true },
@@ -103,7 +106,9 @@ for (const engine of [chromium, webkit]) {
     { width: 1194, height: 834, touch: true },
     { width: 1440, height: 1000, touch: false },
   ]) {
-    if (only && only !== `${engine.name()}:${viewport.width}`) continue;
+    if (only && only !== `${engine.name()}:${viewport.width}`) {
+      continue;
+    }
     const page = await browser.newPage({ viewport, reducedMotion: "reduce", hasTouch: touch });
     const errors = [];
     page.on("pageerror", (error) => errors.push(error.message));
@@ -138,15 +143,16 @@ for (const engine of [chromium, webkit]) {
           ...update,
           seq: window.annotationSnapshot.seq + 1,
         };
-        for (const stream of window.annotationStreams)
+        for (const stream of window.annotationStreams) {
           stream.onmessage?.({ data: JSON.stringify(window.annotationSnapshot) });
+        }
       };
     }, snapshot);
     await page.route(
       (url) => url.pathname.startsWith("/api/"),
       async (route) => {
         const url = route.request().url();
-        if (url.endsWith("/api/agents"))
+        if (url.endsWith("/api/agents")) {
           return route.fulfill({
             json: {
               agents: [agent],
@@ -154,12 +160,14 @@ for (const engine of [chromium, webkit]) {
               workspaces: [{ workspace_id: "w1", label: "Fernblick" }],
             },
           });
+        }
         if (url.endsWith("/prompt")) {
           sends.push(route.request().postDataJSON());
-          if (hold)
+          if (hold) {
             await new Promise((resolve) => {
               release = resolve;
             });
+          }
           return route.fulfill(
             failure
               ? { status: 503, json: { error: "Forwarding uncertain" } }
@@ -172,7 +180,7 @@ for (const engine of [chromium, webkit]) {
                 },
           );
         }
-        if (url.includes("/output?"))
+        if (url.includes("/output?")) {
           return route.fulfill({
             json: {
               format: "text",
@@ -185,6 +193,7 @@ for (const engine of [chromium, webkit]) {
               text: "Synthetic terminal",
             },
           });
+        }
         return route.fulfill({ status: 503, json: { error: "Unexpected fixture request" } });
       },
     );
@@ -194,25 +203,29 @@ for (const engine of [chromium, webkit]) {
         ({ selector, start, end, touch }) => {
           const element = document.querySelector(selector);
           document.activeElement?.blur();
-          if (touch !== null)
+          if (touch !== null) {
             element.dispatchEvent(
               new PointerEvent("pointerdown", {
                 bubbles: true,
                 pointerType: touch ? "touch" : "mouse",
               }),
             );
+          }
           const nodes = [];
           const walker = document.createTreeWalker(element, NodeFilter.SHOW_TEXT);
           while (walker.nextNode()) {
             if (
               element.closest("[data-message-control]") ||
               !walker.currentNode.parentElement.closest("[data-message-control]")
-            )
+            ) {
               nodes.push(walker.currentNode);
+            }
           }
           function point(offset) {
             for (const node of nodes) {
-              if (offset <= node.textContent.length) return [node, offset];
+              if (offset <= node.textContent.length) {
+                return [node, offset];
+              }
               offset -= node.textContent.length;
             }
             throw new Error("Selection offset out of bounds");
@@ -223,13 +236,14 @@ for (const engine of [chromium, webkit]) {
           const selection = window.getSelection();
           selection.removeAllRanges();
           selection.addRange(range);
-          if (touch !== null)
+          if (touch !== null) {
             element.dispatchEvent(
               new PointerEvent("pointerup", {
                 bubbles: true,
                 pointerType: touch ? "touch" : "mouse",
               }),
             );
+          }
         },
         { selector, start, end, touch },
       );
@@ -239,8 +253,11 @@ for (const engine of [chromium, webkit]) {
     const action = page.getByRole("button", { name: "Comment", exact: true });
     async function openComment() {
       await action.waitFor();
-      if (touch) await action.tap();
-      else await action.click();
+      if (touch) {
+        await action.tap();
+      } else {
+        await action.click();
+      }
       await comment.waitFor();
     }
     const tray = page.getByRole("region", { name: "Pending annotations" });
@@ -307,17 +324,20 @@ for (const engine of [chromium, webkit]) {
       const sizes = await typography
         .locator("h1, h2, h3, h4, h5, h6")
         .evaluateAll((elements) =>
-          elements.map((element) => parseFloat(getComputedStyle(element).fontSize)),
+          elements.map((element) => Number.parseFloat(getComputedStyle(element).fontSize)),
         );
       assert.equal(sizes.length, 6);
-      for (let level = 1; level < sizes.length; level++)
+      for (let level = 1; level < sizes.length; level++) {
         assert.ok(
           sizes[level - 1] > sizes[level],
           "every heading level must have a distinct descending size",
         );
+      }
       assert.ok(
         sizes[5] >=
-          (await typography.evaluate((element) => parseFloat(getComputedStyle(element).fontSize))),
+          (await typography.evaluate((element) =>
+            Number.parseFloat(getComputedStyle(element).fontSize),
+          )),
         "deep headings must not be smaller than body text",
       );
       await typography.screenshot({
@@ -376,23 +396,24 @@ for (const engine of [chromium, webkit]) {
       assert.ok(
         await blocks
           .locator("blockquote")
-          .evaluate((element) => parseFloat(getComputedStyle(element).marginTop) > 0),
+          .evaluate((element) => Number.parseFloat(getComputedStyle(element).marginTop) > 0),
         "block spacing survives hidden source spans",
       );
       assert.ok(
         await page
           .locator(`${source} p`)
           .nth(1)
-          .evaluate((element) => parseFloat(getComputedStyle(element).marginTop) > 0),
+          .evaluate((element) => Number.parseFloat(getComputedStyle(element).marginTop) > 0),
         "ordinary paragraphs retain readable spacing",
       );
-      if (viewport.width === 390)
+      if (viewport.width === 390) {
         assert.equal(
           await blocks
             .getByRole("region", { name: "Message table" })
             .evaluate((element) => element.scrollWidth > element.clientWidth),
           true,
         );
+      }
       await blocks
         .getByRole("region", { name: "Message table" })
         .screenshot({ path: `${out}/${engine.name()}-${viewport.width}-table.png` });
@@ -739,7 +760,9 @@ for (const engine of [chromium, webkit]) {
       );
       await update({ version: 2 });
       await page.evaluate(() => {
-        for (const stream of window.annotationStreams) stream.onerror?.();
+        for (const stream of window.annotationStreams) {
+          stream.onerror?.();
+        }
       });
       await tray.getByText("Reconnect to Pi before sending comments.").waitFor();
       assert.equal(
@@ -815,7 +838,9 @@ for (const engine of [chromium, webkit]) {
         await tray.getByRole("button", { name: /Edit text of comment 1:/ }).isDisabled(),
         true,
       );
-      while (!release) await page.waitForTimeout(10);
+      while (!release) {
+        await page.waitForTimeout(10);
+      }
       release();
       hold = false;
       await tray.waitFor({ state: "hidden" });
@@ -862,7 +887,9 @@ for (const engine of [chromium, webkit]) {
       assert.match(await comment.inputValue(), /\n/);
       await comment.press("Enter");
       const review = tray.getByRole("button", { name: /1 pending comment/ });
-      if ((await review.getAttribute("aria-expanded")) !== "true") await review.click();
+      if ((await review.getAttribute("aria-expanded")) !== "true") {
+        await review.click();
+      }
       await activate(tray.getByRole("button", { name: /Edit text of comment 1:/ }));
       await page.getByRole("button", { name: "Delete comment", exact: true }).click();
       await tray.waitFor({ state: "hidden" });
@@ -904,7 +931,7 @@ for (const engine of [chromium, webkit]) {
       await label.waitFor();
       assert.equal(await label.count(), 1, "general feedback labels render in bold");
       assert.deepEqual(errors, []);
-      console.log(`${engine.name()} ${viewport.width}: annotation flow passed`);
+      report(`${engine.name()} ${viewport.width}: annotation flow passed`);
     } catch (error) {
       await page.screenshot({ path: `${out}/failure-${engine.name()}-${viewport.width}.png` });
       throw error;

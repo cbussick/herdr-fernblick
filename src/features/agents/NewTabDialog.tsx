@@ -1,5 +1,6 @@
 import dialogStyles from "./Dialogs.module.css";
-import { useEffect, useRef, useState, type FormEvent } from "react";
+import { useEffect, useRef, useState } from "react";
+import type { FormEvent } from "react";
 import { useMutation } from "@tanstack/react-query";
 import type { ShellTab, Workspace } from "../../shared/api/contracts";
 import { createTab } from "../../shared/api/apiClient";
@@ -7,7 +8,7 @@ import { createTab } from "../../shared/api/apiClient";
 interface NewTabDialogProps {
   onClose: () => void;
   onCreated: (tab: ShellTab) => void;
-  workspaces: Workspace[];
+  workspaces: Array<Workspace>;
 }
 
 export function NewTabDialog({ onClose, onCreated, workspaces }: NewTabDialogProps) {

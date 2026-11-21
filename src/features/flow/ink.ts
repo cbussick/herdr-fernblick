@@ -6,14 +6,16 @@ import type { CanvasNode } from "./model";
 export type InkPoint = [number, number, number];
 export type InkData = FlowInkProps & { kind: "ink" };
 export type InkNode = Node<InkData, "ink">;
-export const maxStrokePoints = 10000;
-export const maxBoardPoints = 100000;
+export const maxStrokePoints = 10_000;
+export const maxBoardPoints = 100_000;
 export const isInk = (node: CanvasNode): node is InkNode => node.type === "ink";
 
-const outlines = new WeakMap<InkData, number[][]>();
-export function outline(data: InkData, complete = true): number[][] {
+const outlines = new WeakMap<InkData, Array<Array<number>>>();
+export function outline(data: InkData, complete = true): Array<Array<number>> {
   const cached = complete && outlines.get(data);
-  if (cached) return cached;
+  if (cached) {
+    return cached;
+  }
   const result = getStroke(data.points, {
     size: data.size,
     thinning: 0.5,
@@ -22,24 +24,28 @@ export function outline(data: InkData, complete = true): number[][] {
     simulatePressure: !data.pressure,
     last: complete,
   });
-  if (complete) outlines.set(data, result);
+  if (complete) {
+    outlines.set(data, result);
+  }
   return result;
 }
-export function pathFromOutline(points: number[][]): string {
-  if (!points.length) return "";
+export function pathFromOutline(points: Array<Array<number>>): string {
+  if (!points.length) {
+    return "";
+  }
   return `M ${points.map((p) => `${p[0]},${p[1]}`).join(" L ")} Z`;
 }
 export function makeInk(
   id: string,
-  points: InkPoint[],
+  points: Array<InkPoint>,
   color: string,
   size: number,
   pressure: boolean,
 ): InkNode {
   const draft: InkData = { kind: "ink", points, color, size, pressure, w: 1, h: 1 };
   const polygon = outline(draft);
-  const xs = polygon.map((p) => p[0]!);
-  const ys = polygon.map((p) => p[1]!);
+  const xs = polygon.map((p) => p[0]);
+  const ys = polygon.map((p) => p[1]);
   const x = Math.min(...xs) - 2;
   const y = Math.min(...ys) - 2;
   const w = Math.max(8, Math.max(...xs) - x + 2);
@@ -61,41 +67,51 @@ export function inkDimensions(node: InkNode) {
     h: node.height ?? Number(node.style?.height ?? node.data.h),
   };
 }
-function distance(p: number[], a: number[], b: number[]): number {
-  const dx = b[0]! - a[0]!;
-  const dy = b[1]! - a[1]!;
+function distance(p: Array<number>, a: Array<number>, b: Array<number>): number {
+  const dx = b[0] - a[0];
+  const dy = b[1] - a[1];
   const t = Math.max(
     0,
-    Math.min(1, ((p[0]! - a[0]!) * dx + (p[1]! - a[1]!) * dy) / (dx * dx + dy * dy || 1)),
+    Math.min(1, ((p[0] - a[0]) * dx + (p[1] - a[1]) * dy) / (dx * dx + dy * dy || 1)),
   );
-  return Math.hypot(p[0]! - a[0]! - t * dx, p[1]! - a[1]! - t * dy);
+  return Math.hypot(p[0] - a[0] - t * dx, p[1] - a[1] - t * dy);
 }
-function segmentsCross(a: number[], b: number[], c: number[], d: number[]) {
-  const cross = (p: number[], q: number[], r: number[]) =>
-    (q[0]! - p[0]!) * (r[1]! - p[1]!) - (q[1]! - p[1]!) * (r[0]! - p[0]!);
+function cross(p: Array<number>, q: Array<number>, r: Array<number>) {
+  return (q[0] - p[0]) * (r[1] - p[1]) - (q[1] - p[1]) * (r[0] - p[0]);
+}
+function segmentsCross(a: Array<number>, b: Array<number>, c: Array<number>, d: Array<number>) {
   return cross(a, b, c) * cross(a, b, d) < 0 && cross(c, d, a) * cross(c, d, b) < 0;
 }
 /** Test the rendered polygon, including resized strokes, against the complete eraser sweep. */
-export function hitsInk(node: InkNode, from: number[], to: number[], radius: number): boolean {
+export function hitsInk(
+  node: InkNode,
+  from: Array<number>,
+  to: Array<number>,
+  radius: number,
+): boolean {
   const { w, h } = inkDimensions(node);
   if (
-    Math.max(from[0]!, to[0]!) + radius < node.position.x ||
-    Math.min(from[0]!, to[0]!) - radius > node.position.x + w ||
-    Math.max(from[1]!, to[1]!) + radius < node.position.y ||
-    Math.min(from[1]!, to[1]!) - radius > node.position.y + h
-  )
+    Math.max(from[0], to[0]) + radius < node.position.x ||
+    Math.min(from[0], to[0]) - radius > node.position.x + w ||
+    Math.max(from[1], to[1]) + radius < node.position.y ||
+    Math.min(from[1], to[1]) - radius > node.position.y + h
+  ) {
     return false;
+  }
   const polygon = outline(node.data).map((p) => [
-    node.position.x + (p[0]! * w) / node.data.w,
-    node.position.y + (p[1]! * h) / node.data.h,
+    node.position.x + (p[0] * w) / node.data.w,
+    node.position.y + (p[1] * h) / node.data.h,
   ]);
   let winding = 0;
   for (let i = 0, j = polygon.length - 1; i < polygon.length; j = i++) {
-    const a = polygon[j]!;
-    const b = polygon[i]!;
-    const side = (b[0]! - a[0]!) * (from[1]! - a[1]!) - (from[0]! - a[0]!) * (b[1]! - a[1]!);
-    if (a[1]! <= from[1]! && b[1]! > from[1]! && side > 0) winding++;
-    else if (a[1]! > from[1]! && b[1]! <= from[1]! && side < 0) winding--;
+    const a = polygon[j];
+    const b = polygon[i];
+    const side = (b[0] - a[0]) * (from[1] - a[1]) - (from[0] - a[0]) * (b[1] - a[1]);
+    if (a[1] <= from[1] && b[1] > from[1] && side > 0) {
+      winding++;
+    } else if (a[1] > from[1] && b[1] <= from[1] && side < 0) {
+      winding--;
+    }
     if (
       segmentsCross(from, to, a, b) ||
       Math.min(
@@ -104,30 +120,31 @@ export function hitsInk(node: InkNode, from: number[], to: number[], radius: num
         distance(a, from, to),
         distance(b, from, to),
       ) <= radius
-    )
+    ) {
       return true;
+    }
   }
   return winding !== 0;
 }
-export type InkCommand = { before: InkNode[]; after: InkNode[] };
-export function cleanInk(nodes: InkNode[]): InkNode[] {
-  return nodes.map(({ selected: _s, dragging: _d, measured: _m, resizing: _r, ...n }) =>
-    structuredClone({
-      ...n,
-      style: {
-        ...n.style,
-        ...(n.width !== undefined ? { width: n.width } : {}),
-        ...(n.height !== undefined ? { height: n.height } : {}),
-      },
-    }),
-  );
+export type InkCommand = { before: Array<InkNode>; after: Array<InkNode> };
+export function cleanInk(nodes: Array<InkNode>): Array<InkNode> {
+  return nodes.map(({ selected: _s, dragging: _d, measured: _m, resizing: _r, ...n }) => {
+    const style = { ...n.style };
+    if (n.width !== undefined) {
+      style.width = n.width;
+    }
+    if (n.height !== undefined) {
+      style.height = n.height;
+    }
+    return structuredClone({ ...n, style });
+  });
 }
 /** Apply only the touched stroke IDs. Component edits never get reverted by drawing undo. */
 export function applyInkCommand(
-  nodes: CanvasNode[],
+  nodes: Array<CanvasNode>,
   command: InkCommand,
   undo: boolean,
-): CanvasNode[] {
+): Array<CanvasNode> {
   const touched = new Set([...command.before, ...command.after].map((n) => n.id));
   return [
     ...nodes.filter((n) => !touched.has(n.id)),

@@ -1,12 +1,13 @@
 import { act, useEffect } from "react";
-import { create, type ReactTestRenderer } from "react-test-renderer";
+import { create } from "react-test-renderer";
+import type { ReactTestRenderer } from "react-test-renderer";
 import { afterEach, expect, it, vi } from "vitest";
 import { useLiveChat } from "./useLiveChat";
 import { randomUUID } from "node:crypto";
 import type { Snapshot } from "../../../packages/pi-live-chat/protocol";
 import { browserFrame } from "../../../packages/pi-live-chat/browserStream";
 class Events {
-  static instances: Events[] = [];
+  static instances: Array<Events> = [];
   onmessage?: (event: { data: string }) => void;
   onerror?: () => void;
   close = vi.fn();

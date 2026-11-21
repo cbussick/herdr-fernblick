@@ -1,23 +1,41 @@
-import type { ServerResponse } from "node:http";
 import type { Agent } from "../../src/shared/api/contracts.js";
-import { LiveChatError, type LiveBridge } from "./liveBridge.js";
+import { LiveChatError } from "./liveBridge.js";
 import { browserFrame } from "../../packages/pi-live-chat/browserStream.js";
 import type { Snapshot } from "../../packages/pi-live-chat/protocol.js";
 import { MAX_FRAME } from "../../packages/pi-live-chat/protocol.js";
 
 // One Herdr lookup before subscription; no Herdr requests in the chat data loop.
 // Replacements require a fresh process check, but ordinary frames are direct.
-export function liveEvents(response: ServerResponse, agent: Agent, bridge: LiveBridge) {
+interface EventResponse {
+  writableLength: number;
+  writeHead(status: number, headers: Record<string, string>): void;
+  flushHeaders(): void;
+  write(frame: string): boolean;
+  destroy(): void;
+  on(event: "drain" | "close", listener: () => void): void;
+  off(event: "drain", listener: () => void): void;
+}
+interface SnapshotPeer {
+  snapshot: Snapshot;
+}
+interface EventBridge {
+  current(agent: Agent): SnapshotPeer;
+  resolve(agent: Agent): Promise<SnapshotPeer>;
+  subscribe(listener: () => void, pane: string): () => void;
+}
+export function liveEvents(response: EventResponse, agent: Agent, bridge: EventBridge) {
   let closed = false;
   let running = false;
   let dirty = false;
-  let bound: Awaited<ReturnType<LiveBridge["resolve"]>> | undefined;
+  let bound: SnapshotPeer | undefined;
   let last = "";
   let previous: Snapshot | undefined;
   let paused = false;
   let pausedAt = 0;
   const write = (data: unknown, id?: string) => {
-    if (closed) return;
+    if (closed) {
+      return;
+    }
     const frame = `${id ? `id: ${id}\n` : ""}data: ${JSON.stringify(data)}\n\n`;
     if (Buffer.byteLength(frame) + response.writableLength > MAX_FRAME) {
       response.destroy();
@@ -30,15 +48,21 @@ export function liveEvents(response: ServerResponse, agent: Agent, bridge: LiveB
   };
   const refresh = async () => {
     dirty = true;
-    if (running || closed || paused) return;
+    if (running || closed || paused) {
+      return;
+    }
     running = true;
     try {
       while (dirty && !closed && !paused) {
         dirty = false;
         try {
           const peer = bridge.current(agent);
-          if (peer !== bound) bound = await bridge.resolve(agent);
-          if (closed) return;
+          if (peer !== bound) {
+            bound = await bridge.resolve(agent);
+          }
+          if (closed) {
+            return;
+          }
           const snapshot = bound.snapshot;
           const id = `${snapshot.epoch}:${snapshot.seq}`;
           if (id !== last) {
@@ -81,9 +105,9 @@ export function liveEvents(response: ServerResponse, agent: Agent, bridge: LiveB
   };
   response.on("drain", onDrain);
   const heartbeat = setInterval(() => {
-    if (response.writableLength > MAX_FRAME || (paused && Date.now() - pausedAt > 60_000))
+    if (response.writableLength > MAX_FRAME || (paused && Date.now() - pausedAt > 60_000)) {
       response.destroy();
-    else if (!paused && response.write(": heartbeat\n\n") === false) {
+    } else if (!paused && response.write(": heartbeat\n\n") === false) {
       paused = true;
       pausedAt = Date.now();
     }

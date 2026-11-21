@@ -1,14 +1,16 @@
 import type { IncomingMessage, ServerResponse } from "node:http";
+import { isUint8Array } from "node:util/types";
 import { z } from "zod";
 import { BoardStore, BoardError } from "../boards/storage.js";
-import { boardSessionKey, LiveBridge, LiveChatError } from "../pi/liveBridge.js";
+import type { LiveBridge } from "../pi/liveBridge.js";
+import { boardSessionKey, LiveChatError } from "../pi/liveBridge.js";
 import type { HerdrService } from "../herdr/herdrService.js";
 import {
   matchesTarget,
   targetSchema,
   uploadIdSchema,
-  type Target,
 } from "../../packages/pi-live-chat/protocol.js";
+import type { Target } from "../../packages/pi-live-chat/protocol.js";
 import {
   boardIdSchema,
   boardSceneSchema,
@@ -20,13 +22,17 @@ import { boardImageQualitySchema } from "../../packages/pi-live-chat/boardImageE
 
 function sameOrigin(request: IncomingMessage) {
   const origin = request.headers.origin;
-  if (!origin || new URL(origin).host !== request.headers.host)
+  if (!origin || new URL(origin).host !== request.headers.host) {
     throw new BoardError(403, "Cross-origin board request rejected");
+  }
 }
 function safeRead(request: IncomingMessage) {
-  if (request.headers.origin) sameOrigin(request);
-  if (request.headers["sec-fetch-site"] === "cross-site")
+  if (request.headers.origin) {
+    sameOrigin(request);
+  }
+  if (request.headers["sec-fetch-site"] === "cross-site") {
     throw new BoardError(403, "Cross-origin board request rejected");
+  }
 }
 function json(response: ServerResponse, body: unknown) {
   response.setHeader("Cache-Control", "no-store");
@@ -35,13 +41,20 @@ function json(response: ServerResponse, body: unknown) {
 }
 async function body(request: IncomingMessage, max: number) {
   sameOrigin(request);
-  if (!request.headers["content-type"]?.startsWith("application/json"))
+  if (!request.headers["content-type"]?.startsWith("application/json")) {
     throw new BoardError(415, "Requests must use application/json");
+  }
   let size = 0;
-  const chunks: Buffer[] = [];
-  for await (const chunk of request) {
-    size += chunk.length;
-    if (size > max) throw new BoardError(413, "Board request is too large");
+  const chunks: Array<Buffer> = [];
+  for await (const raw of request) {
+    const chunk: unknown = raw;
+    if (!isUint8Array(chunk)) {
+      throw new BoardError(400, "Invalid board request encoding");
+    }
+    size += chunk.byteLength;
+    if (size > max) {
+      throw new BoardError(413, "Board request is too large");
+    }
     chunks.push(Buffer.from(chunk));
   }
   try {
@@ -92,11 +105,12 @@ export function createBoardRoutes(service: HerdrService, bridge: LiveBridge, boa
         peer.socket.destroyed ||
         bridge.current(agent) !== peer ||
         !matchesTarget(peer.snapshot, target)
-      )
+      ) {
         throw new LiveChatError(
           409,
           "Agent session changed. Reopen the whiteboard in the current chat.",
         );
+      }
     };
     validate();
     const key = boardSessionKey(peer.snapshot);
@@ -132,7 +146,9 @@ export function createBoardRoutes(service: HerdrService, bridge: LiveBridge, boa
     const route = url.pathname.match(
       /^\/api\/agents\/([^/]+)\/board(?:\/(save|send|prompt|revoke|events|export))?$/,
     );
-    if (!route) return false;
+    if (!route) {
+      return false;
+    }
     const pane = z
       .string()
       .max(128)
@@ -141,7 +157,9 @@ export function createBoardRoutes(service: HerdrService, bridge: LiveBridge, boa
     const action = route[2];
     if (action === "events" && request.method === "GET") {
       safeRead(request);
-      if (streams.size >= 64) throw new BoardError(503, "Too many whiteboard streams");
+      if (streams.size >= 64) {
+        throw new BoardError(503, "Too many whiteboard streams");
+      }
       const target = targetSchema.parse(Object.fromEntries(url.searchParams));
       const ctx = await context(pane, target);
       await boards.open(ctx.key, ctx.validate);
@@ -159,29 +177,39 @@ export function createBoardRoutes(service: HerdrService, bridge: LiveBridge, boa
       let blocked = false;
       let blockedAt = 0;
       const unavailable = (error: unknown) => {
-        if (closed) return;
+        if (closed) {
+          return;
+        }
         response.end(
           `data: ${JSON.stringify({ type: "unavailable", reason: error instanceof Error ? error.message : "Whiteboard disconnected" })}\n\n`,
         );
       };
       const flush = async () => {
-        if (closed || reading || blocked || !dirty) return;
+        if (closed || reading || blocked || !dirty) {
+          return;
+        }
         reading = true;
         dirty = false;
         try {
           ctx.validate();
           const state = await boards.read(ctx.id);
           ctx.validate();
-          if (closed) return;
+          if (closed) {
+            return;
+          }
           blocked = !response.write(
             `data: ${JSON.stringify({ type: "changed", revision: state.revision, access: state.access, lastAuthor: state.lastAuthor, snapshots: state.snapshots.length })}\n\n`,
           );
-          if (blocked) blockedAt = Date.now();
+          if (blocked) {
+            blockedAt = Date.now();
+          }
         } catch (error) {
           unavailable(error);
         } finally {
           reading = false;
-          if (dirty && !blocked && !closed) void flush();
+          if (dirty && !blocked && !closed) {
+            void flush();
+          }
         }
       };
       const notify = () => {
@@ -201,10 +229,14 @@ export function createBoardRoutes(service: HerdrService, bridge: LiveBridge, boa
         void flush();
       });
       const timer = setInterval(() => {
-        if (blocked && Date.now() - blockedAt > 60_000) response.destroy();
+        if (blocked && Date.now() - blockedAt > 60_000) {
+          response.destroy();
+        }
         if (!blocked && !closed) {
           blocked = !response.write(": keepalive\n\n");
-          if (blocked) blockedAt = Date.now();
+          if (blocked) {
+            blockedAt = Date.now();
+          }
         }
       }, 15_000);
       timer.unref();
@@ -218,10 +250,12 @@ export function createBoardRoutes(service: HerdrService, bridge: LiveBridge, boa
       void flush();
       return true;
     }
-    if (request.method !== "POST" || action === "events") return false;
+    if (request.method !== "POST" || action === "events") {
+      return false;
+    }
     const raw = await body(
       request,
-      action === "save" || action === "export" ? MAX_BOARD_BYTES + 65536 : 200_000,
+      action === "save" || action === "export" ? MAX_BOARD_BYTES + 65_536 : 200_000,
     );
     const input = openSchema.parse(raw);
     const ctx = await context(pane, input.target);
@@ -232,8 +266,9 @@ export function createBoardRoutes(service: HerdrService, bridge: LiveBridge, boa
       return true;
     }
     const owned = ownedSchema.parse(raw);
-    if (owned.boardId !== ctx.id)
+    if (owned.boardId !== ctx.id) {
       throw new BoardError(403, "Whiteboard does not belong to this conversation");
+    }
     if (action === "save") {
       const value = saveSchema.parse(raw);
       json(response, await boards.save(ctx.id, value.baseRevision, value.scene, ctx.validate));
@@ -259,19 +294,23 @@ export function createBoardRoutes(service: HerdrService, bridge: LiveBridge, boa
       json(response, { ok: true });
     } else if (action === "prompt") {
       const value = promptSchema.parse(raw);
-      if (sending.has(input.target.runtime))
+      if (sending.has(input.target.runtime)) {
         throw new BoardError(409, "A whiteboard send is already in flight");
-      if (ctx.peer.snapshot.busy || ctx.peer.snapshot.sendPending)
+      }
+      if (ctx.peer.snapshot.busy || ctx.peer.snapshot.sendPending) {
         throw new BoardError(409, "Pi is busy");
-      if (ctx.peer.snapshot.version !== 2 || !ctx.peer.snapshot.capabilities?.boards)
+      }
+      if (ctx.peer.snapshot.version !== 2 || !ctx.peer.snapshot.capabilities?.boards) {
         throw new BoardError(409, "Run /reload in Pi to enable whiteboard tools");
+      }
       sending.add(input.target.runtime);
       let grant: ReturnType<BoardStore["grant"]> | undefined;
       try {
         // Visual context uses the normal image pipeline, not immutable board captures.
         if (value.uploadId) {
-          if (mimeTypeForUpload(value.uploadId) !== "image/png")
+          if (mimeTypeForUpload(value.uploadId) !== "image/png") {
             throw new BoardError(400, "Whiteboard context must be a PNG");
+          }
           try {
             validatePng(await readImageUpload(value.uploadId));
           } catch {
@@ -284,11 +323,12 @@ export function createBoardRoutes(service: HerdrService, bridge: LiveBridge, boa
         }
         const state = await boards.read(ctx.id);
         ctx.validate();
-        if (state.revision !== value.revision)
+        if (state.revision !== value.revision) {
           throw new BoardError(
             409,
             "Board changed before sending. Review it before sending again.",
           );
+        }
         grant = boards.grant(ctx.id, input.target, "edit", value.revision);
         const reply = await bridge.request(ctx.agent, input.target, {
           action: "send",
@@ -297,30 +337,37 @@ export function createBoardRoutes(service: HerdrService, bridge: LiveBridge, boa
           requestId: value.requestId,
           board: grant,
         });
-        if (reply.type !== "ack" || reply.outcome !== "invoked")
+        if (reply.type !== "ack" || reply.outcome !== "invoked") {
           throw new BoardError(
             409,
             reply.type === "ack"
               ? (reply.reason ?? "Pi rejected the prompt")
               : "Invalid prompt acknowledgement",
           );
+        }
         json(response, reply);
       } catch (error) {
-        if (grant) boards.revoke(grant.grantId);
+        if (grant) {
+          boards.revoke(grant.grantId);
+        }
         throw error;
       } finally {
         sending.delete(input.target.runtime);
       }
     } else if (action === "send") {
       const value = sendSchema.parse(raw);
-      if (sending.has(input.target.runtime))
+      if (sending.has(input.target.runtime)) {
         throw new BoardError(409, "A whiteboard send is already in flight");
-      if (ctx.peer.snapshot.busy || ctx.peer.snapshot.sendPending)
+      }
+      if (ctx.peer.snapshot.busy || ctx.peer.snapshot.sendPending) {
         throw new BoardError(409, "Pi is busy");
-      if (ctx.peer.snapshot.version !== 2)
+      }
+      if (ctx.peer.snapshot.version !== 2) {
         throw new BoardError(409, "Run /reload in Pi to enable whiteboard sending");
-      if (mimeTypeForUpload(value.uploadId) !== "image/png")
+      }
+      if (mimeTypeForUpload(value.uploadId) !== "image/png") {
         throw new BoardError(400, "Whiteboard snapshot must be a PNG");
+      }
       sending.add(input.target.runtime);
       try {
         const png = await readImageUpload(value.uploadId);
@@ -333,13 +380,14 @@ export function createBoardRoutes(service: HerdrService, bridge: LiveBridge, boa
           attachments: [value.uploadId],
           requestId: value.requestId,
         });
-        if (reply.type !== "ack" || reply.outcome !== "invoked")
+        if (reply.type !== "ack" || reply.outcome !== "invoked") {
           throw new BoardError(
             409,
             reply.type === "ack"
               ? (reply.reason ?? "Pi rejected the image")
               : "Invalid image acknowledgement",
           );
+        }
         json(response, reply);
       } finally {
         sending.delete(input.target.runtime);

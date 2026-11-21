@@ -4,7 +4,6 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
 import type { z } from "zod";
-import type { HerdrClient } from "../herdr/HerdrClient.js";
 import { HerdrService } from "../herdr/herdrService.js";
 import { LiveBridge } from "../pi/liveBridge.js";
 import { createHttpServer } from "./server.js";
@@ -27,16 +26,27 @@ beforeEach(async () => {
     },
   );
   server = createHttpServer(
-    new HerdrService({ request } as unknown as HerdrClient),
+    new HerdrService({
+      request: async (method, params, schema) =>
+        schema.parse(await request(method, params, schema)),
+    }),
     "/unused",
     new LiveBridge(join(directory, "pi.sock"), join(directory, "herdr.sock")),
   );
-  await new Promise<void>((done) => server.listen(0, "127.0.0.1", done));
-  base = `http://127.0.0.1:${(server.address() as { port: number }).port}`;
+  await new Promise<void>((done) => {
+    server.listen(0, "127.0.0.1", done);
+  });
+  const address = server.address();
+  if (!address || typeof address === "string") {
+    throw new Error("Expected TCP listener");
+  }
+  base = `http://127.0.0.1:${address.port}`;
 });
 afterEach(async () => {
   server.closeAllConnections();
-  await new Promise<void>((done) => server.close(() => done()));
+  await new Promise<void>((done) => {
+    server.close(() => done());
+  });
   await rm(directory, { recursive: true, force: true });
 });
 const createTab = (body: unknown) =>

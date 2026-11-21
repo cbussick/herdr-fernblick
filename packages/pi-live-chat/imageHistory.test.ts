@@ -29,6 +29,23 @@ it("restores all ten upload references for transcript projection and navigation"
   );
 });
 
+it("ignores malformed history boundaries without persisting or exposing image IDs", async () => {
+  const history = new ImageHistory();
+  history.restore([null, 42, {}, { type: "custom", customType: IMAGE_METADATA, data: null }]);
+  const persist = vi.fn();
+  for (const message of [
+    null,
+    42,
+    {},
+    { content: null },
+    { content: [null, 42, { type: "image", data: 42 }] },
+  ]) {
+    expect(history.ids(message)).toEqual([]);
+    expect(await history.hydrate(message, () => true, persist)).toBe(false);
+  }
+  expect(persist).not.toHaveBeenCalled();
+});
+
 it("hydrates all ten large history images while retaining the existing copy concurrency bound", async () => {
   const directory = await mkdtemp(join(tmpdir(), "fb-history-"));
   vi.stubEnv("FERNBLICK_UPLOAD_DIR", directory);

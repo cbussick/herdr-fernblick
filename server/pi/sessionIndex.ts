@@ -5,7 +5,8 @@ import { homedir } from "node:os";
 import { join, resolve } from "node:path";
 import { z } from "zod";
 import { savedChatSchema } from "../../src/shared/api/contracts.js";
-import { SessionCatalog, type CatalogCache } from "./sessionCatalog.js";
+import type { SessionCatalog } from "./sessionCatalog.js";
+import type { CatalogCache } from "./sessionCatalog.js";
 
 const metadataSchema = savedChatSchema.omit({ activePaneId: true }).extend({
   path: z.string(),
@@ -17,6 +18,12 @@ const indexSchema = z.object({
   root: z.string(),
   entries: z.array(z.object({ stamp: z.string(), chat: metadataSchema })),
 });
+
+interface SessionIndexSnapshot {
+  chats: Array<z.infer<typeof metadataSchema>>;
+  indexing: boolean;
+  indexError?: string;
+}
 
 // This index is a disposable browsing aid. Resume/delete always resolve the real session
 // through SessionCatalog; cached paths and asset references never authorize mutations.
@@ -46,8 +53,9 @@ export class SessionIndex {
         info.uid !== process.getuid?.() ||
         (info.mode & 0o777) !== 0o700 ||
         (await realpath(this.directory)) !== resolve(this.directory)
-      )
+      ) {
         throw new Error("Unsafe metadata index directory");
+      }
       this.storageSafe = true;
       await this.load();
     } catch {
@@ -61,25 +69,35 @@ export class SessionIndex {
   }
 
   snapshot() {
-    return {
+    const snapshot: SessionIndexSnapshot = {
       chats: [...this.cache.values()]
-        .map(({ chat }) => chat)
-        .filter((chat) => !this.removed.has(chat.id))
+        .flatMap(({ chat }) => (this.removed.has(chat.id) ? [] : [chat]))
         .sort((a, b) => b.updatedAt.localeCompare(a.updatedAt) || a.id.localeCompare(b.id)),
       indexing: this.pending !== undefined,
-      ...(this.indexError ? { indexError: this.indexError } : {}),
     };
+    if (this.indexError) {
+      snapshot.indexError = this.indexError;
+    }
+    return snapshot;
   }
 
   forget(id: string) {
     this.removed.add(id);
-    for (const [path, { chat }] of this.cache) if (chat.id === id) this.cache.delete(path);
+    for (const [path, { chat }] of this.cache) {
+      if (chat.id === id) {
+        this.cache.delete(path);
+      }
+    }
     void this.refresh();
   }
 
   refresh(): Promise<void> {
-    if (this.closed) return Promise.resolve();
-    if (this.pending) return this.pending;
+    if (this.closed) {
+      return Promise.resolve();
+    }
+    if (this.pending) {
+      return this.pending;
+    }
     this.pending = this.scan().finally(() => {
       this.pending = undefined;
     });
@@ -95,17 +113,21 @@ export class SessionIndex {
   private async scan() {
     try {
       await this.catalog.scanMetadata(this.cache);
-      for (const [path, { chat }] of this.cache)
-        if (this.removed.has(chat.id)) this.cache.delete(path);
+      for (const [path, { chat }] of this.cache) {
+        if (this.removed.has(chat.id)) {
+          this.cache.delete(path);
+        }
+      }
       this.indexError = undefined;
     } catch {
       this.indexError = "Could not refresh saved sessions. Retrying in the background.";
       return;
     }
-    if (this.storageSafe)
+    if (this.storageSafe) {
       await this.persist().catch(() => {
         // An unwritable/full cache must not hide successfully indexed cards.
       });
+    }
   }
 
   private async load() {
@@ -121,10 +143,13 @@ export class SessionIndex {
         (stats.mode & 0o777) !== 0o600 ||
         stats.nlink !== 1 ||
         stats.size > 32 * 1024 * 1024
-      )
+      ) {
         return;
+      }
       const data = indexSchema.parse(JSON.parse(await file.readFile("utf8")));
-      if (data.root !== this.catalog.root) return;
+      if (data.root !== this.catalog.root) {
+        return;
+      }
       for (const entry of data.entries) {
         this.cache.set(entry.chat.path, {
           stamp: entry.stamp,

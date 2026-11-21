@@ -11,7 +11,7 @@ import { Snackbar } from "../../shared/ui/Snackbar";
 import { ConnectionStatus } from "../../shared/ui/ConnectionStatus";
 
 interface AgentListProps {
-  agents: Agent[];
+  agents: Array<Agent>;
   connected: boolean;
   onOpenSettings: () => void;
   onCreate: (workspaceId?: string) => void;
@@ -23,8 +23,8 @@ interface AgentListProps {
   onResumed: (agent: Agent) => void;
   onSelectTab: (tab: ShellTab) => void;
   selectedPaneId: string | null;
-  tabs: ShellTab[];
-  workspaces: Workspace[];
+  tabs: Array<ShellTab>;
+  workspaces: Array<Workspace>;
 }
 type OverviewView = "workspaces" | "agents" | "history";
 const options = [

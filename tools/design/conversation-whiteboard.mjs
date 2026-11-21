@@ -1,3 +1,4 @@
+import { report } from "../report.mjs";
 // Synthetic browser regression: intercept every agent API; never control live agents.
 // npm run build && node tools/design/conversation-whiteboard.mjs
 import assert from "node:assert/strict";
@@ -92,7 +93,9 @@ const server = createHttpServer(
   resolve("dist"),
   {},
 );
-await new Promise((done) => server.listen(0, "127.0.0.1", done));
+await new Promise((done) => {
+  server.listen(0, "127.0.0.1", done);
+});
 const origin = `http://127.0.0.1:${server.address().port}`;
 await mkdir(".runtime/her-21-evidence", { recursive: true });
 try {
@@ -100,15 +103,19 @@ try {
     ["chromium", chromium],
     ["webkit", webkit],
   ]) {
-    if (process.env.WHITEBOARD_BROWSER && process.env.WHITEBOARD_BROWSER !== name) continue;
+    if (process.env.WHITEBOARD_BROWSER && process.env.WHITEBOARD_BROWSER !== name) {
+      continue;
+    }
     const browser = await engine.launch({ headless: true });
     try {
-      for (const [layout, viewport] of [
-        ["mobile", { width: 390, height: 844 }],
-        ["portrait", { width: 820, height: 1180 }],
-        ["desktop", { width: 1440, height: 900 }],
+      for (const { layout, viewport } of [
+        { layout: "mobile", viewport: { width: 390, height: 844 } },
+        { layout: "portrait", viewport: { width: 820, height: 1180 } },
+        { layout: "desktop", viewport: { width: 1440, height: 900 } },
       ]) {
-        if (process.env.WHITEBOARD_LAYOUT && process.env.WHITEBOARD_LAYOUT !== layout) continue;
+        if (process.env.WHITEBOARD_LAYOUT && process.env.WHITEBOARD_LAYOUT !== layout) {
+          continue;
+        }
         const page = await browser.newPage({
           viewport,
           serviceWorkers: "block",
@@ -124,11 +131,12 @@ try {
               constructor(url) {
                 this.url = String(url);
                 window.fixtureSources.push(this);
-                if (!this.url.includes("/board/"))
+                if (!this.url.includes("/board/")) {
                   this.timer = setTimeout(
                     () => this.onmessage?.({ data: JSON.stringify(snapshot) }),
                     20,
                   );
+                }
               }
               close() {
                 clearTimeout(this.timer);
@@ -146,9 +154,13 @@ try {
         );
         await page.route("**/*", (route) => {
           const url = new URL(route.request().url());
-          if (url.origin !== origin) return route.abort();
-          if (!url.pathname.startsWith("/api/")) return route.continue();
-          if (url.pathname === "/api/agents")
+          if (url.origin !== origin) {
+            return route.abort();
+          }
+          if (!url.pathname.startsWith("/api/")) {
+            return route.continue();
+          }
+          if (url.pathname === "/api/agents") {
             return route.fulfill({
               json: {
                 agents: [agent],
@@ -156,7 +168,10 @@ try {
                 workspaces: [{ workspace_id: "w1", label: "FeBO" }],
               },
             });
-          if (url.pathname.endsWith("/board")) return route.fulfill({ json: board });
+          }
+          if (url.pathname.endsWith("/board")) {
+            return route.fulfill({ json: board });
+          }
           if (url.pathname.endsWith("/prompt")) {
             const body = route.request().postDataJSON();
             requests.push({ path: url.pathname, body });
@@ -240,11 +255,12 @@ try {
           // Real touch input exercises pointer capture and touch-action, not synthetic DOM events.
           const cdp = await page.context().newCDPSession(page);
           await cdp.send("Input.dispatchTouchEvent", { type: "touchStart", touchPoints: [from] });
-          for (let step = 1; step <= 8; step++)
+          for (let step = 1; step <= 8; step++) {
             await cdp.send("Input.dispatchTouchEvent", {
               type: "touchMove",
               touchPoints: [{ x: from.x, y: from.y + ((to.y - from.y) * step) / 8 }],
             });
+          }
           await cdp.send("Input.dispatchTouchEvent", { type: "touchEnd", touchPoints: [] });
           await cdp.detach();
         } else {
@@ -290,7 +306,9 @@ try {
             "toggle above the expanded preset returns to default",
           );
           await splitter.focus();
-          for (let i = 0; i < 3; i++) await page.keyboard.press("Shift+ArrowLeft");
+          for (let i = 0; i < 3; i++) {
+            await page.keyboard.press("Shift+ArrowLeft");
+          }
           assert.equal(Number(await splitter.getAttribute("aria-valuenow")), 640);
         } else {
           await splitter.focus();
@@ -385,9 +403,11 @@ try {
       await browser.close();
     }
   }
-  console.log(
+  report(
     "Conversation whiteboard passed: Chromium/WebKit, mobile/portrait/desktop, deep links, stale session rejection, draft preservation and no automatic uploads.",
   );
 } finally {
-  await new Promise((done) => server.close(done));
+  await new Promise((done) => {
+    server.close(done);
+  });
 }

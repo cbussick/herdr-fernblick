@@ -1,3 +1,4 @@
+import { report } from "../report.mjs";
 // Synthetic production browser regression. No real Herdr/Pi APIs or service workers.
 // PLAYWRIGHT_MODULE=/path/to/playwright/index.mjs node tools/design/pwa-whiteboard.mjs
 import assert from "node:assert/strict";
@@ -47,7 +48,9 @@ const server = createHttpServer(
   resolve("dist"),
   {},
 );
-await new Promise((done) => server.listen(0, "127.0.0.1", done));
+await new Promise((done) => {
+  server.listen(0, "127.0.0.1", done);
+});
 try {
   for (const [name, engine] of [
     ["chromium", chromium],
@@ -67,11 +70,12 @@ try {
           ({ snapshot }) => {
             window.EventSource = class {
               constructor(url) {
-                if (!String(url).includes("/board/"))
+                if (!String(url).includes("/board/")) {
                   this.timer = setTimeout(
                     () => this.onmessage?.({ data: JSON.stringify(snapshot) }),
                     20,
                   );
+                }
               }
               close() {
                 clearTimeout(this.timer);
@@ -108,7 +112,7 @@ try {
           (url) => url.pathname.startsWith("/api/"),
           (route) => {
             const path = new URL(route.request().url()).pathname;
-            if (path === "/api/agents")
+            if (path === "/api/agents") {
               return route.fulfill({
                 json: {
                   agents: [agent],
@@ -116,7 +120,8 @@ try {
                   tabs: [],
                 },
               });
-            if (path.endsWith("/board"))
+            }
+            if (path.endsWith("/board")) {
               return route.fulfill({
                 json: {
                   id: "a".repeat(64),
@@ -128,6 +133,7 @@ try {
                   access: null,
                 },
               });
+            }
             return route.fulfill({ status: 403, json: { error: "Unexpected fixture request" } });
           },
         );
@@ -135,7 +141,9 @@ try {
         await page.getByRole("tab", { name: "Agents", exact: true }).click();
         await page.getByTestId("pane-row").click();
         await page.getByLabel("Pi session status").waitFor();
-        if (timing === "before") await page.evaluate(() => window.fixtureUpdate());
+        if (timing === "before") {
+          await page.evaluate(() => window.fixtureUpdate());
+        }
         const openBoard = page.getByRole("button", { name: /whiteboard/i });
         await openBoard.focus();
         await page.keyboard.press("Enter");
@@ -146,7 +154,9 @@ try {
         await input.fill("Keep my whiteboard draft");
         // Keyboard-sized viewport without requiring a physical software keyboard.
         await page.setViewportSize({ width: 390, height: 500 });
-        if (timing === "after") await page.evaluate(() => window.fixtureUpdate());
+        if (timing === "after") {
+          await page.evaluate(() => window.fixtureUpdate());
+        }
         const later = page.getByRole("button", { name: "Later", exact: true });
         await later.waitFor();
         // Check wrapping in DOM order whether the notice mounted before or after
@@ -235,7 +245,7 @@ try {
           "background interactivity is restored",
         );
         assert.deepEqual(errors, []);
-        console.log(
+        report(
           `${name}/${timing}: touch dismissal, keyboard refresh, draft and inert restoration passed`,
         );
         await page.close();
@@ -245,5 +255,7 @@ try {
     }
   }
 } finally {
-  await new Promise((done) => server.close(done));
+  await new Promise((done) => {
+    server.close(done);
+  });
 }

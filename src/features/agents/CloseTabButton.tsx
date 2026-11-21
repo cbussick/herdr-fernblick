@@ -1,5 +1,6 @@
 import dialogStyles from "./Dialogs.module.css";
-import { useRef, useState, type FormEvent } from "react";
+import { useRef, useState } from "react";
+import type { FormEvent } from "react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import {
   closeTab,
@@ -44,10 +45,13 @@ export function CloseTabButton({
   const [confirmation, setConfirmation] = useState<"delete" | "restart" | "exit" | null>(null);
   const saveMutation = useMutation({
     mutationFn: async () => {
-      const updates: Promise<void>[] = [];
-      if (tabLabel.trim() !== label) updates.push(renameTab(tabId, tabLabel));
-      if (agentRunning && agentTarget && nextAgentName && nextAgentName !== agentName)
+      const updates: Array<Promise<void>> = [];
+      if (tabLabel.trim() !== label) {
+        updates.push(renameTab(tabId, tabLabel));
+      }
+      if (agentRunning && agentTarget && nextAgentName && nextAgentName !== agentName) {
         updates.push(renameAgent(agentTarget, nextAgentName));
+      }
       await Promise.all(updates);
     },
     onSuccess: () => {
@@ -57,7 +61,12 @@ export function CloseTabButton({
     },
   });
   const restartMutation = useMutation({
-    mutationFn: () => restartAgent(agentTarget!),
+    mutationFn: () => {
+      if (!agentTarget) {
+        throw new Error("No running agent to restart");
+      }
+      return restartAgent(agentTarget);
+    },
     retry: false,
     onSuccess: () => {
       void queryClient.invalidateQueries({ queryKey: ["agents"] });
@@ -66,7 +75,12 @@ export function CloseTabButton({
     },
   });
   const exitMutation = useMutation({
-    mutationFn: () => exitAgentSession(agentTarget!),
+    mutationFn: () => {
+      if (!agentTarget) {
+        throw new Error("No running agent to exit");
+      }
+      return exitAgentSession(agentTarget);
+    },
     retry: false,
     onSuccess: () => {
       dialogRef.current?.close();

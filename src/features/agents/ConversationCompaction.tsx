@@ -1,7 +1,10 @@
-import { useEffect, useId, useRef, useState, type ReactNode } from "react";
-import { sameTarget, type Target } from "../../../packages/pi-live-chat/protocol";
+import { useEffect, useId, useRef, useState } from "react";
+import type { ReactNode } from "react";
+import { sameTarget } from "../../../packages/pi-live-chat/protocol";
+import type { Target } from "../../../packages/pi-live-chat/protocol";
 import { BranchIcon } from "../../shared/ui/Icons";
-import { ConversationSettings, type ConversationSettingsProps } from "./ConversationSettings";
+import { ConversationSettings } from "./ConversationSettings";
+import type { ConversationSettingsProps } from "./ConversationSettings";
 import { ConversationActionsMenu } from "./ConversationActionsMenu";
 import { StateNotice } from "../../shared/ui/StateFeedback";
 import styles from "./ConversationCompaction.module.css";
@@ -41,11 +44,14 @@ export function ConversationCompaction({
   const trigger = useRef<HTMLButtonElement>(null);
   const confirmButton = useRef<HTMLButtonElement>(null);
   useEffect(() => {
-    if (confirmation) confirmButton.current?.focus();
+    if (confirmation) {
+      confirmButton.current?.focus();
+    }
   }, [confirmation]);
   // A confirmation belongs to the target that was visible when it opened.
-  if (confirmation && (!connected || !target || !sameTarget(target, confirmation)))
+  if (confirmation && (!connected || !target || !sameTarget(target, confirmation))) {
     setConfirmation(null);
+  }
   function cancel() {
     setConfirmation(null);
     trigger.current?.focus();
@@ -88,8 +94,9 @@ export function ConversationCompaction({
                 description: "Summarize older context to make room.",
                 disabledReason,
                 onSelect: () => {
-                  if (target && enabled && connected && supported && !pending)
+                  if (target && enabled && connected && supported && !pending) {
                     setConfirmation(target);
+                  }
                 },
               },
             ]}

@@ -1,6 +1,5 @@
 import { expect, it, vi } from "vitest";
 import type { z } from "zod";
-import type { HerdrClient } from "./HerdrClient.js";
 import { HerdrService } from "./herdrService.js";
 import { HerdrRequestError } from "./HerdrClient.js";
 
@@ -33,7 +32,9 @@ it("adds workspace and tab labels to agents from the session snapshot", async ()
       },
     }),
   );
-  const service = new HerdrService({ request } as unknown as HerdrClient);
+  const service = new HerdrService({
+    request: async (method, params, schema) => schema.parse(await request(method, params, schema)),
+  });
 
   const dashboard = await service.getDashboard();
 
@@ -75,7 +76,9 @@ it("includes every split shell pane, even in a tab with agents", async () => {
       },
     }),
   );
-  const dashboard = await new HerdrService({ request } as unknown as HerdrClient).getDashboard();
+  const dashboard = await new HerdrService({
+    request: async (method, params, schema) => schema.parse(await request(method, params, schema)),
+  }).getDashboard();
   expect(dashboard.agents).toHaveLength(1);
   expect(dashboard.tabs).toEqual(
     panes.slice(1).map((pane) => ({
@@ -98,7 +101,9 @@ it("creates a tab before starting Pi in its root pane", async () => {
 
     return schema.parse({ type: "agent_started", agent });
   });
-  const service = new HerdrService({ request } as unknown as HerdrClient);
+  const service = new HerdrService({
+    request: async (method, params, schema) => schema.parse(await request(method, params, schema)),
+  });
 
   const createdAgent = await service.createPiAgent("w1", "fix-auth", "Authentication");
 
@@ -130,27 +135,34 @@ it("waits for a newly created shell without creating another tab", async () => {
   try {
     let starts = 0;
     const request = vi.fn(async <T>(method: string, _params: unknown, schema: z.ZodType<T>) => {
-      if (method === "tab.create")
+      if (method === "tab.create") {
         return schema.parse({
           type: "tab_created",
           tab: { label: "5", tab_id: "w1:t2", workspace_id: "w1" },
           root_pane: { pane_id: "w1:p2", revision: 0 },
         });
-      if (++starts <= 3)
+      }
+      if (++starts <= 3) {
         throw new HerdrRequestError(
           "agent_pane_busy",
           "agent target pane w1:p2 is not an available shell",
         );
+      }
       return schema.parse({ type: "agent_started", agent });
     });
-    const result = new HerdrService({ request } as unknown as HerdrClient).createPiAgent("w1");
+    const result = new HerdrService({
+      request: async (method, params, schema) =>
+        schema.parse(await request(method, params, schema)),
+    }).createPiAgent("w1");
     const assertion = expect(result).resolves.toMatchObject({ pane_id: "w1:p2", tab_label: "5" });
     await vi.advanceTimersByTimeAsync(500);
     await assertion;
     expect(request.mock.calls.filter(([method]) => method === "tab.create")).toHaveLength(1);
     const startsCalls = request.mock.calls.filter(([method]) => method === "agent.start");
     expect(startsCalls).toHaveLength(4);
-    for (const call of startsCalls) expect(call[1]).toEqual(startsCalls[0][1]);
+    for (const call of startsCalls) {
+      expect(call[1]).toEqual(startsCalls[0][1]);
+    }
   } finally {
     vi.useRealTimers();
   }
@@ -163,15 +175,19 @@ it.each(["agent_pane_busy", "timeout", "disconnected", "agent_name_taken"])(
     try {
       const error = new HerdrRequestError(code, "start failed");
       const request = vi.fn(async <T>(method: string, _params: unknown, schema: z.ZodType<T>) => {
-        if (method === "tab.create")
+        if (method === "tab.create") {
           return schema.parse({
             type: "tab_created",
             tab: { label: "5", tab_id: "w1:t2", workspace_id: "w1" },
             root_pane: { pane_id: "w1:p2", revision: 0 },
           });
+        }
         throw error;
       });
-      const result = new HerdrService({ request } as unknown as HerdrClient).createPiAgent("w1");
+      const result = new HerdrService({
+        request: async (method, params, schema) =>
+          schema.parse(await request(method, params, schema)),
+      }).createPiAgent("w1");
       const assertion = expect(result).rejects.toBe(error);
       await vi.advanceTimersByTimeAsync(10_000);
       await assertion;
@@ -200,7 +216,10 @@ it("isolates development extensions while explicitly retaining Herdr session rep
           : { type: "agent_started", agent },
       ),
     );
-    await new HerdrService({ request } as unknown as HerdrClient).createPiAgent("w1");
+    await new HerdrService({
+      request: async (method, params, schema) =>
+        schema.parse(await request(method, params, schema)),
+    }).createPiAgent("w1");
     expect(request.mock.calls[1][1]).toMatchObject({
       args: [
         "--no-extensions",
@@ -227,7 +246,9 @@ it("generates a valid default agent name while letting Herdr choose the tab name
 
     return schema.parse({ type: "agent_started", agent: { ...agent, name: "pi" } });
   });
-  const service = new HerdrService({ request } as unknown as HerdrClient);
+  const service = new HerdrService({
+    request: async (method, params, schema) => schema.parse(await request(method, params, schema)),
+  });
 
   await service.createPiAgent("w1");
 
@@ -256,8 +277,9 @@ it("gracefully restarts Pi in the same pane and session", async () => {
     agent_session: { agent: "pi", kind: "path", source: "herdr:pi", value: sessionPath },
   };
   const request = vi.fn(async <T>(method: string, _params: unknown, schema: z.ZodType<T>) => {
-    if (method === "agent.get")
+    if (method === "agent.get") {
       return schema.parse({ type: "agent_info", agent: restartableAgent });
+    }
     if (method === "session.snapshot") {
       return schema.parse({
         type: "session_snapshot",
@@ -269,7 +291,9 @@ it("gracefully restarts Pi in the same pane and session", async () => {
     }
     return schema.parse({ type: "ok" });
   });
-  const service = new HerdrService({ request } as unknown as HerdrClient);
+  const service = new HerdrService({
+    request: async (method, params, schema) => schema.parse(await request(method, params, schema)),
+  });
 
   const shutdown = vi.fn(async () => {});
   await service.restartPiAgent("fix-auth", shutdown);
@@ -299,7 +323,9 @@ it("creates an unfocused workspace in the requested directory", async () => {
       workspace: { label: "API", workspace_id: "w2" },
     }),
   );
-  const service = new HerdrService({ request } as unknown as HerdrClient);
+  const service = new HerdrService({
+    request: async (method, params, schema) => schema.parse(await request(method, params, schema)),
+  });
 
   const workspace = await service.createWorkspace("API", "/srv/api");
 

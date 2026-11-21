@@ -1,8 +1,12 @@
 import { useSyncExternalStore } from "react";
 
 function singlePaneLayout() {
-  if (window.matchMedia("(width < 48rem)").matches) return true;
-  if (window.matchMedia("(width >= 75rem)").matches) return false;
+  if (window.matchMedia("(width < 48rem)").matches) {
+    return true;
+  }
+  if (window.matchMedia("(width >= 75rem)").matches) {
+    return false;
+  }
 
   // The software keyboard can turn the *viewport* landscape without rotating
   // the tablet. Physical screen dimensions do not shrink with the keyboard.

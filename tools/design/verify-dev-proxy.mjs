@@ -1,3 +1,4 @@
+import { report } from "../report.mjs";
 // Exercise the actual proxy and backend origin guard without sending anything
 // to Pi: the empty body is deliberately invalid and is rejected before agent
 // lookup or command forwarding. Pass a running frontend's private base URL.
@@ -12,7 +13,7 @@ for (const origin of [base, "https://untrusted.invalid"]) {
   });
   const body = await response.json();
   const expected = origin === base ? 400 : 403;
-  console.log(
+  report(
     `${origin === base ? "Same-origin" : "Cross-origin"} probe: HTTP ${response.status}, ${body.error}`,
   );
   assert.equal(

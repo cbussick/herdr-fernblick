@@ -1,3 +1,4 @@
+import { report } from "../report.mjs";
 // Synthetic browser regression checks. Every API request is intercepted; no live agent is controlled.
 // PLAYWRIGHT_MODULE=/absolute/path/to/playwright/index.mjs node tools/design/skills.mjs URL
 import assert from "node:assert/strict";
@@ -99,7 +100,9 @@ for (const [engine, browserType] of [
       ["ipad", 834, 1194],
       ["desktop", 1440, 1000],
     ]) {
-      if (process.env.SKILLS_CASE && process.env.SKILLS_CASE !== name) continue;
+      if (process.env.SKILLS_CASE && process.env.SKILLS_CASE !== name) {
+        continue;
+      }
       const page = await browser.newPage({
         viewport: { width, height },
         hasTouch: width < 768,
@@ -125,7 +128,7 @@ for (const [engine, browserType] of [
         (url) => url.pathname.startsWith("/api/"),
         async (route) => {
           const url = new URL(route.request().url());
-          if (url.pathname === "/api/agents")
+          if (url.pathname === "/api/agents") {
             return route.fulfill({
               json: {
                 agents: [agent],
@@ -133,10 +136,12 @@ for (const [engine, browserType] of [
                 tabs: [],
               },
             });
+          }
           if (url.pathname.endsWith("/skills")) {
             calls++;
-            if (mode === "error")
+            if (mode === "error") {
               return route.fulfill({ status: 503, json: { error: "Skills offline" } });
+            }
             return route.fulfill({
               json: {
                 type: "skills",
@@ -229,9 +234,7 @@ for (const [engine, browserType] of [
             return r.top >= box.top && r.bottom <= box.bottom;
           }).length;
         });
-        console.log(
-          `${engine}/${name}: picker height ${picker.height}, ${visibleRows} complete rows`,
-        );
+        report(`${engine}/${name}: picker height ${picker.height}, ${visibleRows} complete rows`);
         assert.ok(
           visibleRows >= 3,
           "phone skills should show several complete rows above the keyboard",
@@ -276,7 +279,9 @@ for (const [engine, browserType] of [
       assert.ok(bounds.bottom <= bounds.height + 1, `${engine}/${name}: send off screen`);
       if (width < 768) {
         await page.getByRole("combobox").fill("fixture");
-        for (let i = 0; i < 8; i++) await page.getByRole("combobox").press("ArrowDown");
+        for (let i = 0; i < 8; i++) {
+          await page.getByRole("combobox").press("ArrowDown");
+        }
         const selected = await page.getByRole("option", { selected: true }).boundingBox();
         const list = await page.getByRole("listbox").boundingBox();
         assert.ok(
@@ -383,7 +388,7 @@ for (const [engine, browserType] of [
         "session updates must not replace the editor DOM",
       );
       assert.deepEqual(errors, []);
-      console.log(
+      report(
         `${engine}/${name}: skills, draft, focus, keyboard, errors, disconnect, layout passed`,
       );
       await page.close();

@@ -1,3 +1,4 @@
+import { report } from "../report.mjs";
 // Keyboard-height regression: intercept all API traffic; never control real agents.
 // PLAYWRIGHT_MODULE=/path/to/playwright/index.mjs node tools/design/keyboard-layout.mjs URL
 import assert from "node:assert/strict";
@@ -59,7 +60,10 @@ for (const [name, engine] of [
       });
       const settle = () =>
         page.evaluate(
-          () => new Promise((done) => requestAnimationFrame(() => requestAnimationFrame(done))),
+          () =>
+            new Promise((done) => {
+              requestAnimationFrame(() => requestAnimationFrame(done));
+            }),
         );
       await page.addInitScript(
         ({ initial, screenSize }) => {
@@ -92,7 +96,7 @@ for (const [name, engine] of [
         (url) => url.pathname.startsWith("/api/"),
         (route) => {
           const path = new URL(route.request().url()).pathname;
-          if (path === "/api/agents")
+          if (path === "/api/agents") {
             return route.fulfill({
               json: {
                 agents: [agent],
@@ -100,7 +104,8 @@ for (const [name, engine] of [
                 tabs: [],
               },
             });
-          if (path.endsWith("/skills"))
+          }
+          if (path.endsWith("/skills")) {
             return route.fulfill({
               json: {
                 type: "skills",
@@ -117,6 +122,7 @@ for (const [name, engine] of [
                 ],
               },
             });
+          }
           return route.fulfill({ status: 403, json: { error: "Unexpected fixture request" } });
         },
       );
@@ -142,7 +148,7 @@ for (const [name, engine] of [
         singlePane: document.querySelector("[data-detail-open]")?.hasAttribute("data-single-pane"),
         chatWidth: document.querySelector('[data-testid="console"]').getBoundingClientRect().width,
       }));
-      console.log(name, JSON.stringify(state));
+      report(name, JSON.stringify(state));
       assert.equal(
         await sidebar.isVisible(),
         false,
@@ -211,7 +217,7 @@ for (const [name, engine] of [
         (await sidebar.boundingBox()).width >= width - 1,
         "overview search is full-width too",
       );
-      console.log(
+      report(
         `${name}/${width}: composer, skills search, keyboard close, rotation, draft and back navigation passed`,
       );
       await page.close();

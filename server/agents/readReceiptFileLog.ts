@@ -5,8 +5,8 @@ import { join, resolve } from "node:path";
 import {
   readReceiptRecordSchema,
   safeReadReceiptErrorCode,
-  type ReadReceiptRecord,
 } from "../../src/shared/api/readReceiptDiagnostics.js";
+import type { ReadReceiptRecord } from "../../src/shared/api/readReceiptDiagnostics.js";
 
 const FILE =
   /^read-receipt\.(\d{13})-[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}\.ndjson$/;
@@ -26,7 +26,7 @@ export class ReadReceiptFileLog {
   private readonly fileBytes: number;
   private readonly ageMs: number;
   private readonly segmentMs: number;
-  private readonly queue: ReadReceiptRecord[] = [];
+  private readonly queue: Array<ReadReceiptRecord> = [];
   private dropped = 0;
   private active: { name: string; started: number; bytes: number } | undefined;
   private pump: Promise<void> | undefined;
@@ -63,7 +63,9 @@ export class ReadReceiptFileLog {
     if (this.queue.length >= 128) {
       const routine = this.queue.findIndex((item) => item.severity === "info");
       this.dropped = Math.min(this.dropped + 1, Number.MAX_SAFE_INTEGER);
-      if (record.data.severity === "info" || routine === -1) return;
+      if (record.data.severity === "info" || routine === -1) {
+        return;
+      }
       this.queue.splice(routine, 1);
     }
     // Records have a fixed schema and a <2 KiB encoded size; no unbounded payload queue.
@@ -72,7 +74,9 @@ export class ReadReceiptFileLog {
   };
 
   async flush() {
-    while (this.pump) await this.pump;
+    while (this.pump) {
+      await this.pump;
+    }
   }
 
   async close() {
@@ -82,12 +86,16 @@ export class ReadReceiptFileLog {
   }
 
   private start() {
-    if (this.pump) return;
+    if (this.pump) {
+      return;
+    }
     this.pump = Promise.resolve()
       .then(() => this.drain())
       .finally(() => {
         this.pump = undefined;
-        if (this.queue.length || this.maintenance) this.start();
+        if (this.queue.length || this.maintenance) {
+          this.start();
+        }
       });
   }
 
@@ -100,22 +108,25 @@ export class ReadReceiptFileLog {
       info.uid !== process.getuid?.() ||
       (info.mode & 0o777) !== 0o700 ||
       (await realpath(this.directory)) !== this.directory
-    )
+    ) {
       throw new Error("Unsafe log directory");
+    }
   }
 
   private warn(error: unknown) {
-    if (Date.now() - this.warningAt < 60_000) return;
+    if (Date.now() - this.warningAt < 60_000) {
+      return;
+    }
     this.warningAt = Date.now();
     try {
       // No recursion into the file logger, no messages/paths, at most once a minute.
-      console.warn(
+      process.stderr.write(
         JSON.stringify({
           event: "read_receipt_log_unavailable",
           category: "storage",
           timestamp: new Date().toISOString(),
           errorCode: safeReadReceiptErrorCode(error),
-        }),
+        }) + "\n",
       );
     } catch {
       /* No effect on application behavior. */
@@ -124,31 +135,43 @@ export class ReadReceiptFileLog {
 
   private async prune(incoming = 0) {
     await this.prepare();
-    const files: { name: string; started: number; bytes: number }[] = [];
+    const files: Array<{ name: string; started: number; bytes: number }> = [];
     for (const name of await readdir(this.directory)) {
       const match = FILE.exec(name);
-      if (!match) continue;
+      if (!match) {
+        continue;
+      }
       const info = await lstat(join(this.directory, name));
       if (
         !info.isFile() ||
         info.uid !== process.getuid?.() ||
         (info.mode & 0o777) !== 0o600 ||
         info.nlink !== 1
-      )
+      ) {
         throw new Error("Unsafe log file");
+      }
       const started = Number(match[1]);
       // Segments start with event collection time; never retain an old segment by touching it.
       if (started < Date.now() - this.ageMs || started > Date.now() + 60_000) {
         await unlink(join(this.directory, name));
-        if (this.active?.name === name) this.active = undefined;
-      } else files.push({ name, started, bytes: info.size });
+        if (this.active?.name === name) {
+          this.active = undefined;
+        }
+      } else {
+        files.push({ name, started, bytes: info.size });
+      }
     }
     files.sort((a, b) => a.started - b.started || a.name.localeCompare(b.name));
     let bytes = files.reduce((sum, file) => sum + file.bytes, incoming);
-    while (bytes > this.maxBytes && files.length) {
-      const oldest = files.shift()!;
+    while (bytes > this.maxBytes) {
+      const oldest = files.shift();
+      if (!oldest) {
+        break;
+      }
       await unlink(join(this.directory, oldest.name));
-      if (this.active?.name === oldest.name) this.active = undefined;
+      if (this.active?.name === oldest.name) {
+        this.active = undefined;
+      }
       bytes -= oldest.bytes;
     }
   }
@@ -161,7 +184,9 @@ export class ReadReceiptFileLog {
         dropped: Math.min(Number.MAX_SAFE_INTEGER, record.dropped + missed),
       }) + "\n";
     const bytes = Buffer.byteLength(line);
-    if (bytes > this.fileBytes) throw new Error("Log record exceeds segment budget");
+    if (bytes > this.fileBytes) {
+      throw new Error("Log record exceeds segment budget");
+    }
     await this.prepare();
     const now = Date.now();
     if (
@@ -191,8 +216,9 @@ export class ReadReceiptFileLog {
         (info.mode & 0o777) !== 0o600 ||
         info.nlink !== 1 ||
         info.size !== active.bytes
-      )
+      ) {
         throw new Error("Unsafe log file");
+      }
       await file.writeFile(line);
       active.bytes += bytes;
       this.dropped = Math.max(0, this.dropped - missed);
@@ -214,8 +240,7 @@ export class ReadReceiptFileLog {
         this.warn(error);
       }
     }
-    while (this.queue.length) {
-      const record = this.queue.shift()!;
+    for (let record = this.queue.shift(); record; record = this.queue.shift()) {
       try {
         await this.append(record);
       } catch (error) {

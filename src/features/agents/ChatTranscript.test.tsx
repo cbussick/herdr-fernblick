@@ -1,7 +1,12 @@
-import { act, type ReactNode } from "react";
-import { create, type ReactTestRenderer } from "react-test-renderer";
+import { testText } from "../../shared/lib/testText";
+import { dispatchTestEvent } from "../../shared/lib/dispatchTestEvent";
+import { act } from "react";
+import type { ReactNode } from "react";
+import { create } from "react-test-renderer";
+import type { ReactTestRenderer } from "react-test-renderer";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
-import { ChatTranscript, type ChatTranscriptProps } from "./ChatTranscript";
+import { ChatTranscript } from "./ChatTranscript";
+import type { ChatTranscriptProps } from "./ChatTranscript";
 
 vi.mock("react-dom", () => ({ createPortal: (children: ReactNode) => children }));
 let renderer: ReactTestRenderer;
@@ -57,10 +62,15 @@ beforeEach(async () => {
   };
   await act(async () => {
     renderer = create(<ChatTranscript {...props} />, {
-      createNodeMock: (element) =>
-        (element.props as Record<string, unknown>)["data-ui"] === "chat-transcript"
+      createNodeMock: (element) => {
+        const props: unknown = element.props;
+        return props !== null &&
+          typeof props === "object" &&
+          "data-ui" in props &&
+          props["data-ui"] === "chat-transcript"
           ? viewport
-          : null,
+          : null;
+      },
     });
   });
 });
@@ -68,19 +78,22 @@ afterEach(async () => {
   await act(async () => renderer.unmount());
   vi.unstubAllGlobals();
 });
+function modal() {
+  return renderer.root.findByProps({ "data-ui": "chat-image-preview" });
+}
 function output() {
   return renderer.root.findByProps({ "data-ui": "chat-transcript" });
 }
 async function readerScrollTo(value: number) {
   await act(async () => {
-    output().props.onWheel({ deltaY: value - viewport.scrollTop });
+    await dispatchTestEvent(output(), "onWheel", { deltaY: value - viewport.scrollTop });
     viewport.scrollTop = value;
-    output().props.onScroll();
+    await dispatchTestEvent(output(), "onScroll");
   });
 }
 it("labels replies Agent and user messages You", () => {
   const messages = renderer.root.findAllByType("article");
-  expect(messages.map((message) => message.findAllByType("span")[0].children.join(""))).toEqual([
+  expect(messages.map((message) => testText(message.findAllByType("span")[0]))).toEqual([
     "You",
     "Agent",
     "You",
@@ -113,8 +126,9 @@ it("renders all turns, status, tool errors and images with the shared thinking p
     "Next question",
     "Tool failed",
     "Session changed",
-  ])
+  ]) {
     expect(text).toContain(value);
+  }
   expect(text).not.toContain("Thinking detail");
   expect(renderer.root.findByProps({ "aria-label": "Open attached image" })).toBeDefined();
   props = { ...props, showThinking: true, truncated: true };
@@ -176,7 +190,7 @@ it.each([
   expect(time.props.title).not.toMatch(/\b[AP]M\b/i);
   expect(time.props["aria-label"]).not.toMatch(/\b[AP]M\b/i);
 });
-it.each([undefined, NaN, Infinity, -Infinity, 8.64e15 + 1])(
+it.each([undefined, Number.NaN, Infinity, -Infinity, 8.64e15 + 1])(
   "omits missing or invalid timestamps (%s) without hiding messages",
   async (timestamp) => {
     props = {
@@ -220,10 +234,13 @@ it.each(["viewport expansion", "content shrink"])(
   "keeps following after automatic clamping from %s before alignment",
   async (change) => {
     // Browser geometry changes can deliver a scroll event before our deferred alignment.
-    if (change === "viewport expansion") viewport.clientHeight = 500;
-    else viewport.scrollHeight = 700;
-    viewport.scrollTop = viewport.scrollTop;
-    await act(async () => output().props.onScroll());
+    if (change === "viewport expansion") {
+      viewport.clientHeight = 500;
+    } else {
+      viewport.scrollHeight = 700;
+    }
+    viewport.scrollTop = top;
+    await act(async () => dispatchTestEvent(output(), "onScroll"));
     await act(async () => resize());
     expect(top).toBe(500);
     viewport.scrollHeight = 1400;
@@ -236,7 +253,7 @@ it("keeps following when layout expands and contracts before the browser scroll 
   viewport.scrollTop = top;
   // The second layout change hides the intermediate clamp from the observer.
   viewport.clientHeight = 200;
-  await act(async () => output().props.onScroll());
+  await act(async () => dispatchTestEvent(output(), "onScroll"));
   await act(async () => resize());
   expect(top).toBe(800);
   viewport.scrollHeight = 1120;
@@ -245,8 +262,8 @@ it("keeps following when layout expands and contracts before the browser scroll 
 });
 it("still pauses for a small reader scroll after automatic clamping", async () => {
   viewport.clientHeight = 500;
-  viewport.scrollTop = viewport.scrollTop;
-  await act(async () => output().props.onScroll());
+  viewport.scrollTop = top;
+  await act(async () => dispatchTestEvent(output(), "onScroll"));
   await readerScrollTo(viewport.scrollTop - 0.5);
   await act(async () => resize());
   viewport.scrollHeight = 1400;
@@ -257,8 +274,8 @@ it("does not resume a paused reader when geometry clamps before alignment", asyn
   await readerScrollTo(300);
   await act(async () => renderer.update(<ChatTranscript {...props} />));
   viewport.clientHeight = 900;
-  viewport.scrollTop = viewport.scrollTop;
-  await act(async () => output().props.onScroll());
+  viewport.scrollTop = top;
+  await act(async () => dispatchTestEvent(output(), "onScroll"));
   await act(async () => resize());
   viewport.clientHeight = 200;
   await act(async () => resize());
@@ -269,7 +286,7 @@ it.each([12, 1, 0.5])(
   async (distance) => {
     expect(top).toBe(800);
     // Delivery of our initial programmatic scroll must not change follow mode.
-    await act(async () => output().props.onScroll());
+    await act(async () => dispatchTestEvent(output(), "onScroll"));
     await readerScrollTo(800 - distance);
     viewport.scrollHeight = 1040;
     props = {
@@ -282,8 +299,11 @@ it.each([12, 1, 0.5])(
     expect(top).toBe(800 - distance);
     await act(async () => {
       resize();
-      output().props.onLoadCapture();
-      renderer.root.findByProps({ "data-testid": "chat-tool" }).props.onToggle();
+      await dispatchTestEvent(output(), "onLoadCapture");
+      await dispatchTestEvent(
+        renderer.root.findByProps({ "data-testid": "chat-tool" }),
+        "onToggle",
+      );
     });
     expect(top).toBe(800 - distance);
   },
@@ -293,10 +313,10 @@ it.each(["touch", "ArrowUp", "PageUp", "Home", "Shift+Space", "scrollbar"])(
   async (input) => {
     await act(async () => {
       if (input === "touch") {
-        output().props.onTouchStart({ touches: [{ clientY: 100 }] });
-        output().props.onTouchMove({ touches: [{ clientY: 100.5 }] });
+        await dispatchTestEvent(output(), "onTouchStart", { touches: [{ clientY: 100 }] });
+        await dispatchTestEvent(output(), "onTouchMove", { touches: [{ clientY: 100.5 }] });
       } else if (input === "scrollbar") {
-        output().props.onPointerDown({
+        await dispatchTestEvent(output(), "onPointerDown", {
           pointerType: "mouse",
           button: 0,
           clientX: 199,
@@ -307,7 +327,7 @@ it.each(["touch", "ArrowUp", "PageUp", "Home", "Shift+Space", "scrollbar"])(
           },
         });
       } else {
-        output().props.onKeyDown({
+        await dispatchTestEvent(output(), "onKeyDown", {
           key: input === "Shift+Space" ? " " : input,
           shiftKey: input === "Shift+Space",
           target: viewport,
@@ -320,7 +340,7 @@ it.each(["touch", "ArrowUp", "PageUp", "Home", "Shift+Space", "scrollbar"])(
     });
     expect(top).toBe(800);
     viewport.scrollTop = 799.5;
-    await act(async () => output().props.onScroll());
+    await act(async () => dispatchTestEvent(output(), "onScroll"));
     viewport.scrollHeight = 1080;
     await act(async () => renderer.update(<ChatTranscript {...props} />));
     expect(top).toBe(799.5);
@@ -328,11 +348,16 @@ it.each(["touch", "ArrowUp", "PageUp", "Home", "Shift+Space", "scrollbar"])(
 );
 it("does not pause for downward touch, downward wheel or button activation", async () => {
   await act(async () => {
-    output().props.onTouchStart({ touches: [{ clientY: 100 }] });
-    output().props.onTouchMove({ touches: [{ clientY: 80 }] });
-    output().props.onWheel({ deltaY: 12 });
-    output().props.onKeyDown({ key: " ", shiftKey: true, target: {}, currentTarget: viewport });
-    output().props.onPointerDown({ pointerType: "touch", button: 0 });
+    await dispatchTestEvent(output(), "onTouchStart", { touches: [{ clientY: 100 }] });
+    await dispatchTestEvent(output(), "onTouchMove", { touches: [{ clientY: 80 }] });
+    await dispatchTestEvent(output(), "onWheel", { deltaY: 12 });
+    await dispatchTestEvent(output(), "onKeyDown", {
+      key: " ",
+      shiftKey: true,
+      target: {},
+      currentTarget: viewport,
+    });
+    await dispatchTestEvent(output(), "onPointerDown", { pointerType: "touch", button: 0 });
     viewport.scrollHeight = 1040;
     renderer.update(<ChatTranscript {...props} />);
   });
@@ -362,7 +387,7 @@ it("preserves the reader position through streaming, clamped expansion and colla
   await act(async () => resize());
   expect(top).toBe(100);
   // The browser's programmatic/clamped scroll event must not opt the reader into following.
-  await act(async () => output().props.onScroll());
+  await act(async () => dispatchTestEvent(output(), "onScroll"));
   viewport.clientHeight = 200;
   await act(async () => resize());
   expect(top).toBe(300);
@@ -376,7 +401,7 @@ it("ignores its own fractional clamped scroll when rounded geometry differs", as
   bottomFraction = 0.5;
   await act(async () => resize());
   expect(top).toBe(100.5);
-  await act(async () => output().props.onScroll());
+  await act(async () => dispatchTestEvent(output(), "onScroll"));
   viewport.clientHeight = 200;
   await act(async () => resize());
   expect(top).toBe(300);
@@ -386,23 +411,26 @@ it("realigns parent-driven expansion even when message props do not change", asy
   viewport.clientHeight = 900;
   await act(async () => renderer.update(<ChatTranscript {...props} />));
   expect(top).toBe(100);
-  await act(async () => output().props.onScroll());
+  await act(async () => dispatchTestEvent(output(), "onScroll"));
   viewport.clientHeight = 200;
   await act(async () => renderer.update(<ChatTranscript {...props} />));
   expect(top).toBe(300);
 });
 it("opens images in a shared modal and lets Escape close only that preview", async () => {
   await act(async () =>
-    renderer.root.findByProps({ "aria-label": "Open attached image" }).props.onClick(),
+    dispatchTestEvent(
+      renderer.root.findByProps({ "aria-label": "Open attached image" }),
+      "onClick",
+    ),
   );
   const modal = renderer.root.findByProps({ "data-ui": "chat-image-preview" });
   expect(modal.findByType("img").props.src).toBe("/api/uploads/image.png");
   const stopPropagation = vi.fn();
-  modal.props.onKeyDown({ key: "Escape", stopPropagation });
+  await dispatchTestEvent(modal, "onKeyDown", { key: "Escape", stopPropagation });
   expect(stopPropagation).toHaveBeenCalledOnce();
-  modal.props.onCancel({ stopPropagation });
+  await dispatchTestEvent(modal, "onCancel", { stopPropagation });
   expect(stopPropagation).toHaveBeenCalledTimes(2);
-  await act(async () => modal.props.onClose({ currentTarget: { open: false } }));
+  await act(async () => dispatchTestEvent(modal, "onClose", { currentTarget: { open: false } }));
   expect(renderer.root.findAllByProps({ "data-ui": "chat-image-preview" })).toHaveLength(0);
 });
 it("cycles only the selected message's gallery and keeps image-open state stable while navigating", async () => {
@@ -423,23 +451,31 @@ it("cycles only the selected message's gallery and keeps image-open state stable
   await act(async () => renderer.update(<ChatTranscript {...props} />));
   onImageOpenChange.mockClear();
   await act(async () =>
-    renderer.root.findAllByProps({ "aria-label": "Open attached image" })[1].props.onClick(),
+    dispatchTestEvent(
+      renderer.root.findAllByProps({ "aria-label": "Open attached image" })[1],
+      "onClick",
+    ),
   );
-  const modal = () => renderer.root.findByProps({ "data-ui": "chat-image-preview" });
   expect(modal().findByType("img").props.src).toBe("/api/uploads/two.png");
   expect(onImageOpenChange).toHaveBeenLastCalledWith(true);
   onImageOpenChange.mockClear();
-  await act(async () => modal().findByProps({ "aria-label": "Next image" }).props.onClick());
+  await act(async () =>
+    dispatchTestEvent(modal().findByProps({ "aria-label": "Next image" }), "onClick"),
+  );
   expect(modal().findByType("img").props.src).toBe("/api/uploads/one.png");
-  await act(async () => modal().findByProps({ "aria-label": "Previous image" }).props.onClick());
+  await act(async () =>
+    dispatchTestEvent(modal().findByProps({ "aria-label": "Previous image" }), "onClick"),
+  );
   expect(modal().findByType("img").props.src).toBe("/api/uploads/two.png");
   expect(onImageOpenChange).not.toHaveBeenCalled();
-  await act(async () => modal().props.onClose({ currentTarget: { open: false } }));
+  await act(async () => dispatchTestEvent(modal(), "onClose", { currentTarget: { open: false } }));
   expect(onImageOpenChange).toHaveBeenLastCalledWith(false);
 });
 
 it("shows the same unavailable attachment fallback and empty state in every container", async () => {
-  await act(async () => renderer.root.findByProps({ alt: "User attachment" }).props.onError());
+  await act(async () =>
+    dispatchTestEvent(renderer.root.findByProps({ alt: "User attachment" }), "onError"),
+  );
   expect(renderer.root.findByProps({ "aria-label": "Attachment unavailable" })).toBeDefined();
   props = { ...props, messages: [] };
   await act(async () => renderer.update(<ChatTranscript {...props} />));

@@ -8,11 +8,13 @@ import {
   boardRequestSchema,
   boardStateSchema,
   boardTargetSchema,
-  type BoardGrant,
-  type BoardRequest,
-  type BoardScene,
-  type BoardState,
-  type BoardTarget,
+} from "../../packages/pi-live-chat/boardProtocol.js";
+import type {
+  BoardGrant,
+  BoardRequest,
+  BoardScene,
+  BoardState,
+  BoardTarget,
 } from "../../packages/pi-live-chat/boardProtocol.js";
 import { flowCatalog, flowComponentPropsSchema } from "../../packages/pi-live-chat/flowProtocol.js";
 import { flowDependencies } from "./flowScene.js";
@@ -30,6 +32,13 @@ export { BoardError } from "./errors.js";
 const storedStateSchema = boardStateSchema.extend({ sessionKey: z.string().optional() });
 type StoredState = z.infer<typeof storedStateSchema>;
 const sessionKeySchema = z.tuple([z.string(), z.string()]);
+const snapshotSchema = z.object({
+  id: z.string(),
+  revision: z.number(),
+  createdAt: z.number(),
+  png: z.string(),
+  scene: z.unknown(),
+});
 const PENDING_MS = 30_000;
 const ACTIVE_MS = 15 * 60_000;
 const MAX_SNAPSHOTS = 128;
@@ -41,8 +50,8 @@ const uuid = /^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$/i;
 type ApplyResult = {
   revision: number;
   operationId: string;
-  applied: string[];
-  skipped: { id: string; reason: string }[];
+  applied: Array<string>;
+  skipped: Array<{ id: string; reason: string }>;
 };
 type GrantRecord = {
   grant: BoardGrant;
@@ -64,12 +73,11 @@ function elementFingerprint(element: BoardScene["elements"][number]): string {
   // Compare all native fields, not just summaries/version counters. Key order
   // is not a drawing change, including inside bindings and custom data.
   const canonical = JSON.stringify(element, (_key, value: unknown) => {
-    if (!value || typeof value !== "object" || Array.isArray(value)) return value;
-    const object = value as Record<string, unknown>;
+    if (!value || typeof value !== "object" || Array.isArray(value)) {
+      return value;
+    }
     return Object.fromEntries(
-      Object.keys(object)
-        .sort()
-        .map((key) => [key, object[key]]),
+      Object.entries(value).sort(([left], [right]) => (left < right ? -1 : Number(left > right))),
     );
   });
   return createHash("sha256").update(canonical).digest("hex");
@@ -126,21 +134,29 @@ export class BoardStore {
       return await task;
     } finally {
       this.pendingIO--;
-      if (this.queues.get(id) === task) this.queues.delete(id);
+      if (this.queues.get(id) === task) {
+        this.queues.delete(id);
+      }
     }
   }
 
   private async load(id: string): Promise<StoredState | null> {
     const bytes = await this.disk.read(`${id}.json`, MAX_STATE_BYTES);
     this.alive();
-    if (!bytes) return null;
+    if (!bytes) {
+      return null;
+    }
     try {
-      const raw = JSON.parse(bytes.toString("utf8"));
-      if (raw?.scene && raw.scene.engine !== "react-flow")
+      const raw: unknown = JSON.parse(bytes.toString("utf8"));
+      const legacy = z
+        .object({ scene: z.object({ engine: z.unknown().optional() }) })
+        .safeParse(raw);
+      if (legacy.success && legacy.data.scene.engine !== "react-flow") {
         throw new BoardError(
           410,
           "Legacy Excalidraw boards are no longer supported. Stored data has not been changed.",
         );
+      }
       const parsed = storedStateSchema.safeParse(raw);
       requireBoard(parsed.success, 500, "Invalid stored board");
       const state = parsed.data;
@@ -159,7 +175,9 @@ export class BoardStore {
       state.access = null;
       return state;
     } catch (error) {
-      if (error instanceof BoardError && error.status === 410) throw error;
+      if (error instanceof BoardError && error.status === 410) {
+        throw error;
+      }
       throw new BoardError(500, "Stored board is corrupt or unsafe; refusing to overwrite it");
     }
   }
@@ -196,7 +214,9 @@ export class BoardStore {
     };
   }
   private notify(id: string): void {
-    for (const listener of [...(this.listeners.get(id) ?? [])]) {
+    // Snapshot recipients: subscriptions can change while a listener is running.
+    const recipients = Array.from(this.listeners.get(id) ?? []);
+    for (const listener of recipients) {
       // Notification consumers cannot undo or turn a durable commit into failure.
       try {
         listener();
@@ -242,21 +262,25 @@ export class BoardStore {
     sharedBoards: ReadonlySet<string> = new Set(),
     referencedBoards: ReadonlySet<string> = new Set(),
     liveSessions: ReadonlySet<string> = new Set(),
-  ): Promise<string[]> {
+  ): Promise<Array<string>> {
     const names = await this.disk.names();
     const ids = new Set([BoardStore.idFor(legacyKey)]);
     for (const name of names.filter((name) => /^[a-f0-9]{64}\.json$/.test(name))) {
       const id = name.slice(0, 64);
       await this.serial(id, async () => {
         const state = await this.load(id);
-        if (!state) return;
+        if (!state) {
+          return;
+        }
         if (!state.sessionKey && id === BoardStore.idFor(legacyKey)) {
           // Even a retained/shared legacy board needs ownership recorded before
           // its original session disappears, so its final reference can clean it up.
           state.sessionKey = legacyKey;
           await this.persist(state, this.guard());
         }
-        if (!state.sessionKey) return;
+        if (!state.sessionKey) {
+          return;
+        }
         let raw: unknown;
         try {
           raw = JSON.parse(state.sessionKey);
@@ -269,20 +293,28 @@ export class BoardStore {
           key.success &&
           (key.data[1] === sessionId ||
             (referencedBoards.has(id) && !liveSessions.has(key.data[1])))
-        )
+        ) {
           ids.add(id);
+        }
       });
     }
-    const deleted: string[] = [];
+    const deleted: Array<string> = [];
     for (const id of ids) {
-      if (sharedBoards.has(id)) continue;
+      if (sharedBoards.has(id)) {
+        continue;
+      }
       await this.serial(id, async () => {
         // Serialize with saves/captures; remove the manifest last so failed cleanup is retryable.
-        for (const [grantId, record] of this.grants)
-          if (record.grant.boardId === id) this.revoke(grantId);
-        for (const name of await this.disk.names())
-          if (name.startsWith(`${id}.`) && name !== `${id}.json`)
+        for (const [grantId, record] of this.grants) {
+          if (record.grant.boardId === id) {
+            this.revoke(grantId);
+          }
+        }
+        for (const name of await this.disk.names()) {
+          if (name.startsWith(`${id}.`) && name !== `${id}.json`) {
             await this.disk.removeSnapshot(name);
+          }
+        }
         await this.disk.removeSnapshot(`${id}.json`);
         this.notify(id);
         this.listeners.delete(id);
@@ -299,7 +331,7 @@ export class BoardStore {
   async save(
     boardId: string,
     baseRevision: number,
-    scene: BoardScene,
+    scene: unknown,
     authorize?: () => void,
   ): Promise<BoardState> {
     const check = this.guard(authorize);
@@ -310,12 +342,13 @@ export class BoardStore {
       check();
       const state = await this.existing(boardId);
       check();
-      if (state.revision !== baseRevision)
+      if (state.revision !== baseRevision) {
         throw new BoardError(
           409,
           "Board revision conflict; reconcile before saving",
           "board_stale",
         );
+      }
       return this.commitScene(state, detached, "human", check);
     });
   }
@@ -409,7 +442,7 @@ export class BoardStore {
       this.alive();
       requireBoard(bytes, 500, "Snapshot data is missing");
       try {
-        const data = JSON.parse(bytes.toString("utf8")) as Record<string, unknown>;
+        const data = snapshotSchema.parse(JSON.parse(bytes.toString("utf8")));
         requireBoard(
           data.id === ref.id &&
             data.revision === ref.revision &&
@@ -446,8 +479,9 @@ export class BoardStore {
     );
     this.expire();
     for (const record of this.grants.values()) {
-      if (record.grant.boardId === boardId && record.target.runtime === target.runtime)
+      if (record.grant.boardId === boardId && record.target.runtime === target.runtime) {
         this.revoke(record.grant.grantId);
+      }
     }
     requireBoard(this.grants.size < MAX_GRANTS, 429, "Too many board grants");
     const grant: BoardGrant = { boardId, grantId: randomUUID(), mode, revision };
@@ -473,8 +507,11 @@ export class BoardStore {
   }
   private expire(): void {
     const now = Date.now();
-    for (const [id, record] of this.grants)
-      if (record.expiresAt !== null && record.expiresAt <= now) this.revoke(id);
+    for (const [id, record] of this.grants) {
+      if (record.expiresAt !== null && record.expiresAt <= now) {
+        this.revoke(id);
+      }
+    }
   }
   private authorized(request: BoardRequest, active: boolean): GrantRecord {
     this.alive();
@@ -492,10 +529,10 @@ export class BoardStore {
   }
 
   async handle(
-    input: BoardRequest,
+    input: unknown,
     validate: () => void,
     render?: (scene: BoardScene) => Promise<Buffer>,
-  ): Promise<unknown> {
+  ) {
     const checkTarget = this.guard(validate);
     checkTarget();
     let encoded: string;
@@ -524,8 +561,9 @@ export class BoardStore {
         403,
         "Board grant was replaced",
       );
-      if (request.action === "apply")
+      if (request.action === "apply") {
         requireBoard(record.grant.mode === "edit", 403, "Board grant is read-only");
+      }
     };
     check();
     if (request.action === "revoke") {
@@ -537,7 +575,7 @@ export class BoardStore {
           summary: ReturnType<typeof summarize>;
           scene?: BoardScene;
           liveIds: Set<string>;
-          observations: [string, string][];
+          observations: Array<[string, string]>;
         }
       | undefined;
     const result = await this.serial(request.boardId, async () => {
@@ -586,34 +624,41 @@ export class BoardStore {
           );
           touched.add(op.id);
           const target = elements.get(op.id);
-          if (op.op === "create")
+          if (op.op === "create") {
             requireBoard(!target, 409, "Shape ID already exists (including deleted shapes)");
-          else if (!target || target.isDeleted)
+          } else if (!target || target.isDeleted) {
             reasons.set(op.id, op.op === "delete" ? "already_deleted" : "target_deleted");
+          }
           const dependencies = new Set([
             ...(op.dependsOn ?? []),
             ...flowDependencies(state.scene, op),
             ...(op.op === "create" ? [] : [op.id]),
           ]);
           for (const id of dependencies) {
-            if (reasons.has(op.id)) break;
+            if (reasons.has(op.id)) {
+              break;
+            }
             const element = elements.get(id);
             const observed = record.observed.get(id);
-            if (!element || element.isDeleted) reasons.set(op.id, "dependency_deleted");
-            else if (observed?.revision !== request.baseRevision)
+            if (!element || element.isDeleted) {
+              reasons.set(op.id, "dependency_deleted");
+            } else if (observed?.revision !== request.baseRevision) {
               reasons.set(op.id, "target_or_dependency_not_read_at_base_revision");
-            else if (observed.fingerprint !== elementFingerprint(element))
+            } else if (observed.fingerprint !== elementFingerprint(element)) {
               reasons.set(op.id, "target_or_dependency_changed; read again and reconsider");
+            }
           }
         }
-        const blockedGroups = new Set(
-          request.operations
-            .filter((op) => reasons.has(op.id) && op.groupId)
-            .map((op) => op.groupId!),
-        );
+        const blockedGroups = new Set<string>();
         for (const op of request.operations) {
-          if (op.groupId && blockedGroups.has(op.groupId) && !reasons.has(op.id))
+          if (reasons.has(op.id) && op.groupId) {
+            blockedGroups.add(op.groupId);
+          }
+        }
+        for (const op of request.operations) {
+          if (op.groupId && blockedGroups.has(op.groupId) && !reasons.has(op.id)) {
             reasons.set(op.id, "related_group_conflict; read again and reconsider");
+          }
         }
         const eligible = request.operations.filter((op) => !reasons.has(op.id));
         // A single durable commit contains all eligible groups. Rejected groups
@@ -626,9 +671,10 @@ export class BoardStore {
           revision: next.revision,
           operationId: request.operationId,
           applied: eligible.map((op) => op.id),
-          skipped: request.operations
-            .filter((op) => reasons.has(op.id))
-            .map((op) => ({ id: op.id, reason: reasons.get(op.id)! })),
+          skipped: request.operations.flatMap((op) => {
+            const reason = reasons.get(op.id);
+            return reason === undefined ? [] : [{ id: op.id, reason }];
+          }),
         };
         record.results.set(request.operationId, { fingerprint, result });
         return structuredClone(result);
@@ -654,7 +700,7 @@ export class BoardStore {
           expiresAt: record.expiresAt,
         };
       }
-      if (request.action === "catalog")
+      if (request.action === "catalog") {
         return {
           engine: state.scene.engine,
           components: flowCatalog,
@@ -669,11 +715,13 @@ export class BoardStore {
           guidance:
             "Only react-flow boards support these components. Read all parents and connection endpoints before editing; same-batch new endpoints are not supported. Coordinates of children are relative to their boundary. Delete or reparent children and remove connections explicitly when deleting their parent or endpoint. Props are data only; imageId references an existing board file. Read summaries may truncate large props.",
         };
+      }
       const summary = summarize(state.scene, state.revision, request.offset, request.limit);
       // Explicit opt-in preserves summary-only reads from already-running older
       // extensions. New tools choose their first-page image default at the caller.
-      if (request.includeImage)
+      if (request.includeImage) {
         requireBoard(render, 503, "Whiteboard renderer unavailable; cannot read current image");
+      }
       const live = new Map(
         state.scene.elements
           .filter((element) => !element.isDeleted)
@@ -684,19 +732,25 @@ export class BoardStore {
         scene: request.includeImage ? structuredClone(state.scene) : undefined,
         liveIds: new Set(live.keys()),
         observations: summary.elements.map((element) => {
-          const id = element.id as string;
-          return [id, elementFingerprint(live.get(id)!)];
+          const id = element.id;
+          requireBoard(typeof id === "string", 500, "Invalid summary element ID");
+          const source = live.get(id);
+          requireBoard(source, 500, "Summary element missing from live scene");
+          return [id, elementFingerprint(source)];
         }),
       };
       return summary;
     });
-    if (!reading) return result;
+    if (!reading) {
+      return result;
+    }
     const captured = reading;
     let image: { mimeType: "image/png"; data: string } | undefined;
     if (captured.scene) {
       // Render an immutable revision outside the serialized save/commit lane.
       // Opening/saving the board must not wait for a headless browser.
-      const png = await render!(captured.scene);
+      requireBoard(render, 503, "Whiteboard renderer unavailable; cannot read current image");
+      const png = await render(captured.scene);
       check();
       validatePng(png);
       requireBoard(png.length <= MAX_BOARD_PNG_BYTES, 413, "Rendered board PNG exceeds 2 MiB");
@@ -706,10 +760,14 @@ export class BoardStore {
       check();
       // Only a successful read may authorize later comparisons. Failed renders
       // must not record observations the model never received.
-      for (const id of record.observed.keys())
-        if (!captured.liveIds.has(id)) record.observed.delete(id);
-      for (const [id, fingerprint] of captured.observations)
+      for (const id of record.observed.keys()) {
+        if (!captured.liveIds.has(id)) {
+          record.observed.delete(id);
+        }
+      }
+      for (const [id, fingerprint] of captured.observations) {
         record.observed.set(id, { revision: captured.summary.revision, fingerprint });
+      }
     });
     check();
     return image ? { ...captured.summary, image } : captured.summary;
@@ -717,7 +775,9 @@ export class BoardStore {
 
   revoke(grantId: string): void {
     const record = this.grants.get(grantId);
-    if (!record) return;
+    if (!record) {
+      return;
+    }
     clearTimeout(record.timer);
     this.grants.delete(grantId);
     record.results.clear();
@@ -725,7 +785,11 @@ export class BoardStore {
     this.notify(record.grant.boardId);
   }
   revokeTarget(target: BoardTarget): void {
-    for (const [id, record] of this.grants) if (sameTarget(record.target, target)) this.revoke(id);
+    for (const [id, record] of this.grants) {
+      if (sameTarget(record.target, target)) {
+        this.revoke(id);
+      }
+    }
   }
   subscribe(boardId: string, listener: () => void): () => void {
     this.alive();
@@ -741,13 +805,19 @@ export class BoardStore {
     this.listeners.set(boardId, listeners);
     return () => {
       listeners.delete(listener);
-      if (!listeners.size) this.listeners.delete(boardId);
+      if (!listeners.size) {
+        this.listeners.delete(boardId);
+      }
     };
   }
   close(): void {
-    if (this.closed) return;
+    if (this.closed) {
+      return;
+    }
     this.closed = true;
-    for (const id of this.grants.keys()) this.revoke(id);
+    for (const id of this.grants.keys()) {
+      this.revoke(id);
+    }
     this.listeners.clear();
   }
 }

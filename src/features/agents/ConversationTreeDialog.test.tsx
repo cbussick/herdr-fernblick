@@ -1,5 +1,8 @@
+import { readTestProp } from "../../shared/lib/readTestProp.js";
+import { dispatchTestEvent } from "../../shared/lib/dispatchTestEvent";
 import { act } from "react";
-import { create, type ReactTestRenderer } from "react-test-renderer";
+import { create } from "react-test-renderer";
+import type { ReactTestRenderer } from "react-test-renderer";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { SessionManager } from "@earendil-works/pi-coding-agent";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
@@ -19,9 +22,9 @@ const target = {
 let manager: SessionManager;
 let renderer: ReactTestRenderer;
 let client: QueryClient;
-const restore = vi.fn<(text: string, attachments: string[]) => void>();
+const restore = vi.fn<(text: string, attachments: Array<string>) => void>();
 const close = vi.fn<() => void>();
-let ids: string[];
+let ids: Array<string>;
 const render = (busy = false) => (
   <QueryClientProvider client={client}>
     <ConversationTreeDialog
@@ -36,7 +39,9 @@ const render = (busy = false) => (
 );
 async function flush(ms = 20) {
   await act(async () => {
-    await new Promise((done) => setTimeout(done, ms));
+    await new Promise((done) => {
+      setTimeout(done, ms);
+    });
   });
 }
 function button(text: string) {
@@ -52,7 +57,9 @@ function button(text: string) {
 const rows = () => renderer.root.findAllByProps({ "data-testid": "conversation-tree__row" });
 async function search(text: string) {
   await act(async () =>
-    renderer.root.findByProps({ type: "search" }).props.onChange({ target: { value: text } }),
+    dispatchTestEvent(renderer.root.findByProps({ type: "search" }), "onChange", {
+      target: { value: text },
+    }),
   );
   await flush(330);
   await flush();
@@ -63,7 +70,9 @@ beforeEach(async () => {
   ids = [];
   for (let i = 0; i < 354; i++) {
     ids.push(manager.appendMessage({ role: "user", content: `Prompt ${i}`, timestamp: i }));
-    for (let j = 0; j < 4; j++) manager.appendCustomEntry("state", {});
+    for (let j = 0; j < 4; j++) {
+      manager.appendCustomEntry("state", {});
+    }
   }
   api.page
     .mockReset()
@@ -95,7 +104,7 @@ it("opens at the current point, keeps the DOM bounded, and pages earlier without
   expect(renderer.root.findAllByType("ol")).toHaveLength(1);
   expect(rows()[0].props["data-entry-id"]).toBe(ids[304]);
   expect(renderer.root.findAllByProps({ "aria-current": "location" })).toHaveLength(1);
-  await act(async () => button("Load earlier").props.onClick());
+  await act(async () => dispatchTestEvent(button("Load earlier"), "onClick"));
   await flush();
   expect(rows()).toHaveLength(50);
   expect(rows()[0].props["data-entry-id"]).toBe(ids[254]);
@@ -108,8 +117,8 @@ it("searches unloaded text, clears hidden selection, and restores the full retur
   expect(rows().length).toBeLessThanOrEqual(50);
   expect(rows()[0].props["data-entry-id"]).toBe(ids[2]);
   expect(button("Continue from here").props.disabled).toBe(true);
-  await act(async () => rows()[0].findAllByType("button")[0].props.onClick());
-  await act(async () => button("Edit and branch").props.onClick());
+  await act(async () => dispatchTestEvent(rows()[0].findAllByType("button")[0], "onClick"));
+  await act(async () => dispatchTestEvent(button("Edit and branch"), "onClick"));
   await flush();
   expect(api.navigate).toHaveBeenCalledWith("w1:p1", target, ids[2]);
   expect(restore).toHaveBeenCalledWith("Full restored prompt", []);
@@ -123,16 +132,18 @@ it("offers actual branch choices and explores an alternate path without invoking
     content: "Alternate ending",
     timestamp: 999,
   });
-  await act(async () => button("Refresh paths").props.onClick());
+  await act(async () => dispatchTestEvent(button("Refresh paths"), "onClick"));
   await flush();
-  await act(async () => button("2 branches").props.onClick());
+  await act(async () => dispatchTestEvent(button("2 branches"), "onClick"));
   await flush();
-  expect(rows().map((row) => row.props["data-entry-id"])).toEqual([ids[353], alternate]);
+  expect(rows().map((row) => readTestProp(row, "data-entry-id"))).toEqual([ids[353], alternate]);
   await act(async () =>
-    rows()[0]
-      .findAllByType("button")
-      .find((node) => node.children.includes("View path"))!
-      .props.onClick(),
+    dispatchTestEvent(
+      rows()[0]
+        .findAllByType("button")
+        .find((node) => node.children.includes("View path"))!,
+      "onClick",
+    ),
   );
   await flush();
   expect(rows().at(-1)?.props["data-entry-id"]).toBe(ids[353]);
@@ -142,11 +153,11 @@ it("offers actual branch choices and explores an alternate path without invoking
 
 it("reports a stale page and refreshes without reusing its offset or silently navigating", async () => {
   manager.appendCustomEntry("later-state", {});
-  await act(async () => button("Load earlier").props.onClick());
+  await act(async () => dispatchTestEvent(button("Load earlier"), "onClick"));
   await flush();
   expect(JSON.stringify(renderer.toJSON())).toContain("Refresh paths to continue");
   expect(button("Continue from here").props.disabled).toBe(true);
-  await act(async () => button("Refresh paths").props.onClick());
+  await act(async () => dispatchTestEvent(button("Refresh paths"), "onClick"));
   await flush();
   expect(rows()).toHaveLength(50);
   expect(rows()[0].props["data-entry-id"]).toBe(ids[304]);
@@ -158,7 +169,9 @@ it("locks navigation while searching, disconnected/busy, and after a read failur
   expect(button("Edit and branch").props.disabled).toBe(true);
   await act(async () => renderer.update(render(false)));
   await act(async () =>
-    renderer.root.findByProps({ type: "search" }).props.onChange({ target: { value: "missing" } }),
+    dispatchTestEvent(renderer.root.findByProps({ type: "search" }), "onChange", {
+      target: { value: "missing" },
+    }),
   );
   expect(button("Edit and branch").props.disabled).toBe(true);
   await flush(330);
@@ -170,7 +183,7 @@ it("locks navigation while searching, disconnected/busy, and after a read failur
 
 it("does not retry failures and explains the required reload for old extensions", async () => {
   api.page.mockRejectedValueOnce(new Error("Run /reload in Pi to browse large conversation paths"));
-  await act(async () => button("Refresh paths").props.onClick());
+  await act(async () => dispatchTestEvent(button("Refresh paths"), "onClick"));
   await flush();
   expect(JSON.stringify(renderer.toJSON())).toContain("Run /reload");
   expect(api.page).toHaveBeenCalledTimes(2);
@@ -199,12 +212,12 @@ it("serializes searches and ignores a late superseded response", async () => {
 
 it("retains navigation errors, never restores a preview after rejection, and cancels without commands", async () => {
   api.navigate.mockRejectedValueOnce(new Error("Navigation rejected"));
-  await act(async () => button("Edit and branch").props.onClick());
+  await act(async () => dispatchTestEvent(button("Edit and branch"), "onClick"));
   await flush();
   expect(JSON.stringify(renderer.toJSON())).toContain("Navigation rejected");
   expect(restore).not.toHaveBeenCalled();
   expect(close).not.toHaveBeenCalled();
-  await act(async () => button("Cancel").props.onClick());
+  await act(async () => dispatchTestEvent(button("Cancel"), "onClick"));
   expect(close).toHaveBeenCalledOnce();
   expect(api.navigate).toHaveBeenCalledOnce();
 });

@@ -1,13 +1,19 @@
+type DialogCloseHandler = (event: { target: unknown; currentTarget: unknown }) => void;
+function isDialogCloseHandler(value: unknown): value is DialogCloseHandler {
+  return typeof value === "function";
+}
+import { dispatchTestEvent } from "../shared/lib/dispatchTestEvent";
 import { act } from "react";
-import { create, type ReactTestInstance, type ReactTestRenderer } from "react-test-renderer";
+import { create } from "react-test-renderer";
+import type { ReactTestInstance, ReactTestRenderer } from "react-test-renderer";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
 import { App } from "./App";
 import { createAgent, createWorkspace, getAgents } from "../shared/api/apiClient";
 import type { Workspace } from "../shared/api/contracts";
 
-vi.mock("../shared/api/apiClient", async (importOriginal) => ({
-  ...(await importOriginal<typeof import("../shared/api/apiClient")>()),
+vi.mock(import("../shared/api/apiClient"), async (importOriginal) => ({
+  ...(await importOriginal()),
   markAgentRead: vi.fn().mockResolvedValue(undefined),
   getAgents: vi.fn(),
   createAgent: vi.fn(),
@@ -20,13 +26,21 @@ vi.mock("../features/agents/AgentList", () => ({
   AgentList: (props: {
     onCreate: (workspaceId?: string) => void;
     onCreateWorkspace: () => void;
-    workspaces: Workspace[];
+    workspaces: Array<Workspace>;
   }) => (
     <nav>
-      <button onClick={() => props.onCreate()}>New agent</button>
-      <button onClick={props.onCreateWorkspace}>New workspace</button>
+      <button type="button" onClick={() => props.onCreate()}>
+        New agent
+      </button>
+      <button type="button" onClick={props.onCreateWorkspace}>
+        New workspace
+      </button>
       {props.workspaces.map((workspace) => (
-        <button key={workspace.workspace_id} onClick={() => props.onCreate(workspace.workspace_id)}>
+        <button
+          type="button"
+          key={workspace.workspace_id}
+          onClick={() => props.onCreate(workspace.workspace_id)}
+        >
           {`Add agent to ${workspace.label}`}
         </button>
       ))}
@@ -46,15 +60,19 @@ const button = (label: string, root = renderer.root) =>
 const agentForm = () => renderer.root.findByProps({ id: "new-agent-name" }).parent!;
 const workspaceForm = () => renderer.root.findByProps({ id: "new-workspace-label" }).parent!;
 async function change(id: string, value: string) {
-  await act(async () => renderer.root.findByProps({ id }).props.onChange({ target: { value } }));
+  await act(async () =>
+    dispatchTestEvent(renderer.root.findByProps({ id }), "onChange", { target: { value } }),
+  );
 }
 async function click(label: string, root?: ReactTestInstance) {
-  await act(async () => button(label, root).props.onClick());
+  await act(async () => dispatchTestEvent(button(label, root), "onClick"));
 }
 async function submit(form: ReactTestInstance) {
-  await act(async () => form.props.onSubmit({ preventDefault: vi.fn() }));
+  await act(async () => dispatchTestEvent(form, "onSubmit", { preventDefault: vi.fn() }));
   await act(async () => {
-    await new Promise((resolve) => setTimeout(resolve, 20));
+    await new Promise((resolve) => {
+      setTimeout(resolve, 20);
+    });
   });
 }
 async function openNestedWorkspace() {
@@ -90,24 +108,38 @@ beforeEach(async () => {
       </QueryClientProvider>,
       {
         createNodeMock: (node) => {
-          if (node.type !== "dialog") return null;
-          const props = node.props as {
-            "aria-labelledby"?: string;
-            onClose?: (event: { target: unknown; currentTarget: unknown }) => void;
-          };
+          if (node.type !== "dialog") {
+            return null;
+          }
+          const props: unknown = node.props;
+          if (typeof props !== "object" || props === null) {
+            throw new TypeError("Dialog fixture requires props");
+          }
+          const onClose = "onClose" in props ? props.onClose : undefined;
+          if (onClose !== undefined && !isDialogCloseHandler(onClose)) {
+            throw new TypeError("Dialog onClose must be callable");
+          }
           const native = {
             open: false,
             showModal() {
               this.open = true;
             },
             close() {
-              if (!this.open) return;
+              if (!this.open) {
+                return;
+              }
               this.open = false;
-              queueMicrotask(() => props.onClose?.({ target: native, currentTarget: native }));
+              queueMicrotask(() => {
+                if (onClose) {
+                  onClose.call(props, { target: native, currentTarget: native });
+                }
+              });
             },
           };
           natives.set(
-            props["aria-labelledby"] === "new-workspace-heading" ? "workspace" : "agent",
+            "aria-labelledby" in props && props["aria-labelledby"] === "new-workspace-heading"
+              ? "workspace"
+              : "agent",
             native,
           );
           return native;

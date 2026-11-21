@@ -1,14 +1,7 @@
 import dialogStyles from "./Dialogs.module.css";
 import overviewStyles from "./agentOverview.module.css";
-import {
-  useEffect,
-  useLayoutEffect,
-  useRef,
-  useState,
-  type FormEvent,
-  type ReactNode,
-} from "react";
-import type * as React from "react";
+import { useEffect, useLayoutEffect, useRef, useState } from "react";
+import type { FormEvent, MouseEvent, PointerEvent, ReactNode } from "react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { closeTab, renameAgent, renameTab } from "../../shared/api/apiClient";
 import { TrashIcon } from "../../shared/ui/Icons";
@@ -29,11 +22,11 @@ export function PaneContextActions({
   agentName?: string | null;
   agentTarget?: string;
   children: (handlers: {
-    onContextMenu: (event: React.MouseEvent) => void;
-    onPointerDown: (event: React.PointerEvent) => void;
+    onContextMenu: (event: MouseEvent) => void;
+    onPointerDown: (event: PointerEvent) => void;
     onPointerMove: () => void;
     onPointerUp: () => void;
-    onClickCapture: (event: React.MouseEvent) => void;
+    onClickCapture: (event: MouseEvent) => void;
   }) => ReactNode;
 }) {
   const [menuOpen, setMenuOpen] = useState(false);
@@ -59,39 +52,41 @@ export function PaneContextActions({
     const popup = menuRef.current;
     const row = rowRef.current;
     const overlay = overlayRef.current;
-    if (!menuOpen || !popup || !row || !overlay) return;
+    if (!menuOpen || !popup || !row || !overlay) {
+      return;
+    }
     // Top-layer placement escapes workspace and overview overflow clipping.
     // Manual dismissal keeps the release of the opening long press/right click
     // from immediately light-dismissing a newly opened popover.
     overlay.showPopover();
-    function position() {
+    const position = () => {
       const viewport = window.visualViewport;
       const minX = (viewport?.offsetLeft ?? 0) + 8;
       const minY = (viewport?.offsetTop ?? 0) + 8;
       const maxX = minX + (viewport?.width ?? window.innerWidth) - 16;
       const maxY = minY + (viewport?.height ?? window.innerHeight) - 16;
-      const rect = row!.getBoundingClientRect();
-      popup!.style.setProperty("--pane-menu-max-width", `${maxX - minX}px`);
-      popup!.style.setProperty("--pane-menu-max-height", `${maxY - minY}px`);
-      const { width, height } = popup!.getBoundingClientRect();
+      const rect = row.getBoundingClientRect();
+      popup.style.setProperty("--pane-menu-max-width", `${maxX - minX}px`);
+      popup.style.setProperty("--pane-menu-max-height", `${maxY - minY}px`);
+      const { width, height } = popup.getBoundingClientRect();
       const above = rect.top - minY - 8;
       const below = maxY - rect.bottom - 8;
       const placeAbove = below < height && above > below;
-      popup!.style.setProperty(
+      popup.style.setProperty(
         "--pane-menu-max-height",
         `${Math.max(0, Math.min(maxY - minY, placeAbove ? above : below))}px`,
       );
-      const visibleHeight = popup!.getBoundingClientRect().height;
+      const visibleHeight = popup.getBoundingClientRect().height;
       const top = placeAbove ? rect.top - visibleHeight - 8 : rect.bottom + 8;
-      popup!.style.setProperty(
+      popup.style.setProperty(
         "--pane-menu-top",
         `${Math.max(minY, Math.min(top, maxY - visibleHeight))}px`,
       );
-      popup!.style.setProperty(
+      popup.style.setProperty(
         "--pane-menu-left",
         `${Math.max(minX, Math.min(rect.right - width - 8, maxX - width))}px`,
       );
-    }
+    };
     position();
     popup.querySelector<HTMLButtonElement>("button")?.focus({ preventScroll: true });
     window.addEventListener("resize", position);
@@ -108,17 +103,23 @@ export function PaneContextActions({
       viewport?.removeEventListener("resize", position);
       viewport?.removeEventListener("scroll", position);
       observer.disconnect();
-      if (overlay.matches(":popover-open")) overlay.hidePopover();
+      if (overlay.matches(":popover-open")) {
+        overlay.hidePopover();
+      }
     };
   }, [menuOpen]);
   useEffect(() => {
     const activeDialog = dialog === "rename" ? renameDialogRef.current : removeDialogRef.current;
-    if (activeDialog && !activeDialog.open) activeDialog.showModal();
+    if (activeDialog && !activeDialog.open) {
+      activeDialog.showModal();
+    }
   }, [dialog]);
   const renameMutation = useMutation({
     mutationFn: async () => {
-      const updates: Promise<void>[] = [];
-      if (nextLabel.trim() !== label) updates.push(renameTab(tabId, nextLabel));
+      const updates: Array<Promise<void>> = [];
+      if (nextLabel.trim() !== label) {
+        updates.push(renameTab(tabId, nextLabel));
+      }
       if (agentRunning && agentTarget && nextAgentName && nextAgentName !== agentName) {
         updates.push(renameAgent(agentTarget, nextAgentName));
       }
@@ -141,23 +142,26 @@ export function PaneContextActions({
     renameMutation.mutate();
   }
   const handlers = {
-    onContextMenu: (event: React.MouseEvent) => {
+    onContextMenu: (event: MouseEvent) => {
       event.preventDefault();
       clear();
       setMenuOpen(true);
     },
-    onPointerDown: (event: React.PointerEvent) => {
-      if (event.pointerType !== "mouse")
+    onPointerDown: (event: PointerEvent) => {
+      if (event.pointerType !== "mouse") {
         timer.current = setTimeout(() => {
           suppressClick.current = true;
           setMenuOpen(true);
           timer.current = null;
         }, 550);
+      }
     },
     onPointerMove: clear,
     onPointerUp: clear,
-    onClickCapture: (event: React.MouseEvent) => {
-      if (!suppressClick.current) return;
+    onClickCapture: (event: MouseEvent) => {
+      if (!suppressClick.current) {
+        return;
+      }
       event.preventDefault();
       event.stopPropagation();
       suppressClick.current = false;
@@ -175,7 +179,9 @@ export function PaneContextActions({
           popover="manual"
           onKeyDown={(event) => {
             if (event.key === "Escape" || event.key === "Tab") {
-              if (event.key === "Escape") event.preventDefault();
+              if (event.key === "Escape") {
+                event.preventDefault();
+              }
               setMenuOpen(false);
               rowRef.current?.querySelector<HTMLButtonElement>("button")?.focus();
             }

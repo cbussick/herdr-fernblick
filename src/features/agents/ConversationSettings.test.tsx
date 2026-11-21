@@ -1,8 +1,12 @@
+import { testText } from "../../shared/lib/testText";
+import { dispatchTestEvent } from "../../shared/lib/dispatchTestEvent";
 import { act, createRef } from "react";
-import { create, type ReactTestRenderer } from "react-test-renderer";
+import { create } from "react-test-renderer";
+import type { ReactTestRenderer } from "react-test-renderer";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
-import { ConversationSettings, type ConversationSettingsProps } from "./ConversationSettings";
+import { ConversationSettings } from "./ConversationSettings";
+import type { ConversationSettingsProps } from "./ConversationSettings";
 
 const api = vi.hoisted(() => ({
   models: vi.fn(),
@@ -54,11 +58,15 @@ function view() {
 }
 async function flush() {
   await act(async () => {
-    await new Promise((resolve) => setTimeout(resolve, 15));
+    await new Promise((resolve) => {
+      setTimeout(resolve, 15);
+    });
   });
 }
 async function open() {
-  await act(async () => renderer.root.findByProps({ "aria-label": "Model" }).props.onClick());
+  await act(async () =>
+    dispatchTestEvent(renderer.root.findByProps({ "aria-label": "Model" }), "onClick"),
+  );
   await flush();
 }
 beforeEach(async () => {
@@ -108,18 +116,25 @@ function defaultButton() {
 it.each(["model", "thinking"])(
   "saves a non-current %s from its row without switching or closing, and moves the Default marker",
   async (kind) => {
-    if (kind === "model") await open();
-    else await openThinking();
+    if (kind === "model") {
+      await open();
+    } else {
+      await openThinking();
+    }
     expect(api.saveDefault).not.toHaveBeenCalled();
     expect(defaultButton().props.type).toBe("button");
-    await act(async () => defaultButton().props.onClick());
-    expect(api.saveDefault).toHaveBeenCalledExactlyOnceWith("w1:p1", target, {
+    await act(async () => dispatchTestEvent(defaultButton(), "onClick"));
+    const expected = {
       kind,
       provider: kind === "model" ? "openai" : "anthropic",
       modelId: kind === "model" ? "gpt" : "sonnet",
-      ...(kind === "thinking" ? { level: "low" } : {}),
-    });
-    expect(renderer.root.findByProps({ role: "status" }).children.join("")).toContain(
+    };
+    expect(api.saveDefault).toHaveBeenCalledExactlyOnceWith(
+      "w1:p1",
+      target,
+      kind === "thinking" ? { ...expected, level: "low" } : expected,
+    );
+    expect(testText(renderer.root.findByProps({ role: "status" }))).toContain(
       "saved as global default",
     );
     const saved = defaultButtons().filter((button) => button.props["data-default"]);
@@ -128,7 +143,7 @@ it.each(["model", "thinking"])(
       kind === "model" ? "Global default: GPT (openai)" : "Global default: Low",
     );
     expect(
-      renderer.root.findByProps({ "aria-pressed": true }).findByType("strong").children.join(""),
+      testText(renderer.root.findByProps({ "aria-pressed": true }).findByType("strong")),
     ).toContain(kind === "model" ? "Sonnet" : "Medium");
     expect(renderer.root.findAllByType("footer")).toHaveLength(0);
     expect(JSON.stringify(renderer.toJSON())).not.toContain("For new Pi sessions");
@@ -147,14 +162,17 @@ it.each(["model", "thinking"])(
           reject = fail;
         }),
     );
-    if (kind === "model") await open();
-    else await openThinking();
+    if (kind === "model") {
+      await open();
+    } else {
+      await openThinking();
+    }
     const save = defaultButton();
     const option = renderer.root.findAllByProps({ "aria-pressed": false })[0];
     await act(async () => {
-      save.props.onClick();
-      save.props.onClick();
-      option.props.onClick();
+      await dispatchTestEvent(save, "onClick");
+      await dispatchTestEvent(save, "onClick");
+      await dispatchTestEvent(option, "onClick");
     });
     expect(api.saveDefault).toHaveBeenCalledOnce();
     expect(api.change).not.toHaveBeenCalled();
@@ -164,11 +182,11 @@ it.each(["model", "thinking"])(
       defaultButtons().find((button) => button.props["data-default"])!.props["aria-label"],
     ).toBe(kind === "model" ? "Global default: Sonnet (anthropic)" : "Global default: Medium");
     expect(option.props.disabled).toBe(true);
-    expect(renderer.root.findByProps({ role: "status" }).children.join("")).toContain(
+    expect(testText(renderer.root.findByProps({ role: "status" }))).toContain(
       "Saving global default",
     );
     await act(async () => reject(new Error("Settings unavailable")));
-    expect(renderer.root.findByProps({ role: "alert" }).children.join("")).toContain(
+    expect(testText(renderer.root.findByProps({ role: "alert" }))).toContain(
       "Settings unavailable",
     );
     expect(defaultButton().props["aria-disabled"]).toBe(false);
@@ -183,16 +201,19 @@ it.each(["model", "thinking"])(
   async (kind) => {
     props = { ...props, defaultsSupported: false };
     await act(async () => renderer.update(view()));
-    if (kind === "model") await open();
-    else await openThinking();
+    if (kind === "model") {
+      await open();
+    } else {
+      await openThinking();
+    }
     expect(defaultButton().props["aria-disabled"]).toBe(true);
-    await act(async () => defaultButton().props.onClick());
+    await act(async () => dispatchTestEvent(defaultButton(), "onClick"));
     expect(api.saveDefault).not.toHaveBeenCalled();
     expect(JSON.stringify(renderer.toJSON())).toContain("Run /reload");
     props = { ...props, defaultsSupported: true, enabled: false };
     await act(async () => renderer.update(view()));
     expect(defaultButton().props["aria-disabled"]).toBe(true);
-    await act(async () => defaultButton().props.onClick());
+    await act(async () => dispatchTestEvent(defaultButton(), "onClick"));
     expect(api.saveDefault).not.toHaveBeenCalled();
   },
 );
@@ -209,20 +230,23 @@ it.each(["model", "thinking"])(
       defaults: persisted,
     });
     for (let attempt = 0; attempt < 2; attempt++) {
-      if (kind === "model") await open();
-      else await openThinking();
+      if (kind === "model") {
+        await open();
+      } else {
+        await openThinking();
+      }
       const saved = defaultButtons().filter((button) => button.props["data-default"]);
       expect(saved).toHaveLength(1);
       expect(saved[0].props["aria-label"]).toBe(
         kind === "model" ? "Global default: GPT (openai)" : "Global default: High",
       );
       expect(saved[0].props["aria-disabled"]).toBe(true);
-      await act(async () => saved[0].props.onClick());
+      await act(async () => dispatchTestEvent(saved[0], "onClick"));
       expect(api.saveDefault).not.toHaveBeenCalled();
       expect(
-        renderer.root.findByProps({ "aria-pressed": true }).findByType("strong").children.join(""),
+        testText(renderer.root.findByProps({ "aria-pressed": true }).findByType("strong")),
       ).toContain(kind === "model" ? "Sonnet" : "Medium");
-      await act(async () => renderer.root.findByType("dialog").props.onClose());
+      await act(async () => dispatchTestEvent(renderer.root.findByType("dialog"), "onClose"));
     }
     expect(kind === "model" ? api.models : api.thinking).toHaveBeenCalledTimes(2);
   },
@@ -236,16 +260,16 @@ it("matches default models by provider and ID, and keeps indicators while filter
   await open();
   expect(defaultButtons().filter((button) => button.props["data-default"])).toHaveLength(1);
   await act(async () =>
-    renderer.root
-      .findByProps({ "aria-label": "Search models" })
-      .props.onChange({ target: { value: "other" } }),
+    dispatchTestEvent(renderer.root.findByProps({ "aria-label": "Search models" }), "onChange", {
+      target: { value: "other" },
+    }),
   );
   expect(defaultButtons()).toHaveLength(1);
   expect(defaultButtons()[0].props["data-default"]).toBe(false);
   await act(async () =>
-    renderer.root
-      .findByProps({ "aria-label": "Search models" })
-      .props.onChange({ target: { value: "anthropic" } }),
+    dispatchTestEvent(renderer.root.findByProps({ "aria-label": "Search models" }), "onChange", {
+      target: { value: "anthropic" },
+    }),
   );
   expect(defaultButtons()[0].props["data-default"]).toBe(true);
 });
@@ -261,8 +285,11 @@ it.each(["model", "thinking"])(
       levels: ["low", "medium", "high"],
       defaults: empty,
     });
-    if (kind === "model") await open();
-    else await openThinking();
+    if (kind === "model") {
+      await open();
+    } else {
+      await openThinking();
+    }
     expect(defaultButtons().some((button) => button.props["data-default"])).toBe(false);
     expect(defaultButton().props["aria-disabled"]).toBe(false);
   },
@@ -274,16 +301,18 @@ it("keeps session selection available on defaults-read failure and supports expl
     defaultsError: "Global defaults unavailable",
   });
   await open();
-  expect(renderer.root.findByProps({ role: "alert" }).findByType("p").children.join("")).toContain(
+  expect(testText(renderer.root.findByProps({ role: "alert" }).findByType("p"))).toContain(
     "unavailable",
   );
   expect(defaultButton().props["aria-disabled"]).toBe(true);
   expect(renderer.root.findByProps({ "aria-pressed": false }).props.disabled).toBe(false);
   await act(async () =>
-    renderer.root
-      .findAllByType("button")
-      .find((button) => button.children.includes("Retry defaults"))!
-      .props.onClick(),
+    dispatchTestEvent(
+      renderer.root
+        .findAllByType("button")
+        .find((button) => button.children.includes("Retry defaults"))!,
+      "onClick",
+    ),
   );
   await flush();
   expect(defaultButton().props["aria-disabled"]).toBe(false);
@@ -293,7 +322,7 @@ it("gates row saves for an older defaults-capable bridge without default metadat
   api.models.mockResolvedValue({ models, truncated: false });
   await open();
   expect(defaultButton().props["aria-disabled"]).toBe(true);
-  await act(async () => defaultButton().props.onClick());
+  await act(async () => dispatchTestEvent(defaultButton(), "onClick"));
   expect(api.saveDefault).not.toHaveBeenCalled();
   expect(JSON.stringify(renderer.toJSON())).toContain("Run /reload");
 });
@@ -306,7 +335,7 @@ it("discards late default-save results after target replacement", async () => {
       }),
   );
   await open();
-  await act(async () => defaultButton().props.onClick());
+  await act(async () => dispatchTestEvent(defaultButton(), "onClick"));
   props = { ...props, target: { ...target, epoch: "replacement" } };
   await act(async () => renderer.update(view()));
   await open();
@@ -319,20 +348,24 @@ it("fetches only on opening, searches providers, marks current and explicitly sw
   expect(api.models).toHaveBeenCalledOnce();
   expect(renderer.root.findAllByProps({ "aria-pressed": true })).toHaveLength(1);
   await act(async () =>
-    renderer.root
-      .findByProps({ "aria-label": "Search models" })
-      .props.onChange({ target: { value: "openai" } }),
+    dispatchTestEvent(renderer.root.findByProps({ "aria-label": "Search models" }), "onChange", {
+      target: { value: "openai" },
+    }),
   );
   const options = renderer.root.findAllByProps({ "aria-pressed": false });
   expect(options).toHaveLength(1);
   expect(api.change).not.toHaveBeenCalled();
   const event = { key: "Enter", preventDefault: vi.fn() };
   await act(async () =>
-    renderer.root.findByProps({ "aria-label": "Search models" }).props.onKeyDown(event),
+    dispatchTestEvent(
+      renderer.root.findByProps({ "aria-label": "Search models" }),
+      "onKeyDown",
+      event,
+    ),
   );
   expect(event.preventDefault).toHaveBeenCalledOnce();
   expect(api.change).not.toHaveBeenCalled();
-  await act(async () => options[0].props.onClick());
+  await act(async () => dispatchTestEvent(options[0], "onClick"));
   expect(api.change).toHaveBeenCalledExactlyOnceWith("w1:p1", target, "openai", "gpt");
   expect(renderer.root.findAllByType("dialog")).toHaveLength(0);
 });
@@ -347,15 +380,13 @@ it("retains errors for explicit retry and serializes double selection", async ()
   await open();
   const option = renderer.root.findByProps({ "aria-pressed": false });
   await act(async () => {
-    option.props.onClick();
-    option.props.onClick();
+    await dispatchTestEvent(option, "onClick");
+    await dispatchTestEvent(option, "onClick");
   });
   expect(api.change).toHaveBeenCalledOnce();
-  expect(renderer.root.findByProps({ role: "status" }).children.join("")).toContain(
-    "Changing model",
-  );
+  expect(testText(renderer.root.findByProps({ role: "status" }))).toContain("Changing model");
   await act(async () => reject(new Error("Outcome uncertain. Check Pi.")));
-  expect(renderer.root.findByProps({ role: "alert" }).children.join("")).toContain("uncertain");
+  expect(testText(renderer.root.findByProps({ role: "alert" }))).toContain("uncertain");
   expect(renderer.root.findAllByType("dialog")).toHaveLength(1);
   expect(api.change).toHaveBeenCalledOnce();
 });
@@ -368,7 +399,9 @@ it("closes on target replacement or disconnect and ignores old async results", a
       }),
   );
   await open();
-  await act(async () => renderer.root.findByProps({ "aria-pressed": false }).props.onClick());
+  await act(async () =>
+    dispatchTestEvent(renderer.root.findByProps({ "aria-pressed": false }), "onClick"),
+  );
   props = { ...props, target: { ...target, epoch: "replacement" } };
   await act(async () => renderer.update(view()));
   expect(renderer.root.findAllByType("dialog")).toHaveLength(0);
@@ -392,12 +425,12 @@ it("gates selection when Pi becomes busy without changing the draft", async () =
   await act(async () => renderer.update(view()));
   const option = renderer.root.findByProps({ "aria-pressed": false });
   expect(option.props.disabled).toBe(true);
-  await act(async () => option.props.onClick());
+  await act(async () => dispatchTestEvent(option, "onClick"));
   expect(api.change).not.toHaveBeenCalled();
 });
 async function openThinking() {
   await act(async () =>
-    renderer.root.findByProps({ "aria-label": "Thinking level" }).props.onClick(),
+    dispatchTestEvent(renderer.root.findByProps({ "aria-label": "Thinking level" }), "onClick"),
   );
   await flush();
 }
@@ -408,7 +441,9 @@ it("opens thinking only on selection and shows supported levels with current sel
   expect(renderer.root.findAllByProps({ "aria-pressed": true })).toHaveLength(1);
   expect(renderer.root.findAllByProps({ "aria-pressed": false })).toHaveLength(2);
   expect(api.changeThinking).not.toHaveBeenCalled();
-  await act(async () => renderer.root.findAllByProps({ "aria-pressed": false })[1].props.onClick());
+  await act(async () =>
+    dispatchTestEvent(renderer.root.findAllByProps({ "aria-pressed": false })[1], "onClick"),
+  );
   expect(api.changeThinking).toHaveBeenCalledExactlyOnceWith(
     "w1:p1",
     target,
@@ -430,12 +465,12 @@ it("preserves thinking errors and prevents double invocation", async () => {
   await openThinking();
   const high = renderer.root.findAllByProps({ "aria-pressed": false })[1];
   await act(async () => {
-    high.props.onClick();
-    high.props.onClick();
+    await dispatchTestEvent(high, "onClick");
+    await dispatchTestEvent(high, "onClick");
   });
   expect(api.changeThinking).toHaveBeenCalledOnce();
   await act(async () => reject(new Error("Outcome uncertain. Check Pi.")));
-  expect(renderer.root.findByProps({ role: "alert" }).children.join("")).toContain("uncertain");
+  expect(testText(renderer.root.findByProps({ role: "alert" }))).toContain("uncertain");
   expect(renderer.root.findAllByType("dialog")).toHaveLength(1);
   expect(api.changeThinking).toHaveBeenCalledOnce();
 });
@@ -463,7 +498,10 @@ it("shows reload notice for legacy peers and only Off for non-reasoning models",
   expect(JSON.stringify(renderer.toJSON())).toContain("Run /reload");
   expect(api.thinking).not.toHaveBeenCalled();
   await act(async () =>
-    renderer.root.findByProps({ "aria-label": "Close thinking level picker" }).props.onClick(),
+    dispatchTestEvent(
+      renderer.root.findByProps({ "aria-label": "Close thinking level picker" }),
+      "onClick",
+    ),
   );
   props = { ...props, thinkingSupported: true };
   api.thinking.mockResolvedValue({
@@ -484,10 +522,13 @@ it("disables thinking selection on busy state or model-mismatched catalogue", as
   await act(async () => renderer.update(view()));
   const high = renderer.root.findAllByProps({ "aria-pressed": false })[1];
   expect(high.props.disabled).toBe(true);
-  await act(async () => high.props.onClick());
+  await act(async () => dispatchTestEvent(high, "onClick"));
   expect(api.changeThinking).not.toHaveBeenCalled();
   await act(async () =>
-    renderer.root.findByProps({ "aria-label": "Close thinking level picker" }).props.onClick(),
+    dispatchTestEvent(
+      renderer.root.findByProps({ "aria-label": "Close thinking level picker" }),
+      "onClick",
+    ),
   );
   props = { ...props, enabled: true };
   api.thinking.mockResolvedValue({
@@ -506,10 +547,10 @@ it("shows discovery errors with explicit retry and no mutation", async () => {
   await openThinking();
   expect(renderer.root.findByProps({ role: "alert" })).toBeDefined();
   await act(async () =>
-    renderer.root
-      .findAllByType("button")
-      .find((button) => button.children.includes("Retry"))!
-      .props.onClick(),
+    dispatchTestEvent(
+      renderer.root.findAllByType("button").find((button) => button.children.includes("Retry"))!,
+      "onClick",
+    ),
   );
   await flush();
   expect(api.thinking).toHaveBeenCalledTimes(2);
@@ -521,10 +562,10 @@ it("supports empty, failed catalogue and explicit discovery retry", async () => 
   expect(renderer.root.findByProps({ role: "alert" })).toBeDefined();
   api.models.mockResolvedValueOnce({ models: [], truncated: false });
   await act(async () =>
-    renderer.root
-      .findAllByType("button")
-      .find((button) => button.children.includes("Retry"))!
-      .props.onClick(),
+    dispatchTestEvent(
+      renderer.root.findAllByType("button").find((button) => button.children.includes("Retry"))!,
+      "onClick",
+    ),
   );
   await flush();
   expect(JSON.stringify(renderer.toJSON())).toContain("No models available");

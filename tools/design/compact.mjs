@@ -1,3 +1,4 @@
+import { report } from "../report.mjs";
 // Synthetic compaction UI regression. All API/SSE traffic is intercepted; no live agents.
 // PLAYWRIGHT_MODULE=/path/to/playwright/index.mjs node tools/design/compact.mjs URL
 import assert from "node:assert/strict";
@@ -85,7 +86,7 @@ for (const [engine, type] of [
         (url) => url.pathname.startsWith("/api/"),
         async (route) => {
           const url = new URL(route.request().url());
-          if (url.pathname === "/api/agents")
+          if (url.pathname === "/api/agents") {
             return route.fulfill({
               json: {
                 agents: [agent],
@@ -93,6 +94,7 @@ for (const [engine, type] of [
                 tabs: [],
               },
             });
+          }
           if (url.pathname.endsWith("/compact")) {
             compactions++;
             assert.deepEqual(route.request().postDataJSON(), { target });
@@ -316,7 +318,7 @@ for (const [engine, type] of [
       assert.deepEqual(errors, []);
       await page.screenshot({ path: `${output}/${engine}-${name}-complete.png` });
       await page.close();
-      console.log(`${engine} ${name}: confirmed completion, touch layout and draft/images passed`);
+      report(`${engine} ${name}: confirmed completion, touch layout and draft/images passed`);
     }
   } finally {
     await browser.close();

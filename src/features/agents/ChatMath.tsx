@@ -1,4 +1,5 @@
-import { useMemo, type ReactNode } from "react";
+import { useMemo } from "react";
+import type { ReactNode } from "react";
 import katex from "katex";
 import "katex/dist/katex.min.css";
 import styles from "./ChatMessageText.module.css";
@@ -30,7 +31,9 @@ export function ChatMath({
       return null;
     }
   }, [value, display]);
-  if (!html) return source;
+  if (!html) {
+    return source;
+  }
   return (
     <span className={display ? styles["math-display"] : styles.math}>
       {annotated ? (

@@ -1,39 +1,66 @@
 import { afterEach, expect, it, vi } from "vitest";
 import { BoardController } from "./BoardController";
-import { boardApi, type BoardEvent } from "./boardApi";
+import { boardApi } from "./boardApi";
+import type { BoardEvent } from "./boardApi";
 import type { DraftStore, LocalDraft } from "./draftStore";
 import { board, deferred, scene, target } from "./testFixtures";
 import { ApiError } from "../../shared/api/apiClient";
 
-const owners: BoardController[] = [];
+const owners: Array<BoardController> = [];
 afterEach(() => {
   owners.splice(0).forEach((owner) => owner.dispose());
 });
 function setup(local?: LocalDraft) {
-  let event!: (value: BoardEvent) => void;
+  let event: ((value: BoardEvent) => void) | undefined;
   const close = vi.fn();
   const api = {
     ...boardApi,
-    exportPng: vi.fn().mockResolvedValue(new Blob(["PNG"], { type: "image/png" })),
-    open: vi.fn().mockResolvedValue(board()),
-    save: vi.fn().mockImplementation(async (_pane, input) => ({
+    exportPng: vi
+      .fn<typeof boardApi.exportPng>()
+      .mockResolvedValue(new Blob(["PNG"], { type: "image/png" })),
+    open: vi.fn<typeof boardApi.open>().mockResolvedValue(board()),
+    save: vi.fn<typeof boardApi.save>().mockImplementation(async (_pane, input) => ({
       ...board(input.baseRevision + 1),
       scene: input.scene,
     })),
     revoke: vi.fn().mockResolvedValue({ ok: true }),
-    events: vi.fn().mockImplementation((_pane, _target, callback) => {
+    events: vi.fn<typeof boardApi.events>().mockImplementation((_pane, _target, callback) => {
       event = callback;
       return close;
     }),
   };
-  const store: DraftStore = {
-    read: vi.fn().mockResolvedValue(local),
-    write: vi.fn().mockResolvedValue(undefined),
+  const store = {
+    read: vi.fn<DraftStore["read"]>().mockResolvedValue(local),
+    write: vi.fn<DraftStore["write"]>().mockResolvedValue(undefined),
   };
   const owner = new BoardController("pane", target, api, store);
   owners.push(owner);
-  return { owner, api, store, close, emit: (value: BoardEvent) => event(value) };
+  return {
+    owner,
+    api,
+    store,
+    close,
+    emit: (value: BoardEvent) => {
+      if (!event) {
+        throw new Error("Board event subscription has not started");
+      }
+      event(value);
+    },
+  };
 }
+it("does not refresh or mutate disposed state after a pending revoke completes", async () => {
+  const { owner, api } = setup();
+  await owner.start();
+  const pending = deferred<{ ok: boolean }>();
+  api.revoke.mockReturnValueOnce(pending.promise);
+  const revoking = owner.revoke();
+  owner.dispose();
+  const state = owner.state;
+  pending.resolve({ ok: true });
+  await revoking;
+  expect(owner.state).toBe(state);
+  expect(api.open).toHaveBeenCalledTimes(1);
+});
 it("reports initial read progress, ends it on failure, and retries without writing", async () => {
   const { owner, api } = setup();
   const pending = deferred<ReturnType<typeof board>>();
@@ -56,7 +83,11 @@ it("exports an unsynced draft without saving or clearing dirty state and cancels
   await owner.start();
   owner.interaction(true);
   owner.change(scene(30));
-  const draft = structuredClone(owner.state.scene!);
+  const currentScene = owner.state.scene;
+  if (!currentScene) {
+    throw new Error("Board did not load a scene");
+  }
+  const draft = structuredClone(currentScene);
   const result = await owner.exportPng(draft, "high", new AbortController().signal);
   expect(result.type).toBe("image/png");
   expect(api.save).not.toHaveBeenCalled();
@@ -69,7 +100,10 @@ it("exports an unsynced draft without saving or clearing dirty state and cancels
     "high",
     expect.any(AbortSignal),
   );
-  const signal = api.exportPng.mock.calls[0]![5] as AbortSignal;
+  const signal = api.exportPng.mock.calls[0]?.[5];
+  if (!signal) {
+    throw new Error("Export did not receive a cancellation signal");
+  }
   owner.dispose();
   expect(signal.aborted).toBe(true);
 });
@@ -376,6 +410,6 @@ it("closes events, aborts stale target requests and ignores late results on unmo
   pending.resolve(board(10));
   await reading;
   expect(close).toHaveBeenCalledOnce();
-  expect(api.open.mock.calls.at(-1)?.[2].aborted).toBe(true);
+  expect(api.open.mock.calls.at(-1)?.[2]?.aborted).toBe(true);
   expect(owner.state.board?.revision).toBe(1);
 });

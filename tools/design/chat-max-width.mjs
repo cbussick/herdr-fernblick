@@ -1,3 +1,4 @@
+import { report } from "../report.mjs";
 // Synthetic-only chat layout coverage. No real Herdr/Pi sessions are contacted.
 // Run after npm run build: node tools/design/chat-max-width.mjs
 import assert from "node:assert/strict";
@@ -68,7 +69,9 @@ const dashboard = {
   workspaces: [{ workspace_id: "w1", label: "Fernblick" }],
 };
 const server = createHttpServer({ getDashboard: async () => dashboard }, resolve("dist"), {});
-await new Promise((done) => server.listen(0, "127.0.0.1", done));
+await new Promise((done) => {
+  server.listen(0, "127.0.0.1", done);
+});
 try {
   for (const [engine, type] of [
     ["chromium", chromium],
@@ -100,9 +103,12 @@ try {
         await page.route("**/api/**", async (route) => {
           const path = new URL(route.request().url()).pathname;
           assert.equal(route.request().method(), "GET");
-          if (path === "/api/agents") return route.fulfill({ json: dashboard });
-          if (path === "/api/sessions/layout-fixture")
+          if (path === "/api/agents") {
+            return route.fulfill({ json: dashboard });
+          }
+          if (path === "/api/sessions/layout-fixture") {
             return route.fulfill({ json: { agent, chat: null } });
+          }
           return route.fulfill({ status: 503, json: { error: "Synthetic fixture" } });
         });
         await page.goto(`http://127.0.0.1:${server.address().port}`);
@@ -144,8 +150,9 @@ try {
           "Wide output must not overflow the transcript",
         );
         assert(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth));
-        for (const box of [composer, tool, user, structured])
+        for (const box of [composer, tool, user, structured]) {
           assert(box.x >= 0 && box.x + box.width <= width + 1);
+        }
         await page.screenshot({ path: `${output}/${engine}-${width}.png` });
         // Column sizing must preserve streaming follow and the reader's paused position.
         const grow = async (seq) => {
@@ -188,7 +195,9 @@ try {
         // Widening chat must not constrain the full-width terminal view.
         await page.getByRole("button", { name: "Switch to Terminal view", exact: true }).click();
         const terminal = await page.getByTestId("output-panel").boundingBox();
-        if (width === 2560) assert(terminal.width > 1500);
+        if (width === 2560) {
+          assert(terminal.width > 1500);
+        }
         assert.deepEqual(errors, []);
         await page.close();
       }
@@ -196,9 +205,11 @@ try {
       await browser.close();
     }
   }
-  console.log(
+  report(
     "PASS: shared 1100px message/tool/composer column, seamless background, narrow screens, wide code, and unconstrained terminal in Chromium and WebKit.",
   );
 } finally {
-  await new Promise((done) => server.close(done));
+  await new Promise((done) => {
+    server.close(done);
+  });
 }

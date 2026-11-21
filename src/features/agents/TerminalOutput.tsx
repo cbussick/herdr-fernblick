@@ -5,7 +5,7 @@ import { StateIcon, StateNotice } from "../../shared/ui/StateFeedback";
 import styles from "./Console.module.css";
 
 interface TerminalOutputProps {
-  queryKey: readonly string[];
+  queryKey: ReadonlyArray<string>;
   read: (source: TerminalReadSource, signal?: AbortSignal) => Promise<Output>;
   canLoadHistory: boolean;
   historyBlockedReason?: string;
@@ -46,8 +46,9 @@ export function TerminalOutput({
   });
   const output = mode === "history" ? history : live.data;
   useEffect(() => {
-    if (mode === "live" && follow.current && outputRef.current)
+    if (mode === "live" && follow.current && outputRef.current) {
       outputRef.current.scrollTop = outputRef.current.scrollHeight;
+    }
   }, [mode, output?.revision]);
 
   return (
@@ -74,7 +75,9 @@ export function TerminalOutput({
               disabled={!canLoadHistory || loadHistory.isPending}
               title={!canLoadHistory ? historyBlockedReason : "Load up to 600 lines of history"}
               onClick={() => {
-                if (canLoadHistory && !loadHistory.isPending) loadHistory.mutate();
+                if (canLoadHistory && !loadHistory.isPending) {
+                  loadHistory.mutate();
+                }
               }}
             >
               {loadHistory.isPending
@@ -111,7 +114,9 @@ export function TerminalOutput({
           aria-label={mode === "live" ? "Live terminal screen" : "Terminal history snapshot"}
           onScroll={() => {
             const el = outputRef.current;
-            if (el) follow.current = el.scrollHeight - el.scrollTop - el.clientHeight < 48;
+            if (el) {
+              follow.current = el.scrollHeight - el.scrollTop - el.clientHeight < 48;
+            }
           }}
         >
           {output.text}

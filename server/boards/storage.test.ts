@@ -12,6 +12,7 @@ import type {
   BoardScene,
   BoardTarget,
 } from "../../packages/pi-live-chat/boardProtocol.js";
+import { boardSceneSchema } from "../../packages/pi-live-chat/boardProtocol.js";
 import { BoardDisk } from "./disk.js";
 import { BoardError, BoardStore } from "./storage.js";
 
@@ -50,6 +51,9 @@ let store: BoardStore;
 let boardId: string;
 let owner: BoardTarget;
 const validate = () => undefined;
+function denied() {
+  throw new BoardError(403, "stale target");
+}
 function request(
   grant: BoardGrant,
   action: BoardRequest["action"],
@@ -69,12 +73,14 @@ function request(
 async function active(mode: "read" | "edit" = "edit", observe = true): Promise<BoardGrant> {
   const grant = store.grant(boardId, owner, mode, (await store.read(boardId)).revision);
   await store.handle(request(grant, "activate"), validate);
-  if (observe) await store.handle(request(grant, "read"), validate);
+  if (observe) {
+    await store.handle(request(grant, "read"), validate);
+  }
   return grant;
 }
 function apply(
   grant: BoardGrant,
-  operations: BoardOperation[] = [create()],
+  operations: Array<BoardOperation> = [create()],
   baseRevision = 0,
   operationId = randomUUID(),
 ): BoardRequest {
@@ -188,7 +194,7 @@ it("authorizes primitive discovery/edits, preserves stale human edits, and persi
 it("requires automatic flow relation observations, keeps independent groups and validates final graphs", async () => {
   boardId = (await store.open("flow", validate)).id;
   const grant = await active();
-  const nodes: BoardOperation[] = ["a", "b"].map((id) => ({
+  const nodes: Array<BoardOperation> = ["a", "b"].map((id) => ({
     op: "create",
     id,
     kind: "card",
@@ -219,7 +225,7 @@ it("requires automatic flow relation observations, keeps independent groups and 
   const state = await store.read(boardId);
   state.scene.elements[1].x = 80;
   await store.save(boardId, 2, state.scene);
-  const grouped: BoardOperation[] = [
+  const grouped: Array<BoardOperation> = [
     { op: "update", id: "a", x: 20, groupId: "related" },
     { op: "create", id: "grouped", kind: "card", x: 0, y: 0, groupId: "related" },
     { op: "create", id: "independent", kind: "comment", x: 0, y: 0 },
@@ -252,7 +258,7 @@ it("requires automatic flow relation observations, keeps independent groups and 
 it("does not connect newly created endpoints without a prior read", async () => {
   boardId = (await store.open("atomic-flow", validate)).id;
   const grant = await active();
-  const operations: BoardOperation[] = [
+  const operations: Array<BoardOperation> = [
     { op: "create", id: "a", kind: "card", x: 0, y: 0, groupId: "g" },
     { op: "create", id: "b", kind: "card", x: 0, y: 0, groupId: "g" },
     {
@@ -424,7 +430,7 @@ it.each(["update", "delete"] as const)(
     // Do not rely on native version counters: arbitrary JSON changes count too.
     await store.save(boardId, 1, { ...blank(), elements: [{ ...rectangle(), x: 42 }] });
     const before = await store.read(boardId);
-    const operations: BoardOperation[] = [
+    const operations: Array<BoardOperation> = [
       create("new"),
       op === "update" ? { op, id: "rect", x: 500 } : { op, id: "rect" },
     ];
@@ -481,7 +487,9 @@ it("ignores JSON property order but detects changes made by another agent", asyn
   await store.save(boardId, 0, { ...blank(), elements: [rectangle()] });
   const grant = await active();
   await store.handle(request(grant, "read"), validate);
-  const reordered = Object.fromEntries(Object.entries(rectangle()).reverse()) as BoardElement;
+  const reordered = boardSceneSchema.shape.elements.element.parse(
+    Object.fromEntries(Object.entries(rectangle()).reverse()),
+  );
   await store.save(boardId, 1, { ...blank(), elements: [reordered] });
   await store.handle(apply(grant, [{ op: "update", id: "rect", x: 10 }], 1), validate);
   expect(
@@ -577,10 +585,10 @@ it("deduplicates exact operation retries and rejects reused operation IDs with d
 it("keeps recorded partial outcomes detached from callers", async () => {
   const grant = await active();
   const req = apply(grant, [create(), { op: "delete", id: "gone" }]);
-  const first = (await store.handle(req, validate)) as {
-    applied: string[];
-    skipped: { id: string; reason: string }[];
-  };
+  const first = await store.handle(req, validate);
+  if (!("applied" in first) || !("skipped" in first)) {
+    throw new Error("Expected apply result");
+  }
   first.applied.push("fake");
   first.skipped[0].reason = "fake";
   expect(await store.handle(req, validate)).toMatchObject({
@@ -702,9 +710,6 @@ describe("capability lifecycle", () => {
     const grant = await active();
     const req = apply(grant);
     await store.handle(req, validate);
-    const denied = () => {
-      throw new BoardError(403, "stale target");
-    };
     for (const operation of [
       request(grant, "activate"),
       request(grant, "read"),
@@ -738,26 +743,28 @@ it.each(["revoke", "target", "close"] as const)(
   "invalidates in-flight writes at their final commit authorization: %s",
   async (kind) => {
     const grant = await active();
-    const original = BoardDisk.prototype.write;
-    vi.spyOn(BoardDisk.prototype, "write").mockImplementationOnce(
-      async function (this: BoardDisk, name, bytes, check, immutable) {
-        let calls = 0;
-        return original.call(
-          this,
-          name,
-          bytes,
-          () => {
-            if (++calls === 2) {
-              if (kind === "revoke") store.revoke(grant.grantId);
-              else if (kind === "target") store.revokeTarget(owner);
-              else store.close();
+    const write = vi.spyOn(BoardDisk.prototype, "write");
+    write.mockImplementationOnce(async function (this: BoardDisk, name, bytes, check, immutable) {
+      write.mockRestore();
+      let calls = 0;
+      return this.write(
+        name,
+        bytes,
+        () => {
+          if (++calls === 2) {
+            if (kind === "revoke") {
+              store.revoke(grant.grantId);
+            } else if (kind === "target") {
+              store.revokeTarget(owner);
+            } else {
+              store.close();
             }
-            check();
-          },
-          immutable,
-        );
-      },
-    );
+          }
+          check();
+        },
+        immutable,
+      );
+    });
     await expect(store.handle(apply(grant), validate)).rejects.toMatchObject({
       status: kind === "close" ? 503 : 403,
     });
@@ -771,17 +778,18 @@ it.each(["revoke", "target", "close"] as const)(
 it("revalidates after asynchronous reads and rejects a stale target before editing", async () => {
   const grant = await active();
   let valid = true;
-  const original = BoardDisk.prototype.read;
-  vi.spyOn(BoardDisk.prototype, "read").mockImplementationOnce(
-    async function (this: BoardDisk, name, max) {
-      const bytes = await original.call(this, name, max);
-      valid = false;
-      return bytes;
-    },
-  );
+  const read = vi.spyOn(BoardDisk.prototype, "read");
+  read.mockImplementationOnce(async function (this: BoardDisk, name, max) {
+    read.mockRestore();
+    const bytes = await this.read(name, max);
+    valid = false;
+    return bytes;
+  });
   await expect(
     store.handle(apply(grant), () => {
-      if (!valid) throw new BoardError(403, "target changed");
+      if (!valid) {
+        throw new BoardError(403, "target changed");
+      }
     }),
   ).rejects.toMatchObject({ status: 403 });
   expect((await store.read(boardId)).revision).toBe(0);
@@ -791,13 +799,17 @@ it("revalidates human saves and captures before commit, with no published snapsh
   let calls = 0;
   await expect(
     store.save(boardId, 0, blank(), () => {
-      if (++calls >= 4) throw new BoardError(403, "revoked");
+      if (++calls >= 4) {
+        throw new BoardError(403, "revoked");
+      }
     }),
   ).rejects.toMatchObject({ status: 403 });
   calls = 0;
   await expect(
     store.capture(boardId, 0, png, () => {
-      if (++calls >= 6) throw new BoardError(403, "revoked");
+      if (++calls >= 6) {
+        throw new BoardError(403, "revoked");
+      }
     }),
   ).rejects.toMatchObject({ status: 403 });
   expect(await store.read(boardId)).toMatchObject({ revision: 0, snapshots: [] });
@@ -854,9 +866,9 @@ it("rejects embeddables, URL injection, malformed raster files, missing assets, 
     { ...rectangle(), customData: { dataURL: "data:image/svg+xml;base64,PHN2Zy8+" } },
     { ...rectangle(), type: "image", fileId: "missing" },
   ]) {
-    await expect(
-      store.save(boardId, 0, { ...blank(), elements: [unsafe as BoardElement] }),
-    ).rejects.toMatchObject({ status: 400 });
+    await expect(store.save(boardId, 0, { ...blank(), elements: [unsafe] })).rejects.toMatchObject({
+      status: 400,
+    });
   }
   await expect(
     store.save(boardId, 0, {
@@ -914,11 +926,24 @@ it("reports unsupported and malformed operations rather than ignoring fields", a
     [{ op: "create", id: "bad", kind: "arrow", x: 0, y: 0 }],
     [{ op: "create", id: "bad", kind: "connection", x: 0, y: 0 }],
   ]) {
-    await expect(
-      store.handle(apply(grant, operations as BoardOperation[]), validate),
-    ).rejects.toMatchObject({ status: 400 });
+    await expect(store.handle({ ...apply(grant), operations }, validate)).rejects.toMatchObject({
+      status: 400,
+    });
   }
   expect((await store.read(boardId)).revision).toBe(0);
+});
+
+it("snapshots notification recipients before listeners add subscriptions", async () => {
+  const added = vi.fn();
+  const addDuringNotification = () => {
+    store.subscribe(boardId, added);
+  };
+  const unsubscribe = store.subscribe(boardId, addDuringNotification);
+  await store.save(boardId, 0, blank());
+  expect(added).not.toHaveBeenCalled();
+  unsubscribe();
+  await store.save(boardId, 1, blank());
+  expect(added).toHaveBeenCalledOnce();
 });
 
 it("notifies subscriptions for durable saves/captures and grant lifecycle changes", async () => {

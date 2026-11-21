@@ -1,12 +1,18 @@
 import { act } from "react";
-import { create, type ReactTestRenderer } from "react-test-renderer";
+import { create } from "react-test-renderer";
+import type { ReactTestRenderer } from "react-test-renderer";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
 import { useSinglePaneLayout } from "./useSinglePaneLayout";
 
 let renderer: ReactTestRenderer;
-let viewport: { width: number; height: number };
-let screen: { width: number; height: number; orientation?: EventTarget };
-let touch: { maxTouchPoints: number };
+type Mutable<T> = { -readonly [Key in keyof T]: T[Key] };
+type Viewport = Mutable<Pick<Screen, "width" | "height">>;
+interface PhysicalScreen extends Viewport {
+  orientation?: EventTarget;
+}
+let viewport: Viewport;
+let screen: PhysicalScreen;
+let touch: Mutable<Pick<Navigator, "maxTouchPoints">>;
 let coarsePointer: boolean;
 let events: EventTarget;
 function Probe() {
@@ -77,7 +83,10 @@ it("handles physical rotation with the keyboard still open", async () => {
   screen.width = 834;
   screen.height = 1194;
   await act(async () => {
-    screen.orientation!.dispatchEvent(new Event("change"));
+    if (!screen.orientation) {
+      throw new Error("Expected modern orientation event target");
+    }
+    screen.orientation.dispatchEvent(new Event("change"));
   });
   expect(layout()).toBe("single");
 });

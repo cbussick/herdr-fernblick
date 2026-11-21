@@ -1,5 +1,6 @@
 import { act } from "react";
-import { create, type ReactTestRenderer } from "react-test-renderer";
+import { create } from "react-test-renderer";
+import type { ReactTestRenderer } from "react-test-renderer";
 import { afterEach, expect, it, vi } from "vitest";
 import { getHeaderDiagnostics, useHeaderDiagnostics } from "./useHeaderDiagnostics";
 
@@ -60,7 +61,7 @@ it("retains visible conversation geometry through overview navigation without co
     overflow: "visible",
     getPropertyValue: () => "none",
   }));
-  let resized: () => void = () => {};
+  let resized: () => void = vi.fn();
   const disconnect = vi.fn();
   vi.stubGlobal(
     "ResizeObserver",

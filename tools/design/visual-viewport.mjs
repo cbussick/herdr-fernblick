@@ -1,3 +1,4 @@
+import { report } from "../report.mjs";
 // Synthetic keyboard geometry through the real app. No live Herdr/Pi traffic.
 // Models visual-only resize and layout resize followed by focus panning; not a physical iPad keyboard.
 // Run after npm run build: node tools/design/visual-viewport.mjs
@@ -45,7 +46,9 @@ const server = createHttpServer(
   resolve("dist"),
   {},
 );
-await new Promise((done) => server.listen(0, "127.0.0.1", done));
+await new Promise((done) => {
+  server.listen(0, "127.0.0.1", done);
+});
 await mkdir("design-gallery/visual-viewport", { recursive: true });
 try {
   for (const [name, engine] of [
@@ -92,7 +95,7 @@ try {
           (url) => url.pathname.startsWith("/api/"),
           (route) => {
             const path = new URL(route.request().url()).pathname;
-            if (path === "/api/agents")
+            if (path === "/api/agents") {
               return route.fulfill({
                 json: {
                   agents: [agent],
@@ -100,6 +103,7 @@ try {
                   workspaces: [{ workspace_id: "w1", label: "Fixture" }],
                 },
               });
+            }
             return route.fulfill({ status: 503, json: { error: "Synthetic keyboard fixture" } });
           },
         );
@@ -111,7 +115,10 @@ try {
         await prompt.fill("Keep this draft");
         const frame = () =>
           page.evaluate(
-            () => new Promise((done) => requestAnimationFrame(() => requestAnimationFrame(done))),
+            () =>
+              new Promise((done) => {
+                requestAnimationFrame(() => requestAnimationFrame(done));
+              }),
           );
         const setVisual = async (patch) => {
           await page.evaluate((patch) => {
@@ -204,7 +211,7 @@ try {
         await page.screenshot({
           path: `design-gallery/visual-viewport/${name}-${mode}-restored.png`,
         });
-        console.log(
+        report(
           `${name}/${mode}: keyboard/pan, zoomed layout recovery, resume remeasurement and draft checks passed`,
         );
         await page.close();
@@ -214,5 +221,7 @@ try {
     }
   }
 } finally {
-  await new Promise((done) => server.close(done));
+  await new Promise((done) => {
+    server.close(done);
+  });
 }

@@ -1,4 +1,5 @@
 import { spawn } from "node:child_process";
+import type { ChildProcess, SpawnOptions } from "node:child_process";
 import type { ExtensionContext } from "@earendil-works/pi-coding-agent";
 
 export function localGraphicalSession(env: NodeJS.ProcessEnv): boolean {
@@ -6,10 +7,10 @@ export function localGraphicalSession(env: NodeJS.ProcessEnv): boolean {
 }
 
 export async function openWhiteboardCommand(
-  ctx: ExtensionContext,
+  ctx: { ui: Pick<ExtensionContext["ui"], "notify"> },
   open: () => Promise<string>,
   env = process.env,
-  launch = spawn,
+  launch: (command: string, args: Array<string>, options: SpawnOptions) => ChildProcess = spawn,
 ): Promise<void> {
   try {
     const url = await open();

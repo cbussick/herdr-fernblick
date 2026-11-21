@@ -7,8 +7,8 @@ import type { HerdrService } from "../herdr/herdrService.js";
 import {
   createReadReceiptDiagnostics,
   safeReadReceiptErrorCode,
-  type ReadReceiptDiagnosticOptions,
 } from "../../src/shared/api/readReceiptDiagnostics.js";
+import type { ReadReceiptDiagnosticOptions } from "../../src/shared/api/readReceiptDiagnostics.js";
 
 export interface ReadReceiptOptions {
   directory: string;
@@ -26,7 +26,7 @@ export class ReadStatusError extends Error {
 }
 
 function missing(error: unknown) {
-  return (error as NodeJS.ErrnoException).code === "ENOENT";
+  return typeof error === "object" && error !== null && "code" in error && error.code === "ENOENT";
 }
 
 /** Fernblick-owned receipts. This module only reads Herdr; it never focuses or reports state. */
@@ -54,7 +54,7 @@ export class AgentReadStatuses {
     const started = performance.now();
     try {
       const result = await action();
-      if (operation === "save")
+      if (operation === "save") {
         this.logReadReceipt({
           boundary: "persistence",
           operation,
@@ -62,6 +62,7 @@ export class AgentReadStatuses {
           category: "success",
           durationMs: performance.now() - started,
         });
+      }
       return result;
     } catch (error) {
       this.logReadReceipt({
@@ -80,7 +81,9 @@ export class AgentReadStatuses {
     try {
       const path = await realpath(this.options.herdrSocket);
       const info = await stat(path, { bigint: true });
-      if (!info.isSocket()) throw new Error("Not a socket");
+      if (!info.isSocket()) {
+        throw new Error("Not a socket");
+      }
       // The socket generation survives Fernblick restarts, but not a cold Herdr
       // restart (where pane IDs and state sequences may be reused).
       return [path, info.dev, info.ino, info.birthtimeNs, info.ctimeNs].map(String);
@@ -89,7 +92,7 @@ export class AgentReadStatuses {
     }
   }
 
-  private completionId(agent: Agent, scope: string[]) {
+  private completionId(agent: Agent, scope: Array<string>) {
     return createHash("sha256")
       .update(
         JSON.stringify([
@@ -109,8 +112,9 @@ export class AgentReadStatuses {
   private async snapshot() {
     const scope = await this.scope();
     const dashboard = await this.service.getDashboard();
-    if (JSON.stringify(scope) !== JSON.stringify(await this.scope()))
+    if (JSON.stringify(scope) !== JSON.stringify(await this.scope())) {
       throw new ReadStatusError(503, "Herdr restarted. Refresh and try again.");
+    }
     return { dashboard, scope };
   }
 
@@ -123,8 +127,9 @@ export class AgentReadStatuses {
       info.uid !== process.getuid?.() ||
       (info.mode & 0o777) !== 0o700 ||
       (await realpath(this.directory)) !== this.directory
-    )
+    ) {
       throw new Error("Read receipt directory must be private (0700), owned, and not symlinked");
+    }
   }
 
   private async receipt(id: string, create = false) {
@@ -140,7 +145,9 @@ export class AgentReadStatuses {
         0o600,
       );
     } catch (error) {
-      if (!create && missing(error)) return false;
+      if (!create && missing(error)) {
+        return false;
+      }
       throw error;
     }
     try {
@@ -151,11 +158,14 @@ export class AgentReadStatuses {
         (info.mode & 0o077) !== 0 ||
         info.nlink !== 1 ||
         info.size !== 0
-      )
+      ) {
         throw new Error("Unsafe read receipt file");
+      }
       // An immutable, empty marker has no partial JSON/write state and concurrent
       // acknowledgements cannot overwrite each other, even from two backends.
-      if (create) await file.sync();
+      if (create) {
+        await file.sync();
+      }
     } finally {
       await file.close();
     }
@@ -173,10 +183,12 @@ export class AgentReadStatuses {
     return true;
   }
 
-  private async cleanup(candidates: string[], current: Set<string>) {
+  private async cleanup(candidates: Array<string>, current: Set<string>) {
     for (const name of candidates) {
       const id = name.slice(this.namespace.length + 1, -".read".length);
-      if (current.has(id)) continue;
+      if (current.has(id)) {
+        continue;
+      }
       const path = join(this.directory, name);
       try {
         // Only remove our empty, private marker files. Never follow links or
@@ -188,10 +200,13 @@ export class AgentReadStatuses {
           (info.mode & 0o077) === 0 &&
           info.nlink === 1 &&
           info.size === 0
-        )
+        ) {
           await unlink(path);
+        }
       } catch (error) {
-        if (!missing(error)) throw error;
+        if (!missing(error)) {
+          throw error;
+        }
       }
     }
   }
@@ -215,7 +230,9 @@ export class AgentReadStatuses {
       ...dashboard,
       agents: await Promise.all(
         dashboard.agents.map(async (agent) => {
-          if (agent.agent_status !== "done") return agent;
+          if (agent.agent_status !== "done") {
+            return agent;
+          }
           const id = this.completionId(agent, scope);
           return {
             ...agent,
@@ -229,10 +246,13 @@ export class AgentReadStatuses {
   async markRead(paneId: string, completionId: string, requestId: string = randomUUID()) {
     const { dashboard, scope } = await this.snapshot();
     const agent = dashboard.agents.find((item) => item.pane_id === paneId);
-    if (!agent) throw new ReadStatusError(404, "Agent no longer exists.");
+    if (!agent) {
+      throw new ReadStatusError(404, "Agent no longer exists.");
+    }
     const id = this.completionId(agent, scope);
-    if (agent.agent_status !== "done" || completionId !== id)
+    if (agent.agent_status !== "done" || completionId !== id) {
       throw new ReadStatusError(409, "The answer changed. Refresh before marking it read.");
+    }
     await this.storage("save", requestId, async () => {
       await this.prepare();
       await this.receipt(id, true);

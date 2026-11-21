@@ -1,13 +1,15 @@
+import { dispatchTestEvent } from "../shared/lib/dispatchTestEvent";
 import { act } from "react";
-import { create, type ReactTestRenderer } from "react-test-renderer";
+import { create } from "react-test-renderer";
+import type { ReactTestRenderer } from "react-test-renderer";
 import { onlineManager, QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
 import { App } from "./App";
 import { ScoutLogo } from "../shared/ui/ScoutLogo";
 import { getAgents } from "../shared/api/apiClient";
 
-vi.mock("../shared/api/apiClient", async (original) => ({
-  ...(await original<typeof import("../shared/api/apiClient")>()),
+vi.mock(import("../shared/api/apiClient"), async (original) => ({
+  ...(await original()),
   getAgents: vi.fn(),
 }));
 vi.mock("./useSinglePaneLayout", () => ({ useSinglePaneLayout: () => false }));
@@ -39,7 +41,10 @@ async function render() {
   });
 }
 const logo = () => renderer.root.findAllByType(ScoutLogo);
-const settle = () => new Promise<void>((resolve) => setTimeout(resolve, 20));
+const settle = () =>
+  new Promise<void>((resolve) => {
+    setTimeout(resolve, 20);
+  });
 
 it("shows the full playful logo only while the first dashboard request is pending", async () => {
   let complete!: (value: typeof dashboard) => void;
@@ -111,7 +116,7 @@ it("keeps automatic retries quiet but shows loading for manual retries", async (
   expect(renderer.root.findByType("p").children).toEqual(["Still unavailable"]);
 
   await act(async () => {
-    renderer.root.findByType("button").props.onClick();
+    await dispatchTestEvent(renderer.root.findByType("button"), "onClick");
     await settle();
   });
   expect(logo()).toHaveLength(1);
@@ -123,7 +128,7 @@ it("keeps automatic retries quiet but shows loading for manual retries", async (
   expect(renderer.root.findByType("p").children).toEqual(["Manual retry failed"]);
 
   await act(async () => {
-    renderer.root.findByType("button").props.onClick();
+    await dispatchTestEvent(renderer.root.findByType("button"), "onClick");
     await settle();
   });
   expect(logo()).toHaveLength(1);

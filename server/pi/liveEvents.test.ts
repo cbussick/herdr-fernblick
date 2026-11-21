@@ -1,10 +1,7 @@
 import { EventEmitter } from "node:events";
-import type { ServerResponse } from "node:http";
-import { randomUUID } from "node:crypto";
 import { expect, it, vi } from "vitest";
 import { liveEvents } from "./liveEvents.js";
-import type { LiveBridge } from "./liveBridge.js";
-import type { Agent } from "../../src/shared/api/contracts.js";
+import { eventAgent, eventSnapshot } from "./liveEventFixtures.js";
 import { MAX_FRAME } from "../../packages/pi-live-chat/protocol.js";
 
 it("coalesces updates while a mobile reader is backpressured instead of disconnecting", async () => {
@@ -21,10 +18,12 @@ it("coalesces updates while a mobile reader is backpressured instead of disconne
   });
   const peer = {
     snapshot: {
-      identity: { runtime: randomUUID(), sessionId: "s" },
-      epoch: randomUUID(),
-      seq: 1,
-      messages: [{ id: "large", text: "x".repeat(900_000) }],
+      ...eventSnapshot(),
+      messages: Array.from({ length: 10 }, (_, i) => ({
+        id: `large-${i}`,
+        role: "user" as const,
+        text: "x".repeat(90_000),
+      })),
     },
   };
   const bridge = {
@@ -35,11 +34,7 @@ it("coalesces updates while a mobile reader is backpressured instead of disconne
     current: vi.fn(() => peer),
     resolve: vi.fn(async () => peer),
   };
-  liveEvents(
-    response as unknown as ServerResponse,
-    { pane_id: "w1:p1" } as Agent,
-    bridge as unknown as LiveBridge,
-  );
+  liveEvents(response, eventAgent, bridge);
   await vi.waitFor(() => expect(response.write).toHaveBeenCalledOnce());
   for (let seq = 2; seq <= 10; seq++) {
     peer.snapshot = { ...peer.snapshot, seq };
@@ -60,23 +55,19 @@ it("drops slow SSE readers without a replay queue and unsubscribes on close", as
     writableLength: MAX_FRAME,
     writeHead: vi.fn(),
     flushHeaders: vi.fn(),
-    write: vi.fn(),
+    write: vi.fn((_frame: string) => true),
     destroy: vi.fn(() => {
       response.emit("close");
     }),
   });
   const unsubscribe = vi.fn();
-  const peer = { snapshot: { epoch: randomUUID(), seq: 1 } };
+  const peer = { snapshot: eventSnapshot() };
   const bridge = {
     subscribe: vi.fn(() => unsubscribe),
     current: vi.fn(() => peer),
     resolve: vi.fn(async () => peer),
   };
-  liveEvents(
-    response as unknown as ServerResponse,
-    { pane_id: "w1:p1" } as Agent,
-    bridge as unknown as LiveBridge,
-  );
+  liveEvents(response, eventAgent, bridge);
   await vi.waitFor(() => expect(response.destroy).toHaveBeenCalledOnce());
   expect(response.write).not.toHaveBeenCalled();
   expect(unsubscribe).toHaveBeenCalledOnce();

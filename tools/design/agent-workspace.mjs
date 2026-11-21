@@ -1,3 +1,4 @@
+import { report } from "../report.mjs";
 // Synthetic-only regression: every API request is intercepted; no real agents are created.
 // PLAYWRIGHT_MODULE=/path/to/playwright/index.mjs node tools/design/agent-workspace.mjs URL
 import assert from "node:assert/strict";
@@ -70,9 +71,11 @@ for (const [engine, browserType] of [
       for (const cancel of ["button", "escape"]) {
         await openWorkspace();
         await workspaceDialog.waitFor();
-        if (cancel === "button")
+        if (cancel === "button") {
           await workspaceDialog.getByRole("button", { name: "Cancel", exact: true }).click();
-        else await page.keyboard.press("Escape");
+        } else {
+          await page.keyboard.press("Escape");
+        }
         await workspaceDialog.waitFor({ state: "detached" });
         assert.equal(await agentDialog.evaluate((node) => node.open), true);
         assert.equal(
@@ -114,7 +117,7 @@ for (const [engine, browserType] of [
       await agentForm.getByRole("button", { name: "Cancel", exact: true }).click();
       assert.equal(await agentDialog.evaluate((node) => node.open), false);
       assert.deepEqual(errors, []);
-      console.log(
+      report(
         `${engine} ${device}: cancel, Escape, retry, draft, selection, explicit confirmation passed`,
       );
       await page.close();

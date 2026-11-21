@@ -1,3 +1,4 @@
+import { report } from "../report.mjs";
 // All API/SSE traffic is intercepted. Never controls existing agents.
 // PLAYWRIGHT_MODULE=/path/to/playwright/index.mjs node tools/design/model-picker.mjs URL
 import assert from "node:assert/strict";
@@ -109,7 +110,7 @@ for (const [engine, type] of [
         (url) => url.pathname.startsWith("/api/"),
         async (route) => {
           const path = new URL(route.request().url()).pathname;
-          if (path === "/api/agents")
+          if (path === "/api/agents") {
             return route.fulfill({
               json: {
                 agents: [agent],
@@ -117,7 +118,8 @@ for (const [engine, type] of [
                 tabs: [],
               },
             });
-          if (path === "/api/chats")
+          }
+          if (path === "/api/chats") {
             return route.fulfill({
               json: {
                 chats: [
@@ -133,6 +135,7 @@ for (const [engine, type] of [
                 indexing: false,
               },
             });
+          }
           if (path.endsWith("/save-default")) {
             const body = route.request().postDataJSON();
             assert.deepEqual(body.target, target);
@@ -213,11 +216,12 @@ for (const [engine, type] of [
               provider: models[1].provider,
               modelId: models[1].id,
             });
-            if (fail)
+            if (fail) {
               return route.fulfill({
                 status: 409,
                 json: { error: "Model unavailable. Check Pi before retrying." },
               });
+            }
             await new Promise((resolve) => {
               release = resolve;
             });
@@ -448,7 +452,7 @@ for (const [engine, type] of [
       assert.equal(unexpected, 0);
       assert.deepEqual(errors, []);
       await page.close();
-      console.log(
+      report(
         `${engine} ${name}: toolbar, icon menu, picker, keyboard, mutation, failure and stale-target checks passed`,
       );
     }

@@ -1,24 +1,18 @@
-import {
-  useCallback,
-  useEffect,
-  useLayoutEffect,
-  useRef,
-  useState,
-  type ReactNode,
-  type RefObject,
-} from "react";
+import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
+import type { ReactNode, RefObject } from "react";
 import type { ChatMessage } from "../../../packages/pi-live-chat/protocol";
 import { BranchIcon, ImageIcon, LightbulbIcon } from "../../shared/ui/Icons";
 import { StateIcon, StateNotice } from "../../shared/ui/StateFeedback";
 import { ChatMessageText } from "./ChatMessageText";
 import { ChatMessageCopyButton } from "./ChatMessageCopyButton";
 import { ImageLightbox } from "./ImageLightbox";
-import { annotationHighlights, type Annotation, type AnnotationEditHandler } from "./annotations";
+import { annotationHighlights } from "./annotations";
+import type { Annotation, AnnotationEditHandler } from "./annotations";
 import styles from "./Console.module.css";
 import a11yStyles from "../../styles/accessibility.module.css";
 
 export interface ChatTranscriptProps {
-  messages: ChatMessage[];
+  messages: Array<ChatMessage>;
   truncated: boolean;
   showThinking: boolean;
   cwd?: string;
@@ -27,7 +21,7 @@ export interface ChatTranscriptProps {
   before?: ReactNode;
   after?: ReactNode;
   transcriptRef?: RefObject<HTMLElement | null>;
-  annotations?: Annotation[];
+  annotations?: Array<Annotation>;
   onAnnotationEdit?: AnnotationEditHandler;
   interacting?: boolean;
   /** Increment for an explicit local send, never for streaming or snapshot updates. */
@@ -38,7 +32,7 @@ export interface ChatTranscriptProps {
 }
 function ChatAttachment({ url, onOpen }: { url: string; onOpen: () => void }) {
   const [unavailable, setUnavailable] = useState(false);
-  if (unavailable)
+  if (unavailable) {
     return (
       <div
         className={styles["chat-attachment-unavailable"]}
@@ -49,6 +43,7 @@ function ChatAttachment({ url, onOpen }: { url: string; onOpen: () => void }) {
         <span>Attachment no longer available</span>
       </div>
     );
+  }
   return (
     <button type="button" aria-label="Open attached image" onClick={onOpen}>
       <img src={url} alt="User attachment" loading="lazy" onError={() => setUnavailable(true)} />
@@ -57,9 +52,13 @@ function ChatAttachment({ url, onOpen }: { url: string; onOpen: () => void }) {
 }
 
 function ChatTimestamp({ timestamp }: { timestamp?: number }) {
-  if (timestamp === undefined) return null;
+  if (timestamp === undefined) {
+    return null;
+  }
   const date = new Date(timestamp);
-  if (!Number.isFinite(date.getTime())) return null;
+  if (!Number.isFinite(date.getTime())) {
+    return null;
+  }
   const fullDate = date.toLocaleString(undefined, {
     dateStyle: "full",
     timeStyle: "long",
@@ -106,11 +105,13 @@ export function ChatTranscript({
   const appliedTop = useRef<number | null>(null);
   const lastFollowRequest = useRef(followRequest);
   const touchY = useRef<number | null>(null);
-  const [image, setImage] = useState<{ urls: string[]; index: number } | null>(null);
+  const [image, setImage] = useState<{ urls: Array<string>; index: number } | null>(null);
   const imageOpen = Boolean(image);
   const alignScroll = useCallback(() => {
     const element = output.current;
-    if (!element || interacting) return;
+    if (!element || interacting) {
+      return;
+    }
     element.scrollTop = following.current ? element.scrollHeight : readerTop.current;
     // Ignore our own scroll event, including browser clamping after a resize.
     appliedTop.current = element.scrollTop;
@@ -124,7 +125,9 @@ export function ChatTranscript({
     alignScroll();
   });
   useEffect(() => {
-    if (!output.current || typeof ResizeObserver === "undefined") return;
+    if (!output.current || typeof ResizeObserver === "undefined") {
+      return;
+    }
     let frame = 0;
     const observer = new ResizeObserver(() => {
       // Do not write scroll/layout during observer delivery (notably on WebKit).
@@ -143,7 +146,9 @@ export function ChatTranscript({
   }, [imageOpen, onImageOpenChange]);
   function pauseFollowing() {
     const element = output.current;
-    if (!element || !following.current) return;
+    if (!element || !following.current) {
+      return;
+    }
     following.current = false;
     readerTop.current = element.scrollTop;
     appliedTop.current = null;
@@ -153,7 +158,9 @@ export function ChatTranscript({
       <div
         ref={(node) => {
           output.current = node;
-          if (transcriptRef) transcriptRef.current = node;
+          if (transcriptRef) {
+            transcriptRef.current = node;
+          }
         }}
         id={id}
         className={styles["chat-transcript"]}
@@ -164,37 +171,47 @@ export function ChatTranscript({
         tabIndex={0}
         onLoadCapture={alignScroll}
         onWheel={(event) => {
-          if (event.deltaY < 0) pauseFollowing();
+          if (event.deltaY < 0) {
+            pauseFollowing();
+          }
         }}
         onTouchStart={(event) => {
           touchY.current = event.touches[0]?.clientY ?? null;
         }}
         onTouchMove={(event) => {
           const nextY = event.touches[0]?.clientY ?? null;
-          if (nextY !== null && touchY.current !== null && nextY > touchY.current) pauseFollowing();
+          if (nextY !== null && touchY.current !== null && nextY > touchY.current) {
+            pauseFollowing();
+          }
           touchY.current = nextY;
         }}
         onPointerDown={(event) => {
-          if (event.pointerType !== "mouse" || event.button !== 0) return;
+          if (event.pointerType !== "mouse" || event.button !== 0) {
+            return;
+          }
           const element = event.currentTarget;
           const left = element.getBoundingClientRect().left;
           // Native scrollbar interaction, including a left-side RTL scrollbar.
           if (
             event.clientX >= left + element.clientLeft + element.clientWidth ||
             event.clientX < left + element.clientLeft
-          )
+          ) {
             pauseFollowing();
+          }
         }}
         onKeyDown={(event) => {
           if (
             ["ArrowUp", "PageUp", "Home"].includes(event.key) ||
             (event.key === " " && event.shiftKey && event.target === event.currentTarget)
-          )
+          ) {
             pauseFollowing();
+          }
         }}
         onScroll={() => {
           const element = output.current;
-          if (!element) return;
+          if (!element) {
+            return;
+          }
           // Browser layout/keyboard clamping can move scrollTop several times
           // before this event. Only reader input should leave follow mode.
           if (following.current) {
@@ -208,8 +225,9 @@ export function ChatTranscript({
             appliedTop.current !== null &&
             (element.scrollTop === appliedTop.current ||
               element.scrollTop === Math.min(appliedTop.current, maxTop))
-          )
+          ) {
             return;
+          }
           const previousTop = appliedTop.current ?? readerTop.current;
           appliedTop.current = null;
           readerTop.current = element.scrollTop;
@@ -305,7 +323,11 @@ export function ChatTranscript({
                       <ChatAttachment
                         key={url + index}
                         url={url}
-                        onOpen={() => setImage({ urls: message.attachments!, index })}
+                        onOpen={() => {
+                          if (message.attachments) {
+                            setImage({ urls: message.attachments, index });
+                          }
+                        }}
                       />
                     ))}
                   </div>

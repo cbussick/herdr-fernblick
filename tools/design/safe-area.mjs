@@ -1,3 +1,4 @@
+import { report } from "../report.mjs";
 // Synthetic header-layout regression; no live Herdr/Pi sockets or commands.
 // Run after npm run build: node tools/design/safe-area.mjs
 import assert from "node:assert/strict";
@@ -21,7 +22,9 @@ const server = createHttpServer(
   resolve("dist"),
   {},
 );
-await new Promise((done) => server.listen(0, "127.0.0.1", done));
+await new Promise((done) => {
+  server.listen(0, "127.0.0.1", done);
+});
 try {
   for (const [name, engine] of [
     ["chromium", chromium],
@@ -42,7 +45,7 @@ try {
         // value in the real built stylesheet, preserving its layout expressions.
         await page.route("**/*.css", async (route) => {
           const response = await route.fetch();
-          const body = (await response.text()).replace(
+          const body = (await response.text()).replaceAll(
             /env\(safe-area-inset-top(?:,\s*0px)?\)/g,
             () => {
               substitutions++;
@@ -89,7 +92,7 @@ try {
             const bounds = node.getBoundingClientRect();
             return {
               top: bounds.top,
-              padding: parseFloat(style.paddingTop),
+              padding: Number.parseFloat(style.paddingTop),
               background: style.backgroundColor,
               filter: style.backdropFilter,
             };
@@ -99,7 +102,9 @@ try {
           assert.ok(!geometry.background.includes("rgba"), "Header must remain opaque");
           assert.equal(geometry.filter, "none");
           for (const button of await header.getByRole("button").all()) {
-            if (!(await button.isVisible())) continue;
+            if (!(await button.isVisible())) {
+              continue;
+            }
             const bounds = await button.boundingBox();
             assert.ok(bounds.y >= inset, "Header controls must clear the status bar");
           }
@@ -140,9 +145,7 @@ try {
         assert.ok(diagnostics.headerLayout.overview);
         assert.ok(!JSON.stringify(diagnostics.headerLayout).includes(agent.name));
         assert.deepEqual(errors, []);
-        console.log(
-          `${name}: inset ${inset}px, overview and portrait/landscape/desktop headers PASS`,
-        );
+        report(`${name}: inset ${inset}px, overview and portrait/landscape/desktop headers PASS`);
         await page.close();
       }
     } finally {
@@ -150,5 +153,7 @@ try {
     }
   }
 } finally {
-  await new Promise((done) => server.close(done));
+  await new Promise((done) => {
+    server.close(done);
+  });
 }

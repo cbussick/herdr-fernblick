@@ -4,29 +4,41 @@ import {
   FLOW_CONNECTION_COLOR,
   flowKinds,
   validateFlowGraph,
-  type FlowElement,
-  type FlowKind,
 } from "../../packages/pi-live-chat/flowProtocol.js";
+import type { FlowElement, FlowKind } from "../../packages/pi-live-chat/flowProtocol.js";
 import { BoardError, requireBoard } from "./errors.js";
 import {
   defaultPrimitiveProps,
   primitiveKinds,
-  type PrimitiveKind,
 } from "../../packages/pi-live-chat/primitiveProtocol.js";
+import type { PrimitiveKind } from "../../packages/pi-live-chat/primitiveProtocol.js";
 
 /** Relationships are implicit dependencies, including both sides of existing relations.
  * New endpoints must already have been read; same-batch creation is deliberately not supported.
  */
-export function flowDependencies(scene: BoardScene, op: BoardOperation): string[] {
+export function flowDependencies(scene: BoardScene, op: BoardOperation): Array<string> {
   const ids = new Set<string>();
-  const relation = (e: Record<string, unknown>) => {
-    for (const key of ["parentId", "source", "target"])
-      if (typeof e[key] === "string") ids.add(e[key] as string);
+  const relation = (e: BoardScene["elements"][number] | BoardOperation) => {
+    for (const value of [
+      "parentId" in e ? e.parentId : undefined,
+      "source" in e ? e.source : undefined,
+      "target" in e ? e.target : undefined,
+    ]) {
+      if (typeof value === "string") {
+        ids.add(value);
+      }
+    }
   };
-  if (op.op !== "delete") relation(op);
+  if (op.op !== "delete") {
+    relation(op);
+  }
   for (const e of scene.elements) {
-    if (e.isDeleted) continue;
-    if (e.id === op.id) relation(e);
+    if (e.isDeleted) {
+      continue;
+    }
+    if (e.id === op.id) {
+      relation(e);
+    }
     if (e.parentId === op.id || e.source === op.id || e.target === op.id) {
       ids.add(e.id);
       relation(e);
@@ -35,8 +47,11 @@ export function flowDependencies(scene: BoardScene, op: BoardOperation): string[
   return [...ids];
 }
 
-export function applyFlowOperations(scene: BoardScene, operations: BoardOperation[]): BoardScene {
-  let elements: FlowElement[];
+export function applyFlowOperations(
+  scene: BoardScene,
+  operations: Array<BoardOperation>,
+): BoardScene {
+  let elements: Array<FlowElement>;
   try {
     elements = validateFlowGraph(scene);
   } catch {
@@ -69,25 +84,21 @@ export function applyFlowOperations(scene: BoardScene, operations: BoardOperatio
           label: op.label ?? "",
           color: op.color ?? FLOW_CONNECTION_COLOR,
         };
-      } else if ((primitiveKinds as readonly string[]).includes(op.kind)) {
+      } else if (isPrimitiveKind(op.kind)) {
         element = {
           ...common,
           type: "primitive",
-          kind: op.kind as PrimitiveKind,
+          kind: op.kind,
           props: defaultPrimitiveProps(),
         };
       } else {
-        requireBoard(
-          (flowKinds as readonly string[]).includes(op.kind),
-          400,
-          "Unsupported flow component kind",
-        );
+        requireBoard(isFlowKind(op.kind), 400, "Unsupported flow component kind");
         element = {
           ...common,
           type: "component",
-          kind: op.kind as FlowKind,
+          kind: op.kind,
           parentId: op.parentId ?? null,
-          props: defaultFlowProps(op.kind as FlowKind),
+          props: defaultFlowProps(op.kind),
         };
       }
       elements.push(element);
@@ -105,13 +116,14 @@ export function applyFlowOperations(scene: BoardScene, operations: BoardOperatio
       400,
       "Drawing props require a primitive",
     );
-    if (element.type !== "component")
+    if (element.type !== "component") {
       requireBoard(
         op.props === undefined && op.parentId === undefined,
         400,
         "Component fields require a component",
       );
-    if (element.type !== "connection")
+    }
+    if (element.type !== "connection") {
       requireBoard(
         [op.source, op.target, op.sourceHandle, op.targetHandle, op.label].every(
           (v) => v === undefined,
@@ -119,21 +131,31 @@ export function applyFlowOperations(scene: BoardScene, operations: BoardOperatio
         400,
         "Connection fields require a connection",
       );
-    for (const key of ["x", "y", "width", "height"] as const)
-      if (op[key] !== undefined) element[key] = op[key];
+    }
+    for (const key of ["x", "y", "width", "height"] as const) {
+      if (op[key] !== undefined) {
+        element[key] = op[key];
+      }
+    }
     if (element.type === "primitive") {
       element.props = {
         ...element.props,
         ...op.drawing,
-        ...(op.color === undefined ? {} : { stroke: op.color }),
       };
+      if (op.color !== undefined) {
+        element.props.stroke = op.color;
+      }
     } else if (element.type === "component") {
       element.props = {
         ...element.props,
         ...op.props,
-        ...(op.color === undefined ? {} : { color: op.color }),
       };
-      if (op.parentId !== undefined) element.parentId = op.parentId;
+      if (op.color !== undefined) {
+        element.props.color = op.color;
+      }
+      if (op.parentId !== undefined) {
+        element.parentId = op.parentId;
+      }
     } else if (element.type === "connection") {
       for (const key of [
         "source",
@@ -144,9 +166,13 @@ export function applyFlowOperations(scene: BoardScene, operations: BoardOperatio
         "color",
       ] as const) {
         // Keep the discriminated record strongly typed while copying optional fields.
-        if (op[key] !== undefined) Object.assign(element, { [key]: op[key] });
+        if (op[key] !== undefined) {
+          Object.assign(element, { [key]: op[key] });
+        }
       }
-    } else if (op.color !== undefined) element.props.color = op.color;
+    } else if (op.color !== undefined) {
+      element.props.color = op.color;
+    }
   }
   // Deleting a parent or endpoint without deleting/reparenting all relations fails closed.
   // Validate only the final graph, so explicit related deletions may appear in any order.
@@ -155,16 +181,28 @@ export function applyFlowOperations(scene: BoardScene, operations: BoardOperatio
   return { ...scene, elements };
 }
 
-export function flowSummary(
-  element: FlowElement,
-  files: BoardScene["files"],
-): Record<string, unknown> {
+function isPrimitiveKind(kind: string): kind is PrimitiveKind {
+  return primitiveKinds.some((candidate) => candidate === kind);
+}
+
+function isFlowKind(kind: string): kind is FlowKind {
+  return flowKinds.some((candidate) => candidate === kind);
+}
+
+// Even JSON-escaped control characters fit one complete summary under 128 KiB.
+function short(s: string) {
+  return s.slice(0, 128);
+}
+
+interface ImageSummary {
+  imageAsset?: { id: string; mimeType: string; created: number };
+}
+
+export function flowSummary(element: FlowElement, files: BoardScene["files"]) {
   const { id, type, x, y, width, height, version } = element;
   const common = { id, type, x, y, width, height, version };
   if (element.type === "component") {
     const p = element.props;
-    // Even JSON-escaped control characters fit one complete summary under 128 KiB.
-    const short = (s: string) => s.slice(0, 128);
     // Ordinary cards/tables must be fully readable so agents can preserve existing
     // fields/rows. Only exceptionally large records need a marked partial summary.
     const complete = Buffer.byteLength(JSON.stringify(p)) <= 64 * 1024;
@@ -175,32 +213,36 @@ export function flowSummary(
           title: short(p.title),
           subtitle: short(p.subtitle),
           body: short(p.body),
-          fields: p.fields
-            .slice(0, 10)
-            .map((f) => ({ ...f, label: short(f.label), value: short(f.value) })),
+          fields: p.fields.slice(0, 10).map((f) => ({
+            ...f,
+            label: short(f.label),
+            value: short(f.value),
+          })),
           columns: p.columns.map(short),
           rows: p.rows.slice(0, 5).map((row) => row.map(short)),
         };
+    const summary: ImageSummary = {};
+    const image = p.imageId ? files[p.imageId] : undefined;
+    if (image && p.imageId) {
+      summary.imageAsset = {
+        id: p.imageId,
+        mimeType: image.mimeType,
+        created: image.created,
+      };
+    }
     return {
       ...common,
       kind: element.kind,
       parentId: element.parentId,
       props,
       propsTruncated: !complete,
-      ...(p.imageId && files[p.imageId]
-        ? {
-            imageAsset: {
-              id: p.imageId,
-              mimeType: files[p.imageId].mimeType,
-              created: files[p.imageId].created,
-            },
-          }
-        : {}),
+      ...summary,
     };
   }
-  if (element.type === "primitive")
+  if (element.type === "primitive") {
     return { ...common, kind: element.kind, drawing: element.props };
-  if (element.type === "connection")
+  }
+  if (element.type === "connection") {
     return {
       ...common,
       source: element.source,
@@ -210,6 +252,7 @@ export function flowSummary(
       label: element.label,
       color: element.color,
     };
+  }
   return {
     ...common,
     ink: {

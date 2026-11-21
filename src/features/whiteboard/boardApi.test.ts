@@ -27,7 +27,7 @@ it("downloads binary PNG with explicit quality and current draft without saving"
     "/api/agents/w%3Ap/board/export",
     expect.objectContaining({ method: "POST" }),
   );
-  expect(JSON.parse(fetch.mock.calls[0]![1].body)).toEqual({
+  expect(JSON.parse(fetch.mock.calls[0][1].body)).toEqual({
     target,
     boardId: board().id,
     scene: board().scene,
@@ -103,14 +103,16 @@ it.each([true, false])(
       .fn()
       .mockResolvedValue(new Response(JSON.stringify({ type: "ack", id, outcome: "invoked" })));
     vi.stubGlobal("fetch", fetch);
-    const prompt = {
+    const prompt: Parameters<typeof boardApi.prompt>[1] = {
       target,
       boardId: input.boardId,
       revision: 1,
       text: "Finish this",
       requestId: id,
-      ...(withImage ? { uploadId: input.uploadId } : {}),
     };
+    if (withImage) {
+      prompt.uploadId = input.uploadId;
+    }
     await boardApi.prompt("pane", prompt);
     expect(fetch).toHaveBeenCalledWith(
       "/api/agents/pane/board/prompt",
@@ -122,7 +124,7 @@ it("validates SSE hints, carries all target fields, and closes the stream", () =
   class Source {
     static instance: Source;
     url: string;
-    onmessage?: (event: { data: string }) => void;
+    onmessage = (_event: { data: unknown }) => {};
     onerror?: () => void;
     close = vi.fn();
     constructor(url: string) {
@@ -137,7 +139,7 @@ it("validates SSE hints, carries all target fields, and closes the stream", () =
   expect(Source.instance.url).toContain(
     `runtime=${target.runtime}&epoch=${target.epoch}&sessionId=session-a`,
   );
-  Source.instance.onmessage!({
+  Source.instance.onmessage({
     data: JSON.stringify({ type: "changed", revision: 2, access: null, lastAuthor: "agent" }),
   });
   expect(event).toHaveBeenCalledWith({
@@ -146,8 +148,11 @@ it("validates SSE hints, carries all target fields, and closes the stream", () =
     access: null,
     lastAuthor: "agent",
   });
-  Source.instance.onmessage!({ data: "{broken" });
+  Source.instance.onmessage({ data: "{broken" });
   expect(disconnected).toHaveBeenCalledOnce();
+  Source.instance.onmessage({ data: { toString: () => '{"type":"unavailable","reason":"fake"}' } });
+  expect(disconnected).toHaveBeenCalledTimes(2);
+  expect(event).toHaveBeenCalledOnce();
   close();
   expect(Source.instance.close).toHaveBeenCalledOnce();
 });

@@ -33,8 +33,9 @@ it("rejects arbitrary markup/URLs as rendering properties instead of accepting c
     { ...defaultFlowProps("card"), html: "<script>unsafe</script>" },
     { ...defaultFlowProps("card"), imageId: "https://example.org/image.png" },
     { ...defaultFlowProps("card"), color: "url(external)" },
-  ])
+  ]) {
     expect(() => validateFlowGraph({ elements: [{ ...card("a"), props }], files: {} })).toThrow();
+  }
 });
 it("rejects dangling references, boundary cycles and mismatched table rows", () => {
   expect(() =>

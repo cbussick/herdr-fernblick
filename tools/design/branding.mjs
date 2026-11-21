@@ -1,3 +1,4 @@
+import { report } from "../report.mjs";
 // Sequential, synthetic browser checks: no real Herdr/Pi sockets or agent commands.
 // Run after building; see tools/design/README.md for external Playwright setup.
 import assert from "node:assert/strict";
@@ -14,7 +15,9 @@ let unavailable = false;
 const server = createHttpServer(
   {
     getDashboard: () => {
-      if (unavailable) throw new Error("Synthetic connection failure");
+      if (unavailable) {
+        throw new Error("Synthetic connection failure");
+      }
       return pending;
     },
   },
@@ -23,18 +26,21 @@ const server = createHttpServer(
 );
 let browser;
 try {
-  await new Promise((done) => server.listen(0, "127.0.0.1", done));
-  const base = `http://127.0.0.1:${server.address().port}`;
-  browser = await chromium.launch({
-    headless: true,
-    ...(process.env.CHROMIUM_EXECUTABLE ? { executablePath: process.env.CHROMIUM_EXECUTABLE } : {}),
+  await new Promise((done) => {
+    server.listen(0, "127.0.0.1", done);
   });
-  for (const [name, viewport] of [
-    ["small-phone", { width: 320, height: 568 }],
-    ["phone", { width: 390, height: 844 }],
-    ["tablet", { width: 834, height: 1194 }],
-    ["narrow-sidebar", { width: 900, height: 800 }],
-    ["desktop", { width: 1440, height: 1000 }],
+  const base = `http://127.0.0.1:${server.address().port}`;
+  const launchOptions = { headless: true };
+  if (process.env.CHROMIUM_EXECUTABLE) {
+    launchOptions.executablePath = process.env.CHROMIUM_EXECUTABLE;
+  }
+  browser = await chromium.launch(launchOptions);
+  for (const { name, viewport } of [
+    { name: "small-phone", viewport: { width: 320, height: 568 } },
+    { name: "phone", viewport: { width: 390, height: 844 } },
+    { name: "tablet", viewport: { width: 834, height: 1194 } },
+    { name: "narrow-sidebar", viewport: { width: 900, height: 800 } },
+    { name: "desktop", viewport: { width: 1440, height: 1000 } },
   ]) {
     const context = await browser.newContext({
       viewport,
@@ -67,7 +73,9 @@ try {
           (animation) => animation.effect.target.getAttribute("data-part") === "pupils",
         );
         const label = animations.find((animation) => animation.effect.target.tagName === "P");
-        if (!eyes || !label) throw new Error("Loading animations missing");
+        if (!eyes || !label) {
+          throw new Error("Loading animations missing");
+        }
         eyes.pause();
         label.pause();
         const poses = [0, 400, 1200, 2000, 3200, 7999].map((time) => {
@@ -127,7 +135,7 @@ try {
       const header = page.getByTestId("overview-header");
       const headerBounds = await header.boundingBox();
       const rightPadding = await header.evaluate((element) =>
-        parseFloat(getComputedStyle(element).paddingRight),
+        Number.parseFloat(getComputedStyle(element).paddingRight),
       );
       assert.ok(
         statusBounds.x + statusBounds.width <=
@@ -217,6 +225,9 @@ try {
   const page = await browser.newPage();
   await page.goto(base);
   const assetChecks = await page.evaluate(async () => {
+    // Playwright serializes only this callback; a module-scoped helper would not exist
+    // in the browser realm where Image and canvas must be constructed.
+    // oxlint-disable-next-line unicorn/consistent-function-scoping
     async function pixels(src) {
       const image = new Image();
       image.src = src;
@@ -245,8 +256,9 @@ try {
           if (
             asset.purpose === "maskable" &&
             Math.hypot(x - width / 2, y - height / 2) > width * 0.4
-          )
+          ) {
             withinSafeCircle &&= data[i] === 231 && data[i + 1] === 242 && data[i + 2] === 252;
+          }
         }
       }
       results.push({ src: asset.src, opaque, withinSafeCircle, width, height });
@@ -273,14 +285,18 @@ try {
     if ("opaque" in result) {
       assert.equal(result.opaque, true, result.src);
       assert.equal(result.withinSafeCircle, true, result.src);
-    } else assert.equal(result.transparentCorners, true, result.src);
+    } else {
+      assert.equal(result.transparentCorners, true, result.src);
+    }
   }
   await page.close();
-  console.log(
+  report(
     "PASS: Scout loading/header and plug/unplug connection states at five viewports; offline and failed-poll recovery; accessible wordmark without overlap; Manrope UI unchanged; transparent artwork; opaque icons; maskable safe circle; unchanged PWA identity.",
   );
 } finally {
   await browser?.close();
   server.closeAllConnections();
-  await new Promise((done) => server.close(done));
+  await new Promise((done) => {
+    server.close(done);
+  });
 }

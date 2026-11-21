@@ -1,3 +1,4 @@
+import { report } from "../report.mjs";
 // Session-navigation acceptance tests: assert the fixed URL/view/draft invariants.
 // npm run build && node tools/design/session-navigation-audit.mjs
 // All API/SSE traffic is synthetic. No live Herdr/Pi sessions are contacted.
@@ -62,7 +63,9 @@ const server = createHttpServer(
   resolve("dist"),
   {},
 );
-await new Promise((done) => server.listen(0, "127.0.0.1", done));
+await new Promise((done) => {
+  server.listen(0, "127.0.0.1", done);
+});
 const origin = `http://127.0.0.1:${server.address().port}`;
 
 async function fixture(browser, { savedB = false, emit = true, width = 1440 } = {}) {
@@ -70,7 +73,7 @@ async function fixture(browser, { savedB = false, emit = true, width = 1440 } = 
     viewport: { width, height: 1000 },
     serviceWorkers: "block",
   });
-  page.setDefaultTimeout(10000);
+  page.setDefaultTimeout(10_000);
   const closeStarted = Promise.withResolvers();
   const createStarted = Promise.withResolvers();
   const state = {
@@ -94,12 +97,13 @@ async function fixture(browser, { savedB = false, emit = true, width = 1440 } = 
           this.url = String(url);
           window.fixtureSources.push(this);
           const match = this.url.match(/^\/api\/agents\/([^/]+)\/chat$/);
-          if (match && emit)
+          if (match && emit) {
             this.timer = setTimeout(
               () =>
                 this.onmessage?.({ data: JSON.stringify(snapshots[decodeURIComponent(match[1])]) }),
               20,
             );
+          }
         }
         close() {
           clearTimeout(this.timer);
@@ -111,8 +115,12 @@ async function fixture(browser, { savedB = false, emit = true, width = 1440 } = 
   );
   await page.route("**/*", async (route) => {
     const url = new URL(route.request().url());
-    if (url.origin !== origin) return route.abort();
-    if (!url.pathname.startsWith("/api/")) return route.continue();
+    if (url.origin !== origin) {
+      return route.abort();
+    }
+    if (!url.pathname.startsWith("/api/")) {
+      return route.continue();
+    }
     if (url.pathname.startsWith("/api/tabs/") && route.request().method() === "DELETE") {
       const pending = Promise.withResolvers();
       state.finishClose = pending.resolve;
@@ -145,10 +153,11 @@ async function fixture(browser, { savedB = false, emit = true, width = 1440 } = 
       state.savedB ? b : fresh,
       ...(state.createdAgent ? [state.createdAgent] : []),
     ];
-    if (url.pathname === "/api/agents")
+    if (url.pathname === "/api/agents") {
       return route.fulfill({
         json: { agents, tabs: state.tabs, workspaces: [{ workspace_id: "w1", label: "Fixture" }] },
       });
+    }
     if (url.pathname.startsWith("/api/sessions/")) {
       const id = url.pathname.split("/").at(-1);
       return route.fulfill({
@@ -173,7 +182,7 @@ async function fixture(browser, { savedB = false, emit = true, width = 1440 } = 
       state.boardTargets.push(route.request().postDataJSON().target.sessionId);
       return route.fulfill({ json: board });
     }
-    if (url.pathname.endsWith("/output"))
+    if (url.pathname.endsWith("/output")) {
       return route.fulfill({
         json: {
           format: "text",
@@ -186,6 +195,7 @@ async function fixture(browser, { savedB = false, emit = true, width = 1440 } = 
           workspace_id: "w1",
         },
       });
+    }
     state.errors.push(`Unexpected fixture API: ${route.request().method()} ${url.pathname}`);
     return route.fulfill({ status: 500, json: { error: "Unexpected fixture API" } });
   });
@@ -231,7 +241,7 @@ try {
           .getByText("Conversation 1", { exact: true })
           .waitFor();
         assert.deepEqual(state.errors, []);
-        console.log(`${name}: PASS fresh-agent URL/reload and switching back to saved agent`);
+        report(`${name}: PASS fresh-agent URL/reload and switching back to saved agent`);
         await page.close();
       }
       {
@@ -261,7 +271,7 @@ try {
         assert.equal(path(), "/sessions/s2/chat");
         assert.equal(await drawing.count(), 0);
         assert.deepEqual(state.errors, []);
-        console.log(`${name}: PASS closing board after fresh-session promotion`);
+        report(`${name}: PASS closing board after fresh-session promotion`);
         await page.close();
       }
       {
@@ -275,7 +285,7 @@ try {
         await page.waitForTimeout(2100);
         assert.equal(path(), "/panes/w1%3Ap2/chat");
         assert.deepEqual(state.errors, []);
-        console.log(`${name}: PASS unsaved direct-pane link stays live and resolvable`);
+        report(`${name}: PASS unsaved direct-pane link stays live and resolvable`);
         await page.close();
       }
       {
@@ -290,7 +300,7 @@ try {
         assert.equal(path(), "/sessions/s1/chat");
         assert.equal(await drawing.count(), 0);
         assert.deepEqual(state.errors, []);
-        console.log(`${name}: PASS direct board close replaces history without a reopen cycle`);
+        report(`${name}: PASS direct board close replaces history without a reopen cycle`);
         await page.close();
       }
       {
@@ -319,7 +329,7 @@ try {
         );
         assert.equal(path(), "/sessions/s1/chat");
         assert.deepEqual(state.errors, []);
-        console.log(`${name}: PASS text and attachments survive an inactive restart poll`);
+        report(`${name}: PASS text and attachments survive an inactive restart poll`);
         await page.close();
       }
       {
@@ -339,9 +349,11 @@ try {
         };
         await page.evaluate(
           ({ replacement, pane }) => {
-            for (const source of window.fixtureSources)
-              if (source.url === `/api/agents/${encodeURIComponent(pane)}/chat`)
+            for (const source of window.fixtureSources) {
+              if (source.url === `/api/agents/${encodeURIComponent(pane)}/chat`) {
                 source.onmessage?.({ data: JSON.stringify(replacement) });
+              }
+            }
           },
           { replacement, pane: b.pane_id },
         );
@@ -352,7 +364,7 @@ try {
         assert.equal(await page.getByTestId("whiteboard").count(), 0);
         assert.equal(path(), "/panes/w1%3Ap2/whiteboard");
         assert.deepEqual(state.errors, []);
-        console.log(`${name}: PASS replacement cannot inherit the pending conversation's board`);
+        report(`${name}: PASS replacement cannot inherit the pending conversation's board`);
         await page.close();
       }
       {
@@ -373,7 +385,7 @@ try {
         await page.waitForTimeout(150);
         assert.equal(path(), "/sessions/s2/chat");
         assert.deepEqual(state.errors, []);
-        console.log(`${name}: PASS late tab-close cannot dismiss the newly selected session`);
+        report(`${name}: PASS late tab-close cannot dismiss the newly selected session`);
         await page.close();
       }
       {
@@ -397,9 +409,7 @@ try {
         assert.equal(path(), "/sessions/s1/chat");
         assert.equal(await page.getByTestId("pane-row").count(), 3);
         assert.deepEqual(state.errors, []);
-        console.log(
-          `${name}: PASS dismissed creation updates dashboard without stealing navigation`,
-        );
+        report(`${name}: PASS dismissed creation updates dashboard without stealing navigation`);
         await page.close();
       }
       {
@@ -414,7 +424,7 @@ try {
         await page.waitForURL((url) => url.pathname === "/panes/w1%3Ap4/terminal");
         assert.equal(path(), "/panes/w1%3Ap4/terminal");
         assert.deepEqual(state.errors, []);
-        console.log(`${name}: PASS new shell opens at its terminal URL`);
+        report(`${name}: PASS new shell opens at its terminal URL`);
         await page.close();
       }
       {
@@ -425,9 +435,7 @@ try {
         assert.equal(path(), "/sessions/s1/terminal");
         await page.getByText("Checking conversation…", { exact: true }).waitFor();
         assert.deepEqual(state.errors, []);
-        console.log(
-          `${name}: PASS early terminal switch preserves session identity and readiness gate`,
-        );
+        report(`${name}: PASS early terminal switch preserves session identity and readiness gate`);
         await page.close();
       }
       for (const width of [390, 820]) {
@@ -447,7 +455,7 @@ try {
             .waitFor();
           assert.equal(path(), "/panes/w1%3Ap2/chat");
           assert.deepEqual(state.errors, []);
-          console.log(`${name} ${width}px: PASS fresh-session reload retains the conversation`);
+          report(`${name} ${width}px: PASS fresh-session reload retains the conversation`);
           await page.close();
         }
         {
@@ -457,7 +465,7 @@ try {
           await page.waitForURL((url) => url.pathname === "/sessions/s1/terminal");
           assert.equal(path(), "/sessions/s1/terminal");
           assert.deepEqual(state.errors, []);
-          console.log(`${name} ${width}px: PASS early mode switch keeps the pinned URL`);
+          report(`${name} ${width}px: PASS early mode switch keeps the pinned URL`);
           await page.close();
         }
         {
@@ -471,7 +479,7 @@ try {
           assert.equal(path(), "/sessions/s1/chat");
           assert.equal(await page.evaluate(() => history.length), entries);
           assert.deepEqual(state.errors, []);
-          console.log(`${name} ${width}px: PASS direct board close does not add a history cycle`);
+          report(`${name} ${width}px: PASS direct board close does not add a history cycle`);
           await page.close();
         }
         {
@@ -487,7 +495,7 @@ try {
           await composer.waitFor();
           assert.equal(await composer.inputValue(), "Keep through restart");
           assert.deepEqual(state.errors, []);
-          console.log(`${name} ${width}px: PASS restart-window draft retention`);
+          report(`${name} ${width}px: PASS restart-window draft retention`);
           await page.close();
         }
       }
@@ -496,5 +504,7 @@ try {
     }
   }
 } finally {
-  await new Promise((done) => server.close(done));
+  await new Promise((done) => {
+    server.close(done);
+  });
 }

@@ -1,13 +1,7 @@
 import a11yStyles from "../../styles/accessibility.module.css";
 import consoleStyles from "./Console.module.css";
-import {
-  useEffect,
-  useEffectEvent,
-  useLayoutEffect,
-  useRef,
-  useState,
-  type FormEvent,
-} from "react";
+import { useEffect, useEffectEvent, useLayoutEffect, useRef, useState } from "react";
+import type { FormEvent } from "react";
 import { useMutation } from "@tanstack/react-query";
 import type { Agent, KeyName } from "../../shared/api/contracts";
 import {
@@ -15,9 +9,8 @@ import {
   MAX_IMAGES,
   matchesTarget,
   targetOf,
-  type Target,
-  type ChatMessage,
 } from "../../../packages/pi-live-chat/protocol";
+import type { Target, ChatMessage } from "../../../packages/pi-live-chat/protocol";
 import {
   getAgentLabel,
   getAgentTabLabel,
@@ -72,10 +65,10 @@ type Attachment = { file?: File; id?: string; previewUrl: string };
 type SendProgress = { kind: "uploading"; image: number; total: number } | { kind: "sending" };
 type OutgoingDraft = {
   text: string;
-  attachments: Attachment[];
+  attachments: Array<Attachment>;
   target: Target;
   board?: BoardPromptContext;
-  annotationIds?: string[];
+  annotationIds?: Array<string>;
 };
 // An upload failure happens before any prompt request, so an explicit retry is safe.
 class ImageUploadError extends Error {}
@@ -96,7 +89,7 @@ function initialShowThinking() {
     return true;
   }
 }
-const keyControls: { key: KeyName; label: string }[] = [
+const keyControls: Array<{ key: KeyName; label: string }> = [
   { key: "esc", label: "Esc" },
   { key: "ctrl+c", label: "Ctrl+C" },
   { key: "up", label: "↑" },
@@ -142,7 +135,7 @@ function PiAgentConsole({
   const [localPrompt, setLocalPrompt] = useState("");
   const prompt = composer?.text ?? localPrompt;
   const setPrompt = composer?.setText ?? setLocalPrompt;
-  const [attachments, setAttachments] = useState<Attachment[]>([]);
+  const [attachments, setAttachments] = useState<Array<Attachment>>([]);
   const [attachmentPreview, setAttachmentPreview] = useState<string | null>(null);
   const attachmentPreviewIndex = attachments.findIndex(
     (image) => image.previewUrl === attachmentPreview,
@@ -153,7 +146,9 @@ function PiAgentConsole({
     null,
   );
   const [boardTarget, setBoardTarget] = useState<Target | null>(null);
-  const [retiredBoardSession, setRetiredBoardSession] = useState<string | null>(null);
+  const [retiredBoardSession, setRetiredBoardSession] = useState<{ sessionId: string } | null>(
+    null,
+  );
   const [boardLink, setBoardLink] = useState(() =>
     typeof window === "undefined" ? null : readWhiteboardLink(window.location?.search ?? ""),
   );
@@ -167,12 +162,15 @@ function PiAgentConsole({
   // not inherit its board or silently receive its unsent message.
   const [pinnedSession, setPinnedSession] = useState<string>();
   const expectedSessionId = requestedSessionId ?? pinnedSession;
-  const openedBoard = useRef<string | null>(null);
+  const [openedBoard, setOpenedBoard] = useState<string | null>(null);
   const [localView, setLocalView] = useState<AgentView>("chat");
   const view = routeView ? (routeView === "terminal" ? "terminal" : "chat") : localView;
   function setView(next: AgentView) {
-    if (onViewChange) onViewChange(next, snapshot?.identity.sessionId);
-    else setLocalView(next);
+    if (onViewChange) {
+      onViewChange(next, snapshot?.identity.sessionId);
+    } else {
+      setLocalView(next);
+    }
   }
   const [showThinking, setShowThinking] = useState(initialShowThinking);
   const outputRef = useRef<HTMLElement>(null);
@@ -181,7 +179,9 @@ function PiAgentConsole({
     !suspended && (view === "chat" || Boolean(expectedSessionId)),
     agent.agent_session?.value,
   );
-  if (!pinnedSession && live.snapshot) setPinnedSession(live.snapshot.identity.sessionId);
+  if (!pinnedSession && live.snapshot) {
+    setPinnedSession(live.snapshot.identity.sessionId);
+  }
   const sessionMismatch = Boolean(
     expectedSessionId && live.snapshot && live.snapshot.identity.sessionId !== expectedSessionId,
   );
@@ -189,36 +189,65 @@ function PiAgentConsole({
   const reportSession = useEffectEvent((id: string) => onSession?.(id));
   const liveSessionId = snapshot?.identity.sessionId;
   useEffect(() => {
-    if (liveSessionId) reportSession(liveSessionId);
-  }, [liveSessionId]);
-  useEffect(() => {
-    if (!onViewChange) return;
-    if (routeView !== "whiteboard") {
-      openedBoard.current = null;
-      if (boardTarget) setBoardTarget(null);
-    } else if (snapshot && !boardTarget && openedBoard.current !== snapshot.identity.sessionId) {
-      openedBoard.current = snapshot.identity.sessionId;
-      setBoardTarget(targetOf(snapshot));
+    if (liveSessionId) {
+      reportSession(liveSessionId);
     }
-  }, [routeView, snapshot, boardTarget, onViewChange]);
+  }, [liveSessionId]);
+  const [boardRoute, setBoardRoute] = useState<{
+    routeView: typeof routeView;
+    snapshot: typeof snapshot;
+    boardTarget: typeof boardTarget;
+    onViewChange: typeof onViewChange;
+  } | null>(null);
+  if (
+    boardRoute?.routeView !== routeView ||
+    boardRoute?.snapshot !== snapshot ||
+    boardRoute?.boardTarget !== boardTarget ||
+    boardRoute?.onViewChange !== onViewChange ||
+    boardRoute === null
+  ) {
+    setBoardRoute({ routeView, snapshot, boardTarget, onViewChange });
+    if (onViewChange) {
+      if (
+        routeView === "whiteboard" &&
+        snapshot &&
+        !boardTarget &&
+        openedBoard !== snapshot.identity.sessionId
+      ) {
+        setOpenedBoard(snapshot.identity.sessionId);
+        setBoardTarget(targetOf(snapshot));
+      } else if (routeView !== "whiteboard") {
+        setOpenedBoard(null);
+        if (boardTarget) {
+          setBoardTarget(null);
+        }
+      }
+    }
+  }
+  const reportRetiredBoard = useEffectEvent((id: string) => onViewChange?.("chat", id));
   useEffect(() => {
     if (retiredBoardSession) {
-      onViewChange?.("chat", retiredBoardSession);
-      setRetiredBoardSession(null);
+      reportRetiredBoard(retiredBoardSession.sessionId);
     }
-  }, [retiredBoardSession, onViewChange]);
-  useEffect(() => {
-    if (!boardLink || boardLink.pane !== agent.pane_id || !snapshot) return;
-    // A terminal URL is only a viewing hint: never open a reused pane's new board.
-    // oxlint-disable-next-line react/set-state-in-effect
+  }, [retiredBoardSession]);
+  const [consumedBoardLink, setConsumedBoardLink] = useState<typeof boardLink>(null);
+  if (boardLink && boardLink.pane === agent.pane_id && snapshot) {
+    // Resolve ownership before committing a board child. URL cleanup is external
+    // synchronization and belongs to the effect, not this render adjustment.
+    setConsumedBoardLink(boardLink);
+
     setBoardLink(null);
-    consumeWhiteboardLink();
     if (boardLink.session !== snapshot.identity.sessionId) {
       setBoardLinkError("This whiteboard link belongs to a different Pi conversation.");
-      return;
+    } else {
+      setBoardTarget(targetOf(snapshot));
     }
-    setBoardTarget(targetOf(snapshot));
-  }, [agent.pane_id, boardLink, snapshot]);
+  }
+  useEffect(() => {
+    if (consumedBoardLink) {
+      consumeWhiteboardLink();
+    }
+  }, [consumedBoardLink]);
   const compact = useConversationCompaction(
     agent.pane_id,
     snapshot,
@@ -256,8 +285,9 @@ function PiAgentConsole({
         !latest ||
         latest.identity.runtime !== result.target.runtime ||
         latest.identity.sessionId !== result.target.sessionId
-      )
+      ) {
         return;
+      }
       if (result.prompt) {
         clearAttachments();
         setPrompt(result.prompt.text);
@@ -283,25 +313,29 @@ function PiAgentConsole({
     // the board. Unmount then aborts in-flight work and retains the old draft.
     setBoardTarget(null);
     if (routeView === "whiteboard" && snapshot.identity.sessionId === boardTarget.sessionId) {
-      setRetiredBoardSession(boardTarget.sessionId);
+      setRetiredBoardSession({ sessionId: boardTarget.sessionId });
     }
   }
   const send = useMutation({
     mutationFn: async (draft: OutgoingDraft) => {
       if (draft.board) {
-        return boardApi.prompt(agent.pane_id, {
+        const request: Parameters<typeof boardApi.prompt>[1] = {
           target: draft.target,
           boardId: draft.board.boardId,
           revision: draft.board.revision,
-          ...(draft.board.uploadId ? { uploadId: draft.board.uploadId } : {}),
           text: draft.text,
           requestId: submissionId(),
-        });
+        };
+        if (draft.board.uploadId) {
+          request.uploadId = draft.board.uploadId;
+        }
+        return boardApi.prompt(agent.pane_id, request);
       }
-      const ids: string[] = [];
+      const ids: Array<string> = [];
       for (const [index, attachment] of draft.attachments.entries()) {
-        if (attachment.id) ids.push(attachment.id);
-        else if (attachment.file) {
+        if (attachment.id) {
+          ids.push(attachment.id);
+        } else if (attachment.file) {
           let id = uploadedIds.current.get(attachment.file);
           if (!id) {
             setSendProgress({
@@ -311,9 +345,9 @@ function PiAgentConsole({
             });
             try {
               id = (await uploadImage(attachment.file)).id;
-            } catch (cause) {
+            } catch (error) {
               throw new ImageUploadError("Image upload failed. Your message wasn’t sent.", {
-                cause,
+                cause: error,
               });
             }
             uploadedIds.current.set(attachment.file, id);
@@ -340,9 +374,12 @@ function PiAgentConsole({
         current.filter((attachment) => !draft.attachments.includes(attachment)),
       );
       for (const attachment of draft.attachments) {
-        if (previews.current.delete(attachment.previewUrl))
+        if (previews.current.delete(attachment.previewUrl)) {
           URL.revokeObjectURL(attachment.previewUrl);
-        if (attachment.file) uploadedIds.current.delete(attachment.file);
+        }
+        if (attachment.file) {
+          uploadedIds.current.delete(attachment.file);
+        }
       }
       setAttachmentPreview((current) =>
         draft.attachments.some((image) => image.previewUrl === current) ? null : current,
@@ -372,7 +409,9 @@ function PiAgentConsole({
   );
   const stop = useMutation({
     mutationFn: () => {
-      if (!snapshot) throw new Error("Live chat unavailable");
+      if (!snapshot) {
+        throw new Error("Live chat unavailable");
+      }
       return chatCommand(agent.pane_id, targetOf(snapshot), "stop");
     },
     retry: false,
@@ -396,7 +435,9 @@ function PiAgentConsole({
   useEffect(() => {
     const urls = previews.current;
     return () => {
-      for (const url of urls) URL.revokeObjectURL(url);
+      for (const url of urls) {
+        URL.revokeObjectURL(url);
+      }
     };
   }, []);
   const composerSending = send.isPending;
@@ -427,7 +468,9 @@ function PiAgentConsole({
   const canSendAnnotations =
     canForward && annotations.entries.length > 0 && !annotations.stale && !annotations.editor;
   function sendAnnotations() {
-    if (!canSendAnnotations || !annotations.owner || compact.locked()) return;
+    if (!canSendAnnotations || !annotations.owner || compact.locked()) {
+      return;
+    }
     sendDraft({
       text: annotationPrompt(annotations.entries),
       attachments: [],
@@ -436,15 +479,19 @@ function PiAgentConsole({
     });
   }
   function clearAttachments() {
-    for (const url of previews.current) URL.revokeObjectURL(url);
+    for (const url of previews.current) {
+      URL.revokeObjectURL(url);
+    }
     previews.current.clear();
     uploadedIds.current.clear();
     setAttachments([]);
     setAttachmentPreview(null);
     setAttachmentError("");
   }
-  function selectImages(files: FileList | File[] | null) {
-    if (!files) return;
+  function selectImages(files: FileList | Array<File> | null) {
+    if (!files) {
+      return;
+    }
     if (send.isError) {
       send.reset();
     }
@@ -466,15 +513,21 @@ function PiAgentConsole({
       return { file, previewUrl };
     });
     setAttachments((current) => [...current, ...additions]);
-    if (fileInputRef.current) fileInputRef.current.value = "";
+    if (fileInputRef.current) {
+      fileInputRef.current.value = "";
+    }
   }
   function changePrompt(text: string) {
-    if (send.isError) send.reset();
+    if (send.isError) {
+      send.reset();
+    }
     setPrompt(text);
   }
   function sendDraft(draft: OutgoingDraft) {
     // React's pending state may not have rendered before a second tap/shortcut.
-    if (sendLock.current || compact.locked()) return;
+    if (sendLock.current || compact.locked()) {
+      return;
+    }
     sendLock.current = true;
     setSendErrorDismissed(false);
     setFollowRequest((request) => request + 1);
@@ -483,8 +536,9 @@ function PiAgentConsole({
   }
   function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    if (canSend && snapshot)
+    if (canSend && snapshot) {
       sendDraft({ text: prompt, attachments: [...attachments], target: targetOf(snapshot) });
+    }
   }
   function submitBoardPrompt(expected: Target, board: BoardPromptContext) {
     const current = liveContext.current;
@@ -498,13 +552,16 @@ function PiAgentConsole({
       !current.snapshot.capabilities?.boards ||
       !matchesTarget(current.snapshot, expected) ||
       !board.text.trim()
-    )
+    ) {
       return;
+    }
     // Board sends flush manual drawing first; tools read visual context on demand.
     // Queued ordinary-chat attachments stay with their composer.
     sendDraft({ text: board.text, attachments: [], target: expected, board });
   }
-  if (suspended) return null;
+  if (suspended) {
+    return null;
+  }
   if (sessionMismatch || (expectedSessionId && view === "terminal" && (!snapshot || live.error))) {
     return (
       <main className={consoleStyles["console"]} id="main-content">
@@ -640,7 +697,9 @@ function PiAgentConsole({
               annotations.canBegin
                 ? (id, anchor) => {
                     const entry = annotations.entries.find((value) => value.id === id);
-                    if (entry) annotations.edit(entry, anchor);
+                    if (entry) {
+                      annotations.edit(entry, anchor);
+                    }
                   }
                 : undefined
             }
@@ -775,10 +834,12 @@ function PiAgentConsole({
                           if (send.isError) {
                             send.reset();
                           }
-                          if (attachmentPreview === attachment.previewUrl)
+                          if (attachmentPreview === attachment.previewUrl) {
                             setAttachmentPreview(null);
-                          if (previews.current.delete(attachment.previewUrl))
+                          }
+                          if (previews.current.delete(attachment.previewUrl)) {
                             URL.revokeObjectURL(attachment.previewUrl);
+                          }
                           setAttachments((current) =>
                             current.filter((value) => value !== attachment),
                           );
@@ -838,8 +899,9 @@ function PiAgentConsole({
                     !treeTarget &&
                     !boardTarget &&
                     !annotations.editor
-                  )
+                  ) {
                     void compact.start(expected);
+                  }
                 }}
               >
                 {(action) => (
@@ -864,9 +926,14 @@ function PiAgentConsole({
                       !compact.pending,
                     )}
                     onOpenBoard={() => {
-                      if (!snapshot) return;
-                      if (onViewChange) onViewChange("whiteboard", snapshot.identity.sessionId);
-                      else setBoardTarget(targetOf(snapshot));
+                      if (!snapshot) {
+                        return;
+                      }
+                      if (onViewChange) {
+                        onViewChange("whiteboard", snapshot.identity.sessionId);
+                      } else {
+                        setBoardTarget(targetOf(snapshot));
+                      }
                     }}
                     conversationAction={action}
                   />
@@ -918,12 +985,13 @@ function PiAgentConsole({
                           snapshot &&
                           send.variables &&
                           matchesTarget(snapshot, send.variables.target)
-                        )
+                        ) {
                           sendDraft({
                             text: prompt,
                             attachments: [...attachments],
                             target: targetOf(snapshot),
                           });
+                        }
                       },
                     }
                   : {
@@ -941,9 +1009,11 @@ function PiAgentConsole({
       {view === "chat" && snapshot && !live.error ? (
         <PiSessionStatus status={snapshot.status} />
       ) : null}
-      {annotations.selection ? <AnnotationSelectionAction annotations={annotations} /> : null}
+      {annotations.selection ? (
+        <AnnotationSelectionAction annotations={annotations} selection={annotations.selection} />
+      ) : null}
       {view === "chat" && annotations.editor ? (
-        <AnnotationPopover annotations={annotations} />
+        <AnnotationPopover annotations={annotations} editor={annotations.editor} />
       ) : null}
       {view === "chat" && !treeTarget && !boardTarget && attachmentPreviewIndex >= 0 ? (
         <ImageLightbox
@@ -972,7 +1042,9 @@ function PiAgentConsole({
           replacesDraft={Boolean(prompt || attachments.length)}
           onClose={() => setBranchPoint(null)}
           onConfirm={() => {
-            if (!branch.isPending) branch.mutate(branchPoint);
+            if (!branch.isPending) {
+              branch.mutate(branchPoint);
+            }
           }}
         />
       ) : null}
@@ -1038,8 +1110,11 @@ function PiAgentConsole({
             onSend: (board) => submitBoardPrompt(boardTarget, board),
           }}
           onClose={() => {
-            if (onViewChange) onViewChange("chat", boardTarget.sessionId);
-            else setBoardTarget(null);
+            if (onViewChange) {
+              onViewChange("chat", boardTarget.sessionId);
+            } else {
+              setBoardTarget(null);
+            }
           }}
         />
       ) : null}

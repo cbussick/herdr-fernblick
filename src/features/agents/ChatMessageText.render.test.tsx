@@ -30,7 +30,7 @@ describe("ChatMessageText formatting", () => {
       const annotated = renderToStaticMarkup(
         <ChatMessageText text={partial} annotationSource="a1" />,
       );
-      expect(annotated.replace(/<[^>]+>/g, "")).toBe(renderToStaticMarkup(<>{partial}</>));
+      expect(annotated.replaceAll(/<[^>]+>/g, "")).toBe(renderToStaticMarkup(<>{partial}</>));
     }
   });
 
@@ -57,7 +57,7 @@ describe("ChatMessageText formatting", () => {
       const annotated = renderToStaticMarkup(
         <ChatMessageText text={partial} cwd="/workspace/project" annotationSource="a1" />,
       );
-      expect(annotated.replace(/<[^>]+>/g, "")).toBe(renderToStaticMarkup(<>{partial}</>));
+      expect(annotated.replaceAll(/<[^>]+>/g, "")).toBe(renderToStaticMarkup(<>{partial}</>));
     }
   });
 
@@ -106,7 +106,7 @@ describe("ChatMessageText formatting", () => {
       const html = renderToStaticMarkup(
         <ChatMessageText text={text.slice(0, end)} annotationSource="a1" />,
       );
-      expect(html.replace(/<[^>]+>/g, "")).toBe(renderToStaticMarkup(<>{text.slice(0, end)}</>));
+      expect(html.replaceAll(/<[^>]+>/g, "")).toBe(renderToStaticMarkup(<>{text.slice(0, end)}</>));
     }
   });
 
@@ -236,7 +236,7 @@ describe("ChatMessageText formatting", () => {
       const html = renderToStaticMarkup(
         <ChatMessageText text={partial} cwd="/workspace/project" annotationSource="a1" />,
       );
-      expect(html.replace(/<[^>]+>/g, "")).toBe(renderToStaticMarkup(<>{partial}</>));
+      expect(html.replaceAll(/<[^>]+>/g, "")).toBe(renderToStaticMarkup(<>{partial}</>));
     }
   });
 
@@ -260,7 +260,7 @@ describe("ChatMessageText formatting", () => {
 
   it("keeps escaped wikilinks and empty link labels literal", () => {
     const html = renderToStaticMarkup(
-      <ChatMessageText text={"\\[[https://example.com|Docs]] [](https://example.com)"} />,
+      <ChatMessageText text={String.raw`\[[https://example.com|Docs]] [](https://example.com)`} />,
     );
     expect(html).not.toContain("<a ");
     expect(html).toContain("[[https://example.com|Docs]]");
@@ -327,7 +327,7 @@ describe("ChatMessageText formatting", () => {
     );
     expect(html).toContain('aria-label="Copy code"');
     const code = /<code>([\s\S]*?)<\/code>/.exec(html)?.[1] ?? "";
-    expect(code.replace(/<[^>]+>/g, "")).toBe(
+    expect(code.replaceAll(/<[^>]+>/g, "")).toBe(
       "const value = &#x27;&lt;img&gt;&#x27;;\n  // https://example.com",
     );
     expect(html).not.toContain("<a ");
@@ -345,8 +345,10 @@ describe("ChatMessageText formatting", () => {
     );
     expect(html).toContain('<th scope="col" data-align="left">Name</th>');
     expect(html).toContain('<td data-align="right"><code');
-    expect(html).toContain('type="checkbox" disabled="" aria-label="Completed task" checked=""');
-    expect(html).toContain('type="checkbox" disabled="" aria-label="Incomplete task"');
+    expect(html).toContain(
+      'type="checkbox" readOnly="" disabled="" aria-label="Completed task" checked=""',
+    );
+    expect(html).toContain('type="checkbox" readOnly="" disabled="" aria-label="Incomplete task"');
     expect(html).not.toContain("| :---");
     expect(html).not.toContain("[x]");
   });
@@ -359,11 +361,11 @@ describe("ChatMessageText formatting", () => {
         <ChatMessageText text={text.slice(0, end)} annotationSource="a1" />,
       );
       // The control's text is intentionally not part of the annotation source.
-      const sourceHtml = html.replace(
+      const sourceHtml = html.replaceAll(
         /<div[^>]*data-message-control="[^"]*"[^>]*>.*?<\/div>/gs,
         "",
       );
-      expect(sourceHtml.replace(/<[^>]+>/g, "")).toBe(
+      expect(sourceHtml.replaceAll(/<[^>]+>/g, "")).toBe(
         renderToStaticMarkup(<>{text.slice(0, end)}</>),
       );
     }

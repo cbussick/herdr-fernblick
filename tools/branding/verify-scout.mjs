@@ -1,3 +1,4 @@
+import { report } from "../report.mjs";
 // Preparation-only raster check for internal gaps in the generated SVG.
 import assert from "node:assert/strict";
 import { createRequire } from "node:module";
@@ -15,11 +16,13 @@ const { data, info } = await sharp(
 let gaps = 0;
 for (let y = 360; y < 660; y++) {
   for (let x = 360; x < 820; x++) {
-    if (data[(y * info.width + x) * 4 + 3] < 250) gaps++;
+    if (data[(y * info.width + x) * 4 + 3] < 250) {
+      gaps++;
+    }
   }
 }
 assert.equal(gaps, 0, `Found ${gaps} translucent pixels inside the goggles`);
-console.log("No internal gaps in the goggles at 2× resolution.");
+report("No internal gaps in the goggles at 2× resolution.");
 
 const closeup = await sharp(new URL("../../public/icons/scout-logo.svg", import.meta.url).pathname)
   .resize(2256, 2376)
@@ -32,9 +35,11 @@ let palePixels = 0;
 for (const left of [280, 468]) {
   for (let y = 272 * 4; y < 288 * 4; y++) {
     for (let x = left * 4; x < (left + 10) * 4; x++) {
-      if (closeup.data[(y * closeup.info.width + x) * 4] > 30) palePixels++;
+      if (closeup.data[(y * closeup.info.width + x) * 4] > 30) {
+        palePixels++;
+      }
     }
   }
 }
 assert.equal(palePixels, 0, `Found ${palePixels} pale pixels at pupil/goggle boundaries`);
-console.log("No white fringe at pupil/goggle boundaries at 4× resolution.");
+report("No white fringe at pupil/goggle boundaries at 4× resolution.");

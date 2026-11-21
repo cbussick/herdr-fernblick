@@ -16,19 +16,21 @@ import { afterEach, beforeEach, expect, it, vi } from "vitest";
 import { readReceiptRecordSchema } from "../../src/shared/api/readReceiptDiagnostics.js";
 import { ReadReceiptFileLog } from "./readReceiptFileLog.js";
 
-vi.mock("node:fs/promises", async (importOriginal) => {
-  const actual = await importOriginal<typeof import("node:fs/promises")>();
+vi.mock(import("node:fs/promises"), async (importOriginal) => {
+  const actual = await importOriginal();
   return { ...actual, open: vi.fn(actual.open) };
 });
 
 let directory: string;
 let writer: ReadReceiptFileLog;
 let now: number;
+const warningOutput = vi.fn<typeof process.stderr.write>(() => true);
 beforeEach(async () => {
   directory = await mkdtemp(join(tmpdir(), "fernblick-log-"));
   now = Date.now();
   vi.spyOn(Date, "now").mockImplementation(() => now);
-  vi.spyOn(console, "warn").mockImplementation(() => {});
+  warningOutput.mockClear();
+  vi.spyOn(process.stderr, "write").mockImplementation(warningOutput);
 });
 afterEach(async () => {
   await writer?.close();
@@ -61,7 +63,7 @@ async function records() {
           .trim()
           .split("\n")
           .filter(Boolean)
-          .map((line) => JSON.parse(line)),
+          .map((line) => readReceiptRecordSchema.parse(JSON.parse(line))),
       ),
     )
   ).flat();
@@ -70,7 +72,12 @@ async function records() {
 it("writes only safe structured records, with private files, surviving a new backend writer", async () => {
   writer = new ReadReceiptFileLog({ directory });
   const event = record();
-  writer.write({ ...event, ...{ body: "private chat", path: "/sessions/secret" } });
+  const unsafeEvent = {
+    ...event,
+    body: "private chat",
+    path: "/sessions/secret",
+  };
+  writer.write(unsafeEvent);
   await writer.close();
   writer = new ReadReceiptFileLog({ directory });
   writer.write(record());
@@ -79,8 +86,9 @@ it("writes only safe structured records, with private files, surviving a new bac
   expect(await records()).toContainEqual(event);
   expect(JSON.stringify(await records())).not.toMatch(/private chat|secret|sessions/);
   expect((await lstat(directory)).mode & 0o777).toBe(0o700);
-  for (const name of await readdir(directory))
+  for (const name of await readdir(directory)) {
     expect((await lstat(join(directory, name))).mode & 0o777).toBe(0o600);
+  }
 });
 
 it("rotates under a total budget and prunes expired segments on a later startup", async () => {
@@ -103,7 +111,9 @@ it("rotates under a total budget and prunes expired segments on a later startup"
 
 it("bounds queued records and counts dropped events without making callers wait for disk", async () => {
   writer = new ReadReceiptFileLog({ directory });
-  for (let i = 0; i < 300; i++) writer.write(record());
+  for (let i = 0; i < 300; i++) {
+    writer.write(record());
+  }
   await writer.flush();
   const saved = await records();
   expect(saved).toHaveLength(128);
@@ -119,8 +129,8 @@ it("does not follow directory or managed-file symlinks or touch unrelated files"
   expect(() => writer.write(record())).not.toThrow();
   await writer.flush();
   expect(await readFile(outside, "utf8")).toBe("keep me");
-  expect(vi.mocked(console.warn)).toHaveBeenCalledTimes(1);
-  expect(JSON.stringify(vi.mocked(console.warn).mock.calls)).not.toContain(directory);
+  expect(warningOutput).toHaveBeenCalledTimes(1);
+  expect(JSON.stringify(warningOutput.mock.calls)).not.toContain(directory);
   await writer.close();
   const directoryLink = join(directory, "alias");
   await symlink(directory, directoryLink);
@@ -132,8 +142,9 @@ it("does not follow directory or managed-file symlinks or touch unrelated files"
 
 it("keeps error capacity when routine records fill their queue allowance", async () => {
   writer = new ReadReceiptFileLog({ directory });
-  for (let i = 0; i < 128; i++)
+  for (let i = 0; i < 128; i++) {
     writer.write({ ...record(), category: "success", severity: "info" });
+  }
   writer.write(record());
   await writer.flush();
   const saved = await records();
@@ -149,8 +160,8 @@ it("survives a full disk and emits only a safe error code before recovering", as
   writer = new ReadReceiptFileLog({ directory });
   writer.write(record());
   await writer.flush();
-  expect(JSON.stringify(vi.mocked(console.warn).mock.calls)).toContain("ENOSPC");
-  expect(JSON.stringify(vi.mocked(console.warn).mock.calls)).not.toMatch(/credential|private/);
+  expect(JSON.stringify(warningOutput.mock.calls)).toContain("ENOSPC");
+  expect(JSON.stringify(warningOutput.mock.calls)).not.toMatch(/credential|private/);
   writer.write(record());
   await writer.flush();
   expect((await records())[0]).toMatchObject({ dropped: 1 });

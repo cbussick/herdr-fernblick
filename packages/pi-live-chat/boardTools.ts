@@ -16,14 +16,29 @@ import {
   boardReplySchema,
   boardRequestSchema,
   boardRevokeSchema,
-  type BoardGrant,
-  type BoardRequest,
-  type BoardTarget,
 } from "./boardProtocol.js";
+import type { BoardGrant, BoardRequest, BoardTarget } from "./boardProtocol.js";
 import { writeFrame } from "./transport.js";
 import { sameTarget } from "./protocol.js";
 
-const names = ["board_read", "board_components", "board_apply"];
+export interface BoardToolContext {
+  sessionManager: Pick<ExtensionContext["sessionManager"], "getSessionId" | "getSessionFile">;
+  signal?: AbortSignal;
+}
+type ToolExecuteArgs = Parameters<ToolDefinition["execute"]>;
+export type BoardToolDefinition = Omit<ToolDefinition, "execute"> & {
+  execute: (
+    id: ToolExecuteArgs[0],
+    params: ToolExecuteArgs[1],
+    signal: ToolExecuteArgs[2],
+    update: ToolExecuteArgs[3],
+    ctx: BoardToolContext,
+  ) => ReturnType<ToolDefinition["execute"]>;
+};
+interface BoardToolAPI extends Pick<ExtensionAPI, "getActiveTools" | "setActiveTools"> {
+  registerTool: (definition: BoardToolDefinition) => void;
+}
+const names = new Set(["board_read", "board_components", "board_apply"]);
 const catalogParameters = z.object({}).strict();
 const readParameters = boardRequestSchema
   .pick({ offset: true, limit: true, includeImage: true })
@@ -52,9 +67,10 @@ interface Scope extends BoardConnection {
   granting?: Promise<void>;
   removeAbort?: () => void;
 }
+type BoardReplyData = z.infer<typeof boardReplySchema>["data"];
 interface Pending {
   scope: Scope;
-  finish: (error?: Error, data?: unknown) => void;
+  finish: (error?: Error, data?: BoardReplyData) => void;
 }
 
 // Construct only after winning the bridge singleton. Registering even hidden tools
@@ -69,7 +85,7 @@ export class BoardTools {
   >();
 
   constructor(
-    private readonly pi: ExtensionAPI,
+    private readonly pi: BoardToolAPI,
     private readonly current: () => BoardConnection | undefined,
   ) {
     this.expose();
@@ -78,8 +94,8 @@ export class BoardTools {
   private expose(mode?: BoardGrant["mode"]) {
     // Cached callables from a previous loadout must not borrow a later grant.
     const authorizedScope = mode === undefined ? undefined : this.scope;
-    const active = this.pi.getActiveTools().filter((name) => !names.includes(name));
-    const definitions: ToolDefinition[] = [
+    const active = this.pi.getActiveTools().filter((name) => !names.has(name));
+    const definitions: Array<BoardToolDefinition> = [
       {
         name: "board_read",
         label: "Read whiteboard",
@@ -95,7 +111,9 @@ export class BoardTools {
         },
         execute: async (_id, params, signal, _update, ctx) => {
           const parsed = readParameters.safeParse(params);
-          if (!parsed.success) throw new Error("Invalid board_read offset/limit");
+          if (!parsed.success) {
+            throw new Error("Invalid board_read offset/limit");
+          }
           return this.execute(
             "read",
             {
@@ -122,8 +140,9 @@ export class BoardTools {
           openWorldHint: false,
         },
         execute: async (_id, params, signal, _update, ctx) => {
-          if (!catalogParameters.safeParse(params).success)
+          if (!catalogParameters.safeParse(params).success) {
             throw new Error("Invalid board_components parameters: expected an empty object");
+          }
           return this.execute("catalog", {}, signal, ctx, authorizedScope);
         },
       },
@@ -141,8 +160,9 @@ export class BoardTools {
         },
         execute: async (_id, params, signal, _update, ctx) => {
           const parsed = applyParameters.safeParse(params);
-          if (!parsed.success)
+          if (!parsed.success) {
             throw new Error("Invalid board_apply revision, operation ID or operations");
+          }
           return this.execute("apply", parsed.data, signal, ctx, authorizedScope);
         },
       },
@@ -154,7 +174,9 @@ export class BoardTools {
         defaultActive: false,
         exposure: enabled ? "direct" : "hidden",
       });
-      if (enabled) active.push(definition.name);
+      if (enabled) {
+        active.push(definition.name);
+      }
     }
     this.pi.setActiveTools(active);
   }
@@ -169,7 +191,9 @@ export class BoardTools {
       text,
       phase: "input",
       expires: setTimeout(() => {
-        if (this.scope === scope) this.revoke("Board request expired before the run started");
+        if (this.scope === scope) {
+          this.revoke("Board request expired before the run started");
+        }
       }, 15_000),
     };
     scope.expires?.unref();
@@ -178,6 +202,7 @@ export class BoardTools {
       this.revoke("Stale board request");
       throw new Error("Stale board request");
     }
+    return scope;
   }
 
   // A connected conversation exposes tools without opening/creating its board.
@@ -185,8 +210,12 @@ export class BoardTools {
   // cannot silently undo revocation. A fresh user input may authorize a new scope.
   async connected() {
     const connection = this.current();
-    if (!connection || !this.sameConnection(connection)) return;
-    if (this.lastConnection && this.sameConnection(this.lastConnection)) return;
+    if (!connection || !this.sameConnection(connection)) {
+      return;
+    }
+    if (this.lastConnection && this.sameConnection(this.lastConnection)) {
+      return;
+    }
     this.lastConnection = { ...connection, target: { ...connection.target } };
     this.revoke("Whiteboard connection changed");
     this.scope = {
@@ -203,12 +232,16 @@ export class BoardTools {
       // Register the scope before exposing tools: Stop access must also revoke
       // a conversation that has not yet opened or read its board.
       await this.rpc(scope, "begin", {});
-      if (!this.valid(scope)) return;
+      if (!this.valid(scope)) {
+        return;
+      }
       scope.begun = true;
       scope.phase = "active";
       this.expose("edit");
     } catch {
-      if (this.scope === scope) this.revoke("Whiteboard connection unavailable");
+      if (this.scope === scope) {
+        this.revoke("Whiteboard connection unavailable");
+      }
     }
   }
 
@@ -226,13 +259,17 @@ export class BoardTools {
   compacting() {
     // Compaction does not change the conversation/board identity. Legacy explicit
     // grants remain request-scoped; in-flight uncertain operations still fail closed.
-    if (!this.scope?.conversation) this.revoke("Whiteboard context is compacting");
+    if (!this.scope?.conversation) {
+      this.revoke("Whiteboard context is compacting");
+    }
   }
 
   input(event: { source: string; text: string; streamingBehavior?: "steer" | "followUp" }) {
     // Pi queues these inside the running request without before_agent_start.
     // Keep its scope (or its revoked state); never stage an unactivatable replacement.
-    if (event.streamingBehavior) return;
+    if (event.streamingBehavior) {
+      return;
+    }
     const scope = this.scope;
     if (
       !scope ||
@@ -243,20 +280,22 @@ export class BoardTools {
     ) {
       this.revoke("Board access ended by another input");
       const connection = this.current();
-      if (!connection || !["interactive", "extension"].includes(event.source)) return;
+      if (!connection || !["interactive", "extension"].includes(event.source)) {
+        return;
+      }
       // The placeholder is local only. It is never sent as board authority.
-      this.stage(
+      const staged = this.stage(
         { boardId: "0".repeat(64), grantId: randomUUID(), mode: "edit", revision: 0 },
         event.text,
         connection,
       );
-      this.scope!.runId = randomUUID();
-      this.scope!.conversation = true;
+      staged.runId = randomUUID();
+      staged.conversation = true;
       // Automatic compaction can precede before_agent_start and take minutes.
       // Only legacy explicit handoffs have a short consumption deadline.
-      clearTimeout(this.scope!.expires);
-      this.scope!.expires = undefined;
-      this.scope!.phase = "start";
+      clearTimeout(staged.expires);
+      staged.expires = undefined;
+      staged.phase = "start";
       return;
     }
     if (!this.valid(scope)) {
@@ -268,15 +307,18 @@ export class BoardTools {
 
   async beforeAgentStart(
     _prompt: string,
-    ctx: ExtensionContext,
+    ctx: BoardToolContext,
     event: Pick<BeforeAgentStartEvent, "systemPrompt" | "images"> = {
       systemPrompt: "",
     },
   ): Promise<BeforeAgentStartEventResult | undefined> {
     const scope = this.scope;
-    if (!scope) return;
-    if (scope.conversation && scope.phase === "active" && this.valid(scope, ctx))
+    if (!scope) {
+      return;
+    }
+    if (scope.conversation && scope.phase === "active" && this.valid(scope, ctx)) {
       return this.guidance(scope, event);
+    }
     if (scope.phase !== "start" || !this.valid(scope, ctx)) {
       this.revoke("Board request did not match this turn");
       return this.notice(
@@ -286,8 +328,9 @@ export class BoardTools {
     scope.phase = "activating";
     try {
       const activation = await this.rpc(scope, scope.runId ? "begin" : "activate", {}, ctx.signal);
-      if (!this.valid(scope, ctx) || ctx.signal?.aborted)
+      if (!this.valid(scope, ctx) || ctx.signal?.aborted) {
         throw new Error("Board activation cancelled");
+      }
       const expiresAt =
         activation && typeof activation === "object" && "expiresAt" in activation
           ? activation.expiresAt
@@ -297,22 +340,30 @@ export class BoardTools {
           Date.now() + 15 * 60_000,
           typeof expiresAt === "number" && Number.isFinite(expiresAt) ? expiresAt : Infinity,
         );
-        if (scope.activeUntil <= Date.now()) throw new Error("Board authorization expired");
+        if (scope.activeUntil <= Date.now()) {
+          throw new Error("Board authorization expired");
+        }
       }
       scope.begun = true;
       scope.phase = "active";
       // Keep the handoff deadline until agent_start: image normalization still
       // happens after this hook and may fail without ever starting a run.
-      if (!scope.conversation) this.watchAbort(scope, ctx.signal);
+      if (!scope.conversation) {
+        this.watchAbort(scope, ctx.signal);
+      }
       this.expose(scope.grant.mode);
       return this.guidance(scope, event);
     } catch (error) {
       // A replaced scope must never be torn down by this old async continuation.
-      if (this.scope === scope) this.revoke("Board activation failed");
+      if (this.scope === scope) {
+        this.revoke("Board activation failed");
+      }
       // Ordinary prompts probe optional board support, even for unrelated work.
       // Fail closed without adding a persistent warning to every conversation turn.
       // An explicitly authorized board request still needs a visible failure.
-      if (scope.runId) return;
+      if (scope.runId) {
+        return;
+      }
       return this.notice(
         `Whiteboard access unavailable: ${this.errorText(error, scope)}. Tools remain disabled; request new authorization to try again.`,
       );
@@ -333,19 +384,25 @@ export class BoardTools {
     return { systemPrompt: `${event.systemPrompt}\n\n${guidance}` };
   }
 
-  agentStart(ctx: ExtensionContext) {
+  agentStart(ctx: BoardToolContext) {
     const scope = this.scope;
-    if (!scope) return;
+    if (!scope) {
+      return;
+    }
     if (scope.phase !== "active" || !this.valid(scope, ctx) || ctx.signal?.aborted) {
       this.revoke("Board run did not activate or was aborted");
       return;
     }
     clearTimeout(scope.expires);
     scope.expires = undefined;
-    if (scope.conversation) return;
+    if (scope.conversation) {
+      return;
+    }
     scope.expires = setTimeout(
       () => {
-        if (this.scope === scope) this.revoke("Whiteboard authorization expired");
+        if (this.scope === scope) {
+          this.revoke("Whiteboard authorization expired");
+        }
       },
       Math.max(0, (scope.activeUntil ?? Date.now()) - Date.now()),
     );
@@ -359,7 +416,7 @@ export class BoardTools {
     };
   }
 
-  private sameConnection(connection: BoardConnection, ctx?: ExtensionContext): boolean {
+  private sameConnection(connection: BoardConnection, ctx?: BoardToolContext): boolean {
     try {
       const current = this.current();
       return (
@@ -379,7 +436,7 @@ export class BoardTools {
     }
   }
 
-  private valid(scope: Scope, ctx?: ExtensionContext): boolean {
+  private valid(scope: Scope, ctx?: BoardToolContext): boolean {
     return (
       this.scope === scope &&
       (scope.activeUntil === undefined || Date.now() < scope.activeUntil) &&
@@ -389,13 +446,16 @@ export class BoardTools {
 
   // A command is not input: opening the board does not change the draft, start
   // a model turn, or revoke an in-progress tool scope.
-  async open(ctx: ExtensionContext): Promise<string> {
+  async open(ctx: BoardToolContext): Promise<string> {
     const connection = this.current();
-    if (!connection || !this.sameConnection(connection, ctx))
+    if (!connection || !this.sameConnection(connection, ctx)) {
       throw new Error(
         "Whiteboard backend unavailable. Configure the Fernblick Pi socket and retry.",
       );
-    if (this.opens.size) throw new Error("Whiteboard open is already pending");
+    }
+    if (this.opens.size) {
+      throw new Error("Whiteboard open is already pending");
+    }
     const request = boardControlSchema.parse({
       type: "board-control",
       id: randomUUID(),
@@ -407,47 +467,65 @@ export class BoardTools {
       const timer = setTimeout(() => finish(new Error("Whiteboard backend did not respond")), 5000);
       timer.unref();
       const finish = (error?: Error, data?: unknown) => {
-        if (!this.opens.delete(request.id)) return;
+        if (!this.opens.delete(request.id)) {
+          return;
+        }
         clearTimeout(timer);
-        if (error) reject(error);
-        else resolve(data);
+        if (error) {
+          reject(error);
+        } else {
+          resolve(data);
+        }
       };
       this.opens.set(request.id, { connection, finish });
       try {
-        if (!writeFrame(connection.client, request))
+        if (!writeFrame(connection.client, request)) {
           finish(new Error("Whiteboard transport failed"));
+        }
       } catch {
         finish(new Error("Whiteboard transport failed"));
       }
     });
-    if (!this.sameConnection(connection, ctx)) throw new Error("Whiteboard conversation changed");
+    if (!this.sameConnection(connection, ctx)) {
+      throw new Error("Whiteboard conversation changed");
+    }
     const parsed = z.object({ url: z.url() }).parse(data);
     const url = new URL(parsed.url);
-    if (!["http:", "https:"].includes(url.protocol) || url.username || url.password)
+    if (!["http:", "https:"].includes(url.protocol) || url.username || url.password) {
       throw new Error("Invalid whiteboard URL from backend");
+    }
     return parsed.url;
   }
 
   private watchAbort(scope: Scope, signal?: AbortSignal) {
-    if (!signal) return;
+    if (!signal) {
+      return;
+    }
     scope.removeAbort?.();
     const abort = () => {
-      if (this.scope === scope)
+      if (this.scope === scope) {
         this.revoke("Board request aborted; outcome may be uncertain, never retry");
+      }
     };
     signal.addEventListener("abort", abort, { once: true });
     scope.removeAbort = () => signal.removeEventListener("abort", abort);
-    if (signal.aborted) abort();
+    if (signal.aborted) {
+      abort();
+    }
   }
 
   revoke(reason = "Whiteboard authorization ended", notify = true) {
     const scope = this.scope;
-    if (!scope) return;
+    if (!scope) {
+      return;
+    }
     this.scope = undefined;
     clearTimeout(scope.expires);
     scope.removeAbort?.();
     // Cleanup is synchronous. Never await a network roundtrip in lifecycle hooks.
-    for (const pending of this.pending.values()) pending.finish(new Error(reason));
+    for (const pending of this.pending.values()) {
+      pending.finish(new Error(reason));
+    }
     try {
       this.expose();
     } finally {
@@ -469,39 +547,46 @@ export class BoardTools {
       typeof raw !== "object" ||
       !("type" in raw) ||
       (raw.type !== "board-reply" && raw.type !== "board-revoke" && raw.type !== "board-run-revoke")
-    )
+    ) {
       return false;
+    }
     if (raw.type === "board-reply") {
       const reply = boardReplySchema.safeParse(raw);
       const open = reply.success ? this.opens.get(reply.data.id) : undefined;
       if (open && client === open.connection.client) {
-        if (!this.sameConnection(open.connection))
+        if (!this.sameConnection(open.connection)) {
           open.finish(new Error("Whiteboard connection changed"));
-        else if (reply.success)
+        } else if (reply.success) {
           open.finish(
             reply.data.ok ? undefined : new Error(reply.data.error ?? "Board open failed"),
             reply.data.data,
           );
+        }
         return true;
       }
     }
     const scope = this.scope;
-    if (!scope || client !== scope.client) return true;
+    if (!scope || client !== scope.client) {
+      return true;
+    }
     if (!this.valid(scope)) {
       this.revoke("Stale whiteboard connection");
       return true;
     }
     if (raw.type === "board-run-revoke") {
       const parsed = boardRunRevokeSchema.safeParse(raw);
-      if (!parsed.success || parsed.data.runId === scope.runId)
+      if (!parsed.success || parsed.data.runId === scope.runId) {
         this.revoke("Whiteboard request revoked", false);
+      }
       return true;
     }
     if (raw.type === "board-revoke") {
       const parsed = boardRevokeSchema.safeParse(raw);
-      if (!parsed.success) this.revoke("Malformed whiteboard revocation");
-      else if (parsed.data.grantId === scope.grant.grantId)
+      if (!parsed.success) {
+        this.revoke("Malformed whiteboard revocation");
+      } else if (parsed.data.grantId === scope.grant.grantId) {
         this.revoke("Whiteboard authorization revoked", false);
+      }
       return true;
     }
     const parsed = boardReplySchema.safeParse(raw);
@@ -510,12 +595,16 @@ export class BoardTools {
       return true;
     }
     const pending = this.pending.get(parsed.data.id);
-    if (!pending || pending.scope !== scope) return true;
-    if (!parsed.data.ok)
+    if (!pending || pending.scope !== scope) {
+      return true;
+    }
+    if (!parsed.data.ok) {
       pending.finish(
         new Error(this.redact(parsed.data.error ?? "Whiteboard request rejected", scope)),
       );
-    else pending.finish(undefined, parsed.data.data);
+    } else {
+      pending.finish(undefined, parsed.data.data);
+    }
     return true;
   }
 
@@ -524,15 +613,22 @@ export class BoardTools {
     action: BoardRequest["action"] | "begin" | "grant" | "end",
     fields: Partial<BoardRequest>,
   ) {
-    if (action === "begin" || action === "grant" || action === "end")
-      return boardControlSchema.parse({
+    if (action === "begin" || action === "grant" || action === "end") {
+      if (!scope.runId) {
+        throw new Error("Conversation board control requires a run identity");
+      }
+      const control: z.input<typeof boardControlSchema> = {
         type: "board-control",
         id: randomUUID(),
         target: scope.target,
         runId: scope.runId,
         action,
-        ...(scope.conversation && action === "begin" ? { lifetime: "connection" } : {}),
-      });
+      };
+      if (scope.conversation && action === "begin") {
+        control.lifetime = "connection";
+      }
+      return boardControlSchema.parse(control);
+    }
     return boardRequestSchema.parse({
       ...fields,
       type: "board-request",
@@ -549,23 +645,28 @@ export class BoardTools {
     action: BoardRequest["action"] | "begin" | "grant" | "end",
     fields: Partial<BoardRequest>,
     signal?: AbortSignal,
-  ): Promise<unknown> {
+  ): Promise<BoardReplyData> {
     if (!this.valid(scope) || signal?.aborted) {
-      if (this.scope === scope) this.revoke("Whiteboard request cancelled or stale");
+      if (this.scope === scope) {
+        this.revoke("Whiteboard request cancelled or stale");
+      }
       return Promise.reject(new Error("Whiteboard request cancelled or stale"));
     }
-    if (this.pending.size >= 8)
+    if (this.pending.size >= 8) {
       return Promise.reject(new Error("Too many pending whiteboard requests"));
+    }
     const request = this.request(scope, action, fields);
     return new Promise((resolve, reject) => {
       const abort = () => {
-        if (this.scope === scope)
+        if (this.scope === scope) {
           this.revoke("Whiteboard request aborted; outcome uncertain, never retry");
+        }
       };
       const timer = setTimeout(
         () => {
-          if (this.scope === scope)
+          if (this.scope === scope) {
             this.revoke("Whiteboard request timed out; outcome uncertain, never retry");
+          }
         },
         action === "read" ? 30_000 : 5000,
       );
@@ -573,18 +674,24 @@ export class BoardTools {
       const pending: Pending = {
         scope,
         finish: (error, data) => {
-          if (!this.pending.delete(request.id)) return;
+          if (!this.pending.delete(request.id)) {
+            return;
+          }
           clearTimeout(timer);
           signal?.removeEventListener("abort", abort);
-          if (error) reject(error);
-          else resolve(data);
+          if (error) {
+            reject(error);
+          } else {
+            resolve(data);
+          }
         },
       };
       this.pending.set(request.id, pending);
       signal?.addEventListener("abort", abort, { once: true });
       try {
-        if (!writeFrame(scope.client, request))
+        if (!writeFrame(scope.client, request)) {
           this.revoke("Whiteboard transport failed; outcome uncertain, never retry");
+        }
       } catch {
         this.revoke("Whiteboard transport failed; outcome uncertain, never retry");
       }
@@ -606,18 +713,20 @@ export class BoardTools {
     action: "read" | "catalog" | "apply",
     fields: Partial<BoardRequest>,
     signal: AbortSignal | undefined,
-    ctx: ExtensionContext,
+    ctx: BoardToolContext,
     authorizedScope: Scope | undefined,
   ) {
     const scope = this.scope;
-    if (!scope || scope !== authorizedScope || scope.phase !== "active")
+    if (!scope || scope !== authorizedScope || scope.phase !== "active") {
       throw new Error("No active whiteboard authorization for this request");
+    }
     if (!this.valid(scope, ctx) || signal?.aborted || ctx.signal?.aborted) {
       this.revoke("Whiteboard request cancelled or stale");
       throw new Error("Whiteboard request cancelled or stale");
     }
-    if (action === "apply" && scope.grant.mode !== "edit")
+    if (action === "apply" && scope.grant.mode !== "edit") {
       throw new Error("Whiteboard authorization is read-only");
+    }
     this.watchAbort(scope, ctx.signal);
     if (scope.runId && !scope.grantReady) {
       scope.granting ??= (async () => {
@@ -626,24 +735,30 @@ export class BoardTools {
           scope.begun = true;
         }
         const data = await this.rpc(scope, "grant", {}, signal ?? ctx.signal);
-        if (!this.valid(scope, ctx) || !data || typeof data !== "object" || !("grant" in data))
+        if (!this.valid(scope, ctx) || !data || typeof data !== "object" || !("grant" in data)) {
           throw new Error("Whiteboard grant is stale or invalid");
+        }
         scope.grant = boardGrantSchema.parse(data.grant);
         scope.grantReady = true;
       })();
       try {
         await scope.granting;
       } catch (error) {
-        if (this.scope === scope) this.revoke("Whiteboard grant failed");
+        if (this.scope === scope) {
+          this.revoke("Whiteboard grant failed");
+        }
         throw error;
       }
     }
     // A lazy grant may be narrower than the provisional loadout authority.
-    if (action === "apply" && scope.grant.mode !== "edit")
+    if (action === "apply" && scope.grant.mode !== "edit") {
       throw new Error("Whiteboard authorization is read-only");
+    }
     const data = await this.rpc(scope, action, fields, signal ?? ctx.signal);
     if (!this.valid(scope, ctx) || signal?.aborted || ctx.signal?.aborted) {
-      if (this.scope === scope) this.revoke("Whiteboard authorization ended during the request");
+      if (this.scope === scope) {
+        this.revoke("Whiteboard authorization ended during the request");
+      }
       throw new Error(
         "Whiteboard authorization ended during the request; inspect outcome before continuing",
       );
@@ -657,15 +772,18 @@ export class BoardTools {
           data: z.string().max(Math.ceil(MAX_BOARD_PNG_BYTES / 3) * 4),
         })
         .safeParse(data.image);
-      if (!parsed.success) throw new Error("Invalid whiteboard image");
+      if (!parsed.success) {
+        throw new Error("Invalid whiteboard image");
+      }
       const png = Buffer.from(parsed.data.data, "base64");
       if (
         png.length > MAX_BOARD_PNG_BYTES ||
         png.length < 8 ||
         png.toString("base64") !== parsed.data.data ||
         !png.subarray(0, 8).equals(Buffer.from([137, 80, 78, 71, 13, 10, 26, 10]))
-      )
+      ) {
         throw new Error("Invalid whiteboard PNG");
+      }
       image = { type: "image", ...parsed.data };
       const { image: _image, ...rest } = data;
       summary = rest;

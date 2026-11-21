@@ -1,19 +1,12 @@
-import {
-  createContext,
-  useContext,
-  useEffect,
-  useEffectEvent,
-  useRef,
-  useState,
-  type PointerEvent as ReactPointerEvent,
-} from "react";
-import {
-  NodeResizer,
-  useReactFlow,
-  useViewport,
-  type NodeProps,
-  type Viewport,
-} from "@xyflow/react";
+import { useContext, useEffect, useEffectEvent, useRef, useState } from "react";
+import type { PointerEvent as ReactPointerEvent } from "react";
+
+function local(event: ReactPointerEvent<SVGSVGElement>) {
+  const rect = event.currentTarget.getBoundingClientRect();
+  return { x: event.clientX - rect.left, y: event.clientY - rect.top };
+}
+import { NodeResizer, useReactFlow, useViewport } from "@xyflow/react";
+import type { NodeProps, Viewport } from "@xyflow/react";
 import { Blocks, Eraser, Hand, MousePointer2, Pencil, Redo2, Undo2 } from "lucide-react";
 import {
   gestureViewport,
@@ -24,19 +17,15 @@ import {
   maxStrokePoints,
   outline,
   pathFromOutline,
-  type InkData,
-  type InkNode,
-  type InkPoint,
 } from "./ink";
-import { makeId, type CanvasNode } from "./model";
+import type { InkData, InkNode, InkPoint } from "./ink";
+import { makeId } from "./model";
+import type { CanvasNode } from "./model";
 import styles from "./Playground.module.css";
+import { InkContext } from "./inkContext";
 
 export type Tool = "select" | "draw" | "erase" | "pan";
-export const InkContext = createContext({
-  hidden: new Set<string>(),
-  start: (_id: string) => {},
-  finish: (_id: string) => {},
-});
+
 export function InkView({ id, data, selected }: NodeProps<InkNode>) {
   const context = useContext(InkContext);
   return (
@@ -187,7 +176,7 @@ type Pointer = { x: number; y: number };
 type Active = {
   id: number;
   type: string;
-  points: InkPoint[];
+  points: Array<InkPoint>;
   last: InkPoint;
   pressure: boolean;
   color: string;
@@ -206,8 +195,8 @@ export function InkSurface({
   tool: "draw" | "erase";
   color: string;
   size: number;
-  nodes: CanvasNode[];
-  onCommit: (before: InkNode[], after: InkNode[]) => void;
+  nodes: Array<CanvasNode>;
+  onCommit: (before: Array<InkNode>, after: Array<InkNode>) => void;
   onHidden: (ids: Set<string>) => void;
   onViewport: (v: Viewport) => void;
   onMessage: (message: string) => void;
@@ -228,7 +217,9 @@ export function InkSurface({
     erased.current.clear();
     onHidden(new Set());
     setLive(null);
-    if (frame.current !== null) cancelAnimationFrame(frame.current);
+    if (frame.current !== null) {
+      cancelAnimationFrame(frame.current);
+    }
     frame.current = null;
   };
   const cancel = () => {
@@ -241,10 +232,14 @@ export function InkSurface({
   useEffect(() => {
     const blur = () => cancelGesture();
     const visibility = () => {
-      if (document.hidden) blur();
+      if (document.hidden) {
+        blur();
+      }
     };
     const key = (e: KeyboardEvent) => {
-      if (e.key === "Escape") blur();
+      if (e.key === "Escape") {
+        blur();
+      }
     };
     window.addEventListener("blur", blur);
     window.addEventListener("keydown", key);
@@ -257,11 +252,16 @@ export function InkSurface({
     };
   }, [tool]);
   useEffect(() => {
-    const element = svg.current!;
+    const element = svg.current;
+    if (!element) {
+      return;
+    }
     const wheel = (event: WheelEvent) => {
       event.preventDefault();
       event.stopPropagation();
-      if (active.current || pointers.current.size) return;
+      if (active.current || pointers.current.size) {
+        return;
+      }
       const rect = element.getBoundingClientRect();
       const p = { x: event.clientX - rect.left, y: event.clientY - rect.top };
       const v = flow.getViewport();
@@ -286,19 +286,21 @@ export function InkSurface({
       /iPad|iPhone|iPod/.test(navigator.userAgent) ||
       (/Mac/.test(navigator.userAgent) && navigator.maxTouchPoints > 1);
     const suppressScribble = (event: TouchEvent) => {
-      if (event.cancelable) event.preventDefault();
+      if (event.cancelable) {
+        event.preventDefault();
+      }
     };
-    if (appleTouch) element.addEventListener("touchstart", suppressScribble, { passive: false });
+    if (appleTouch) {
+      element.addEventListener("touchstart", suppressScribble, { passive: false });
+    }
     element.addEventListener("wheel", wheel, { passive: false });
     return () => {
       element.removeEventListener("wheel", wheel);
-      if (appleTouch) element.removeEventListener("touchstart", suppressScribble);
+      if (appleTouch) {
+        element.removeEventListener("touchstart", suppressScribble);
+      }
     };
   }, [flow, onViewport]);
-  function local(event: { clientX: number; clientY: number }) {
-    const rect = svg.current!.getBoundingClientRect();
-    return { x: event.clientX - rect.left, y: event.clientY - rect.top };
-  }
   function point(event: { clientX: number; clientY: number; pressure: number }): InkPoint {
     const p = flow.screenToFlowPosition({ x: event.clientX, y: event.clientY });
     return [
@@ -308,11 +310,13 @@ export function InkSurface({
     ];
   }
   function preview() {
-    if (frame.current !== null) return;
+    if (frame.current !== null) {
+      return;
+    }
     frame.current = requestAnimationFrame(() => {
       frame.current = null;
       const a = active.current;
-      if (a)
+      if (a) {
         setLive({
           kind: "ink",
           points: a.points.slice(),
@@ -322,11 +326,12 @@ export function InkSurface({
           w: 1,
           h: 1,
         });
+      }
     });
   }
   function erase(from: InkPoint, to: InkPoint) {
     let changed = false;
-    for (const node of nodes)
+    for (const node of nodes) {
       if (
         isInk(node) &&
         !erased.current.has(node.id) &&
@@ -335,28 +340,39 @@ export function InkSurface({
         erased.current.add(node.id);
         changed = true;
       }
-    if (changed) onHidden(new Set(erased.current));
+    }
+    if (changed) {
+      onHidden(new Set(erased.current));
+    }
   }
   function down(event: ReactPointerEvent<SVGSVGElement>) {
-    if (event.button !== 0) return;
+    if (event.button !== 0) {
+      return;
+    }
     event.preventDefault();
     event.stopPropagation();
-    if (active.current?.type === "pen" && event.pointerType === "touch") return; // Ignore palms while the pen is down.
+    if (active.current?.type === "pen" && event.pointerType === "touch") {
+      return;
+    } // Ignore palms while the pen is down.
     // A Pencil must also win when the palm arrived FIRST. Discard any provisional
     // touch ink/pinch state; those old touch IDs can no longer cancel or finish this pen.
-    if (event.pointerType === "pen") cancel();
+    if (event.pointerType === "pen") {
+      cancel();
+    }
     // Recover from a native selection left by an older build or interrupted gesture.
     window.getSelection()?.removeAllRanges();
-    svg.current!.setPointerCapture(event.pointerId);
+    event.currentTarget.setPointerCapture(event.pointerId);
     pointers.current.set(event.pointerId, local(event));
     if (pointers.current.size > 1) {
       reset();
       multi.current = true;
       const [first, second] = [...pointers.current.values()];
-      pinch.current = { viewport: flow.getViewport(), first: first!, second: second! };
+      pinch.current = { viewport: flow.getViewport(), first, second };
       return;
     }
-    if (multi.current) return;
+    if (multi.current) {
+      return;
+    }
     if (
       tool === "draw" &&
       (nodes.length >= 300 ||
@@ -375,48 +391,62 @@ export function InkSurface({
       color,
       size,
     };
-    if (tool === "draw") preview();
-    else erase(p, p);
+    if (tool === "draw") {
+      preview();
+    } else {
+      erase(p, p);
+    }
   }
   function move(event: ReactPointerEvent<SVGSVGElement>) {
     event.stopPropagation();
-    if (tool === "erase") setCursor(local(event));
-    if (!pointers.current.has(event.pointerId)) return;
+    if (tool === "erase") {
+      setCursor(local(event));
+    }
+    if (!pointers.current.has(event.pointerId)) {
+      return;
+    }
     pointers.current.set(event.pointerId, local(event));
     if (multi.current) {
       if (pointers.current.size >= 2 && pinch.current) {
         const [first, second] = [...pointers.current.values()];
         const start = pinch.current;
-        const next = gestureViewport(start.viewport, start.first, start.second, first!, second!);
+        const next = gestureViewport(start.viewport, start.first, start.second, first, second);
         void flow.setViewport(next);
         onViewport(next);
       }
       return;
     }
     const a = active.current;
-    if (!a || a.id !== event.pointerId) return;
+    if (!a || a.id !== event.pointerId) {
+      return;
+    }
     const samples = event.nativeEvent.getCoalescedEvents?.() || [];
     for (const sample of samples.length ? samples : [event.nativeEvent]) {
       const p = point(sample);
-      if (tool === "erase") erase(a.last, p);
-      else if (
+      if (tool === "erase") {
+        erase(a.last, p);
+      } else if (
         a.points.length < maxStrokePoints &&
         Math.hypot(p[0] - a.last[0], p[1] - a.last[1]) >= 0.2 / flow.getZoom()
-      )
+      ) {
         a.points.push(p);
+      }
       a.last = p;
     }
-    if (tool === "draw") preview();
+    if (tool === "draw") {
+      preview();
+    }
   }
   function up(event: ReactPointerEvent<SVGSVGElement>) {
     event.preventDefault();
     event.stopPropagation();
     pointers.current.delete(event.pointerId);
     if (multi.current) {
-      if (!pointers.current.size) cancel();
-      else if (pointers.current.size >= 2) {
+      if (!pointers.current.size) {
+        cancel();
+      } else if (pointers.current.size >= 2) {
         const [first, second] = [...pointers.current.values()];
-        pinch.current = { viewport: flow.getViewport(), first: first!, second: second! };
+        pinch.current = { viewport: flow.getViewport(), first, second };
       }
       return;
     }
@@ -424,20 +454,25 @@ export function InkSurface({
     if (a?.id === event.pointerId) {
       if (tool === "draw") {
         const p = point(event);
-        if (a.points.length < maxStrokePoints && (p[0] !== a.last[0] || p[1] !== a.last[1]))
+        if (a.points.length < maxStrokePoints && (p[0] !== a.last[0] || p[1] !== a.last[1])) {
           a.points.push(p);
+        }
         const used = nodes.filter(isInk).reduce((sum, n) => sum + n.data.points.length, 0);
         const points = a.points.slice(0, maxBoardPoints - used);
-        if (points.length) onCommit([], [makeInk(makeId(), points, a.color, a.size, a.pressure)]);
-      } else
+        if (points.length) {
+          onCommit([], [makeInk(makeId(), points, a.color, a.size, a.pressure)]);
+        }
+      } else {
         onCommit(
           nodes.filter(isInk).filter((n) => erased.current.has(n.id)),
           [],
         );
+      }
       reset();
     }
-    if (svg.current!.hasPointerCapture(event.pointerId))
-      svg.current!.releasePointerCapture(event.pointerId);
+    if (event.currentTarget.hasPointerCapture(event.pointerId)) {
+      event.currentTarget.releasePointerCapture(event.pointerId);
+    }
   }
   return (
     <svg
@@ -451,11 +486,14 @@ export function InkSurface({
       onPointerMove={move}
       onPointerUp={up}
       onPointerCancel={(event) => {
-        if (pointers.current.has(event.pointerId)) cancel();
+        if (pointers.current.has(event.pointerId)) {
+          cancel();
+        }
       }}
       onLostPointerCapture={(event) => {
-        if (active.current?.id === event.pointerId || pointers.current.has(event.pointerId))
+        if (active.current?.id === event.pointerId || pointers.current.has(event.pointerId)) {
           cancel();
+        }
       }}
       onPointerLeave={() => setCursor(null)}
     >

@@ -1,8 +1,4 @@
 import { prepareFlowBoardScene } from "./features/flow/render";
 
-declare global {
-  interface Window {
-    prepareFlowBoardScene: typeof prepareFlowBoardScene;
-  }
-}
+import type {} from "../packages/pi-live-chat/boardRenderContract.js";
 window.prepareFlowBoardScene = prepareFlowBoardScene;

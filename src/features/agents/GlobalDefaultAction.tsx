@@ -12,7 +12,9 @@ export function GlobalDefaultsNotice({
   onRetry: () => void;
   retryEnabled: boolean;
 }) {
-  if (available) return null;
+  if (available) {
+    return null;
+  }
   return error ? (
     <div className={styles.notice} role="alert">
       <p>{error}</p>
@@ -49,7 +51,9 @@ export function GlobalDefaultAction({
       title={unavailableReason ?? label}
       aria-disabled={!enabled || saved}
       onClick={() => {
-        if (enabled && !saved) onSave();
+        if (enabled && !saved) {
+          onSave();
+        }
       }}
     >
       <StarIcon fill={saved ? "currentColor" : "none"} />

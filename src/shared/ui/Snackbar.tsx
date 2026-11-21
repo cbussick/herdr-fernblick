@@ -7,7 +7,7 @@ export function Snackbar({
   message,
   description,
   action,
-  duration = 6_000,
+  duration = 6000,
   placement = "floating",
   role = "status",
   onDismiss,
@@ -23,7 +23,9 @@ export function Snackbar({
   const [hovered, setHovered] = useState(false);
   const [focused, setFocused] = useState(false);
   useEffect(() => {
-    if (duration === null || hovered || focused) return;
+    if (duration === null || hovered || focused) {
+      return;
+    }
     const timer = setTimeout(onDismiss, duration);
     return () => clearTimeout(timer);
   }, [duration, hovered, focused, onDismiss]);
@@ -37,7 +39,9 @@ export function Snackbar({
       onMouseLeave={() => setHovered(false)}
       onFocus={() => setFocused(true)}
       onBlur={(event) => {
-        if (!event.currentTarget.contains(event.relatedTarget)) setFocused(false);
+        if (!event.currentTarget.contains(event.relatedTarget)) {
+          setFocused(false);
+        }
       }}
     >
       <p role={role} aria-live={role === "alert" ? "assertive" : "polite"} aria-atomic="true">

@@ -1,6 +1,7 @@
 import { expect, it, vi } from "vitest";
 import type { z } from "zod";
-import { HerdrRequestError, type HerdrClient } from "./HerdrClient.js";
+import type { HerdrParams } from "./HerdrClient.js";
+import { HerdrRequestError } from "./HerdrClient.js";
 import { HerdrService } from "./herdrService.js";
 
 const agent = {
@@ -25,20 +26,26 @@ const historyUnavailable =
   "cannot read 600 lines while w21:p9 is working: its alternate-screen history can only be captured by scrolling while idle. Wait and retry, or use --source visible";
 
 function fixture(status: string, shell = false) {
-  const request = vi.fn(
-    async <T>(method: string, params: Record<string, unknown>, schema: z.ZodType<T>) => {
-      const current = { ...agent, agent_status: status };
-      if (method === "agent.get") return schema.parse({ type: "agent_info", agent: current });
-      if (method === "session.snapshot") {
-        return schema.parse({
-          type: "session_snapshot",
-          snapshot: { agents: shell ? [] : [current], panes: [], tabs: [], workspaces: [] },
-        });
-      }
-      return schema.parse({ type: "pane_read", read: { ...output, source: params.source } });
-    },
-  );
-  return { request, service: new HerdrService({ request } as unknown as HerdrClient) };
+  const request = vi.fn(async <T>(method: string, params: HerdrParams, schema: z.ZodType<T>) => {
+    const current = { ...agent, agent_status: status };
+    if (method === "agent.get") {
+      return schema.parse({ type: "agent_info", agent: current });
+    }
+    if (method === "session.snapshot") {
+      return schema.parse({
+        type: "session_snapshot",
+        snapshot: { agents: shell ? [] : [current], panes: [], tabs: [], workspaces: [] },
+      });
+    }
+    return schema.parse({ type: "pane_read", read: { ...output, source: params.source } });
+  });
+  return {
+    request,
+    service: new HerdrService({
+      request: async (method, params, schema) =>
+        schema.parse(await request(method, params, schema)),
+    }),
+  };
 }
 
 it("loads history for a done agent using the resolved pane rather than its mutable name", async () => {
@@ -94,7 +101,9 @@ it("does not retry failed visible reads or attempt history", async () => {
   const request = vi
     .fn()
     .mockRejectedValue(new HerdrRequestError("unavailable", "socket unavailable"));
-  const service = new HerdrService({ request } as unknown as HerdrClient);
+  const service = new HerdrService({
+    request: async (method, params, schema) => schema.parse(await request(method, params, schema)),
+  });
   await expect(service.readAgent(agent.pane_id, 600)).rejects.toThrow("socket unavailable");
   expect(request).toHaveBeenCalledTimes(1);
 });

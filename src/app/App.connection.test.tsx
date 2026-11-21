@@ -1,12 +1,14 @@
+import { readTestProp } from "../shared/lib/readTestProp.js";
 import { act } from "react";
-import { create, type ReactTestRenderer } from "react-test-renderer";
+import { create } from "react-test-renderer";
+import type { ReactTestRenderer } from "react-test-renderer";
 import { onlineManager, QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
 import { App } from "./App";
 import { getAgents } from "../shared/api/apiClient";
 
-vi.mock("../shared/api/apiClient", async (original) => ({
-  ...(await original<typeof import("../shared/api/apiClient")>()),
+vi.mock(import("../shared/api/apiClient"), async (original) => ({
+  ...(await original()),
   getAgents: vi.fn(),
 }));
 vi.mock("./useSinglePaneLayout", () => ({ useSinglePaneLayout: () => false }));
@@ -21,7 +23,10 @@ vi.mock("../features/agents/ShellConsole", () => ({ ShellConsole: () => null }))
 const dashboard = { agents: [], tabs: [], workspaces: [] };
 let client: QueryClient;
 let renderer: ReactTestRenderer;
-const settle = () => new Promise<void>((resolve) => setTimeout(resolve, 20));
+const settle = () =>
+  new Promise<void>((resolve) => {
+    setTimeout(resolve, 20);
+  });
 beforeEach(async () => {
   vi.stubGlobal("IS_REACT_ACT_ENVIRONMENT", true);
   vi.clearAllMocks();
@@ -44,7 +49,7 @@ afterEach(async () => {
   onlineManager.setOnline(true);
   vi.unstubAllGlobals();
 });
-const connected = () => renderer.root.findByType("nav").props["data-connected"];
+const connected = () => readTestProp(renderer.root.findByType("nav"), "data-connected");
 
 it("keeps the last overview on a failed poll, marks it disconnected, and recovers after success", async () => {
   expect(connected()).toBe(true);

@@ -1,3 +1,4 @@
+import { report } from "../report.mjs";
 // Production UI + real page projection, with synthetic session data only.
 // All API/SSE requests are intercepted; no live agent, Herdr socket or model.
 // PLAYWRIGHT_MODULE=/path/to/playwright/index.mjs node --import tsx tools/design/tree-pages.mjs URL
@@ -29,7 +30,9 @@ for (const [engine, browserType] of [
   ["chromium", chromium],
   ["webkit", webkit],
 ]) {
-  if (process.env.TREE_ENGINE && process.env.TREE_ENGINE !== engine) continue;
+  if (process.env.TREE_ENGINE && process.env.TREE_ENGINE !== engine) {
+    continue;
+  }
   const browser = await browserType.launch({ headless: true });
   try {
     for (const [device, width, height] of [
@@ -39,7 +42,9 @@ for (const [engine, browserType] of [
       ["ipad", 834, 1194],
       ["desktop", 1440, 1000],
     ]) {
-      if (process.env.TREE_DEVICE && process.env.TREE_DEVICE !== device) continue;
+      if (process.env.TREE_DEVICE && process.env.TREE_DEVICE !== device) {
+        continue;
+      }
       const manager = SessionManager.inMemory();
       const ids = [];
       const fullPrompt = "A long original prompt. ".repeat(400) + "deep-search-needle";
@@ -51,7 +56,9 @@ for (const [engine, browserType] of [
             timestamp: 1_700_000_000_000 + i,
           }),
         );
-        for (let j = 0; j < 4; j++) manager.appendCustomEntry("extension-state", {});
+        for (let j = 0; j < 4; j++) {
+          manager.appendCustomEntry("extension-state", {});
+        }
       }
       const originalLeaf = manager.getLeafId();
       manager.branch(ids[0]);
@@ -108,7 +115,7 @@ for (const [engine, browserType] of [
         (url) => url.pathname.startsWith("/api/"),
         async (route) => {
           const path = new URL(route.request().url()).pathname;
-          if (path === "/api/agents")
+          if (path === "/api/agents") {
             return route.fulfill({
               json: {
                 agents: [agent],
@@ -116,6 +123,7 @@ for (const [engine, browserType] of [
                 tabs: [],
               },
             });
+          }
           if (path.endsWith("/tree-page")) {
             const body = route.request().postDataJSON();
             assert.deepEqual(body.target, target);
@@ -148,8 +156,11 @@ for (const [engine, browserType] of [
             }
             const entry = manager.getEntry(body.entryId);
             assert.equal(entry.message.role, "user");
-            if (entry.parentId) manager.branch(entry.parentId);
-            else manager.resetLeaf();
+            if (entry.parentId) {
+              manager.branch(entry.parentId);
+            } else {
+              manager.resetLeaf();
+            }
             manager.appendCustomEntry("plannotator", { phase: "idle" });
             target = { ...target, epoch: randomUUID() };
             snapshot = { ...snapshot, epoch: target.epoch, seq: 1, messages: [] };
@@ -312,12 +323,12 @@ for (const [engine, browserType] of [
         assert.deepEqual(errors, []);
         assert.deepEqual(unexpected, []);
         results.push({ engine, device, passed: true, reads: reads.length });
-        console.log(
+        report(
           `PASS ${engine}/${device}: paging, global search, forks, stale/error recovery, cancel, full prompt restore`,
         );
       } catch (error) {
         results.push({ engine, device, passed: false, error: error.message });
-        console.log(`FAIL ${engine}/${device}: ${error.message}`);
+        report(`FAIL ${engine}/${device}: ${error.message}`);
         await page.screenshot({ path: `${output}/${engine}-${device}-failure.png` });
       } finally {
         await page.close();
@@ -328,4 +339,6 @@ for (const [engine, browserType] of [
   }
 }
 await fs.writeFile(`${output}/results.json`, JSON.stringify(results, null, 2));
-if (results.some((result) => !result.passed)) process.exitCode = 1;
+if (results.some((result) => !result.passed)) {
+  process.exitCode = 1;
+}

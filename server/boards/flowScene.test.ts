@@ -83,8 +83,9 @@ describe("flow scene boundary", () => {
       [{ op: "update", id: "child", props: { imageId: "missing" } }],
       [{ op: "update", id: "child", text: "not native" }],
       [{ op: "update", id: "edge", props: { title: "not component" } }],
-    ] as BoardOperation[][])
+    ]) {
       expect(() => applyOperations(scene, ops)).toThrow();
+    }
     expect(() => validateScene({ ...scene, engine: undefined })).toThrow();
     expect(() =>
       applyOperations(emptyScene(), [

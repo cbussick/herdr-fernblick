@@ -22,7 +22,8 @@ export function PastChats({
   query: string;
   onOpenSession?: (sessionId: string) => void;
   navigationKey?: string;
-  workspaces: Workspace[];
+  workspaces: Array<Workspace>;
+
   onResumed: (agent: Agent) => void;
   onRemoved: () => void;
   onClearSearch?: () => void;
@@ -35,7 +36,7 @@ export function PastChats({
   const chats = useQuery({
     queryKey: ["saved-chats"],
     queryFn: getSavedChats,
-    refetchInterval: (query) => (query.state.data?.indexing ? 1_000 : 30_000),
+    refetchInterval: (query) => (query.state.data?.indexing ? 1000 : 30_000),
   });
   const owner = useRef({ mounted: true, key: navigationKey, version: 0 });
   useLayoutEffect(() => {
@@ -78,7 +79,9 @@ export function PastChats({
       void client.invalidateQueries({ queryKey: ["agents"] });
       if (owner.current.mounted) {
         setSelectedChat((current) => (current?.id === id ? null : current));
-        if (owner.current.version === requestVersion) onResumed(agent);
+        if (owner.current.version === requestVersion) {
+          onResumed(agent);
+        }
       }
     },
   });
@@ -155,7 +158,14 @@ export function PastChats({
             <li key={chat.id} className={styles.chat} data-testid="saved-chat">
               <h2>
                 {chat.sessionId && onOpenSession ? (
-                  <button type="button" onClick={() => onOpenSession(chat.sessionId!)}>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      if (chat.sessionId) {
+                        onOpenSession(chat.sessionId);
+                      }
+                    }}
+                  >
                     {chat.title}
                   </button>
                 ) : (

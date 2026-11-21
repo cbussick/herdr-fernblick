@@ -31,7 +31,7 @@ export function ModelPicker({
 }: Props) {
   const dialog = useRef<HTMLDialogElement>(null);
   const searchInput = useRef<HTMLInputElement>(null);
-  const options = useRef<(HTMLButtonElement | null)[]>([]);
+  const options = useRef<Array<HTMLButtonElement | null>>([]);
   const switching = useRef(false);
   const mounted = useRef(false);
   const [search, setSearch] = useState("");
@@ -70,7 +70,9 @@ export function ModelPicker({
   const defaultUnavailable =
     catalog.data?.defaultsError ?? "Run /reload in Pi to enable row defaults.";
   async function select(entry: AgentModel, saveDefault = false) {
-    if (!ready || switching.current || (saveDefault && !canSaveDefault)) return;
+    if (!ready || switching.current || (saveDefault && !canSaveDefault)) {
+      return;
+    }
     switching.current = true;
     setPending(true);
     setSavingDefault(saveDefault);
@@ -82,21 +84,28 @@ export function ModelPicker({
           provider: entry.provider,
           modelId: entry.id,
         });
-        if (mounted.current) setSavedDefault(entry);
+        if (mounted.current) {
+          setSavedDefault(entry);
+        }
       } else {
         await setAgentModel(pane, target, entry.provider, entry.id);
-        if (mounted.current) onClose();
+        if (mounted.current) {
+          onClose();
+        }
       }
     } catch (error) {
-      if (mounted.current)
+      if (mounted.current) {
         setError(
           error instanceof Error
             ? error.message
             : "Model change failed. Check Pi before trying again.",
         );
+      }
     } finally {
       switching.current = false;
-      if (mounted.current) setPending(false);
+      if (mounted.current) {
+        setPending(false);
+      }
     }
   }
   return (
@@ -136,7 +145,9 @@ export function ModelPicker({
             onKeyDown={(event) => {
               // This dialog lives inside the composer form. Search Enter must
               // never submit the user's draft (including no-results/error states).
-              if (event.key === "Enter") event.preventDefault();
+              if (event.key === "Enter") {
+                event.preventDefault();
+              }
               if (event.key === "ArrowDown" && ready) {
                 event.preventDefault();
                 options.current[0]?.focus();

@@ -1,11 +1,24 @@
+import type { markAgentRead as MarkAgentRead } from "./apiClient";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
 import { READ_RECEIPT_REQUEST_ID_HEADER } from "./readReceiptDiagnostics";
+import { z } from "zod";
 
 const input = { paneId: "private-pane", completionId: "a".repeat(64) };
-const fetchMock = vi.fn();
-let markAgentRead: typeof import("./apiClient").markAgentRead;
-let warn: ReturnType<typeof vi.spyOn>;
-let info: ReturnType<typeof vi.spyOn>;
+const fetchMock =
+  vi.fn<
+    (
+      url: string,
+      init: { signal: AbortSignal; headers: Record<string, string> },
+    ) => Promise<Response>
+  >();
+const diagnosticSchema = z.object({
+  requestId: z.string(),
+  category: z.string(),
+  status: z.number().optional(),
+});
+let markAgentRead: typeof MarkAgentRead;
+let warn: ReturnType<typeof vi.fn<typeof console.warn>>;
+let info: ReturnType<typeof vi.fn<typeof console.info>>;
 beforeEach(async () => {
   vi.resetModules();
   ({ markAgentRead } = await import("./apiClient"));
@@ -57,7 +70,7 @@ it("distinguishes network loss from the ten-second timeout without retries", asy
   await expect(markAgentRead(input)).rejects.toThrow();
   expect(JSON.parse(warn.mock.calls[0][0]).category).toBe("network");
   const controller = new AbortController();
-  vi.spyOn(AbortSignal, "timeout").mockReturnValue(controller.signal);
+  const timeout = vi.spyOn(AbortSignal, "timeout").mockReturnValue(controller.signal);
   fetchMock.mockImplementationOnce(
     (_url, init) =>
       new Promise((_resolve, reject) => {
@@ -68,16 +81,18 @@ it("distinguishes network loss from the ten-second timeout without retries", asy
   const assertion = expect(pending).rejects.toThrow();
   controller.abort(new DOMException("secret", "TimeoutError"));
   await assertion;
-  expect(AbortSignal.timeout).toHaveBeenCalledWith(10_000);
+  expect(timeout).toHaveBeenCalledWith(10_000);
   expect(JSON.parse(warn.mock.calls[1][0]).category).toBe("timeout");
   expect(fetchMock).toHaveBeenCalledTimes(2);
 });
 
 it("logs success with a fresh random ID per attempt and retains request validation", async () => {
-  fetchMock.mockImplementation(() => Response.json({ ok: true }));
+  fetchMock.mockImplementation(async () => Response.json({ ok: true }));
   await markAgentRead(input);
   await markAgentRead(input);
-  const records = info.mock.calls.map(([value]: [string]) => JSON.parse(value));
+  const records = info.mock.calls.map(([value]) =>
+    diagnosticSchema.parse(JSON.parse(z.string().parse(value))),
+  );
   expect(records[0]).toMatchObject({ category: "success", status: 200 });
   expect(records[0].requestId).not.toBe(records[1].requestId);
   await expect(markAgentRead({ ...input, completionId: "invalid" })).rejects.toThrow();

@@ -24,7 +24,9 @@ async function database() {
     let abandoned = false;
     request.onupgradeneeded = () => {
       const db = request.result;
-      if (!db.objectStoreNames.contains("drafts")) db.createObjectStore("drafts");
+      if (!db.objectStoreNames.contains("drafts")) {
+        db.createObjectStore("drafts");
+      }
     };
     request.onerror = () => reject(request.error);
     request.onblocked = () => {
@@ -43,8 +45,10 @@ async function database() {
   });
 }
 /** Clear this origin's saved drawings/recovery copies for a deleted conversation. */
-export async function removeWhiteboardDrafts(sessionId: string | null, boardIds: string[]) {
-  if (typeof indexedDB === "undefined") return;
+export async function removeWhiteboardDrafts(sessionId: string | null, boardIds: Array<string>) {
+  if (typeof indexedDB === "undefined") {
+    return;
+  }
   const ids = new Set(boardIds);
   const db = await database();
   try {
@@ -53,7 +57,9 @@ export async function removeWhiteboardDrafts(sessionId: string | null, boardIds:
       const request = tx.objectStore("drafts").openCursor();
       request.onsuccess = () => {
         const cursor = request.result;
-        if (!cursor) return;
+        if (!cursor) {
+          return;
+        }
         let sameSession = false;
         try {
           const key: unknown = typeof cursor.key === "string" ? JSON.parse(cursor.key) : null;
@@ -61,9 +67,11 @@ export async function removeWhiteboardDrafts(sessionId: string | null, boardIds:
         } catch {
           /* Older/unrecognized keys can still be matched by board ID. */
         }
-        const value = cursor.value as { boardId?: unknown } | undefined;
-        if (sameSession || (typeof value?.boardId === "string" && ids.has(value.boardId)))
+        const value: unknown = cursor.value;
+        const boardId = z.object({ boardId: z.string() }).safeParse(value);
+        if (sameSession || (boardId.success && ids.has(boardId.data.boardId))) {
           cursor.delete();
+        }
         cursor.continue();
       };
       tx.oncomplete = () => resolve();

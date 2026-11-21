@@ -1,41 +1,24 @@
 import { randomUUID } from "node:crypto";
-import type { Socket } from "node:net";
-import type {
-  ExtensionAPI,
-  ExtensionToolContext,
-  ToolDefinition,
-} from "@earendil-works/pi-coding-agent";
+import { Socket } from "node:net";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
-import { BoardTools, type BoardConnection } from "./boardTools.js";
-import {
-  type BoardGrant,
-  type BoardRequest,
-  type BoardControl,
-  boardControlSchema,
-  boardRequestSchema,
-} from "./boardProtocol.js";
+import { BoardTools } from "./boardTools.js";
+import type { BoardConnection, BoardToolDefinition } from "./boardTools.js";
+import { boardControlSchema, boardRequestSchema } from "./boardProtocol.js";
+import type { BoardGrant, BoardRequest, BoardControl } from "./boardProtocol.js";
 
 beforeEach(() => vi.useFakeTimers());
 afterEach(() => vi.useRealTimers());
 
 function setup(mode: BoardGrant["mode"] = "edit") {
-  const frames: (BoardRequest | BoardControl)[] = [];
-  const client = {
-    destroyed: false,
-    connecting: false,
-    writable: true,
-    writableLength: 0,
-    write: vi.fn((frame: string) => {
-      const raw = JSON.parse(frame);
-      frames.push(
-        raw.type === "board-control"
-          ? boardControlSchema.parse(raw)
-          : boardRequestSchema.parse(raw),
-      );
-      return true;
-    }),
-    destroy: vi.fn(),
-  } as unknown as Socket;
+  const frames: Array<BoardRequest | BoardControl> = [];
+  const client = new Socket();
+  vi.spyOn(client, "write").mockImplementation((frame) => {
+    if (typeof frame !== "string") {
+      throw new TypeError("Board frames must be serialized text");
+    }
+    frames.push(boardControlSchema.or(boardRequestSchema).parse(JSON.parse(frame)));
+    return true;
+  });
   const target = {
     runtime: randomUUID(),
     epoch: randomUUID(),
@@ -52,14 +35,14 @@ function setup(mode: BoardGrant["mode"] = "edit") {
     mode,
     revision: 2,
   };
-  const definitions = new Map<string, ToolDefinition>();
+  const definitions = new Map<string, BoardToolDefinition>();
   let active = ["read", "bash", "unrelated"];
   const pi = {
-    registerTool: vi.fn((definition: ToolDefinition) =>
+    registerTool: vi.fn((definition: BoardToolDefinition) =>
       definitions.set(definition.name, definition),
     ),
     getActiveTools: () => [...active],
-    setActiveTools: vi.fn((names: string[]) => {
+    setActiveTools: vi.fn((names: Array<string>) => {
       active = names;
     }),
   };
@@ -68,8 +51,8 @@ function setup(mode: BoardGrant["mode"] = "edit") {
       getSessionId: () => "session",
       getSessionFile: () => "/session.jsonl",
     },
-  } as unknown as ExtensionToolContext;
-  const tools = new BoardTools(pi as unknown as ExtensionAPI, () => connection);
+  };
+  const tools = new BoardTools(pi, () => connection);
   const stage = (text = "Draw a box") => tools.stage(grant, text, connection!);
   const input = (text = "Draw a box", source = "extension") => tools.input({ text, source });
   const reply = (request = frames.at(-1)!, data: unknown = { revision: 2 }, ok = true) =>
@@ -207,9 +190,13 @@ it.each(["revoke-first", "reply-first"])(
         { type: "board-run-revoke", runId: "runId" in begin ? begin.runId : "" },
         t.client,
       );
-    if (order === "revoke-first") revoke();
+    if (order === "revoke-first") {
+      revoke();
+    }
     t.reply(begin, undefined, false);
-    if (order === "reply-first") revoke();
+    if (order === "reply-first") {
+      revoke();
+    }
     expect(await starting).toBeUndefined();
     expect(t.pi.getActiveTools()).not.toContain("board_read");
     expect(t.pi.getActiveTools()).not.toContain("board_apply");
@@ -312,12 +299,14 @@ it.each(
   const t = setup();
   await available(t);
   const old = t.connection()!;
-  if (boundary === "disconnect") t.changeConnection(undefined);
-  else
+  if (boundary === "disconnect") {
+    t.changeConnection(undefined);
+  } else {
     t.changeConnection({
       ...old,
       target: { ...old.target, [boundary === "session" ? "sessionId" : boundary]: randomUUID() },
     });
+  }
   await expect(t.run(name)).rejects.toThrow("stale");
   expect(t.frames.some((r) => r.action === "grant")).toBe(false);
 });
@@ -368,8 +357,9 @@ it("lazily grants catalog access and returns JSON without rendering or leaking a
     parameters: { type: "object", properties: {}, additionalProperties: false },
     annotations: { readOnlyHint: true, destructiveHint: false, openWorldHint: false },
   });
-  for (const args of [{ boardId: t.grant.boardId }, { action: "apply" }, { includeImage: true }])
+  for (const args of [{ boardId: t.grant.boardId }, { action: "apply" }, { includeImage: true }]) {
     await expect(t.run("board_components", args)).rejects.toThrow("Invalid");
+  }
   expect(t.frames.map((r) => r.action)).toEqual(["begin"]);
   const discovering = t.run("board_components");
   expect(t.frames.at(-1)?.action).toBe("grant");
@@ -415,10 +405,13 @@ it.each(["revoke", "abort", "timeout"])("catalog honors %s without retry", async
   const catalog = t.run("board_components", {}, controller.signal);
   const request = t.frames.at(-1)!;
   const rejected = expect(catalog).rejects.toThrow();
-  if (boundary === "revoke")
+  if (boundary === "revoke") {
     t.tools.consume({ type: "board-revoke", grantId: t.grant.grantId }, t.client);
-  else if (boundary === "abort") controller.abort();
-  else await vi.advanceTimersByTimeAsync(5000);
+  } else if (boundary === "abort") {
+    controller.abort();
+  } else {
+    await vi.advanceTimersByTimeAsync(5000);
+  }
   await rejected;
   t.reply(request, { engine: "react-flow", components: [] });
   await expect(t.run("board_components")).rejects.toThrow("No active");
@@ -477,7 +470,9 @@ it("requires input before before_agent_start and expires unconsumed or matched s
   });
   for (const matched of [false, true]) {
     t.stage();
-    if (matched) t.input();
+    if (matched) {
+      t.input();
+    }
     await vi.advanceTimersByTimeAsync(15_000);
     await t.tools.beforeAgentStart("Draw a box", t.ctx);
   }
@@ -509,8 +504,9 @@ it("awaits activation, preserves unrelated tools, and keeps grant tokens out of 
     "board_components",
     "board_apply",
   ]);
-  for (const tool of t.definitions.values())
+  for (const tool of t.definitions.values()) {
     expect(tool).toMatchObject({ defaultActive: false, exposure: "direct" });
+  }
   const read = t.run("board_read", { offset: 10, limit: 3 });
   expect(t.frames.at(-1)).toMatchObject({
     action: "read",
@@ -522,7 +518,9 @@ it("awaits activation, preserves unrelated tools, and keeps grant tokens out of 
   t.pi.setActiveTools(["read", "new-tool", "board_read", "board_components", "board_apply"]);
   t.tools.revoke();
   expect(t.pi.getActiveTools()).toEqual(["read", "new-tool"]);
-  for (const tool of t.definitions.values()) expect(tool.exposure).toBe("hidden");
+  for (const tool of t.definitions.values()) {
+    expect(tool.exposure).toBe("hidden");
+  }
 });
 
 it("read-only grants expose both read tools and reject even direct invocation of board_apply", async () => {
@@ -712,8 +710,9 @@ it("bounds strict tool input and forwards revision/operationId without automatic
       ...apply(),
       operations: [{ op: "create", id: "box", kind: "image", x: 0, y: 0 }],
     },
-  ])
+  ]) {
     await expect(t.run("board_apply", invalid)).rejects.toThrow("Invalid");
+  }
   expect(t.frames).toHaveLength(1);
   const args = apply();
   const applying = t.run("board_apply", args);
@@ -744,17 +743,30 @@ it.each(
   const retained = t.definitions.get(name)!;
   const read = t.run(name);
   const rejected = expect(read).rejects.toThrow();
-  if (change === "input") t.input("even the next streaming input", "interactive");
-  else if (change === "revoke")
+  if (change === "input") {
+    t.input("even the next streaming input", "interactive");
+  } else if (change === "revoke") {
     t.tools.consume({ type: "board-revoke", grantId: t.grant.grantId }, t.client);
-  else {
+  } else {
     const connection = t.connection()!;
-    if (change === "session") connection.target = { ...connection.target, sessionId: "other" };
-    if (change === "file") connection.sessionFile = "/other.jsonl";
-    if (change === "epoch") connection.target = { ...connection.target, epoch: randomUUID() };
-    if (change === "runtime") connection.target = { ...connection.target, runtime: randomUUID() };
-    if (change === "disconnect") t.changeConnection(undefined);
-    if (change === "connection") connection.client = { ...t.client } as Socket;
+    if (change === "session") {
+      connection.target = { ...connection.target, sessionId: "other" };
+    }
+    if (change === "file") {
+      connection.sessionFile = "/other.jsonl";
+    }
+    if (change === "epoch") {
+      connection.target = { ...connection.target, epoch: randomUUID() };
+    }
+    if (change === "runtime") {
+      connection.target = { ...connection.target, runtime: randomUUID() };
+    }
+    if (change === "disconnect") {
+      t.changeConnection(undefined);
+    }
+    if (change === "connection") {
+      connection.client = new Socket();
+    }
     // A late reply rechecks the captured target and connection, not just the ID.
     t.reply();
   }
@@ -784,7 +796,7 @@ it("ignores unknown/stale RPC IDs, stale sockets and unrelated revocations", asy
   });
   expect(t.tools.consume({ type: "command" }, t.client)).toBe(false);
   t.tools.consume({ type: "board-reply", id: randomUUID(), ok: true, data: {} }, t.client);
-  t.tools.consume({ type: "board-reply", id: request.id, ok: true, data: {} }, {} as Socket);
+  t.tools.consume({ type: "board-reply", id: request.id, ok: true, data: {} }, new Socket());
   t.tools.consume({ type: "board-revoke", grantId: randomUUID() }, t.client);
   t.reply(t.frames[0]);
   await Promise.resolve();
@@ -864,11 +876,17 @@ it.each(["before", "during", "context"])(
     const t = setup();
     await t.activate();
     const controller = new AbortController();
-    if (when === "before") controller.abort();
-    if (when === "context") Object.assign(t.ctx, { signal: controller.signal });
+    if (when === "before") {
+      controller.abort();
+    }
+    if (when === "context") {
+      Object.assign(t.ctx, { signal: controller.signal });
+    }
     const read = t.run("board_read", {}, when === "context" ? undefined : controller.signal);
     const rejected = expect(read).rejects.toThrow(/cancelled|aborted/);
-    if (when !== "before") controller.abort();
+    if (when !== "before") {
+      controller.abort();
+    }
     await rejected;
     expect(t.frames.at(-1)?.action).toBe("revoke");
     expect(t.pi.getActiveTools()).not.toContain("board_read");

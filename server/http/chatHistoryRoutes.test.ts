@@ -4,8 +4,8 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
 import type { z } from "zod";
-import { HerdrClient } from "../herdr/HerdrClient.js";
 import { HerdrService } from "../herdr/herdrService.js";
+import type { HerdrClient } from "../herdr/HerdrClient.js";
 import { LiveBridge } from "../pi/liveBridge.js";
 import { SessionCatalog } from "../pi/sessionCatalog.js";
 import { SessionIndex } from "../pi/sessionIndex.js";
@@ -20,7 +20,7 @@ let server: Server;
 let base: string;
 let id: string;
 let sessionPath: string;
-let active: Agent[];
+let active: Array<Agent>;
 let service: HerdrService;
 let boards: BoardStore;
 let catalog: SessionCatalog;
@@ -34,7 +34,7 @@ const agent: Agent = {
   workspace_id: "w1",
   revision: 1,
 };
-const request = vi.fn();
+const request = vi.fn<HerdrClient["request"]>();
 
 beforeEach(async () => {
   directory = await mkdtemp(join(tmpdir(), "fernblick-history-routes-"));
@@ -54,7 +54,7 @@ beforeEach(async () => {
   active = [];
   request.mockReset();
   request.mockImplementation(async <T>(method: string, _params: unknown, schema: z.ZodType<T>) => {
-    if (method === "session.snapshot")
+    if (method === "session.snapshot") {
       return schema.parse({
         type: "session_snapshot",
         snapshot: {
@@ -64,12 +64,14 @@ beforeEach(async () => {
           workspaces: [{ workspace_id: "w1", label: "Workspace" }],
         },
       });
-    if (method === "tab.create")
+    }
+    if (method === "tab.create") {
       return schema.parse({
         type: "tab_created",
         tab: { tab_id: "w1:t2", workspace_id: "w1", label: "Saved work" },
         root_pane: { pane_id: "w1:p2", revision: 0 },
       });
+    }
     if (method === "agent.start") {
       active = [
         {
@@ -84,7 +86,10 @@ beforeEach(async () => {
   boards = new BoardStore(join(directory, "boards"));
   vi.stubEnv("FERNBLICK_UPLOAD_DIR", join(directory, "uploads"));
   service = new HerdrService(
-    { request } as unknown as HerdrClient,
+    {
+      request: async (method, params, schema) =>
+        schema.parse(await request(method, params, schema)),
+    },
     catalog,
     new ChatArtifacts(boards, join(directory, "herdr.sock")),
     sessionIndex,
@@ -95,8 +100,14 @@ beforeEach(async () => {
     new LiveBridge(join(directory, "pi.sock"), join(directory, "herdr.sock")),
     boards,
   );
-  await new Promise<void>((done) => server.listen(0, "127.0.0.1", done));
-  base = `http://127.0.0.1:${(server.address() as { port: number }).port}`;
+  await new Promise<void>((done) => {
+    server.listen(0, "127.0.0.1", done);
+  });
+  const address = server.address();
+  if (address === null || typeof address === "string") {
+    throw new Error("Expected a listening TCP server");
+  }
+  base = `http://127.0.0.1:${address.port}`;
 });
 afterEach(async () => {
   await sessionIndex.close();
@@ -104,7 +115,9 @@ afterEach(async () => {
   boards.close();
   vi.unstubAllEnvs();
   server.closeAllConnections();
-  await new Promise<void>((done) => server.close(() => done()));
+  await new Promise<void>((done) => {
+    server.close(() => done());
+  });
   await rm(directory, { recursive: true, force: true });
 });
 const resume = (chatId = id, workspaceId = "w1", origin = base) =>
@@ -373,7 +386,9 @@ it("reports deleted chats, missing workspaces and missing project directories", 
 it("reports launch failures instead of claiming a successful resume", async () => {
   const original = request.getMockImplementation()!;
   request.mockImplementation(async (...args) => {
-    if (args[0] === "agent.start") throw new Error("Launch failed");
+    if (args[0] === "agent.start") {
+      throw new Error("Launch failed");
+    }
     return original(...args);
   });
   expect((await resume()).status).toBe(500);
@@ -413,7 +428,9 @@ it.each([false, true])(
   "refuses to delete active chats (registration delayed: %s)",
   async (delayed) => {
     await resume();
-    if (delayed) active = [{ ...agent, agent_session: null }];
+    if (delayed) {
+      active = [{ ...agent, agent_session: null }];
+    }
     const response = await deleteChat();
     expect(response.status).toBe(409);
     expect(await response.json()).toEqual({

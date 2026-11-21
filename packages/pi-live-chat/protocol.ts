@@ -107,7 +107,7 @@ export type PiTreeNode = {
   timestamp?: string;
   label?: string;
   isActivePath: boolean;
-  children: PiTreeNode[];
+  children: Array<PiTreeNode>;
 };
 const piTreeNodeSchema: z.ZodType<PiTreeNode> = z.lazy(() =>
   z.object({

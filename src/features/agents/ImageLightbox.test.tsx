@@ -1,12 +1,21 @@
-import { act, StrictMode, useState, type ReactNode } from "react";
-import { create, type ReactTestRenderer } from "react-test-renderer";
+import { readTestProp } from "../../shared/lib/readTestProp.js";
+import { Window } from "happy-dom";
+import { testText } from "../../shared/lib/testText";
+import { dispatchTestEvent } from "../../shared/lib/dispatchTestEvent";
+import { act, StrictMode, useState } from "react";
+import type { ReactNode } from "react";
+import { create } from "react-test-renderer";
+import type { ReactTestRenderer } from "react-test-renderer";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
 import { ImageLightbox } from "./ImageLightbox";
 
 vi.mock("react-dom", () => ({ createPortal: (children: ReactNode) => children }));
 let renderer: ReactTestRenderer;
 const onClose = vi.fn();
-const opener = { isConnected: true, focus: vi.fn() };
+const openerWindow = new Window();
+const opener = openerWindow.document.createElement("div");
+openerWindow.document.body.append(opener);
+const focusOpener = vi.spyOn(opener, "focus").mockImplementation(() => {});
 const nativeDialog = {
   open: false,
   showModal: vi.fn(() => {
@@ -47,50 +56,56 @@ afterEach(async () => {
   vi.unstubAllGlobals();
 });
 const modal = () => renderer.root.findByType("dialog");
-const current = () => modal().findByType("img").props.src;
+const current = () => readTestProp(modal().findByType("img"), "src");
 it("opens a native modal once, cycles with buttons and arrows, wraps and restores opener focus", async () => {
   expect(nativeDialog.showModal).toHaveBeenCalledOnce();
   expect(current()).toBe("/two.png");
-  await act(async () => modal().findByProps({ "aria-label": "Next image" }).props.onClick());
+  await act(async () =>
+    dispatchTestEvent(modal().findByProps({ "aria-label": "Next image" }), "onClick"),
+  );
   expect(current()).toBe("/three.png");
-  await act(async () => modal().findByProps({ "aria-label": "Next image" }).props.onClick());
+  await act(async () =>
+    dispatchTestEvent(modal().findByProps({ "aria-label": "Next image" }), "onClick"),
+  );
   expect(current()).toBe("/one.png");
   const event = { key: "ArrowLeft", preventDefault: vi.fn(), stopPropagation: vi.fn() };
-  await act(async () => modal().props.onKeyDown(event));
+  await act(async () => dispatchTestEvent(modal(), "onKeyDown", event));
   expect(current()).toBe("/three.png");
   expect(event.preventDefault).toHaveBeenCalledOnce();
   expect(event.stopPropagation).toHaveBeenCalledOnce();
-  await act(async () => modal().props.onKeyDown({ ...event, key: "ArrowRight" }));
+  await act(async () => dispatchTestEvent(modal(), "onKeyDown", { ...event, key: "ArrowRight" }));
   expect(current()).toBe("/one.png");
-  expect(modal().findByProps({ role: "status" }).children.join("")).toBe("Image 1 of 3");
+  expect(testText(modal().findByProps({ role: "status" }))).toBe("Image 1 of 3");
   expect(nativeDialog.showModal).toHaveBeenCalledOnce();
   expect(onClose).not.toHaveBeenCalled();
   await act(async () => renderer.unmount());
   expect(nativeDialog.close).toHaveBeenCalledOnce();
-  expect(opener.focus).toHaveBeenCalledOnce();
+  expect(focusOpener).toHaveBeenCalledOnce();
 });
 it("isolates Escape and cancel, dismisses with Close or backdrop, but not image clicks", async () => {
   const stopPropagation = vi.fn();
-  modal().props.onKeyDown({ key: "Escape", stopPropagation });
-  modal().props.onCancel({ stopPropagation });
+  await dispatchTestEvent(modal(), "onKeyDown", { key: "Escape", stopPropagation });
+  await dispatchTestEvent(modal(), "onCancel", { stopPropagation });
   expect(stopPropagation).toHaveBeenCalledTimes(2);
   const close = vi.fn();
-  modal().props.onClick({ target: {}, currentTarget: { close } });
+  await dispatchTestEvent(modal(), "onClick", { target: {}, currentTarget: { close } });
   expect(close).not.toHaveBeenCalled();
   const backdrop = { close };
-  modal().props.onClick({ target: backdrop, currentTarget: backdrop });
+  await dispatchTestEvent(modal(), "onClick", { target: backdrop, currentTarget: backdrop });
   expect(close).toHaveBeenCalledOnce();
   await act(async () =>
-    modal().findByProps({ "aria-label": "Close image preview" }).props.onClick(),
+    dispatchTestEvent(modal().findByProps({ "aria-label": "Close image preview" }), "onClick"),
   );
   expect(nativeDialog.close).toHaveBeenCalledOnce();
-  await act(async () => modal().props.onClose({ currentTarget: { open: false } }));
+  await act(async () => dispatchTestEvent(modal(), "onClose", { currentTarget: { open: false } }));
   expect(onClose).toHaveBeenCalledOnce();
 });
 it("retains navigation when an image fails and resets the fallback for the next image", async () => {
-  await act(async () => modal().findByType("img").props.onError());
+  await act(async () => dispatchTestEvent(modal().findByType("img"), "onError"));
   expect(modal().findByProps({ "aria-label": "Attachment unavailable" })).toBeDefined();
-  await act(async () => modal().findByProps({ "aria-label": "Next image" }).props.onClick());
+  await act(async () =>
+    dispatchTestEvent(modal().findByProps({ "aria-label": "Next image" }), "onClick"),
+  );
   expect(current()).toBe("/three.png");
 });
 it("ignores a stale close event after StrictMode reopens the native dialog", async () => {
@@ -102,10 +117,10 @@ it("ignores a stale close event after StrictMode reopens the native dialog", asy
     ),
   );
   expect(nativeDialog.open).toBe(true);
-  await act(async () => modal().props.onClose({ currentTarget: nativeDialog }));
+  await act(async () => dispatchTestEvent(modal(), "onClose", { currentTarget: nativeDialog }));
   expect(onClose).not.toHaveBeenCalled();
   nativeDialog.close();
-  await act(async () => modal().props.onClose({ currentTarget: nativeDialog }));
+  await act(async () => dispatchTestEvent(modal(), "onClose", { currentTarget: nativeDialog }));
   expect(onClose).toHaveBeenCalledOnce();
 });
 
@@ -115,6 +130,6 @@ it("hides cycling controls for a single image", async () => {
   expect(modal().findAllByProps({ "aria-label": "Previous image" })).toHaveLength(0);
   expect(modal().findAllByProps({ "aria-label": "Next image" })).toHaveLength(0);
   const preventDefault = vi.fn();
-  modal().props.onKeyDown({ key: "ArrowLeft", preventDefault });
+  await dispatchTestEvent(modal(), "onKeyDown", { key: "ArrowLeft", preventDefault });
   expect(preventDefault).not.toHaveBeenCalled();
 });

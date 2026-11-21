@@ -2,11 +2,10 @@ import {
   MAX_BOARD_BYTES,
   boardSceneSchema,
   boardOperationSchema,
-  type BoardOperation,
-  type BoardScene,
 } from "../../packages/pi-live-chat/boardProtocol.js";
+import type { BoardScene } from "../../packages/pi-live-chat/boardProtocol.js";
 import { BoardError, requireBoard } from "./errors.js";
-import { validateFlowGraph, type FlowElement } from "../../packages/pi-live-chat/flowProtocol.js";
+import { validateFlowGraph, flowElementSchema } from "../../packages/pi-live-chat/flowProtocol.js";
 import { applyFlowOperations, flowSummary } from "./flowScene.js";
 import { validateRasterBudget } from "./rasterBudget.js";
 
@@ -29,9 +28,12 @@ export function validatePng(bytes: Buffer): void {
 
 function inspect(value: unknown, depth = 0): void {
   requireBoard(depth <= 40, 400, "Board data is too deeply nested");
-  if (typeof value === "number")
+  if (typeof value === "number") {
     requireBoard(Number.isFinite(value), 400, "Board numbers must be finite");
-  if (!value || typeof value !== "object") return;
+  }
+  if (!value || typeof value !== "object") {
+    return;
+  }
   requireBoard(
     Array.isArray(value) ||
       Object.getPrototypeOf(value) === Object.prototype ||
@@ -55,7 +57,9 @@ export function validateScene(input: unknown): BoardScene {
     inspect(input);
     encoded = JSON.stringify(input);
   } catch (error) {
-    if (error instanceof BoardError) throw error;
+    if (error instanceof BoardError) {
+      throw error;
+    }
     throw new BoardError(400, "Board must be JSON data");
   }
   requireBoard(
@@ -98,7 +102,7 @@ export function validateScene(input: unknown): BoardScene {
   return scene;
 }
 
-export function applyOperations(scene: BoardScene, operations: BoardOperation[]): BoardScene {
+export function applyOperations(scene: BoardScene, operations: ReadonlyArray<unknown>): BoardScene {
   return validateScene(
     applyFlowOperations(
       validateScene(scene),
@@ -109,12 +113,14 @@ export function applyOperations(scene: BoardScene, operations: BoardOperation[])
 
 export function summarize(scene: BoardScene, revision: number, offset = 0, limit = 100) {
   const live = scene.elements.filter((e) => !e.isDeleted);
-  const elements: Record<string, unknown>[] = [];
+  const elements: Array<ReturnType<typeof flowSummary>> = [];
   let bytes = 0;
   for (const e of live.slice(offset, offset + limit)) {
-    const summary = flowSummary(e as FlowElement, scene.files);
+    const summary = flowSummary(flowElementSchema.parse(e), scene.files);
     const size = Buffer.byteLength(JSON.stringify(summary));
-    if (bytes + size > 128 * 1024) break;
+    if (bytes + size > 128 * 1024) {
+      break;
+    }
     bytes += size;
     elements.push(summary);
   }

@@ -1,11 +1,11 @@
 const URL_PATTERN = /\b(?:https?:\/\/|www\.)[^\s<>"']+/giu;
 const TRAILING_PUNCTUATION = /[.,!?;:]+$/u;
 const MARKDOWN_DELIMITERS = ["***", "___", "**", "__", "~~", "``", "*", "_", "`"];
-const CLOSING_DELIMITERS: Record<string, string> = {
-  ")": "(",
-  "]": "[",
-  "}": "{",
-};
+const CLOSING_DELIMITERS = new Map([
+  [")", "("],
+  ["]", "["],
+  ["}", "{"],
+]);
 
 interface LinkPart {
   href: string;
@@ -19,24 +19,38 @@ function trimLinkEnd(candidate: string, precedingText: string) {
   const markdownDelimiter = MARKDOWN_DELIMITERS.find(
     (delimiter) => precedingText.endsWith(delimiter) && url.endsWith(delimiter),
   );
-  if (markdownDelimiter) url = url.slice(0, -markdownDelimiter.length);
+  if (markdownDelimiter) {
+    url = url.slice(0, -markdownDelimiter.length);
+  }
 
   while (url.length) {
     const closing = url.at(-1);
-    const opening = closing ? CLOSING_DELIMITERS[closing] : undefined;
-    if (!opening) break;
+    const opening = closing ? CLOSING_DELIMITERS.get(closing) : undefined;
+    if (!opening) {
+      break;
+    }
 
-    const openingCount = [...url].filter((character) => character === opening).length;
-    const closingCount = [...url].filter((character) => character === closing).length;
-    if (closingCount <= openingCount) break;
+    // Delimiters are ASCII; count them without splitting Unicode URL text.
+    let openingCount = 0;
+    let closingCount = 0;
+    for (const character of url) {
+      if (character === opening) {
+        openingCount++;
+      } else if (character === closing) {
+        closingCount++;
+      }
+    }
+    if (closingCount <= openingCount) {
+      break;
+    }
     url = url.slice(0, -1);
   }
 
   return url;
 }
 
-export function splitMessageLinks(text: string): MessageTextPart[] {
-  const parts: MessageTextPart[] = [];
+export function splitMessageLinks(text: string): Array<MessageTextPart> {
+  const parts: Array<MessageTextPart> = [];
   let previousEnd = 0;
 
   for (const match of text.matchAll(URL_PATTERN)) {
@@ -44,7 +58,9 @@ export function splitMessageLinks(text: string): MessageTextPart[] {
     const candidate = match[0];
     const linkText = trimLinkEnd(candidate, text.slice(0, start));
 
-    if (start > previousEnd) parts.push(text.slice(previousEnd, start));
+    if (start > previousEnd) {
+      parts.push(text.slice(previousEnd, start));
+    }
     parts.push({
       text: linkText,
       href: linkText.startsWith("www.") ? `https://${linkText}` : linkText,
@@ -52,6 +68,8 @@ export function splitMessageLinks(text: string): MessageTextPart[] {
     previousEnd = start + linkText.length;
   }
 
-  if (previousEnd < text.length) parts.push(text.slice(previousEnd));
+  if (previousEnd < text.length) {
+    parts.push(text.slice(previousEnd));
+  }
   return parts;
 }

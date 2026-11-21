@@ -1,12 +1,13 @@
 import { act, useLayoutEffect, useRef } from "react";
-import { create, type ReactTestRenderer } from "react-test-renderer";
+import { create } from "react-test-renderer";
+import type { ReactTestRenderer } from "react-test-renderer";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
 import { useConversationSize } from "./useConversationSize";
 
 let renderer: ReactTestRenderer;
 let size: ReturnType<typeof useConversationSize>;
 let desktop: boolean;
-let box: { width: number; height: number };
+let box: Pick<DOMRect, "width" | "height">;
 let measure: () => void;
 let mediaChange: () => void;
 const storage = new Map<string, string>();
@@ -35,9 +36,9 @@ function pointer(x: number, y: number, pointerId = 1) {
     isPrimary: true,
     currentTarget: control,
     preventDefault() {},
-  } as unknown as Parameters<typeof size.separator.onPointerDown>[0];
+  };
 }
-async function press(key: string, shiftKey = false) {
+async function press(key: string, shiftKey = false, isComposing = false) {
   const preventDefault = vi.fn();
   await act(async () =>
     size.separator.onKeyDown({
@@ -45,8 +46,8 @@ async function press(key: string, shiftKey = false) {
       shiftKey,
       preventDefault,
       stopPropagation() {},
-      nativeEvent: {},
-    } as unknown as Parameters<typeof size.separator.onKeyDown>[0]),
+      nativeEvent: { isComposing },
+    }),
   );
   return preventDefault;
 }
@@ -212,6 +213,16 @@ it("prevents shrinking mobile below default and handles keyboard-sized viewports
   expect(size.fullHeight).toBe(true);
   await act(async () => size.toggle());
   expect(size.separator["aria-valuenow"]).toBe(80);
+});
+it("ignores composing keys, non-primary pointers and non-left buttons", async () => {
+  await mount();
+  expect(await press("ArrowLeft", false, true)).not.toHaveBeenCalled();
+  expect(size.separator["aria-valuenow"]).toBe(448);
+  control.setPointerCapture.mockClear();
+  await act(async () => size.separator.onPointerDown({ ...pointer(992, 400), isPrimary: false }));
+  await act(async () => size.separator.onPointerDown({ ...pointer(992, 400), button: 2 }));
+  expect(control.setPointerCapture).not.toHaveBeenCalled();
+  expect(size.dragging).toBe(false);
 });
 it("ignores invalid stored widths and still resizes with blocked storage", async () => {
   storage.set(key, "NaN");

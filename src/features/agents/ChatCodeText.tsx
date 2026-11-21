@@ -1,4 +1,5 @@
-import { Fragment, useMemo, type ReactNode } from "react";
+import { Fragment, useMemo } from "react";
+import type { ReactNode } from "react";
 import { common, createLowlight } from "lowlight";
 import styles from "./ChatCodeText.module.css";
 
@@ -18,14 +19,18 @@ export function ChatCodeText({
   const tree = useMemo(() => {
     const name = language?.toLowerCase();
     // No guessing for unlabelled blocks, and bound work on very large responses.
-    if (!name || !lowlight.registered(name) || value.length > 50_000) return undefined;
+    if (!name || !lowlight.registered(name) || value.length > 50_000) {
+      return undefined;
+    }
     try {
       return lowlight.highlight(name, value);
     } catch {
       return undefined;
     }
   }, [value, language]);
-  if (!tree) return renderRange(0, value.length);
+  if (!tree) {
+    return renderRange(0, value.length);
+  }
 
   return renderTree(tree, renderRange);
 }
@@ -41,8 +46,10 @@ function renderTree(
       offset += node.value.length;
       return <Fragment key={key}>{renderRange(start, offset)}</Fragment>;
     }
-    if (node.type !== "element") return null;
-    const classes = (node.properties.className as string[] | undefined) ?? [];
+    if (node.type !== "element") {
+      return null;
+    }
+    const classes = node.properties.className ?? [];
     return (
       <span
         key={key}

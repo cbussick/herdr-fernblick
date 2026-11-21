@@ -42,8 +42,9 @@ it.each(["oversized", "byte-budget", "invalid-page", "network"])(
       isActivePath: false,
       childCount: 0,
     };
-    if (kind === "network") fetchMock.mockRejectedValueOnce(new Error("Connection lost"));
-    else
+    if (kind === "network") {
+      fetchMock.mockRejectedValueOnce(new Error("Connection lost"));
+    } else {
       fetchMock.mockResolvedValueOnce(
         Response.json({
           type: "tree-page",
@@ -51,7 +52,7 @@ it.each(["oversized", "byte-budget", "invalid-page", "network"])(
           target,
           page:
             kind === "oversized"
-              ? { ...page, rows: Array(51).fill(row), total: 51 }
+              ? { ...page, rows: Array.from({ length: 51 }, () => ({ ...row })), total: 51 }
               : kind === "byte-budget"
                 ? {
                     ...page,
@@ -68,6 +69,7 @@ it.each(["oversized", "byte-budget", "invalid-page", "network"])(
                 : { ...page, nextOffset: 0 },
         }),
       );
+    }
     await expect(getAgentTreePage("w1:p1", target, {})).rejects.toThrow();
     expect(fetchMock).toHaveBeenCalledOnce();
   },

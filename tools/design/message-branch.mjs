@@ -1,3 +1,4 @@
+import { report } from "../report.mjs";
 // Isolated production UI fixture: no live agents, sockets, or model calls.
 import assert from "node:assert/strict";
 import { mkdir } from "node:fs/promises";
@@ -45,25 +46,25 @@ const snapshot = {
       id: "u",
       role: "user",
       text: "Add a shortcut beside Copy so I can jump back to an earlier message and try a different direction.",
-      timestamp: 1777370400000,
+      timestamp: 1_777_370_400_000,
     },
     {
       id: "a",
       role: "assistant",
       text: "I’ll reuse the conversation tree: edit and resend an earlier prompt, or continue from an agent reply. Your existing path stays available.",
-      timestamp: 1777370460000,
+      timestamp: 1_777_370_460_000,
     },
     {
       id: "u2",
       role: "user",
       text: "Keep the confirmation small, and make it clear that file changes are not undone.",
-      timestamp: 1777370520000,
+      timestamp: 1_777_370_520_000,
     },
     {
       id: "a2",
       role: "assistant",
       text: "The shortcut is ready. Choose a message above to explore another path.",
-      timestamp: 1777370580000,
+      timestamp: 1_777_370_580_000,
     },
   ],
 };
@@ -72,7 +73,9 @@ const server = createHttpServer(
   resolve("dist"),
   {},
 );
-await new Promise((done) => server.listen(0, "127.0.0.1", done));
+await new Promise((done) => {
+  server.listen(0, "127.0.0.1", done);
+});
 await mkdir("design-gallery/message-branch", { recursive: true });
 const browser = await chromium.launch({ headless: true });
 try {
@@ -98,7 +101,7 @@ try {
       (url) => url.pathname.startsWith("/api/"),
       async (route) => {
         const path = new URL(route.request().url()).pathname;
-        if (path === "/api/agents")
+        if (path === "/api/agents") {
           return route.fulfill({
             json: {
               agents: [agent],
@@ -106,6 +109,7 @@ try {
               workspaces: [{ workspace_id: "w1", label: "Fernblick" }],
             },
           });
+        }
         if (path.endsWith("/tree-navigation")) {
           const body = route.request().postDataJSON();
           assert.deepEqual(body.target, target);
@@ -141,12 +145,14 @@ try {
     assert.deepEqual(navigations, ["a"]);
     await dialog.getByRole("button", { name: "Cancel" }).click();
     assert.deepEqual(errors, []);
-    console.log(
+    report(
       `${width}px: confirmation, cancellation, keyboard focus, reply navigation and errors passed`,
     );
     await page.close();
   }
 } finally {
   await browser.close();
-  await new Promise((done) => server.close(done));
+  await new Promise((done) => {
+    server.close(done);
+  });
 }

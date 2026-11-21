@@ -17,7 +17,7 @@ let root: string;
 let catalog: SessionCatalog;
 const header = { type: "session", id: "saved-session", version: 3, cwd: "/project" };
 const user = (content: unknown) => ({ type: "message", message: { role: "user", content } });
-async function save(path: string, entries: unknown[]) {
+async function save(path: string, entries: Array<unknown>) {
   await writeFile(path, entries.map((entry) => JSON.stringify(entry)).join("\n") + "\n");
 }
 beforeEach(async () => {
@@ -95,6 +95,21 @@ it("discovers flat and grouped sessions, uses latest names and sorts by modifica
   expect(await catalog.get(chats[0].id)).toEqual(chats[0]);
 });
 
+it("ignores malformed nested text and upload references while retaining valid entries", async () => {
+  const uploadId = "12345678-1234-4234-8234-123456789abc.png";
+  await save(join(root, "mixed.jsonl"), [
+    header,
+    user([null, 42, { type: "text", text: 17 }, { type: "text", text: "Keep me" }]),
+    {
+      type: "custom",
+      customType: "fernblick-image-uploads",
+      data: [null, 42, {}, { id: uploadId }],
+    },
+  ]);
+  const chats = await catalog.list();
+  expect(chats).toHaveLength(1);
+  expect(chats[0]).toMatchObject({ preview: "Keep me", uploadIds: [uploadId] });
+});
 it("refreshes changed metadata, retains stable IDs and evicts removed files", async () => {
   const path = join(root, "saved.jsonl");
   await save(path, [header]);

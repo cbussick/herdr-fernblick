@@ -6,8 +6,10 @@ import { afterEach, beforeEach, expect, it, vi } from "vitest";
 import { saveImageUpload, readImageUpload } from "./imageUploads.js";
 import { prepareImages } from "../../packages/pi-live-chat/images.js";
 import { createHttpServer } from "../http/server.js";
-import type { HerdrService } from "../herdr/herdrService.js";
-import type { LiveBridge } from "../pi/liveBridge.js";
+import { HerdrService } from "../herdr/herdrService.js";
+import { LiveBridge } from "../pi/liveBridge.js";
+import { agentSchema, imageUploadSchema } from "../../src/shared/api/contracts.js";
+import { ackSchema } from "../../packages/pi-live-chat/protocol.js";
 
 let dir: string;
 beforeEach(async () => {
@@ -57,11 +59,34 @@ it("rejects traversal, mismatched magic, oversized files, symlinks, hard links a
   await expect(readImageUpload(saved.id)).rejects.toThrow("0700");
 });
 it("keeps the HTTP 10 MiB upload limit and accepts image-only commands with ten IDs, not base64", async () => {
-  const request = vi.fn(async () => ({ type: "ack", id: randomUUID(), outcome: "invoked" }));
-  const service = { getAgent: vi.fn(async () => ({ pane_id: "p1" })) } as unknown as HerdrService;
-  const server = createHttpServer(service, dir, { request } as unknown as LiveBridge);
-  await new Promise<void>((done) => server.listen(0, "127.0.0.1", done));
-  const base = `http://127.0.0.1:${(server.address() as { port: number }).port}`;
+  const service = new HerdrService({
+    request: async () => {
+      throw new Error("Unexpected Herdr request");
+    },
+  });
+  vi.spyOn(service, "getAgent").mockResolvedValue(
+    agentSchema.parse({
+      pane_id: "p1",
+      agent_status: "idle",
+      focused: false,
+      revision: 0,
+      tab_id: "t1",
+      workspace_id: "w1",
+    }),
+  );
+  const bridge = new LiveBridge(join(dir, "pi.sock"), join(dir, "herdr.sock"));
+  const request = vi
+    .spyOn(bridge, "request")
+    .mockResolvedValue(ackSchema.parse({ type: "ack", id: randomUUID(), outcome: "invoked" }));
+  const server = createHttpServer(service, dir, bridge);
+  await new Promise<void>((done) => {
+    server.listen(0, "127.0.0.1", done);
+  });
+  const address = server.address();
+  if (!address || typeof address === "string") {
+    throw new Error("Expected listening TCP server");
+  }
+  const base = `http://127.0.0.1:${address.port}`;
   try {
     const bytes = Buffer.alloc(10 * 1024 * 1024);
     examples[0][1].copy(bytes);
@@ -71,10 +96,10 @@ it("keeps the HTTP 10 MiB upload limit and accepts image-only commands with ten 
       body: bytes,
     });
     expect(response.status).toBe(201);
-    const saved = (await response.json()) as { id: string; url: string };
+    const saved = imageUploadSchema.parse(await response.json());
     expect((await (await fetch(base + saved.url)).arrayBuffer()).byteLength).toBe(bytes.length);
     const target = { runtime: randomUUID(), epoch: randomUUID(), sessionId: "session" };
-    const send = (attachments: string[]) =>
+    const send = (attachments: Array<string>) =>
       fetch(base + "/api/agents/p1/prompt", {
         method: "POST",
         headers: { Origin: base, "Content-Type": "application/json" },
@@ -96,6 +121,8 @@ it("keeps the HTTP 10 MiB upload limit and accepts image-only commands with ten 
     expect(oversized.status).toBe(413);
   } finally {
     server.closeAllConnections();
-    await new Promise<void>((done) => server.close(() => done()));
+    await new Promise<void>((done) => {
+      server.close(() => done());
+    });
   }
 });

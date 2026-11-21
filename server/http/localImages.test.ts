@@ -5,13 +5,11 @@ import { join } from "node:path";
 import { promisify } from "node:util";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
 import { createHttpServer } from "./server.js";
-import type { HerdrService } from "../herdr/herdrService.js";
-import type { LiveBridge } from "../pi/liveBridge.js";
+import { HerdrService } from "../herdr/herdrService.js";
+import { LiveBridge } from "../pi/liveBridge.js";
 import { MAX_IMAGE_BYTES } from "../../packages/pi-live-chat/protocol.js";
-import {
-  formatMessageText,
-  type MessagePart,
-} from "../../src/features/agents/chatMessageFormatting.js";
+import { formatMessageText } from "../../src/features/agents/chatMessageFormatting.js";
+import type { MessagePart } from "../../src/features/agents/chatMessageFormatting.js";
 
 const png = Buffer.from(
   "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+jRZkAAAAASUVORK5CYII=",
@@ -23,24 +21,44 @@ let server: ReturnType<typeof createHttpServer>;
 beforeEach(async () => {
   directory = await mkdtemp(join(tmpdir(), "fernblick-local-images-"));
   vi.stubEnv("FERNBLICK_UPLOAD_DIR", join(directory, "unused-uploads"));
-  server = createHttpServer({} as HerdrService, directory, {} as LiveBridge);
-  await new Promise<void>((done) => server.listen(0, "127.0.0.1", done));
-  base = `http://127.0.0.1:${(server.address() as { port: number }).port}`;
+  server = createHttpServer(
+    new HerdrService({
+      request: async () => {
+        throw new Error("Artifact route must not contact Herdr");
+      },
+    }),
+    directory,
+    new LiveBridge(join(directory, "pi.sock"), join(directory, "herdr.sock")),
+  );
+  await new Promise<void>((done) => {
+    server.listen(0, "127.0.0.1", done);
+  });
+  const address = server.address();
+  if (!address || typeof address === "string") {
+    throw new Error("Expected listening TCP server");
+  }
+  base = `http://127.0.0.1:${address.port}`;
 });
 afterEach(async () => {
   server.closeAllConnections();
-  await new Promise<void>((done) => server.close(() => done()));
+  await new Promise<void>((done) => {
+    server.close(() => done());
+  });
   vi.unstubAllEnvs();
   await rm(directory, { recursive: true, force: true });
 });
 function image(path: string, headers?: Record<string, string>) {
   return fetch(`${base}/api/local-images?path=${encodeURIComponent(path)}`, { headers });
 }
-function imageSource(parts: MessagePart[]): string | undefined {
+function imageSource(parts: Array<MessagePart>): string | undefined {
   for (const part of parts) {
-    if (part.kind === "image") return part.href;
+    if (part.kind === "image") {
+      return part.href;
+    }
     const nested = "children" in part ? imageSource(part.children) : undefined;
-    if (nested) return nested;
+    if (nested) {
+      return nested;
+    }
   }
 }
 

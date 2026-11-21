@@ -1,3 +1,4 @@
+import { report } from "../report.mjs";
 // Synthetic message-copy layout/clipboard regression; never contacts live agents.
 // Run after npm run build: node tools/design/message-copy.mjs
 import assert from "node:assert/strict";
@@ -50,7 +51,9 @@ const server = createHttpServer(
   resolve("dist"),
   {},
 );
-await new Promise((done) => server.listen(0, "127.0.0.1", done));
+await new Promise((done) => {
+  server.listen(0, "127.0.0.1", done);
+});
 try {
   for (const [engineName, engine] of [
     ["chromium", chromium],
@@ -157,7 +160,7 @@ try {
         await article.getByRole("button", { name: "Copy message", exact: true }).waitFor();
         assert.deepEqual(await bubble.boundingBox(), before, "Confirmation must not shift layout");
         assert.deepEqual(errors, []);
-        console.log(
+        report(
           `${engineName} ${width}px: copy beside timestamp, unchanged user alignment, full text width, stable confirmation passed`,
         );
         await page.close();
@@ -167,5 +170,7 @@ try {
     }
   }
 } finally {
-  await new Promise((done) => server.close(done));
+  await new Promise((done) => {
+    server.close(done);
+  });
 }

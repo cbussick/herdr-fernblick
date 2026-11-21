@@ -1,14 +1,8 @@
+import { isDomNode } from "../lib/dom";
 import a11yStyles from "../../styles/accessibility.module.css";
 import uiStyles from "./ui.module.css";
-import {
-  useEffect,
-  useRef,
-  useState,
-  type ButtonHTMLAttributes,
-  type CSSProperties,
-  type InputHTMLAttributes,
-  type ReactNode,
-} from "react";
+import { useEffect, useRef, useState } from "react";
+import type { ButtonHTMLAttributes, InputHTMLAttributes, ReactNode } from "react";
 import type { AgentStatus } from "../../shared/api/contracts";
 import { CloseIcon, PlusIcon, SearchIcon } from "./Icons";
 
@@ -23,6 +17,7 @@ export function Button({
 }) {
   return (
     <button
+      type="button"
       className={`${uiStyles["button"]} ${variant === "primary" ? "" : uiStyles[`button--${variant}`]} ${size === "small" ? uiStyles["button--small"] : ""} ${className}`}
       {...props}
     />
@@ -36,6 +31,7 @@ export function IconButton({
 }: ButtonHTMLAttributes<HTMLButtonElement> & { label: string; children: ReactNode }) {
   return (
     <button
+      type="button"
       className={`${uiStyles["icon-button"]} ${className}`}
       data-ui="icon-button"
       aria-label={label}
@@ -85,7 +81,7 @@ export function SegmentedTabs<T extends string>({
 }: {
   label: string;
   value: T;
-  options: readonly { value: T; label: string }[];
+  options: ReadonlyArray<{ value: T; label: string }>;
   onChange: (value: T) => void;
 }) {
   return (
@@ -93,7 +89,7 @@ export function SegmentedTabs<T extends string>({
       className={uiStyles["segmented-tabs"]}
       role="tablist"
       aria-label={label}
-      style={{ "--tab-count": options.length } as CSSProperties}
+      style={{ "--tab-count": options.length }}
     >
       {options.map((option) => (
         <button
@@ -149,13 +145,17 @@ export interface SpeedDialAction {
   kind: "agent" | "shell" | "workspace";
   onSelect: () => void;
 }
-export function SpeedDial({ actions }: { actions: SpeedDialAction[] }) {
+export function SpeedDial({ actions }: { actions: Array<SpeedDialAction> }) {
   const [open, setOpen] = useState(false);
   const rootRef = useRef<HTMLDivElement>(null);
   useEffect(() => {
-    if (!open) return;
+    if (!open) {
+      return;
+    }
     const close = (event: PointerEvent) => {
-      if (!rootRef.current?.contains(event.target as Node)) setOpen(false);
+      if (!isDomNode(event.target) || !rootRef.current?.contains(event.target)) {
+        setOpen(false);
+      }
     };
     document.addEventListener("pointerdown", close);
     return () => document.removeEventListener("pointerdown", close);

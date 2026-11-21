@@ -1,3 +1,4 @@
+import { report } from "../report.mjs";
 // Synthetic scroll regression: all API/SSE traffic is intercepted; no live agents are controlled.
 // PLAYWRIGHT_MODULE=/path/to/playwright/index.mjs node tools/design/transcript-follow.mjs URL
 import assert from "node:assert/strict";
@@ -55,8 +56,12 @@ for (const [engine, type] of [
       ["phone", 390, 440, 844],
       ["pixel", 393, 427, 727],
     ]) {
-      if (process.env.SCROLL_CASE && process.env.SCROLL_CASE !== device) continue;
-      if (process.env.SCROLL_ENGINE && process.env.SCROLL_ENGINE !== engine) continue;
+      if (process.env.SCROLL_CASE && process.env.SCROLL_CASE !== device) {
+        continue;
+      }
+      if (process.env.SCROLL_ENGINE && process.env.SCROLL_ENGINE !== engine) {
+        continue;
+      }
       const page = await browser.newPage({
         viewport: { width, height },
         hasTouch: device !== "tablet",
@@ -81,7 +86,7 @@ for (const [engine, type] of [
         (url) => url.pathname.startsWith("/api/"),
         (route) => {
           const path = new URL(route.request().url()).pathname;
-          if (path === "/api/agents")
+          if (path === "/api/agents") {
             return route.fulfill({
               json: {
                 agents: [agent],
@@ -89,6 +94,7 @@ for (const [engine, type] of [
                 tabs: [],
               },
             });
+          }
           if (path.endsWith("/prompt")) {
             commands.push(route);
             return;
@@ -171,7 +177,7 @@ for (const [engine, type] of [
         await stream();
         assert.equal((await geometry()).top, reading.top, "scrollbar reader stays paused");
         await transcript.hover();
-        await scroll(100000);
+        await scroll(100_000);
         await bottom("return after scrollbar reading");
         await settle();
       }
@@ -188,7 +194,7 @@ for (const [engine, type] of [
       assert.ok(paused.gap > 1, "reader scrolled above the bottom");
       await stream();
       assert.equal((await geometry()).top, paused.top, "streaming must not pull the reader down");
-      await scroll(100000);
+      await scroll(100_000);
       await bottom("reader returns to bottom");
       await settle();
       await stream();
@@ -206,7 +212,9 @@ for (const [engine, type] of [
       assert.ok((await geometry()).gap > 1, "reader is above the bottom before sending");
       await page.locator("#agent-prompt").fill("A new turn from the composer");
       await send();
-      for (let i = 0; i < 100 && commands.length < 1; i++) await page.waitForTimeout(20);
+      for (let i = 0; i < 100 && commands.length < 1; i++) {
+        await page.waitForTimeout(20);
+      }
       assert.equal(commands.length, 1);
       await bottom("send from a paused transcript must resume following immediately");
       if (device === "pixel") {
@@ -280,7 +288,9 @@ for (const [engine, type] of [
       await page.locator("#agent-prompt").fill("Another turn using the keyboard");
       await page.getByRole("button", { name: "Send message", exact: true }).focus();
       await page.keyboard.press("Enter");
-      for (let i = 0; i < 100 && commands.length < 2; i++) await page.waitForTimeout(20);
+      for (let i = 0; i < 100 && commands.length < 2; i++) {
+        await page.waitForTimeout(20);
+      }
       assert.equal(commands.length, 2);
       await bottom("keyboard send also resumes following immediately");
       await commands[1].fulfill({
@@ -294,7 +304,9 @@ for (const [engine, type] of [
       await page.setViewportSize({ width, height });
       await settle();
       await send();
-      for (let i = 0; i < 100 && commands.length < 3; i++) await page.waitForTimeout(20);
+      for (let i = 0; i < 100 && commands.length < 3; i++) {
+        await page.waitForTimeout(20);
+      }
       assert.equal(commands.length, 3);
       await bottom("multiline send with keyboard open");
       await commands[2].fulfill({
@@ -328,7 +340,7 @@ for (const [engine, type] of [
       await settle();
       assert.equal((await geometry()).top, keyboardReading.top);
       await transcript.hover();
-      await scroll(100000);
+      await scroll(100_000);
       await bottom("return after keyboard reading");
       await settle();
       if (engine === "chromium" && device !== "tablet") {
@@ -357,7 +369,7 @@ for (const [engine, type] of [
         await cdp.detach();
       }
       assert.deepEqual(errors, []);
-      console.log(
+      report(
         `${engine}/${device}: resize, reader pause/resume, click/keyboard sends, multiline ACK, echo and keyboard dismissal passed`,
       );
       await page.close();

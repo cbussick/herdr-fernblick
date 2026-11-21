@@ -5,26 +5,37 @@ import { join } from "node:path";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
 import { BoardStore } from "../boards/storage.js";
 import { HerdrService } from "../herdr/herdrService.js";
-import { HerdrClient } from "../herdr/HerdrClient.js";
+
 import { SessionCatalog } from "./sessionCatalog.js";
 import { ChatArtifacts } from "./chatArtifacts.js";
-import * as images from "../../packages/pi-live-chat/images.js";
+import { saveImageUpload, removeImageUpload } from "../../packages/pi-live-chat/images.js";
+
+vi.mock(import("../../packages/pi-live-chat/images.js"), async (importOriginal) => {
+  const original = await importOriginal();
+  return { ...original, removeImageUpload: vi.fn(original.removeImageUpload) };
+});
 import type { Agent } from "../../src/shared/api/contracts.js";
+
+const disconnectedClient = {
+  request(): Promise<never> {
+    throw new Error("Unexpected Herdr request in artifact-only test");
+  },
+};
 
 let root: string;
 let catalog: SessionCatalog;
 let boards: BoardStore;
 let service: HerdrService;
-let agents: Agent[];
+let agents: Array<Agent>;
 const png = Buffer.from([137, 80, 78, 71, 13, 10, 26, 10]);
 const key = (session: string, socket = "/fixture/herdr.sock") => JSON.stringify([socket, session]);
 const header = (session = "original") => ({ type: "session", id: session, cwd: "/project" });
-const refs = (...ids: string[]) => ({
+const refs = (...ids: Array<string>) => ({
   type: "custom",
   customType: "fernblick-image-uploads",
   data: ids.map((id) => ({ hash: "a".repeat(64), id })),
 });
-async function save(name: string, entries: unknown[]) {
+async function save(name: string, entries: Array<unknown>) {
   const path = join(root, `${name}.jsonl`);
   await writeFile(path, entries.map((entry) => JSON.stringify(entry)).join("\n") + "\n");
   return (await catalog.list()).find((chat) => chat.path === path)!;
@@ -40,7 +51,7 @@ beforeEach(async () => {
   catalog = new SessionCatalog(root);
   boards = new BoardStore(join(root, "boards"));
   service = new HerdrService(
-    {} as HerdrClient,
+    disconnectedClient,
     catalog,
     new ChatArtifacts(boards, "/fixture/herdr.sock"),
   );
@@ -63,8 +74,8 @@ afterEach(async () => {
 });
 
 it("deletes the conversation, native board/assets, all snapshots and exclusive uploads only", async () => {
-  const upload = await images.saveImageUpload(png, "image/png");
-  const shared = await images.saveImageUpload(png, "image/png");
+  const upload = await saveImageUpload(png, "image/png");
+  const shared = await saveImageUpload(png, "image/png");
   const chat = await save("original", [header(), refs(upload.id, shared.id)]);
   const other = await save("fork", [header("fork"), refs(shared.id)]);
   const board = await boards.open(key("original"));
@@ -116,7 +127,7 @@ it("cleans legacy boards in this Herdr namespace and owned boards from previous 
   boards.close();
   boards = new BoardStore(join(root, "boards"));
   service = new HerdrService(
-    {} as HerdrClient,
+    disconnectedClient,
     catalog,
     new ChatArtifacts(boards, "/fixture/herdr.sock"),
   );
@@ -153,12 +164,10 @@ it("keeps boards and browser drafts belonging to another file for the same Pi se
 });
 
 it("restores the transcript after a cleanup failure and allows an idempotent retry", async () => {
-  const upload = await images.saveImageUpload(png, "image/png");
+  const upload = await saveImageUpload(png, "image/png");
   const chat = await save("original", [header(), refs(upload.id)]);
   const board = await boards.open(key("original"));
-  const remove = vi
-    .spyOn(images, "removeImageUpload")
-    .mockRejectedValueOnce(new Error("permission denied"));
+  const remove = vi.mocked(removeImageUpload).mockRejectedValueOnce(new Error("permission denied"));
   await expect(service.deleteChat(chat.id)).rejects.toMatchObject({ status: 503 });
   expect(await exists(chat.path)).toBe(true);
   expect(await exists(upload.path)).toBe(true);
@@ -205,7 +214,7 @@ it("preserves a different session replaced exactly between validation and the re
 });
 
 it("fails closed rather than deleting shared files when another saved chat is damaged", async () => {
-  const upload = await images.saveImageUpload(png, "image/png");
+  const upload = await saveImageUpload(png, "image/png");
   const chat = await save("original", [header(), refs(upload.id)]);
   const board = await boards.open(key("original"));
   await writeFile(join(root, "damaged.jsonl"), "unreadable session metadata\n");
@@ -218,7 +227,7 @@ it("fails closed rather than deleting shared files when another saved chat is da
 it("removes a retained shared board and uploads when their final conversation is deleted", async () => {
   const board = await boards.open(key("original"));
   const snapshot = await boards.capture(board.id, 0, png);
-  const upload = await images.saveImageUpload(png, "image/png");
+  const upload = await saveImageUpload(png, "image/png");
   const entry = {
     type: "message",
     message: {
@@ -261,7 +270,7 @@ it("replays the deletion result after a lost reply or backend restart without ke
   const chat = await save("original", [header()]);
   await boards.open(key("original"));
   const result = await service.deleteChat(chat.id);
-  const restarted = new HerdrService({} as HerdrClient, new SessionCatalog(root));
+  const restarted = new HerdrService(disconnectedClient, new SessionCatalog(root));
   expect(await restarted.deleteChat(chat.id)).toEqual(result);
   const receipt = await readFile(join(root, `.fernblick-deleted-${chat.id}.json`), "utf8");
   expect(JSON.parse(receipt)).toEqual(result);
@@ -270,8 +279,8 @@ it("replays the deletion result after a lost reply or backend restart without ke
 });
 
 it("deletes a closed chat alongside an empty session placeholder without weakening shared-file protection", async () => {
-  const ownUpload = await images.saveImageUpload(png, "image/png");
-  const sharedUpload = await images.saveImageUpload(png, "image/png");
+  const ownUpload = await saveImageUpload(png, "image/png");
+  const sharedUpload = await saveImageUpload(png, "image/png");
   const chat = await save("original", [header(), refs(ownUpload.id, sharedUpload.id)]);
   const other = await save("other", [header("other"), refs(sharedUpload.id)]);
   const placeholder = join(root, "empty.jsonl");

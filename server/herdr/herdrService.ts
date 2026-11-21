@@ -12,12 +12,16 @@ import {
   shellTabSchema,
   terminalOutputSchema,
   workspaceSchema,
-  type Agent,
-  type KeyName,
-  type TerminalReadSource,
+} from "../../src/shared/api/contracts.js";
+import type {
+  Agent,
+  KeyName,
+  TerminalReadSource,
+  savedChatsResponseSchema,
 } from "../../src/shared/api/contracts.js";
 import { getDefaultPiAgentName } from "../../src/shared/agentNaming.js";
-import { HerdrClient, HerdrRequestError } from "./HerdrClient.js";
+import type { HerdrClient } from "./HerdrClient.js";
+import { HerdrRequestError } from "./HerdrClient.js";
 
 const extensionJsPath = fileURLToPath(
   new URL("../../packages/pi-live-chat/index.js", import.meta.url),
@@ -40,7 +44,10 @@ const extensionArgs = () =>
     : process.env.FERNBLICK_PI_GLOBAL === "1"
       ? []
       : ["--extension", fernblickExtensionPath];
-const delay = (milliseconds: number) => new Promise((resolve) => setTimeout(resolve, milliseconds));
+const delay = (milliseconds: number) =>
+  new Promise((resolve) => {
+    setTimeout(resolve, milliseconds);
+  });
 
 const tabSchema = z.object({
   label: z.string(),
@@ -98,19 +105,34 @@ const workspaceCreatedResultSchema = z.object({
   workspace: workspaceSchema,
 });
 
+type TabCreateParams = {
+  workspace_id: string;
+  focus: false;
+  label?: string;
+  cwd?: string;
+};
+type TerminalReadParams = {
+  pane_id?: string;
+  target?: string;
+  format: "text";
+  strip_ansi: true;
+  source: TerminalReadSource;
+  lines?: number;
+};
+
 export class HerdrService {
   private readonly resuming = new Map<string, Promise<Agent>>();
   private readonly sessionChanges = new Set<string>();
   private readonly deleting = new Map<
     string,
-    Promise<{ sessionId: string | null; boardIds: string[] }>
+    Promise<{ sessionId: string | null; boardIds: Array<string> }>
   >();
   private cleanupQueue: Promise<void> = Promise.resolve();
   // Herdr can detect a new Pi process before its session-reporting extension catches up.
   private readonly recentlyResumed = new Map<string, { paneId: string; expires: number }>();
 
   constructor(
-    private readonly client: HerdrClient,
+    private readonly client: Pick<HerdrClient, "request">,
     private readonly sessions = new SessionCatalog(),
     private readonly artifacts?: ChatArtifacts,
     private readonly sessionIndex?: SessionIndex,
@@ -122,8 +144,7 @@ export class HerdrService {
       snapshot ? Promise.resolve(snapshot.chats) : this.sessions.list(),
       this.getDashboard(),
     ]);
-    return {
-      ...(snapshot ? { indexing: snapshot.indexing, indexError: snapshot.indexError } : {}),
+    const result: z.infer<typeof savedChatsResponseSchema> = {
       chats: chats.map((chat) =>
         savedChatSchema.parse({
           ...chat,
@@ -131,6 +152,11 @@ export class HerdrService {
         }),
       ),
     };
+    if (snapshot) {
+      result.indexing = snapshot.indexing;
+      result.indexError = snapshot.indexError;
+    }
+    return result;
   }
 
   async getSession(sessionId: string) {
@@ -139,19 +165,26 @@ export class HerdrService {
     // Live agents may use --session files outside the saved-session directory.
     const knownPaths = new Set(chats.map((chat) => resolve(chat.path)));
     for (const agent of dashboard.agents) {
-      if (agent.agent !== "pi" || agent.agent_session?.kind !== "path") continue;
+      if (agent.agent !== "pi" || agent.agent_session?.kind !== "path") {
+        continue;
+      }
       const path = resolve(agent.agent_session.value);
-      if (knownPaths.has(path)) continue;
+      if (knownPaths.has(path)) {
+        continue;
+      }
       knownPaths.add(path);
       const active = await this.sessions.readActive(path);
-      if (active) chats.push(active);
+      if (active) {
+        chats.push(active);
+      }
     }
     const matches = chats.filter((chat) => chat.sessionId === sessionId);
-    if (matches.length > 1)
+    if (matches.length > 1) {
       throw new SavedChatError(
         409,
         "More than one session file has this ID. Open it from Past sessions instead.",
       );
+    }
     const chat = matches[0];
     // A resumed pane exists before Pi reports its session. Use the same bounded
     // startup tracking as the history list so polling does not flash "inactive".
@@ -165,8 +198,9 @@ export class HerdrService {
             agent.agent_session?.kind === "path" &&
             resolve(agent.agent_session.value) === chat.path)),
     );
-    if (agents.length > 1)
+    if (agents.length > 1) {
       throw new SavedChatError(409, "This conversation is running in more than one pane.");
+    }
     const agent = agents[0] ?? null;
     return {
       agent,
@@ -174,9 +208,12 @@ export class HerdrService {
     };
   }
 
-  private findActiveChat(path: string, agents: Agent[]) {
-    for (const [key, value] of this.recentlyResumed)
-      if (value.expires <= Date.now()) this.recentlyResumed.delete(key);
+  private findActiveChat(path: string, agents: Array<Agent>) {
+    for (const [key, value] of this.recentlyResumed) {
+      if (value.expires <= Date.now()) {
+        this.recentlyResumed.delete(key);
+      }
+    }
     return agents.find(
       (agent) =>
         agent.agent === "pi" &&
@@ -187,12 +224,15 @@ export class HerdrService {
   }
 
   deleteChat(id: string) {
-    if (this.resuming.has(id))
+    if (this.resuming.has(id)) {
       return Promise.reject(
         new SavedChatError(409, "This session is being resumed. Try again later."),
       );
+    }
     const pending = this.deleting.get(id);
-    if (pending) return pending;
+    if (pending) {
+      return pending;
+    }
     const operation = this.cleanupQueue.then(() => this.deleteSavedChat(id));
     this.cleanupQueue = operation.then(
       () => undefined,
@@ -218,31 +258,36 @@ export class HerdrService {
       throw error;
     }
     const dashboard = await this.getDashboard();
-    if (this.findActiveChat(chat.path, dashboard.agents))
+    if (this.findActiveChat(chat.path, dashboard.agents)) {
       throw new SavedChatError(409, "This session is active. Close it before deleting it.");
+    }
     if (
       dashboard.agents.some((agent) => agent.agent === "pi" && agent.agent_session?.kind !== "path")
-    )
+    ) {
       throw new SavedChatError(
         409,
         "Cannot safely delete while a Pi agent has an unreported session. Wait for it to register or close it.",
       );
+    }
     const result = await this.sessions.delete(id, async (current) =>
       this.artifacts
         ? this.artifacts.delete(current, await this.sessions.list(true))
         : { sessionId: current.sessionId, boardIds: [] },
     );
     this.sessionIndex?.forget(id);
-    return result!;
+    return result;
   }
 
   resumeChat(id: string, workspaceId: string) {
-    if (this.deleting.has(id))
+    if (this.deleting.has(id)) {
       return Promise.reject(
         new SavedChatError(409, "This session is being deleted. Refresh the list."),
       );
+    }
     const pending = this.resuming.get(id);
-    if (pending) return pending;
+    if (pending) {
+      return pending;
+    }
     const operation = this.resumeSavedChat(id, workspaceId);
     this.resuming.set(id, operation);
     void operation.finally(() => this.resuming.delete(id)).catch(() => {});
@@ -253,15 +298,19 @@ export class HerdrService {
     const chat = await this.sessions.get(id);
     const dashboard = await this.getDashboard();
     const active = this.findActiveChat(chat.path, dashboard.agents);
-    if (active) return { ...active, pi_session_id: chat.sessionId };
-    if (!dashboard.workspaces.some((workspace) => workspace.workspace_id === workspaceId))
+    if (active) {
+      return { ...active, pi_session_id: chat.sessionId };
+    }
+    if (!dashboard.workspaces.some((workspace) => workspace.workspace_id === workspaceId)) {
       throw new SavedChatError(404, "Workspace no longer exists. Choose another workspace.");
+    }
     const directory = await stat(chat.cwd).catch(() => null);
-    if (!directory?.isDirectory())
+    if (!directory?.isDirectory()) {
       throw new SavedChatError(
         409,
         "The original project directory is unavailable. Restore it before resuming.",
       );
+    }
     const agent = await this.createPiAgent(workspaceId, undefined, chat.title.slice(0, 80), {
       path: chat.path,
       cwd: chat.cwd,
@@ -325,16 +374,14 @@ export class HerdrService {
     tabLabel?: string,
     session?: { path: string; cwd: string },
   ) {
-    const createdTab = await this.client.request(
-      "tab.create",
-      {
-        workspace_id: workspaceId,
-        ...(tabLabel ? { label: tabLabel } : {}),
-        ...(session ? { cwd: session.cwd } : {}),
-        focus: false,
-      },
-      tabCreatedResultSchema,
-    );
+    const params: TabCreateParams = { workspace_id: workspaceId, focus: false };
+    if (tabLabel) {
+      params.label = tabLabel;
+    }
+    if (session) {
+      params.cwd = session.cwd;
+    }
+    const createdTab = await this.client.request("tab.create", params, tabCreatedResultSchema);
     const agentName = name ?? getDefaultPiAgentName(createdTab.root_pane.pane_id);
     const startParams = {
       name: agentName,
@@ -347,7 +394,7 @@ export class HerdrService {
       // tab.create can return while shell initialization still owns the foreground.
       // Herdr rejects this before sending input, so only this rejection is safe to
       // retry. Never replay a timeout/disconnect: Pi may already have launched.
-      const deadline = Date.now() + 5_000;
+      const deadline = Date.now() + 5000;
       while (true) {
         try {
           return await this.client.request("agent.start", startParams, agentStartedResultSchema);
@@ -393,11 +440,11 @@ export class HerdrService {
   }
 
   async createTab(workspaceId: string, label?: string) {
-    const result = await this.client.request(
-      "tab.create",
-      { workspace_id: workspaceId, ...(label ? { label } : {}), focus: false },
-      tabCreatedResultSchema,
-    );
+    const params: TabCreateParams = { workspace_id: workspaceId, focus: false };
+    if (label) {
+      params.label = label;
+    }
+    const result = await this.client.request("tab.create", params, tabCreatedResultSchema);
     return shellTabSchema.parse({
       label: result.tab.label,
       pane_id: result.root_pane.pane_id,
@@ -412,7 +459,7 @@ export class HerdrService {
   }
 
   async restartPiAgent(target: string, requestShutdown: (agent: Agent) => Promise<void>) {
-    return (await this.changePiSession(target, requestShutdown, true))!;
+    return this.changePiSession(target, requestShutdown, true);
   }
 
   async exitPiAgent(target: string, requestShutdown: (agent: Agent) => Promise<void>) {
@@ -422,8 +469,18 @@ export class HerdrService {
   private async changePiSession(
     target: string,
     requestShutdown: (agent: Agent) => Promise<void>,
+    restart: true,
+  ): Promise<Agent>;
+  private async changePiSession(
+    target: string,
+    requestShutdown: (agent: Agent) => Promise<void>,
+    restart: false,
+  ): Promise<void>;
+  private async changePiSession(
+    target: string,
+    requestShutdown: (agent: Agent) => Promise<void>,
     restart: boolean,
-  ) {
+  ): Promise<Agent | void> {
     const { agent } = await this.client.request("agent.get", { target }, agentInfoResultSchema);
     if (agent.agent !== "pi" || agent.agent_session?.kind !== "path") {
       throw new HerdrRequestError(
@@ -438,11 +495,12 @@ export class HerdrService {
       );
     }
 
-    if (this.sessionChanges.has(agent.pane_id))
+    if (this.sessionChanges.has(agent.pane_id)) {
       throw new HerdrRequestError(
         "agent_busy",
         "A restart or exit is already in progress for this pane",
       );
+    }
     this.sessionChanges.add(agent.pane_id);
     try {
       const name = agent.name ?? getDefaultPiAgentName(agent.pane_id);
@@ -460,8 +518,12 @@ export class HerdrService {
           break;
         }
       }
-      if (!exited) throw new HerdrRequestError("shutdown_timeout", "Pi did not exit in time");
-      if (!restart) return;
+      if (!exited) {
+        throw new HerdrRequestError("shutdown_timeout", "Pi did not exit in time");
+      }
+      if (!restart) {
+        return;
+      }
 
       await delay(150);
       const restarted = await this.client.request(
@@ -493,7 +555,9 @@ export class HerdrService {
     if (source === "recent_unwrapped") {
       const dashboard = await this.getDashboard();
       const agent = dashboard.agents.find((candidate) => candidate.pane_id === paneId);
-      if (agent) this.requireIdleHistory(agent.agent_status);
+      if (agent) {
+        this.requireIdleHistory(agent.agent_status);
+      }
     }
     return this.readTerminal("pane.read", { pane_id: paneId }, lines, source);
   }
@@ -510,17 +574,16 @@ export class HerdrService {
     lines: number,
     source: TerminalReadSource,
   ) {
-    const result = await this.client.request(
-      method,
-      {
-        ...target,
-        format: "text",
-        strip_ansi: true,
-        source,
-        ...(source === "recent_unwrapped" ? { lines } : {}),
-      },
-      agentReadResultSchema,
-    );
+    const params: TerminalReadParams = {
+      ...target,
+      format: "text",
+      strip_ansi: true,
+      source,
+    };
+    if (source === "recent_unwrapped") {
+      params.lines = lines;
+    }
+    const result = await this.client.request(method, params, agentReadResultSchema);
     return result.read;
   }
 

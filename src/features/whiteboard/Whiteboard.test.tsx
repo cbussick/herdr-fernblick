@@ -1,17 +1,22 @@
-import { act, type ReactNode } from "react";
-import { create, type ReactTestRenderer } from "react-test-renderer";
+import { dispatchTestEvent } from "../../shared/lib/dispatchTestEvent";
+import { act } from "react";
+import type { ReactNode } from "react";
+import { create } from "react-test-renderer";
+import type { ReactTestRenderer } from "react-test-renderer";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
-import { Whiteboard, type WhiteboardProps } from "./Whiteboard";
+import { Whiteboard } from "./Whiteboard";
+import type { WhiteboardProps } from "./Whiteboard";
 import type { BoardEditorProps } from "./editorTypes";
 import type { BoardState } from "../../../packages/pi-live-chat/boardProtocol";
 import { board, deferred, target } from "./testFixtures";
+import type { boardApi } from "./boardApi";
 
 const mocks = vi.hoisted(() => ({
   open: vi.fn(),
   save: vi.fn(),
   revoke: vi.fn(),
   close: vi.fn(),
-  events: vi.fn(),
+  events: vi.fn<typeof boardApi.events>(),
   upload: vi.fn(),
   fit: vi.fn(),
   failEditor: false,
@@ -28,7 +33,9 @@ vi.mock("../flow/FlowBoardEditor", async () => {
   const { useEffect, useState } = await import("react");
   return {
     default: function MockEditor(props: BoardEditorProps) {
-      if (mocks.failEditor) throw new Error("Fixture editor failed");
+      if (mocks.failEditor) {
+        throw new Error("Fixture editor failed");
+      }
       const [onReady] = useState(() => props.onReady);
       useEffect(() => {
         onReady({ fit: mocks.fit });
@@ -42,7 +49,9 @@ let renderer: ReactTestRenderer;
 let props: WhiteboardProps;
 async function flush() {
   await act(async () => {
-    await new Promise((resolve) => setTimeout(resolve, 10));
+    await new Promise((resolve) => {
+      setTimeout(resolve, 10);
+    });
   });
 }
 function button(label: string) {
@@ -106,12 +115,13 @@ it("uses the editor Download control instead of adding a second header export bu
   expect(editor().props.downloadMenuOpen).toBe(false);
 });
 it("identifies the agent and removes sharing, history and repeated permission explanations", async () => {
-  await updateAccess({ mode: "edit", state: "active", expiresAt: Date.now() + 60000 });
+  await updateAccess({ mode: "edit", state: "active", expiresAt: Date.now() + 60_000 });
   const output = JSON.stringify(renderer.toJSON());
   expect(output).toContain("Planner");
   expect(output).toContain("FeBO · Orchestrator");
-  for (const copy of ["Share drawing", "Saved snapshots", "Agent can edit", "Prompts send"])
+  for (const copy of ["Share drawing", "Saved snapshots", "Agent can edit", "Prompts send"]) {
     expect(output).not.toContain(copy);
+  }
   expect(button("Stop access")).toBeDefined();
 });
 it("uses Working without repeating the agent name", async () => {
@@ -142,7 +152,7 @@ it("replaces initial loading with actionable failure, never a Saved label", asyn
   expect(JSON.stringify(renderer.toJSON())).toContain("Offline");
   expect(button("Reconnect board")).toBeDefined();
   mocks.open.mockResolvedValue(board());
-  await act(async () => button("Reconnect board").props.onClick());
+  await act(async () => dispatchTestEvent(button("Reconnect board"), "onClick"));
   await flush();
   expect(JSON.stringify(renderer.toJSON())).toContain('"Saved"');
 });
@@ -158,7 +168,7 @@ it("ends the loader on editor failure and permits Back without an unsaved-change
     expect(output).toContain("The drawing editor could not load.");
     expect(output).not.toContain("Loading whiteboard");
     expect(output).not.toContain('"Saved"');
-    await act(async () => button("← Back").props.onClick());
+    await act(async () => dispatchTestEvent(button("← Back"), "onClick"));
     expect(props.onClose).toHaveBeenCalledOnce();
   } finally {
     report.mockRestore();
@@ -182,8 +192,12 @@ it.each(["nonempty", "empty", "deleted"])(
   "forwards a %s board prompt without exporting/uploading an automatic image",
   async (kind) => {
     const state = board(2);
-    if (kind === "empty") state.scene.elements = [];
-    if (kind === "deleted") state.scene.elements[0].isDeleted = true;
+    if (kind === "empty") {
+      state.scene.elements = [];
+    }
+    if (kind === "deleted") {
+      state.scene.elements[0].isDeleted = true;
+    }
     mocks.open.mockResolvedValue(state);
     await act(async () =>
       mocks.events.mock.lastCall![2]({
@@ -196,7 +210,7 @@ it.each(["nonempty", "empty", "deleted"])(
     await flush();
     props.conversation.draft = "Draw an elephant";
     await act(async () => renderer.update(<Whiteboard {...props} />));
-    await act(async () => form().props.onSubmit({ preventDefault() {} }));
+    await act(async () => dispatchTestEvent(form(), "onSubmit", { preventDefault() {} }));
     await flush();
     expect(props.conversation.onSend).toHaveBeenCalledWith({
       boardId: state.id,
@@ -210,10 +224,10 @@ it.each(["nonempty", "empty", "deleted"])(
 it("flushes manual changes before forwarding and prevents double submission", async () => {
   props.conversation.draft = "Draw";
   await act(async () => renderer.update(<Whiteboard {...props} />));
-  await act(async () => editor().props.onChange(board(2).scene));
+  await act(async () => dispatchTestEvent(editor(), "onChange", board(2).scene));
   await act(async () => {
-    form().props.onSubmit({ preventDefault() {} });
-    form().props.onSubmit({ preventDefault() {} });
+    await dispatchTestEvent(form(), "onSubmit", { preventDefault() {} });
+    await dispatchTestEvent(form(), "onSubmit", { preventDefault() {} });
   });
   await flush();
   expect(mocks.save).toHaveBeenCalledOnce();
@@ -224,8 +238,8 @@ it("retains a draft and does not forward when flushing fails", async () => {
   props.conversation.draft = "Keep this question";
   mocks.save.mockRejectedValueOnce(new Error("Save failed"));
   await act(async () => renderer.update(<Whiteboard {...props} />));
-  await act(async () => editor().props.onChange(board(2).scene));
-  await act(async () => form().props.onSubmit({ preventDefault() {} }));
+  await act(async () => dispatchTestEvent(editor(), "onChange", board(2).scene));
+  await act(async () => dispatchTestEvent(form(), "onSubmit", { preventDefault() {} }));
   await flush();
   expect(props.conversation.onSend).not.toHaveBeenCalled();
   expect(props.conversation.onDraftChange).not.toHaveBeenCalled();
@@ -238,14 +252,16 @@ it.each(["unmount", "busy", "unsupported", "disconnected", "invalid scene"])(
     const saved = deferred<BoardState>();
     mocks.save.mockReturnValueOnce(saved.promise);
     await act(async () => renderer.update(<Whiteboard {...props} />));
-    await act(async () => editor().props.onChange(board(2).scene));
-    await act(async () => form().props.onSubmit({ preventDefault() {} }));
+    await act(async () => dispatchTestEvent(editor(), "onChange", board(2).scene));
+    await act(async () => dispatchTestEvent(form(), "onSubmit", { preventDefault() {} }));
     expect(editor().props.locked).toBe(true);
-    if (change === "unmount") await act(async () => renderer.unmount());
-    else if (change === "disconnected") await act(async () => mocks.events.mock.lastCall![3]());
-    else if (change === "invalid scene")
-      await act(async () => editor().props.onError("Unsupported drawing"));
-    else
+    if (change === "unmount") {
+      await act(async () => renderer.unmount());
+    } else if (change === "disconnected") {
+      await act(async () => mocks.events.mock.lastCall![3]());
+    } else if (change === "invalid scene") {
+      await act(async () => dispatchTestEvent(editor(), "onError", "Unsupported drawing"));
+    } else {
       await act(async () =>
         renderer.update(
           <Whiteboard
@@ -255,6 +271,7 @@ it.each(["unmount", "busy", "unsupported", "disconnected", "invalid scene"])(
           />,
         ),
       );
+    }
     await act(async () => saved.resolve(board(2)));
     await flush();
     expect(props.conversation.onSend).not.toHaveBeenCalled();
@@ -264,7 +281,7 @@ it("blocks sending while busy or without board capability", async () => {
   props.conversation.draft = "Draw";
   await act(async () => renderer.update(<Whiteboard {...props} agentState="working" />));
   expect(button("Send").props.disabled).toBe(true);
-  await act(async () => form().props.onSubmit({ preventDefault() {} }));
+  await act(async () => dispatchTestEvent(form(), "onSubmit", { preventDefault() {} }));
   await act(async () => renderer.update(<Whiteboard {...props} structured={false} />));
   expect(button("Send").props.disabled).toBe(true);
   expect(JSON.stringify(renderer.toJSON())).toContain("Run /reload in Pi");
@@ -279,16 +296,16 @@ it("preserves drafts and exposes reconnect when the board disconnects", async ()
   expect(props.onClose).not.toHaveBeenCalled();
 });
 it("keeps failed revocation visible without claiming access ended", async () => {
-  await updateAccess({ mode: "edit", state: "active", expiresAt: Date.now() + 60000 });
+  await updateAccess({ mode: "edit", state: "active", expiresAt: Date.now() + 60_000 });
   mocks.revoke.mockRejectedValueOnce(new Error("Could not revoke access"));
-  await act(async () => button("Stop access").props.onClick());
+  await act(async () => dispatchTestEvent(button("Stop access"), "onClick"));
   await flush();
   expect(renderer.root.findAllByProps({ role: "alert" })).toHaveLength(1);
   expect(button("Stop access").props.disabled).toBe(false);
 });
 it("returning to chat or closing the view never revokes ongoing board access", async () => {
-  await updateAccess({ mode: "edit", state: "active", expiresAt: Date.now() + 60000 });
-  await act(async () => button("← Back").props.onClick());
+  await updateAccess({ mode: "edit", state: "active", expiresAt: Date.now() + 60_000 });
+  await act(async () => dispatchTestEvent(button("← Back"), "onClick"));
   expect(props.onClose).toHaveBeenCalledOnce();
   await act(async () => renderer.unmount());
   expect(mocks.revoke).not.toHaveBeenCalled();

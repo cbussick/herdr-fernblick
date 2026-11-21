@@ -35,7 +35,7 @@ it("keeps skills that share a name with prompt templates, which expand after ski
   expect(skillPrompt(pi, "/skill:review").expandPromptTemplates).toBe(true);
 });
 it("bounds catalogue metadata and count and ignores names Pi cannot address unambiguously", () => {
-  const commands: SlashCommandInfo[] = Array.from({ length: 1001 }, (_, i) => ({
+  const commands: Array<SlashCommandInfo> = Array.from({ length: 1001 }, (_, i) => ({
     ...skill(`skill-${i}`),
     description: "Use this skill",
   }));

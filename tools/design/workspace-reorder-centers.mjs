@@ -1,3 +1,4 @@
+import { report, reportError } from "../report.mjs";
 // Synthetic fixtures only; never connects to Herdr/Pi.
 // node tools/design/workspace-reorder-centers.mjs http://127.0.0.1:5243
 import assert from "node:assert/strict";
@@ -31,9 +32,12 @@ try {
         await page.route("**/api/**", async (route) => {
           const request = route.request();
           const path = new URL(request.url()).pathname;
-          if (!path.startsWith("/api/")) return route.continue();
-          if (path === "/api/agents")
+          if (!path.startsWith("/api/")) {
+            return route.continue();
+          }
+          if (path === "/api/agents") {
             return route.fulfill({ json: { agents: [], tabs: [], workspaces } });
+          }
           if (path === "/api/workspaces/move" && request.method() === "POST") {
             const body = request.postDataJSON();
             mutations.push(body);
@@ -82,7 +86,9 @@ try {
         await preview.waitFor();
         await page.evaluate(
           () =>
-            new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve))),
+            new Promise((resolve) => {
+              requestAnimationFrame(() => requestAnimationFrame(resolve));
+            }),
         );
         const moveCenter = async (desired) => {
           const rect = await preview.boundingBox();
@@ -98,7 +104,9 @@ try {
             await page.evaluate(() => new Promise(requestAnimationFrame));
             const measured = await preview.boundingBox();
             const error = desired - measured.y - measured.height / 2;
-            if (Math.abs(error) <= 0.5) break;
+            if (Math.abs(error) <= 0.5) {
+              break;
+            }
             pointerY += error;
             await send("touchMove");
             await page.waitForTimeout(16);
@@ -130,8 +138,9 @@ try {
           `${name}: moving the center back must remove the indicator`,
         );
         await moveCenter(midpoint + sign);
-        if (process.env.REORDER_SCREENSHOTS)
+        if (process.env.REORDER_SCREENSHOTS) {
           await page.screenshot({ path: `/tmp/workspace-center-${direction}-${grabOffset}.png` });
+        }
         await send("touchEnd");
         await page.waitForFunction(
           () =>
@@ -148,10 +157,10 @@ try {
           await cards.locator(":scope > summary strong").allTextContents(),
           direction === "down" ? ["Beta", "Alpha", "Gamma"] : ["Alpha", "Gamma", "Beta"],
         );
-        console.log(`${name}: PASS center crossing, reversal, indicator and saved order`);
+        report(`${name}: PASS center crossing, reversal, indicator and saved order`);
       } catch (error) {
         failures.push(`${name}: ${error.message}`);
-        console.error(`${name}: ${error.message}`);
+        reportError(`${name}: ${error.message}`);
       } finally {
         await page.close();
       }

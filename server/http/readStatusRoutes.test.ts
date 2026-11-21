@@ -1,9 +1,13 @@
 import { chmod, mkdtemp, readdir, rm, symlink, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { createServer as createSocketServer, type Server as SocketServer } from "node:net";
+import { createServer as createSocketServer } from "node:net";
+import type { Server as SocketServer } from "node:net";
 import type { Server } from "node:http";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
+import { z } from "zod";
+import { agentsResponseSchema } from "../../src/shared/api/contracts.js";
+import { readReceiptRecordSchema } from "../../src/shared/api/readReceiptDiagnostics.js";
 import { HerdrClient } from "../herdr/HerdrClient.js";
 import { HerdrService } from "../herdr/herdrService.js";
 import { LiveBridge } from "../pi/liveBridge.js";
@@ -17,8 +21,8 @@ let socketPath: string;
 let herdr: SocketServer;
 let server: Server;
 let base: string;
-let agents: Agent[];
-let methods: string[];
+let agents: Array<Agent>;
+let methods: Array<string>;
 let snapshotError: boolean;
 let holdSnapshot: ((send: () => void) => void) | undefined;
 
@@ -26,7 +30,18 @@ async function receiptIds() {
   return (await readdir(join(directory, "receipts")))
     .filter((name) => name.endsWith(".read"))
     .map((name) => name.split(".").at(-2))
-    .sort();
+    .sort((a, b) => {
+      if (a === b) {
+        return 0;
+      }
+      if (a === undefined) {
+        return 1;
+      }
+      if (b === undefined) {
+        return -1;
+      }
+      return a < b ? -1 : 1;
+    });
 }
 
 function createHerdrSocket() {
@@ -35,7 +50,9 @@ function createHerdrSocket() {
     let buffer = "";
     socket.on("data", (chunk) => {
       buffer += chunk;
-      if (!buffer.includes("\n")) return;
+      if (!buffer.includes("\n")) {
+        return;
+      }
       const request = JSON.parse(buffer.split("\n")[0]);
       methods.push(request.method);
       if (request.method !== "session.snapshot" || snapshotError) {
@@ -62,8 +79,11 @@ function createHerdrSocket() {
         }) + "\n";
       const hold = holdSnapshot;
       holdSnapshot = undefined;
-      if (hold) hold(() => socket.end(reply));
-      else socket.end(reply);
+      if (hold) {
+        hold(() => socket.end(reply));
+      } else {
+        socket.end(reply);
+      }
     });
   });
 }
@@ -80,25 +100,34 @@ async function createBackend(path = socketPath, log?: ReadReceiptFileLog) {
       diagnostics: log ? { sink: log.write, build: "a".repeat(40) } : undefined,
     },
   );
-  await new Promise<void>((done) => instance.listen(0, "127.0.0.1", done));
+  await new Promise<void>((done) => {
+    instance.listen(0, "127.0.0.1", done);
+  });
   return {
     server: instance,
-    base: `http://127.0.0.1:${(instance.address() as { port: number }).port}`,
+    base: backendUrl(instance),
   };
+}
+function backendUrl(instance: Server) {
+  const address = instance.address();
+  if (!address || typeof address === "string") {
+    throw new Error("Expected a listening TCP backend");
+  }
+  return `http://127.0.0.1:${address.port}`;
 }
 async function startBackend() {
   ({ server, base } = await createBackend());
 }
 async function stopBackend(instance = server) {
   instance.closeAllConnections();
-  await new Promise<void>((done, reject) =>
-    instance.close((error) => (error ? reject(error) : done())),
-  );
+  await new Promise<void>((done, reject) => {
+    instance.close((error) => (error ? reject(error) : done()));
+  });
 }
 async function dashboard(origin = base) {
   const response = await fetch(`${origin}/api/agents`);
   expect(response.status).toBe(200);
-  return (await response.json()) as { agents: Agent[] };
+  return agentsResponseSchema.parse(await response.json());
 }
 async function markRead(paneId: string, completionId: string, origin = base) {
   return fetch(`${origin}/api/agents/${encodeURIComponent(paneId)}/read`, {
@@ -129,13 +158,17 @@ beforeEach(async () => {
     },
   ];
   herdr = createHerdrSocket();
-  await new Promise<void>((done) => herdr.listen(socketPath, done));
+  await new Promise<void>((done) => {
+    herdr.listen(socketPath, done);
+  });
   await startBackend();
 });
 afterEach(async () => {
   vi.restoreAllMocks();
   await stopBackend();
-  await new Promise<void>((done) => herdr.close(() => done()));
+  await new Promise<void>((done) => {
+    herdr.close(() => done());
+  });
   await rm(directory, { recursive: true, force: true });
 });
 
@@ -156,7 +189,9 @@ it("remembers a read completion across browsers and backend restarts without cha
 it("cleans superseded and closed-agent receipts while preserving current answers across restarts", async () => {
   agents.push({ ...agents[0], pane_id: "w1:p2", terminal_id: "term-2" });
   const first = (await dashboard()).agents;
-  for (const agent of first) await markRead(agent.pane_id, agent.completion!.id);
+  for (const agent of first) {
+    await markRead(agent.pane_id, agent.completion!.id);
+  }
   expect(await receiptIds()).toHaveLength(2);
   agents[0].revision++;
   expect((await dashboard()).agents.map((agent) => agent.completion!.read)).toEqual([true, true]);
@@ -196,9 +231,11 @@ it("ignores unrelated revisions but refuses stale receipts for a newer answer", 
 it.each(["session", "terminal"])("does not inherit receipts after %s replacement", async (kind) => {
   const first = (await dashboard()).agents[0];
   await markRead(first.pane_id, first.completion!.id);
-  if (kind === "session")
+  if (kind === "session") {
     agents[0].agent_session = { ...agents[0].agent_session!, value: "/sessions/two.jsonl" };
-  else agents[0].terminal_id = "term-2";
+  } else {
+    agents[0].terminal_id = "term-2";
+  }
   const next = (await dashboard()).agents[0];
   expect(next.completion!.read).toBe(false);
   expect((await markRead(first.pane_id, first.completion!.id)).status).toBe(409);
@@ -241,18 +278,27 @@ it.each(["same path", "different path"])(
   async (kind) => {
     const first = (await dashboard()).agents[0];
     await markRead(first.pane_id, first.completion!.id);
-    await new Promise<void>((done) => herdr.close(() => done()));
+    await new Promise<void>((done) => {
+      herdr.close(() => done());
+    });
     if (kind === "different path") {
       await stopBackend();
       socketPath = join(directory, "other-herdr.sock");
     }
-    await new Promise<void>((done) => herdr.listen(socketPath, done));
-    if (kind === "different path") await startBackend();
+    await new Promise<void>((done) => {
+      herdr.listen(socketPath, done);
+    });
+    if (kind === "different path") {
+      await startBackend();
+    }
     const current = (await dashboard()).agents[0];
     expect(current.completion!.read).toBe(false);
     expect(current.completion!.id).not.toBe(first.completion!.id);
-    if (kind === "same path") expect(await receiptIds()).not.toContain(first.completion!.id);
-    else expect(await receiptIds()).toContain(first.completion!.id);
+    if (kind === "same path") {
+      expect(await receiptIds()).not.toContain(first.completion!.id);
+    } else {
+      expect(await receiptIds()).toContain(first.completion!.id);
+    }
     expect((await markRead(first.pane_id, first.completion!.id)).status).toBe(409);
   },
 );
@@ -284,7 +330,9 @@ it("does not clean another live Herdr socket's receipts in shared storage", asyn
   await markRead(first.pane_id, first.completion!.id);
   const otherSocket = join(directory, "other.sock");
   const otherHerdr = createHerdrSocket();
-  await new Promise<void>((done) => otherHerdr.listen(otherSocket, done));
+  await new Promise<void>((done) => {
+    otherHerdr.listen(otherSocket, done);
+  });
   const other = await createBackend(otherSocket);
   const original = [...agents];
   try {
@@ -298,7 +346,9 @@ it("does not clean another live Herdr socket's receipts in shared storage", asyn
     expect((await dashboard()).agents[0].completion!.read).toBe(true);
   } finally {
     await stopBackend(other.server);
-    await new Promise<void>((done) => otherHerdr.close(() => done()));
+    await new Promise<void>((done) => {
+      otherHerdr.close(() => done());
+    });
   }
 });
 
@@ -351,9 +401,13 @@ it("rejects missing agents, invalid receipts and cross-origin writes", async () 
   expect((await markRead(first.pane_id, "../unsafe")).status).toBe(400);
   expect((await markRead("w1:p99", first.completion!.id)).status).toBe(404);
   for (const origin of [undefined, "https://other.example"]) {
+    const headers = new Headers({ "Content-Type": "application/json" });
+    if (origin) {
+      headers.set("Origin", origin);
+    }
     const response = await fetch(`${base}/api/agents/w1%3Ap1/read`, {
       method: "POST",
-      headers: { "Content-Type": "application/json", ...(origin ? { Origin: origin } : {}) },
+      headers,
       body: JSON.stringify({ completionId: first.completion!.id }),
     });
     expect(response.status).toBe(403);
@@ -388,6 +442,9 @@ it("refuses symlink receipt files rather than reading or writing their targets",
   expect((await dashboard()).agents[0].completion!.read).toBe(false);
 });
 
+function parseLogRecord(line: unknown) {
+  return readReceiptRecordSchema.parse(JSON.parse(z.string().parse(line)));
+}
 let diagnosticTime = Date.now();
 function captureDiagnostics() {
   diagnosticTime += 120_000;
@@ -397,7 +454,7 @@ function captureDiagnostics() {
   return {
     warn,
     info,
-    records: () => [...warn.mock.calls, ...info.mock.calls].map(([line]) => JSON.parse(line)),
+    records: () => [...warn.mock.calls, ...info.mock.calls].map(([line]) => parseLogRecord(line)),
   };
 }
 
@@ -475,7 +532,9 @@ it("separates stale requests, validation and dependency failures and replaces un
       expect.objectContaining({ category: "dependency", status: 503, requestId }),
     ]),
   );
-  expect(logs.warn.mock.calls.map(([line]) => JSON.parse(line).category)).not.toContain("stale");
+  expect(logs.warn.mock.calls.map(([line]) => parseLogRecord(line).category)).not.toContain(
+    "stale",
+  );
   expect(JSON.stringify(logs.records())).not.toContain("/secret/");
 });
 
@@ -501,7 +560,7 @@ it("retrieves a correlated save failure from disk after restarting the backend",
     const records = lines
       .trim()
       .split("\n")
-      .map((line) => JSON.parse(line));
+      .map((line) => parseLogRecord(line));
     expect(records).toEqual(
       expect.arrayContaining([
         expect.objectContaining({ requestId, boundary: "request", status: 500 }),

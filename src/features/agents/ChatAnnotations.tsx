@@ -12,7 +12,9 @@ function useAnchoredOverlay(anchor: () => DOMRect, touchAction = false) {
   useLayoutEffect(() => {
     function place() {
       const element = ref.current;
-      if (!element) return;
+      if (!element) {
+        return;
+      }
       const viewport = window.visualViewport;
       const bounds = {
         left: viewport?.offsetLeft ?? 0,
@@ -26,7 +28,9 @@ function useAnchoredOverlay(anchor: () => DOMRect, touchAction = false) {
     }
     place();
     const observer = new ResizeObserver(place);
-    if (ref.current) observer.observe(ref.current);
+    if (ref.current) {
+      observer.observe(ref.current);
+    }
     window.addEventListener("resize", place);
     window.addEventListener("scroll", place, true);
     window.visualViewport?.addEventListener("resize", place);
@@ -42,8 +46,14 @@ function useAnchoredOverlay(anchor: () => DOMRect, touchAction = false) {
   return { ref, position };
 }
 
-export function AnnotationSelectionAction({ annotations }: { annotations: ChatAnnotations }) {
-  const { anchor, touch } = annotations.selection!;
+export function AnnotationSelectionAction({
+  annotations,
+  selection,
+}: {
+  annotations: ChatAnnotations;
+  selection: NonNullable<ChatAnnotations["selection"]>;
+}) {
+  const { anchor, touch } = selection;
   const { ref, position } = useAnchoredOverlay(anchor, touch);
   return createPortal(
     <div
@@ -101,7 +111,9 @@ export function AnnotationTray({
     </button>
   );
   const editDisabled = locked || annotations.stale || Boolean(annotations.editor);
-  if (!annotations.entries.length) return null;
+  if (!annotations.entries.length) {
+    return null;
+  }
   const count = annotations.entries.length;
   return (
     <section className={styles.tray} aria-label="Pending annotations" aria-busy={sending}>
@@ -195,8 +207,13 @@ export function AnnotationTray({
   );
 }
 
-export function AnnotationPopover({ annotations }: { annotations: ChatAnnotations }) {
-  const editor = annotations.editor!;
+export function AnnotationPopover({
+  annotations,
+  editor,
+}: {
+  annotations: ChatAnnotations;
+  editor: NonNullable<ChatAnnotations["editor"]>;
+}) {
   const { ref: popover, position } = useAnchoredOverlay(editor.anchor);
   const input = useRef<HTMLTextAreaElement>(null);
   const title = editor.id
@@ -238,7 +255,7 @@ export function AnnotationPopover({ annotations }: { annotations: ChatAnnotation
         id="annotation-comment"
         value={editor.comment}
         rows={3}
-        maxLength={32000}
+        maxLength={32_000}
         placeholder="What would you change?"
         onChange={(event) => annotations.setComment(event.target.value)}
         onKeyDown={(event) => {
@@ -269,7 +286,11 @@ export function AnnotationPopover({ annotations }: { annotations: ChatAnnotation
           <button
             type="button"
             className={styles.delete}
-            onClick={() => annotations.remove(editor.id!)}
+            onClick={() => {
+              if (editor.id) {
+                annotations.remove(editor.id);
+              }
+            }}
           >
             <TrashIcon /> Delete comment
           </button>

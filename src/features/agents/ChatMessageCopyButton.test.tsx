@@ -1,5 +1,8 @@
+import { testText } from "../../shared/lib/testText";
+import { dispatchTestEvent } from "../../shared/lib/dispatchTestEvent";
 import { act } from "react";
-import { create, type ReactTestRenderer } from "react-test-renderer";
+import { create } from "react-test-renderer";
+import type { ReactTestRenderer } from "react-test-renderer";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
 import { ChatMessageCopyButton } from "./ChatMessageCopyButton";
 import { copyCodeText } from "./copyCodeText";
@@ -24,7 +27,7 @@ it("copies the full original message including markdown and code, then resets co
   const button = () => renderer.root.findByType("button");
   expect(button().props["aria-label"]).toBe("Copy message");
   expect(button().props["data-message-control"]).toBe(true);
-  await act(async () => button().props.onClick());
+  await act(async () => dispatchTestEvent(button(), "onClick"));
   expect(copyCodeText).toHaveBeenCalledWith("**Plan**\n\n```js\nconst x = 1;\n```");
   expect(button().props["data-copy-status"]).toBe("copied");
   expect(renderer.root.findByProps({ role: "status" }).children).toEqual(["Message copied"]);
@@ -33,21 +36,21 @@ it("copies the full original message including markdown and code, then resets co
 });
 it("reports failure and allows retry without claiming success", async () => {
   vi.mocked(copyCodeText).mockRejectedValueOnce(new Error("Clipboard unavailable"));
-  await act(async () => renderer.root.findByType("button").props.onClick());
+  await act(async () => dispatchTestEvent(renderer.root.findByType("button"), "onClick"));
   expect(renderer.root.findByType("button").props["aria-label"]).toBe("Retry copy message");
-  expect(renderer.root.findByProps({ role: "status" }).children.join("")).toContain("Copy failed");
-  await act(async () => renderer.root.findByType("button").props.onClick());
+  expect(testText(renderer.root.findByProps({ role: "status" }))).toContain("Copy failed");
+  await act(async () => dispatchTestEvent(renderer.root.findByType("button"), "onClick"));
   expect(renderer.root.findByType("button").props["data-copy-status"]).toBe("copied");
 });
 it("does not show stale confirmation when the message streams and copies the updated text", async () => {
-  await act(async () => renderer.root.findByType("button").props.onClick());
+  await act(async () => dispatchTestEvent(renderer.root.findByType("button"), "onClick"));
   await act(async () => renderer.update(<ChatMessageCopyButton text="Completed reply" />));
   expect(renderer.root.findByType("button").props["aria-label"]).toBe("Copy message");
-  await act(async () => renderer.root.findByType("button").props.onClick());
+  await act(async () => dispatchTestEvent(renderer.root.findByType("button"), "onClick"));
   expect(copyCodeText).toHaveBeenLastCalledWith("Completed reply");
 });
 it("cleans up its confirmation timer on unmount", async () => {
-  await act(async () => renderer.root.findByType("button").props.onClick());
+  await act(async () => dispatchTestEvent(renderer.root.findByType("button"), "onClick"));
   expect(vi.getTimerCount()).toBe(1);
   await act(async () => renderer.unmount());
   expect(vi.getTimerCount()).toBe(0);

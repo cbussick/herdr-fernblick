@@ -24,10 +24,10 @@ export function getAgentLabel(agent: Agent) {
   return name && !isGeneratedName ? name : `Agent ${agent.pane_id}`;
 }
 
-export function groupPanesByTab(agents: Agent[], shells: ShellTab[]) {
+export function groupPanesByTab(agents: Array<Agent>, shells: Array<ShellTab>) {
   const groups = new Map<
     string,
-    { tab_id: string; label: string; agents: Agent[]; shells: ShellTab[] }
+    { tab_id: string; label: string; agents: Array<Agent>; shells: Array<ShellTab> }
   >();
   for (const agent of agents) {
     let group = groups.get(agent.tab_id);
@@ -48,11 +48,15 @@ export function groupPanesByTab(agents: Agent[], shells: ShellTab[]) {
   return [...groups.values()];
 }
 
-export function groupAgentsByWorkspace(agents: Agent[], tabs: ShellTab[], workspaces: Workspace[]) {
+export function groupAgentsByWorkspace(
+  agents: Array<Agent>,
+  tabs: Array<ShellTab>,
+  workspaces: Array<Workspace>,
+) {
   const groups = workspaces.map((workspace) => ({
     ...workspace,
-    agents: [] as Agent[],
-    tabs: [] as ShellTab[],
+    agents: [] as Array<Agent>,
+    tabs: [] as Array<ShellTab>,
   }));
   const groupsById = new Map(groups.map((group) => [group.workspace_id, group]));
 

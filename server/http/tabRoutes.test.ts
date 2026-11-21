@@ -4,6 +4,7 @@ import net from "node:net";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, expect, it } from "vitest";
+import { z } from "zod";
 import { HerdrClient } from "../herdr/HerdrClient.js";
 import { HerdrService } from "../herdr/herdrService.js";
 import { createHttpServer } from "./server.js";
@@ -15,7 +16,12 @@ let httpServer: HttpServer;
 let base: string;
 let label: string;
 let rejectRename: boolean;
-const requests: { method: string; params: Record<string, unknown> }[] = [];
+const requestSchema = z.object({
+  id: z.string(),
+  method: z.literal("tab.rename"),
+  params: z.object({ tab_id: z.string(), label: z.string() }),
+});
+const requests: Array<Pick<z.infer<typeof requestSchema>, "method" | "params">> = [];
 
 beforeEach(async () => {
   label = "Original tab";
@@ -26,11 +32,7 @@ beforeEach(async () => {
   socketServer = net.createServer((socket) => {
     socket.setEncoding("utf8");
     socket.once("data", (data) => {
-      const request = JSON.parse(String(data).trim()) as {
-        id: string;
-        method: string;
-        params: Record<string, unknown>;
-      };
+      const request = requestSchema.parse(JSON.parse(String(data).trim()));
       requests.push({ method: request.method, params: request.params });
       if (rejectRename) {
         socket.end(
@@ -38,26 +40,38 @@ beforeEach(async () => {
         );
         return;
       }
-      label = String(request.params.label);
+      label = request.params.label;
       // Captured from Herdr 0.9.0: tab.rename applies the label and returns tab_info.
       const result = { type: "tab_info", tab: { label, tab_id: "w1:t1", workspace_id: "w1" } };
       socket.end(`${JSON.stringify({ id: request.id, result })}\n`);
     });
   });
-  await new Promise<void>((done) => socketServer.listen(socketPath, done));
+  await new Promise<void>((done) => {
+    socketServer.listen(socketPath, done);
+  });
   httpServer = createHttpServer(
     new HerdrService(new HerdrClient(socketPath)),
     "/unused",
     new LiveBridge(join(directory, "pi.sock"), socketPath),
   );
-  await new Promise<void>((done) => httpServer.listen(0, "127.0.0.1", done));
-  base = `http://127.0.0.1:${(httpServer.address() as { port: number }).port}`;
+  await new Promise<void>((done) => {
+    httpServer.listen(0, "127.0.0.1", done);
+  });
+  const address = httpServer.address();
+  if (!address || typeof address === "string") {
+    throw new Error("Expected a listening TCP server");
+  }
+  base = `http://127.0.0.1:${address.port}`;
 });
 
 afterEach(async () => {
   httpServer.closeAllConnections();
-  await new Promise<void>((done) => httpServer.close(() => done()));
-  await new Promise<void>((done) => socketServer.close(() => done()));
+  await new Promise<void>((done) => {
+    httpServer.close(() => done());
+  });
+  await new Promise<void>((done) => {
+    socketServer.close(() => done());
+  });
   await rm(directory, { recursive: true, force: true });
 });
 

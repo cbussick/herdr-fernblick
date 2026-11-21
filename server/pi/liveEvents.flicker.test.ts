@@ -2,8 +2,8 @@ import { EventEmitter } from "node:events";
 import { randomUUID } from "node:crypto";
 import { expect, it, vi } from "vitest";
 import { liveEvents } from "./liveEvents.js";
-import { LiveChatError, type LiveBridge } from "./liveBridge.js";
-import type { Agent } from "../../src/shared/api/contracts.js";
+import { LiveChatError } from "./liveBridge.js";
+import { eventAgent, eventSnapshot } from "./liveEventFixtures.js";
 
 it.each([
   { reason: "Pi live chat extension unavailable", starting: true, type: "connecting" },
@@ -18,17 +18,11 @@ it.each([
       writableLength: 0,
       writeHead: vi.fn(),
       flushHeaders: vi.fn(),
-      write: vi.fn(() => true),
+      write: vi.fn((_frame: string) => true),
       destroy: vi.fn(),
     });
     const peer = {
-      snapshot: {
-        type: "snapshot",
-        identity: { runtime: randomUUID(), sessionId: "s" },
-        epoch: randomUUID(),
-        seq: 1,
-        messages: [{ id: "user", role: "user", text: "hello" }],
-      },
+      snapshot: eventSnapshot(),
     };
     const bridge = {
       subscribe: vi.fn((callback: () => void) => {
@@ -36,22 +30,20 @@ it.each([
         return vi.fn();
       }),
       current: vi.fn(() => {
-        if (missing) throw new LiveChatError(409, reason, starting);
+        if (missing) {
+          throw new LiveChatError(409, reason, starting);
+        }
         return peer;
       }),
       resolve: vi.fn(async () => peer),
     };
     try {
-      liveEvents(
-        response as unknown as import("node:http").ServerResponse,
-        { pane_id: "w1:p1" } as Agent,
-        bridge as unknown as LiveBridge,
-      );
+      liveEvents(response, eventAgent, bridge);
       await vi.waitFor(() => expect(response.write).toHaveBeenCalledOnce());
       missing = true;
       notify();
       await vi.waitFor(() => expect(response.write).toHaveBeenCalledTimes(2));
-      const frames = response.write.mock.calls as unknown as [string][];
+      const frames = response.write.mock.calls;
       expect(frames[1][0]).toContain(`"type":"${type}"`);
       missing = false;
       peer.snapshot = { ...peer.snapshot, epoch: randomUUID(), seq: 1 };

@@ -1,3 +1,4 @@
+import { report } from "../report.mjs";
 // Synthetic browser check. All API/SSE traffic is intercepted; no live agent is controlled.
 // PLAYWRIGHT_MODULE=/absolute/path/to/playwright/index.mjs node tools/design/pi-footer.mjs URL
 import assert from "node:assert/strict";
@@ -43,8 +44,8 @@ const snapshot = {
     totalTokens: 0,
     cost: 0,
     footerLines: [
-      "\x1b[22m\x1b[38;2;246;226;183;49mgpt-5.4 high\x1b[2m\x1b[39;49m · \x1b[22m\x1b[38;2;242;181;144mContext 23% used\x1b[2m\x1b[39;49m · \x1b[22m\x1b[38;2;233;144;169m5h 79% left (reset 18:00) · weekly 58% left (reset Tue 18:00)\x1b[2m\x1b[39;49m · \x1b[22m\x1b[38;2;171;223;167m~/project/long-directory\x1b[2m\x1b[39;49m · \x1b[22m\x1b[38;2;143;179;239mfeature/mirror-footer\x1b[0m",
-      "\x1b[2mMirror Pi footer ↑120k ↓10k R30k W5k CH17.6% $1.234 23.4%/200k (openai-codex) <img src=x onerror=alert(1)>\x1b[0m",
+      "\u001b[22m\u001b[38;2;246;226;183;49mgpt-5.4 high\u001b[2m\u001b[39;49m · \u001b[22m\u001b[38;2;242;181;144mContext 23% used\u001b[2m\u001b[39;49m · \u001b[22m\u001b[38;2;233;144;169m5h 79% left (reset 18:00) · weekly 58% left (reset Tue 18:00)\u001b[2m\u001b[39;49m · \u001b[22m\u001b[38;2;171;223;167m~/project/long-directory\u001b[2m\u001b[39;49m · \u001b[22m\u001b[38;2;143;179;239mfeature/mirror-footer\u001b[0m",
+      "\u001b[2mMirror Pi footer ↑120k ↓10k R30k W5k CH17.6% $1.234 23.4%/200k (openai-codex) <img src=x onerror=alert(1)>\u001b[0m",
     ],
   },
 };
@@ -78,7 +79,7 @@ for (const [engine, browserType] of [
       await page.route(
         (url) => url.pathname.startsWith("/api/"),
         async (route) => {
-          if (new URL(route.request().url()).pathname === "/api/agents")
+          if (new URL(route.request().url()).pathname === "/api/agents") {
             return route.fulfill({
               json: {
                 agents: [agent],
@@ -86,6 +87,7 @@ for (const [engine, browserType] of [
                 tabs: [],
               },
             });
+          }
           throw new Error(
             `Unexpected API call: ${route.request().method()} ${route.request().url()}`,
           );
@@ -156,7 +158,7 @@ for (const [engine, browserType] of [
       assert.ok(freshComposer && freshComposer.y + freshComposer.height <= height);
       assert.deepEqual(errors, []);
       await page.close();
-      console.log(`${engine} ${name}: passed`);
+      report(`${engine} ${name}: passed`);
     }
   } finally {
     await browser.close();

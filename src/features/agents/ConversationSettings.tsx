@@ -1,4 +1,5 @@
-import { useEffect, useRef, useState, type ReactNode, type RefObject } from "react";
+import { useEffect, useRef, useState } from "react";
+import type { ReactNode, RefObject } from "react";
 import type { Target, ThinkingLevel } from "../../../packages/pi-live-chat/protocol";
 import { LightbulbIcon, ModelIcon } from "../../shared/ui/Icons";
 import type { ConversationAction } from "./ConversationActionsMenu";
@@ -25,7 +26,7 @@ export function ConversationSettings({
 }: {
   settings?: ConversationSettingsProps;
   triggerRef: RefObject<HTMLButtonElement | null>;
-  children: (actions: ConversationAction[]) => ReactNode;
+  children: (actions: Array<ConversationAction>) => ReactNode;
 }) {
   const [picker, setPicker] = useState<"model" | "thinking" | null>(null);
   const key = JSON.stringify([settings?.pane, settings?.target, settings?.connected]);
@@ -38,11 +39,15 @@ export function ConversationSettings({
   const [previousModel, setPreviousModel] = useState(modelKey);
   if (modelKey !== previousModel) {
     setPreviousModel(modelKey);
-    if (picker === "thinking") setPicker(null);
+    if (picker === "thinking") {
+      setPicker(null);
+    }
   }
   const wasOpen = useRef(false);
   useEffect(() => {
-    if (wasOpen.current && !picker) triggerRef.current?.focus({ preventScroll: true });
+    if (wasOpen.current && !picker) {
+      triggerRef.current?.focus({ preventScroll: true });
+    }
     wasOpen.current = Boolean(picker);
   }, [picker, triggerRef]);
   const disabledReason = !settings?.connected
@@ -50,7 +55,7 @@ export function ConversationSettings({
     : !settings.enabled
       ? "Available when Pi is idle and no other action is in progress."
       : undefined;
-  const actions: ConversationAction[] = settings
+  const actions: Array<ConversationAction> = settings
     ? [
         {
           id: "model",

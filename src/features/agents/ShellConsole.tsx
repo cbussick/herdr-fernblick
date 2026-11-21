@@ -1,6 +1,7 @@
 import a11yStyles from "../../styles/accessibility.module.css";
 import consoleStyles from "./Console.module.css";
-import { useState, type FormEvent } from "react";
+import { useState } from "react";
+import type { FormEvent } from "react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import type { Agent, KeyName, ShellTab } from "../../shared/api/contracts";
 import { getPaneOutput, sendPaneInput, sendPaneKey } from "../../shared/api/apiClient";
@@ -17,7 +18,7 @@ interface ShellConsoleProps {
   agent?: Agent;
   onBack: () => void;
 }
-const controls: { key: KeyName; label: string }[] = [
+const controls: Array<{ key: KeyName; label: string }> = [
   { key: "esc", label: "Esc" },
   { key: "ctrl+c", label: "Ctrl+C" },
   { key: "up", label: "↑" },
@@ -119,7 +120,7 @@ export function ShellConsole({ tab, agent, onBack, composer }: ShellConsoleProps
               onChange={(event) => setCommand(event.target.value)}
               placeholder={agent ? "Send text to the terminal…" : "Enter a shell command…"}
               rows={1}
-              maxLength={32000}
+              maxLength={32_000}
               disabled={inputMutation.isPending}
             />
             <button

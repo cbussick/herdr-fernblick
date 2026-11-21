@@ -115,7 +115,9 @@ export function createReadReceiptDiagnostics(options: ReadReceiptDiagnosticOptio
       } catch {
         dropped++;
       }
-      if (options.console ?? !options.sink) console[severity](JSON.stringify(record));
+      if (options.console ?? !options.sink) {
+        console[severity](JSON.stringify(record));
+      }
     } catch {
       dropped = Math.min(dropped + 1, Number.MAX_SAFE_INTEGER);
     }

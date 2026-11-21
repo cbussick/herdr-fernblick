@@ -1,3 +1,13 @@
+function code(value: string, language?: string) {
+  return renderToStaticMarkup(
+    <ChatCodeText
+      value={value}
+      language={language}
+      renderRange={(start, end) => value.slice(start, end)}
+    />,
+  );
+}
+
 import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it } from "vitest";
 import { ChatMessageText } from "./ChatMessageText";
@@ -5,16 +15,6 @@ import { ChatCodeText } from "./ChatCodeText";
 import styles from "./ChatCodeText.module.css";
 
 describe("chat syntax highlighting", () => {
-  function code(value: string, language?: string) {
-    return renderToStaticMarkup(
-      <ChatCodeText
-        value={value}
-        language={language}
-        renderRange={(start, end) => value.slice(start, end)}
-      />,
-    );
-  }
-
   it.each(["ts", "typescript", "TS", "js", "javascript"])(
     "colors %s keywords, strings and comments",
     (language) => {
@@ -22,7 +22,7 @@ describe("chat syntax highlighting", () => {
       expect(html).toContain(`class="${styles.keyword}"`);
       expect(html).toContain(`class="${styles.string}"`);
       expect(html).toContain(`class="${styles.comment}"`);
-      expect(html.replace(/<[^>]*>/g, "")).toBe("const greeting = &quot;hello&quot;; // note");
+      expect(html.replaceAll(/<[^>]*>/g, "")).toBe("const greeting = &quot;hello&quot;; // note");
     },
   );
 
@@ -37,7 +37,7 @@ describe("chat syntax highlighting", () => {
 
   it("preserves multiline text and incomplete streaming code", () => {
     const value = '/* comment\n  still a comment */\nconst x = "unfinished';
-    expect(code(value, "ts").replace(/<[^>]*>/g, "")).toBe(value.replace('"', "&quot;"));
+    expect(code(value, "ts").replaceAll(/<[^>]*>/g, "")).toBe(value.replace('"', "&quot;"));
   });
 
   it("bounds highlighting work for very large code blocks", () => {
@@ -60,7 +60,7 @@ describe("chat syntax highlighting", () => {
     expect(html).toContain('data-message-syntax="true"');
     expect(html).toContain("&lt;tag&gt;");
     expect(html).not.toContain("<tag>");
-    expect(html.replace(/<[^>]*>/g, "")).toContain(
+    expect(html.replaceAll(/<[^>]*>/g, "")).toContain(
       "```ts\nconst x = &quot;&lt;tag&gt;&quot;;\n```",
     );
   });

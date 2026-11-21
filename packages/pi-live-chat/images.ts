@@ -34,15 +34,28 @@ function imageUploadPath(id: string) {
 }
 export function mimeTypeForUpload(id: string): ImageMimeType {
   uploadIdSchema.parse(id);
-  if (id.endsWith(".png")) return "image/png";
-  if (id.endsWith(".jpg")) return "image/jpeg";
-  if (id.endsWith(".gif")) return "image/gif";
+  if (id.endsWith(".png")) {
+    return "image/png";
+  }
+  if (id.endsWith(".jpg")) {
+    return "image/jpeg";
+  }
+  if (id.endsWith(".gif")) {
+    return "image/gif";
+  }
   return "image/webp";
 }
 export function validateImage(bytes: Buffer, mimeType: string) {
-  const type = imageTypes[mimeType as ImageMimeType];
-  if (!bytes.length || bytes.length > MAX_IMAGE_BYTES || !type?.matches(bytes))
+  const type =
+    mimeType === "image/png" ||
+    mimeType === "image/jpeg" ||
+    mimeType === "image/gif" ||
+    mimeType === "image/webp"
+      ? imageTypes[mimeType]
+      : undefined;
+  if (!bytes.length || bytes.length > MAX_IMAGE_BYTES || !type?.matches(bytes)) {
     throw new Error("Image must be PNG, JPEG, GIF or WebP, at most 10 MiB, with matching content");
+  }
   return type;
 }
 export async function saveImageUpload(bytes: Buffer, mimeType: string) {
@@ -66,19 +79,23 @@ export async function readImageUpload(id: string) {
       before.nlink !== 1 ||
       before.size < 1 ||
       before.size > MAX_IMAGE_BYTES
-    )
+    ) {
       throw new Error("Unsafe or oversized image upload");
+    }
     // Bounded even if another same-user process grows the file during the read.
     const buffer = Buffer.alloc(before.size + 1);
     let size = 0;
     while (size < buffer.length) {
       const { bytesRead } = await file.read(buffer, size, buffer.length - size, size);
-      if (!bytesRead) break;
+      if (!bytesRead) {
+        break;
+      }
       size += bytesRead;
     }
     const after = await file.stat();
-    if (size !== before.size || after.size !== before.size || after.mtimeMs !== before.mtimeMs)
+    if (size !== before.size || after.size !== before.size || after.mtimeMs !== before.mtimeMs) {
       throw new Error("Image changed while reading");
+    }
     const bytes = buffer.subarray(0, size);
     validateImage(bytes, mimeTypeForUpload(id));
     return bytes;
@@ -92,18 +109,21 @@ export async function removeImageUpload(id: string) {
     await privateDirectory(join(uploadDirectory(), "guard"));
     await unlink(path);
   } catch (error) {
-    if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error;
+    if (!(error instanceof Error && "code" in error && error.code === "ENOENT")) {
+      throw error;
+    }
   }
 }
 
-export async function prepareImages(ids: string[]) {
-  const images: { type: "image"; data: string; mimeType: string }[] = [];
+export async function prepareImages(ids: Array<string>) {
+  const images: Array<{ type: "image"; data: string; mimeType: string }> = [];
   // Sequential reads limit temporary binary buffers; the protocol bounds retained images.
-  for (const id of ids)
+  for (const id of ids) {
     images.push({
       type: "image",
       data: (await readImageUpload(id)).toString("base64"),
       mimeType: mimeTypeForUpload(id),
     });
+  }
   return images;
 }

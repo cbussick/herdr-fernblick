@@ -3,7 +3,7 @@ import { fn } from "storybook/test";
 import type { Agent, ShellTab, Workspace } from "../../shared/api/contracts";
 import { FlatAgentList, WorkspaceList } from "./AgentOverview";
 
-const workspaces: Workspace[] = [
+const workspaces: Array<Workspace> = [
   { workspace_id: "w1", label: "PHOGET" },
   { workspace_id: "w2", label: "FERNBLICK" },
   { workspace_id: "w3", label: "FEBOP-JOB-SHEET" },
@@ -27,7 +27,7 @@ const makeAgent = (
   workspace_id,
   workspace_label,
 });
-const agents: Agent[] = [
+const agents: Array<Agent> = [
   { ...makeAgent("w1:p1", "Deployment", "w1", "PHOGET", "blocked"), name: "planner" },
   {
     ...makeAgent("w1:p2", "Deployment", "w1", "PHOGET", "done"),
@@ -42,7 +42,7 @@ const agents: Agent[] = [
   makeAgent("w2:p1", "Ideate UI", "w2", "FERNBLICK", "idle"),
   makeAgent("w3:p1", "GitHub Actions and CI", "w3", "FEBOP-JOB-SHEET", "done"),
 ];
-const tabs: ShellTab[] = [
+const tabs: Array<ShellTab> = [
   { label: "VPS Memory Usage", pane_id: "w1:p4", revision: 1, tab_id: "w1:t4", workspace_id: "w1" },
 ];
 const meta = {

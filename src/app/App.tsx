@@ -1,7 +1,7 @@
 import appStyles from "./App.module.css";
 import { useEffect, useEffectEvent, useLayoutEffect, useRef, useState } from "react";
 import { ResumeChatDialog } from "../features/agents/ResumeChatDialog";
-import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { skipToken, useQuery, useQueryClient } from "@tanstack/react-query";
 import type { Agent, ShellTab, Workspace } from "../shared/api/contracts";
 import { getAgents, getSession, resumeChat } from "../shared/api/apiClient";
 import { AgentList } from "../features/agents/AgentList";
@@ -46,11 +46,12 @@ export function App({
   function setSelectedPaneId(paneId: string | null, terminal = false) {
     navigateToPane(paneId, terminal);
   }
+
   const sessionQuery = useQuery({
     queryKey: ["session", sessionId],
-    queryFn: () => getSession(sessionId!),
+    queryFn: sessionId ? () => getSession(sessionId) : skipToken,
     enabled: Boolean(sessionId),
-    refetchInterval: 2_000,
+    refetchInterval: 2000,
   });
   const selectedPaneId =
     navigation.paneId ?? sessionQuery.data?.agent?.pane_id ?? retainedAgent?.pane_id ?? null;
@@ -67,16 +68,17 @@ export function App({
   const agentsQuery = useQuery({
     queryKey: ["agents"],
     queryFn: getAgents,
-    refetchInterval: 2_000,
+    refetchInterval: 2000,
   });
 
   // Refetching without cached data resets the query to pending and clears its error.
   // Keep the last connection failure visible while automatic retries run.
   const [lastConnectionError, setLastConnectionError] = useState<Error | null>(null);
-  useEffect(() => {
-    if (agentsQuery.data) setLastConnectionError(null);
-    else if (agentsQuery.error) setLastConnectionError(agentsQuery.error);
-  }, [agentsQuery.data, agentsQuery.error]);
+  if (agentsQuery.data && lastConnectionError !== null) {
+    setLastConnectionError(null);
+  } else if (!agentsQuery.data && agentsQuery.error && lastConnectionError !== agentsQuery.error) {
+    setLastConnectionError(agentsQuery.error);
+  }
   const connectionError = agentsQuery.data ? null : (agentsQuery.error ?? lastConnectionError);
 
   const {
@@ -103,7 +105,9 @@ export function App({
       : observedPiPane === navigation.paneId
         ? observedPiPane
         : null;
-  if (observed !== observedPiPane) setObservedPiPane(observed);
+  if (observed !== observedPiPane) {
+    setObservedPiPane(observed);
+  }
   const paneRetired = Boolean(
     navigation.paneId &&
     observedPiPane === navigation.paneId &&
@@ -114,7 +118,9 @@ export function App({
   // inactive poll. Never substitute the retained agent as live/command authority.
   if (sessionId && selectedAgent && retainedAgent !== selectedAgent) {
     setRetained({ id: sessionId, agent: selectedAgent });
-  } else if (retained && retained.id !== sessionId) setRetained(null);
+  } else if (retained && retained.id !== sessionId) {
+    setRetained(null);
+  }
   const consoleAgent = selectedAgent ?? retainedAgent;
   const [mount, setMount] = useState({ paneId: selectedPaneId, sessionId, version: 0 });
   if (mount.paneId !== selectedPaneId || mount.sessionId !== sessionId) {
@@ -182,15 +188,18 @@ export function App({
     livePane.current = null;
   }, [navigation.paneId]);
   const reconcilePane = useEffectEvent(() => {
-    if (!routeNavigation || !navigation.paneId) return;
+    if (!routeNavigation || !navigation.paneId) {
+      return;
+    }
     if (paneRetired) {
       setSelectedPaneId(null);
       return;
     }
     const id = selectedAgent?.pi_session_id;
     if (selectedAgent?.agent === "pi" && id) {
-      if (livePane.current?.paneId === navigation.paneId && livePane.current.sessionId !== id)
+      if (livePane.current?.paneId === navigation.paneId && livePane.current.sessionId !== id) {
         return;
+      }
       queryClient.setQueryData(["session", id], { agent: selectedAgent, chat: null });
       navigation.selectSession(id, view, true);
     } else if (selectedAgent && selectedAgent.agent !== "pi" && view !== "terminal") {
@@ -220,6 +229,7 @@ export function App({
     void agentsQuery.refetch();
   }
 
+  const resumableChat = sessionQuery.data?.chat;
   return (
     <div
       ref={viewportRef}
@@ -334,22 +344,28 @@ export function App({
               onSession={
                 routeNavigation
                   ? (id) => {
-                      if (selectedAgent)
+                      if (selectedAgent) {
                         livePane.current = { paneId: selectedAgent.pane_id, sessionId: id };
+                      }
                     }
                   : undefined
               }
               onViewChange={
                 routeNavigation
                   ? (next) => {
-                      if (sessionId) navigation.selectSession(sessionId, next);
-                      else if (selectedPaneId) navigation.selectPaneView(selectedPaneId, next);
+                      if (sessionId) {
+                        navigation.selectSession(sessionId, next);
+                      } else if (selectedPaneId) {
+                        navigation.selectPaneView(selectedPaneId, next);
+                      }
                     }
                   : undefined
               }
               onBack={() => {
                 const tabId = consoleAgent?.tab_id ?? selectedTab?.tab_id;
-                if (latest.current.tabId === tabId) latest.current.back();
+                if (latest.current.tabId === tabId) {
+                  latest.current.back();
+                }
               }}
             />
           )}
@@ -430,9 +446,9 @@ export function App({
         </div>
       )}
 
-      {resumeOpen && sessionQuery.data?.chat && (
+      {resumeOpen && resumableChat && (
         <ResumeChatDialog
-          chat={sessionQuery.data.chat}
+          chat={resumableChat}
           workspaces={workspaces}
           pending={resuming}
           error={resumeError || undefined}
@@ -441,7 +457,7 @@ export function App({
             void (async () => {
               setResuming(true);
               try {
-                const agent = await resumeChat({ id: sessionQuery.data.chat!.id, workspaceId });
+                const agent = await resumeChat({ id: resumableChat.id, workspaceId });
                 queryClient.setQueryData(["session", sessionId], { ...sessionQuery.data, agent });
                 setResumeOpen(false);
                 void agentsQuery.refetch();
@@ -480,8 +496,9 @@ export function App({
                   : current,
             );
             if (latest.current.createDialog === createDialog) {
-              if (latest.current.navigationVersion === createDialog.navigationVersion)
+              if (latest.current.navigationVersion === createDialog.navigationVersion) {
                 openAgent(agent);
+              }
               setCreateDialog(null);
             }
             void agentsQuery.refetch();
@@ -513,8 +530,9 @@ export function App({
                   : current,
             );
             if (latest.current.tabDialogOpen === tabDialogOpen) {
-              if (latest.current.navigationVersion === tabDialogOpen.navigationVersion)
+              if (latest.current.navigationVersion === tabDialogOpen.navigationVersion) {
                 setSelectedPaneId(tab.pane_id, true);
+              }
               setTabDialogOpen(null);
             }
             void agentsQuery.refetch();

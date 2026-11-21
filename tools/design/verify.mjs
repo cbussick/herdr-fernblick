@@ -1,3 +1,4 @@
+import { report } from "../report.mjs";
 import { appSelector } from "./selectors.mjs";
 // Browser-level checks for the generated gallery and the responsive proposal.
 import assert from "node:assert/strict";
@@ -5,7 +6,9 @@ const { chromium, webkit } = await import(process.env.PLAYWRIGHT_MODULE || "play
 const gallery = process.argv[2] || "http://100.71.229.1:5197";
 const app = process.argv[3] || "http://127.0.0.1:5198";
 for (const [name, engine] of Object.entries({ chromium, webkit })) {
-  if (process.env.DESIGN_BROWSER && process.env.DESIGN_BROWSER !== name) continue;
+  if (process.env.DESIGN_BROWSER && process.env.DESIGN_BROWSER !== name) {
+    continue;
+  }
   const browser = await engine.launch({ headless: true });
   for (const { width, height } of [
     { width: 320, height: 1000 },
@@ -307,7 +310,7 @@ for (const [name, engine] of Object.entries({ chromium, webkit })) {
     await page.keyboard.press("Space");
     assert.equal(await tool.locator("pre").isVisible(), true);
     assert.deepEqual(errors, []);
-    console.log(
+    report(
       `${name}: ${width}×${height} gallery, layout, lightbox, filters, navigation and touch targets passed`,
     );
     await page.close();

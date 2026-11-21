@@ -9,7 +9,9 @@ export function usePaneNavigation() {
   const location = useRouterState({ select: (state) => state.location });
   const match = useRouterState({ select: (state) => state.matches.at(-1) });
   const params = (match?.params ?? {}) as { paneId?: string; sessionId?: string };
-  const view = location.pathname.split("/").filter(Boolean).at(-1) as ConsoleView;
+  const segment = location.pathname.split("/").filter(Boolean).at(-1);
+  const view: ConsoleView | undefined =
+    segment === "chat" || segment === "terminal" || segment === "whiteboard" ? segment : undefined;
   const overviewIndex =
     location.pathname === "/" ? location.state.__TSR_index : location.state.fernblickOverviewIndex;
 
@@ -60,8 +62,11 @@ export function usePaneNavigation() {
   function selectPane(paneId: string | null, terminal = false) {
     if (paneId === null) {
       const delta = overviewIndex === undefined ? 0 : overviewIndex - location.state.__TSR_index;
-      if (delta < 0) router.history.go(delta);
-      else void router.navigate({ to: "/", replace: true });
+      if (delta < 0) {
+        router.history.go(delta);
+      } else {
+        void router.navigate({ to: "/", replace: true });
+      }
     } else {
       selectPaneView(paneId, terminal ? "terminal" : "chat", location.pathname !== "/");
     }

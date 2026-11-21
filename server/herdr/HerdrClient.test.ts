@@ -6,15 +6,18 @@ import { afterEach, describe, expect, it } from "vitest";
 import { z } from "zod";
 import { HerdrClient, HerdrRequestError } from "./HerdrClient.js";
 
-const temporaryDirectories: string[] = [];
+const requestSchema = z.object({
+  id: z.string(),
+  method: z.string(),
+  params: z.record(z.string(), z.json()),
+});
+const temporaryDirectories: Array<string> = [];
 
 afterEach(async () => {
   await Promise.all(temporaryDirectories.splice(0).map((path) => rm(path, { recursive: true })));
 });
 
-async function createSocketServer(
-  respond: (request: { id: string; method: string; params: Record<string, unknown> }) => string,
-) {
+async function createSocketServer(respond: (request: z.infer<typeof requestSchema>) => string) {
   const directory = await mkdtemp(join(tmpdir(), "fernblick-"));
   temporaryDirectories.push(directory);
   const socketPath = join(directory, "herdr.sock");
@@ -22,11 +25,7 @@ async function createSocketServer(
   const server = net.createServer((socket) => {
     socket.setEncoding("utf8");
     socket.once("data", (data) => {
-      const request = JSON.parse(String(data).trim()) as {
-        id: string;
-        method: string;
-        params: Record<string, unknown>;
-      };
+      const request = requestSchema.parse(JSON.parse(String(data).trim()));
       const response = respond(request);
       const splitAt = Math.floor(response.length / 2);
       socket.write(response.slice(0, splitAt));
@@ -34,7 +33,9 @@ async function createSocketServer(
     });
   });
 
-  await new Promise<void>((resolve) => server.listen(socketPath, resolve));
+  await new Promise<void>((resolve) => {
+    server.listen(socketPath, resolve);
+  });
   return { server, socketPath };
 }
 
@@ -65,7 +66,7 @@ describe("HerdrClient", () => {
     const client = new HerdrClient(socketPath);
     const error = await client
       .request("agent.prompt", {}, z.unknown())
-      .catch((cause: unknown) => cause);
+      .catch((error_: unknown) => error_);
 
     expect(error).toBeInstanceOf(HerdrRequestError);
     expect(error).toMatchObject({ code: "agent_blocked", message: "agent needs input" });

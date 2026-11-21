@@ -15,7 +15,9 @@ try {
     allowPositionals: false,
   });
   for (const key of ["user", "group"]) {
-    if (!/^[a-z_][a-z0-9_-]{0,31}$/i.test(values[key] ?? "")) throw new Error("identity");
+    if (!/^[a-z_][a-z0-9_-]{0,31}$/i.test(values[key] ?? "")) {
+      throw new Error("identity");
+    }
   }
   for (const key of ["home", "workdir", "node", "environment-path"]) {
     const value = values[key];
@@ -26,8 +28,9 @@ try {
       !isAbsolute(value) ||
       resolve(value) !== value ||
       !/^\/[a-z0-9_./-]+$/i.test(value)
-    )
+    ) {
       throw new Error("path");
+    }
   }
   const template = await readFile(
     new URL("../../deploy/systemd/fernblick.service.in", import.meta.url),
@@ -42,8 +45,10 @@ try {
     NODEDIR: dirname(values.node),
     ENVFILE: values["environment-path"],
   };
-  const rendered = template.replace(/@([A-Z]+)@/g, (_match, key) => replacements[key]);
-  if (/@[A-Z]+@/.test(rendered)) throw new Error("template");
+  const rendered = template.replaceAll(/@([A-Z]+)@/g, (_match, key) => replacements[key]);
+  if (/@[A-Z]+@/.test(rendered)) {
+    throw new Error("template");
+  }
   process.stdout.write(rendered);
 } catch {
   process.stderr.write(

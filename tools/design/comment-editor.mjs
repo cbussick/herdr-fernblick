@@ -1,3 +1,4 @@
+import { report } from "../report.mjs";
 // Focused layout checks with synthetic API/SSE fixtures; never controls a real agent.
 import assert from "node:assert/strict";
 import fs from "node:fs/promises";
@@ -78,7 +79,7 @@ for (const engine of [chromium, webkit]) {
         (url) => url.pathname.startsWith("/api/"),
         async (route) => {
           assert.equal(route.request().method(), "GET", "editing must never send an agent command");
-          if (new URL(route.request().url()).pathname === "/api/agents")
+          if (new URL(route.request().url()).pathname === "/api/agents") {
             return route.fulfill({
               json: {
                 agents: [agent],
@@ -86,6 +87,7 @@ for (const engine of [chromium, webkit]) {
                 workspaces: [{ workspace_id: "w1", label: "Fernblick" }],
               },
             });
+          }
           return route.fulfill({ status: 503, json: { error: "Not part of this fixture" } });
         },
       );
@@ -98,7 +100,9 @@ for (const engine of [chromium, webkit]) {
         await page.setViewportSize(viewport);
         await page.evaluate(
           () =>
-            new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve))),
+            new Promise((resolve) => {
+              requestAnimationFrame(() => requestAnimationFrame(resolve));
+            }),
         );
         const box = await dialog.boundingBox();
         assert.ok(box.x >= 12 && box.y >= 12, "keep the editor inset from the viewport");
@@ -121,7 +125,9 @@ for (const engine of [chromium, webkit]) {
         const hint = dialog.getByText("Enter to save · Shift + Enter for a new line", {
           exact: true,
         });
-        if (await hint.count()) assert.equal(await hint.isVisible(), !touch);
+        if (await hint.count()) {
+          assert.equal(await hint.isVisible(), !touch);
+        }
         const remove = dialog.getByRole("button", { name: "Delete comment", exact: true });
         if (await remove.count()) {
           const secondary = await remove.boundingBox();
@@ -194,7 +200,7 @@ for (const engine of [chromium, webkit]) {
         await input.press("Escape");
         await dialog.waitFor({ state: "hidden" });
         assert.deepEqual(errors, []);
-        console.log(`${key}: comment editor passed`);
+        report(`${key}: comment editor passed`);
       } catch (error) {
         await page.screenshot({ path: `${out}/${key}-failure.png` });
         throw error;

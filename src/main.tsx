@@ -5,7 +5,7 @@ import { AppUpdatesProvider } from "./pwa/AppUpdatesProvider";
 import { createRoot } from "react-dom/client";
 import tokenStyles from "./styles/tokens.module.css";
 import baseStyles from "./styles/base.module.css";
-import { RoutedApp } from "./app/router";
+import { RoutedApp } from "./app/RoutedApp";
 import { AppProviders } from "./app/AppProviders";
 
 document.documentElement.classList.add(tokenStyles.theme, baseStyles.document);

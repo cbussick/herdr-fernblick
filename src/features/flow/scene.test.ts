@@ -14,6 +14,44 @@ import {
 const empty: BoardScene = { engine: "react-flow", elements: [], files: {}, background: "#ffffff" };
 const card = () => makeNode("card", 10, 20, defaults("card"), "card");
 describe("production flow scene boundary", () => {
+  it("validates connector handles and keeps scalar labels at the scene boundary", () => {
+    const nodes = [card(), makeNode("card", 500, 20, defaults("card"), "other")];
+    for (const handle of ["left", "right", "top", "bottom"]) {
+      const scene = fromDiagram(
+        {
+          nodes,
+          edges: [
+            {
+              id: "edge",
+              source: "card",
+              target: "other",
+              sourceHandle: handle,
+              targetHandle: handle,
+              label: 42,
+            },
+          ],
+        },
+        empty,
+      );
+      expect(scene.elements.find((e) => e.id === "edge")).toMatchObject({
+        sourceHandle: handle,
+        targetHandle: handle,
+        label: "42",
+      });
+    }
+    expect(() =>
+      fromDiagram(
+        {
+          nodes,
+          edges: [{ id: "edge", source: "card", target: "other", sourceHandle: "invalid" }],
+        },
+        empty,
+      ),
+    ).toThrow();
+    const image = card();
+    image.data.image = "data:image/svg+xml;base64,PHN2Zz4=";
+    expect(() => fromDiagram({ nodes: [image], edges: [] }, empty)).toThrow();
+  });
   it("uses black 2px connectors by default and preserves explicitly saved colors", () => {
     expect(edgeOptions.style).toEqual({ stroke: "#000000", strokeWidth: 2 });
     const scene = fromDiagram(
@@ -26,7 +64,7 @@ describe("production flow scene boundary", () => {
     expect(scene.elements.find((e) => e.id === "edge")).toMatchObject({ color: "#000000" });
     const custom = structuredClone(scene);
     custom.elements.find((e) => e.id === "edge")!.color = "#ff0000";
-    expect(toDiagram(custom).edges[0]!.style).toEqual({ stroke: "#ff0000", strokeWidth: 2 });
+    expect(toDiagram(custom).edges[0].style).toEqual({ stroke: "#ff0000", strokeWidth: 2 });
   });
   it("round trips six components, ink, parenting and connections without view state", () => {
     const group = makeNode("boundary", 0, 0, defaults("boundary"), "group");
@@ -79,10 +117,10 @@ describe("production flow scene boundary", () => {
       empty,
     );
     const view = toDiagram(base);
-    view.nodes[0]!.selected = true;
-    view.nodes[0]!.measured = { width: 800, height: 800 };
+    view.nodes[0].selected = true;
+    view.nodes[0].measured = { width: 800, height: 800 };
     expect(fromDiagram(view, base)).toEqual(base);
-    view.nodes[0]!.position.x += 10;
+    view.nodes[0].position.x += 10;
     const moved = fromDiagram(view, base);
     expect(moved.elements.find((e) => e.id === "card")!.version).toBe(2);
     expect(moved.elements.find((e) => e.id === "icon")!.version).toBe(1);
@@ -104,10 +142,19 @@ describe("production flow scene boundary", () => {
     expect(raw).not.toContain("grantId");
     expect(importFlowScene(raw)).toEqual(base);
     expect(() => importFlowScene(JSON.stringify(base))).toThrow();
+    for (const invalid of [
+      null,
+      [],
+      {},
+      { format: "fernblick-flow", version: 1 },
+      { format: "fernblick-flow", version: 1, scene: base, grantId: "forbidden" },
+    ]) {
+      expect(() => importFlowScene(JSON.stringify(invalid))).toThrow("Unsupported flow backup");
+    }
     expect(() => importFlowScene(raw.replace('"version":1', '"version":2'))).toThrow();
     const replaced = replacementScene(base, base);
     expect(replaced.elements.find((e) => e.id === "card")!.isDeleted).toBe(true);
-    expect(replaced.elements.filter((e) => !e.isDeleted)[0]!.id).not.toBe("card");
+    expect(replaced.elements.filter((e) => !e.isDeleted)[0].id).not.toBe("card");
   });
   it("rejects other engines, dangling/cyclic graphs, SVG, URLs, malformed and oversized assets", () => {
     const base = fromDiagram({ nodes: [card()], edges: [] }, empty);
@@ -143,13 +190,14 @@ describe("production flow scene boundary", () => {
       "data:image/svg+xml;base64,PHN2Zz4=",
       "data:image/png;base64,A===",
       "data:image/png;base64," + "A".repeat(3 * 1024 * 1024),
-    ])
+    ]) {
       expect(() =>
         validateScene({
           ...base,
           files: { asset: { id: "asset", dataURL, mimeType: "image/png", created: 0 } },
         }),
       ).toThrow();
+    }
   });
   it("moves raster data to files and preserves referenced images and their identities", () => {
     const n = card();
@@ -157,7 +205,7 @@ describe("production flow scene boundary", () => {
       "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+a9l8AAAAASUVORK5CYII=";
     const base = fromDiagram({ nodes: [n], edges: [] }, empty);
     expect(Object.keys(base.files)).toHaveLength(1);
-    expect(base.elements[0]!.props).not.toHaveProperty("image");
+    expect(base.elements[0].props).not.toHaveProperty("image");
     expect(fromDiagram(toDiagram(base), base)).toEqual(base);
     const deleted = fromDiagram({ nodes: [], edges: [] }, base);
     expect(deleted.files).toEqual({});

@@ -1,5 +1,6 @@
 import appStyles from "./App.module.css";
-import { Component, type ErrorInfo, type ReactNode } from "react";
+import { Component } from "react";
+import type { ErrorInfo, ReactNode } from "react";
 import { StateIcon } from "../shared/ui/StateFeedback";
 
 type AppErrorBoundaryProps = {
@@ -18,6 +19,9 @@ export class AppErrorBoundary extends Component<AppErrorBoundaryProps, AppErrorB
   }
 
   componentDidCatch(error: Error, errorInfo: ErrorInfo) {
+    // React catches render failures here; retain the original stack and component trace
+    // for browser diagnostics rather than silently swallowing an unrecoverable error.
+    // oxlint-disable-next-line no-console
     console.error("Unhandled application error", error, errorInfo);
   }
 

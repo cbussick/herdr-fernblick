@@ -17,7 +17,9 @@ it("retains a browser-only failure across closing and reopening a browser profil
         name: "empty-log-fixture",
         configureServer(server) {
           server.middlewares.use((request, response, next) => {
-            if (request.url !== "/log-fixture") return next();
+            if (request.url !== "/log-fixture") {
+              return next();
+            }
             response.setHeader("Content-Type", "text/html");
             response.end("<!doctype html><title>Isolated log fixture</title>");
           });
@@ -28,7 +30,10 @@ it("retains a browser-only failure across closing and reopening a browser profil
   let browser: Awaited<ReturnType<typeof chromium.launchPersistentContext>> | undefined;
   try {
     await vite.listen();
-    const address = vite.httpServer!.address() as { port: number };
+    const address = vite.httpServer?.address();
+    if (!address || typeof address === "string") {
+      throw new Error("Expected TCP listener");
+    }
     const url = `http://127.0.0.1:${address.port}/log-fixture`;
     browser = await chromium.launchPersistentContext(profile, { headless: true });
     let page = await browser.newPage();

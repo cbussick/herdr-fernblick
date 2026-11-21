@@ -1,3 +1,4 @@
+import { report, reportError } from "../report.mjs";
 import { appSelector } from "./selectors.mjs";
 // Run with PLAYWRIGHT_MODULE=/absolute/path/to/playwright/index.mjs node tools/design/capture.mjs before|after URL
 // All API traffic is intercepted. This never connects to or controls real agents.
@@ -228,7 +229,7 @@ const manifest = selected
     )
   : [];
 const browser = await chromium.launch({ headless: true });
-for (const size of sizes)
+for (const size of sizes) {
   for (const [id, title, group] of captureScenarios) {
     const page = await browser.newPage({
       viewport: { width: size.width, height: size.height },
@@ -258,11 +259,11 @@ for (const size of sizes)
         cwd: "/projects/fernblick",
         model: "GPT-6.1",
         provider: "OpenAI",
-        totalTokens: 12480,
+        totalTokens: 12_480,
         cost: 0.18,
       },
     };
-    if (["image", "image-preview"].includes(id))
+    if (["image", "image-preview"].includes(id)) {
       snapshot.messages = [
         {
           id: "img1",
@@ -276,18 +277,20 @@ for (const size of sizes)
           text: "I’ll use the pale-blue canvas with darker text and white conversation surfaces.",
         },
       ];
-    if (id === "chat-status")
+    }
+    if (id === "chat-status") {
       snapshot.messages.push({
         id: "status",
         role: "status",
         text: "Conversation restored. Continue from this point.",
       });
+    }
     await page.addInitScript(
       ({ snapshot, id }) => {
         class FixtureEvents {
           constructor() {
             this.timer = setTimeout(() => {
-              if (!["chat-starting", "chat-connecting"].includes(id))
+              if (!["chat-starting", "chat-connecting"].includes(id)) {
                 this.onmessage?.({
                   data: JSON.stringify(
                     id === "chat-unavailable"
@@ -299,7 +302,10 @@ for (const size of sizes)
                       : snapshot,
                   ),
                 });
-              if (id === "chat-reconnecting") this.onerror?.();
+              }
+              if (id === "chat-reconnecting") {
+                this.onerror?.();
+              }
             }, 50);
           }
           close() {
@@ -314,13 +320,16 @@ for (const size of sizes)
       (url) => url.pathname.startsWith("/api/"),
       async (route) => {
         const url = route.request().url();
-        if (id === "loading" && url.endsWith("/api/agents")) return; // pending until page teardown
-        if (id === "offline" && url.endsWith("/api/agents"))
+        if (id === "loading" && url.endsWith("/api/agents")) {
+          return;
+        } // pending until page teardown
+        if (id === "offline" && url.endsWith("/api/agents")) {
           return route.fulfill({
             status: 503,
             json: { error: "The Herdr socket is unavailable. Check that your session is running." },
           });
-        if (url.endsWith("/api/agents") && route.request().method() === "GET")
+        }
+        if (url.endsWith("/api/agents") && route.request().method() === "GET") {
           return route.fulfill({
             json:
               id === "empty"
@@ -334,13 +343,19 @@ for (const size of sizes)
                     workspaces,
                   },
           });
-        if ((url.endsWith("/tree") || url.endsWith("/tree-page")) && id === "paths-loading") return;
-        if (url.endsWith("/prompt") && id === "send-pending") return; // Keep the actual forwarding request pending for the spinner capture.
-        if (url.endsWith("/prompt") && id === "send-acknowledged")
+        }
+        if ((url.endsWith("/tree") || url.endsWith("/tree-page")) && id === "paths-loading") {
+          return;
+        }
+        if (url.endsWith("/prompt") && id === "send-pending") {
+          return;
+        } // Keep the actual forwarding request pending for the spinner capture.
+        if (url.endsWith("/prompt") && id === "send-acknowledged") {
           return route.fulfill({
             json: { type: "ack", id: route.request().postDataJSON().requestId, outcome: "invoked" },
           });
-        if (url.endsWith("/tree") || url.endsWith("/tree-page"))
+        }
+        if (url.endsWith("/tree") || url.endsWith("/tree-page")) {
           return route.fulfill(
             id === "paths-error"
               ? {
@@ -358,8 +373,11 @@ for (const size of sizes)
                     : { type: "tree", id: target.runtime, target, tree },
                 },
           );
-        if (url.includes("/output?") && ["terminal-loading", "shell-loading"].includes(id)) return;
-        if (url.includes("/output?"))
+        }
+        if (url.includes("/output?") && ["terminal-loading", "shell-loading"].includes(id)) {
+          return;
+        }
+        if (url.includes("/output?")) {
           return route.fulfill(
             ["terminal-error", "shell-error"].includes(id)
               ? {
@@ -381,7 +399,10 @@ for (const size of sizes)
                   },
                 },
           );
-        if (url.includes("/uploads/")) return route.fulfill({ path: imagePath });
+        }
+        if (url.includes("/uploads/")) {
+          return route.fulfill({ path: imagePath });
+        }
         return route.fulfill({
           status: 503,
           json: {
@@ -395,10 +416,11 @@ for (const size of sizes)
     );
     try {
       await page.goto(base);
-      if (!["loading", "offline"].includes(id))
+      if (!["loading", "offline"].includes(id)) {
         await page
           .locator(phase === "before" ? ".overview-header" : appSelector(".overview-header"))
           .waitFor();
+      }
       if (
         [
           "expanded",
@@ -412,7 +434,7 @@ for (const size of sizes)
           "shell-error",
           "edit-shell",
         ].includes(id)
-      )
+      ) {
         await page
           .locator(
             phase === "before"
@@ -421,14 +443,18 @@ for (const size of sizes)
           )
           .first()
           .click();
-      if (id === "agents") await page.getByRole("tab", { name: "Agents", exact: true }).click();
-      if (["search", "no-results"].includes(id))
+      }
+      if (id === "agents") {
+        await page.getByRole("tab", { name: "Agents", exact: true }).click();
+      }
+      if (["search", "no-results"].includes(id)) {
         await page
           .getByRole("searchbox")
           .fill(id === "search" ? "Interface" : "No matching project");
+      }
       if (["create-menu", "new-agent", "new-workspace", "new-shell", "form-error"].includes(id)) {
         await page.getByRole("button", { name: "Open create menu" }).click();
-        if (id !== "create-menu")
+        if (id !== "create-menu") {
           await page
             .getByRole("button", {
               name:
@@ -439,6 +465,7 @@ for (const size of sizes)
                     : /New Workspace/,
             })
             .click();
+        }
         if (id === "form-error") {
           await page.locator("dialog[open] input").nth(0).fill("Design sandbox");
           await page.locator("dialog[open] input").nth(1).fill("/projects/design");
@@ -450,10 +477,11 @@ for (const size of sizes)
           .locator(phase === "before" ? ".pane-row" : appSelector(".pane-row"))
           .first()
           .click({ button: "right" });
-        if (id !== "context-menu")
+        if (id !== "context-menu") {
           await page
             .getByRole("menuitem", { name: id === "context-edit" ? "Edit agent" : "Close tab" })
             .click();
+        }
       }
       const detail = ![
         "workspaces",
@@ -475,14 +503,15 @@ for (const size of sizes)
       ].includes(id);
       if (detail) {
         if (id.startsWith("shell") || id === "edit-shell") {
-          if (phase === "before")
+          if (phase === "before") {
             await page.getByRole("button", { name: /Development server Shell terminal/ }).click();
-          else
+          } else {
             await page
               .getByTestId("tab-group")
               .filter({ hasText: "Development server" })
               .getByTestId("pane-row")
               .click();
+          }
         } else {
           await page.getByRole("tab", { name: "Agents", exact: true }).click();
           await page
@@ -501,21 +530,27 @@ for (const size of sizes)
         if (
           !id.startsWith("shell") &&
           !["edit-shell", "chat-starting", "chat-connecting", "chat-unavailable"].includes(id)
-        )
+        ) {
           await page
             .locator(phase === "before" ? ".chat-transcript" : appSelector(".chat-transcript"))
             .waitFor();
+        }
         if (id.startsWith("terminal")) {
           const toggle = page.getByRole("button", { name: "Switch to Terminal view" });
-          if (phase === "before") await toggle.dispatchEvent("click");
-          else await toggle.click();
+          if (phase === "before") {
+            await toggle.dispatchEvent("click");
+          } else {
+            await toggle.click();
+          }
         }
-        if (id === "tool-open")
+        if (id === "tool-open") {
           await page
             .locator(phase === "before" ? ".chat-tool summary" : appSelector(".chat-tool summary"))
             .click();
-        if (id === "image-preview")
+        }
+        if (id === "image-preview") {
           await page.getByRole("button", { name: "Open attached image" }).click();
+        }
         if (id === "draft-image") {
           await page.locator("input[type=file]").setInputFiles(imagePath);
           await page.locator("#agent-prompt").fill("Here is the visual direction I have in mind.");
@@ -525,28 +560,35 @@ for (const size of sizes)
           await page.getByRole("button", { name: "Send message" }).click();
         }
         if (["edit-agent", "edit-shell", "restart", "close-agent"].includes(id)) {
-          if (phase === "before")
+          if (phase === "before") {
             await page
               .locator(phase === "before" ? ".edit-tab-button" : appSelector(".edit-tab-button"))
               .dispatchEvent("click");
-          else
+          } else {
             await page
               .locator(phase === "before" ? ".edit-tab-button" : appSelector(".edit-tab-button"))
               .click();
-          if (id === "restart")
+          }
+          if (id === "restart") {
             await page.getByRole("button", { name: "Restart agent session", exact: true }).click();
-          if (id === "close-agent")
+          }
+          if (id === "close-agent") {
             await page.getByRole("button", { name: "Close this tab" }).click();
+          }
         }
         if (id.startsWith("paths")) {
           await page.getByRole("button", { name: "More conversation actions" }).click();
           await page.getByRole("menuitem", { name: "Tree", exact: true }).click();
-          if (id === "paths-prompts")
+          if (id === "paths-prompts") {
             await page.getByRole("button", { name: "Your prompts", exact: true }).click();
-          if (id === "paths-labels")
+          }
+          if (id === "paths-labels") {
             await page.getByRole("button", { name: "Labels", exact: true }).click();
-          if (id === "paths-empty") await page.getByRole("searchbox").fill("not present");
-          if (id === "paths-branch")
+          }
+          if (id === "paths-empty") {
+            await page.getByRole("searchbox").fill("not present");
+          }
+          if (id === "paths-branch") {
             await page
               .locator(
                 phase === "before"
@@ -555,15 +597,17 @@ for (const size of sizes)
               )
               .first()
               .click();
+          }
         }
       }
-      if (id === "offline")
+      if (id === "offline") {
         await page
           .locator(
             phase === "before" ? ".page-state[role=alert]" : appSelector(".page-state[role=alert]"),
           )
           .waitFor();
-      if (["terminal-error", "shell-error"].includes(id))
+      }
+      if (["terminal-error", "shell-error"].includes(id)) {
         await page
           .locator(
             phase === "before"
@@ -571,6 +615,7 @@ for (const size of sizes)
               : appSelector(".output-panel [role=alert]"),
           )
           .waitFor();
+      }
       await page.waitForTimeout(220);
       if (
         phase === "after" &&
@@ -595,8 +640,9 @@ for (const size of sizes)
           "paths-loading",
           "paths-error",
         ].includes(id)
-      )
+      ) {
         await page.locator("[data-state-kind] svg").first().waitFor();
+      }
       await page.evaluate(() => document.fonts.ready);
       if (phase === "after") {
         if (detail) {
@@ -607,7 +653,7 @@ for (const size of sizes)
             `${size.id}: incorrect single-pane/sidebar layout`,
           );
         }
-        if (id === "agents")
+        if (id === "agents") {
           assert.ok(
             await page
               .locator(appSelector(".pane-row"))
@@ -619,12 +665,14 @@ for (const size of sizes)
               ),
             "Flat agent rows must have white surfaces",
           );
-        if (id === "empty")
+        }
+        if (id === "empty") {
           assert.equal(
             await page.locator(appSelector(".overview-empty strong")).textContent(),
             "No workspaces yet",
           );
-        if (id === "tool-open")
+        }
+        if (id === "tool-open") {
           assert.ok(
             await page.locator(appSelector(".chat-tool pre")).evaluate((pre) => {
               const accordion = pre.parentElement;
@@ -647,9 +695,13 @@ for (const size of sizes)
             }),
             "Tool header and output must form one connected, bordered accordion",
           );
-        if (id === "send-pending") await page.locator('[data-testid="send-spinner"]').waitFor();
-        if (id === "send-acknowledged")
+        }
+        if (id === "send-pending") {
+          await page.locator('[data-testid="send-spinner"]').waitFor();
+        }
+        if (id === "send-acknowledged") {
           await page.waitForFunction(() => document.querySelector("#agent-prompt").value === "");
+        }
         const text = await page.locator("body").innerText();
         assert.ok(
           !/Waiting for Pi to receive|Sending to Pi|before receipt|Your workspaces stay within reach/.test(
@@ -682,7 +734,9 @@ for (const size of sizes)
         );
       }
       const overflow = await page.evaluate(() => document.documentElement.scrollWidth > innerWidth);
-      if (overflow) console.warn(`Overflow: ${size.id}/${id}`);
+      if (overflow) {
+        reportError(`Overflow: ${size.id}/${id}`);
+      }
       manifest.push({
         id,
         title,
@@ -691,9 +745,11 @@ for (const size of sizes)
         width: size.width,
         height: size.height,
       });
-      console.log(`${phase}: ${size.id}/${id}`);
+      report(`${phase}: ${size.id}/${id}`);
     } catch (error) {
-      console.error(`FAILED ${size.id}/${id}: ${error}`);
+      reportError(
+        `FAILED ${size.id}/${id}: ${error instanceof Error ? error.message : String(error)}`,
+      );
       await page.screenshot({ path: `${out}/failure.png` });
       process.exitCode = 1;
       break;
@@ -701,8 +757,11 @@ for (const size of sizes)
       await page.close();
     }
   }
+}
 await browser.close();
-if (process.exitCode) throw new Error("Capture failed; previous gallery manifest was preserved");
+if (process.exitCode) {
+  throw new Error("Capture failed; previous gallery manifest was preserved");
+}
 manifest.sort(
   (a, b) =>
     sizes.findIndex((size) => size.id === a.viewport) -
@@ -712,4 +771,4 @@ manifest.sort(
 );
 await fs.writeFile(`${out}/${phase}.json`, JSON.stringify(manifest, null, 2));
 await fs.copyFile("tools/design/gallery.html", `${out}/index.html`);
-console.log(`Captured ${manifest.length} screens for ${phase}.`);
+report(`Captured ${manifest.length} screens for ${phase}.`);

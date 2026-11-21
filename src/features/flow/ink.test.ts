@@ -1,19 +1,14 @@
 import { describe, expect, it } from "vitest";
-import {
-  applyInkCommand,
-  gestureViewport,
-  hitsInk,
-  inkDimensions,
-  makeInk,
-  outline,
-  type InkData,
-} from "./ink";
-import { defaults, makeNode, type Diagram } from "./model";
+import { applyInkCommand, gestureViewport, hitsInk, inkDimensions, makeInk, outline } from "./ink";
+import { defaults, makeNode } from "./model";
+import type { Diagram } from "./model";
 import { flowInkPropsSchema } from "../../../packages/pi-live-chat/flowProtocol";
 import { fromDiagram, toDiagram } from "./scene";
 const validInk = (value: unknown) => {
-  if (!value || typeof value !== "object") return false;
-  const { kind: _kind, ...props } = value as InkData;
+  if (!value || typeof value !== "object") {
+    return false;
+  }
+  const { kind: _kind, ...props } = { kind: undefined, ...value };
   return flowInkPropsSchema.safeParse(props).success;
 };
 const serialize = (diagram: Diagram) =>
@@ -38,11 +33,11 @@ describe("freehand records and geometry", () => {
   it("normalizes a stroke without moving its original points in world space", () => {
     const node = line();
     expect(validInk(node.data)).toBe(true);
-    expect(node.position.x + node.data.points[0]![0]).toBeCloseTo(100);
-    expect(node.position.y + node.data.points[0]![1]).toBeCloseTo(100);
+    expect(node.position.x + node.data.points[0][0]).toBeCloseTo(100);
+    expect(node.position.y + node.data.points[0][1]).toBeCloseTo(100);
     expect(
       outline(node.data).every(
-        (p) => p[0]! >= 0 && p[0]! <= node.data.w && p[1]! >= 0 && p[1]! <= node.data.h,
+        (p) => p[0] >= 0 && p[0] <= node.data.w && p[1] >= 0 && p[1] <= node.data.h,
       ),
     ).toBe(true);
   });
@@ -81,12 +76,13 @@ describe("freehand records and geometry", () => {
       { points: [] },
       { points: [[0, 0, -1]] },
       { points: [[0, Infinity, 0.5]] },
-      { points: Array(10001).fill([0, 0, 0.5]) },
+      { points: Array.from({ length: 10_001 }, () => [0, 0, 0.5]) },
       { size: 50 },
       { w: 0 },
       { color: "url(external)" },
-    ])
+    ]) {
       expect(validInk({ ...data, ...patch })).toBe(false);
+    }
     expect(validInk({ ...data, pressure: false })).toBe(true);
   });
   it("round-trips ink dimensions without changing component props", () => {
@@ -95,9 +91,9 @@ describe("freehand records and geometry", () => {
     ink.height = 80;
     const board: Diagram = { nodes: [makeNode("card", 0, 0), ink], edges: [] };
     const roundtrip = restore(serialize(board));
-    expect(roundtrip.nodes[0]!.data).toEqual(board.nodes[0]!.data);
-    expect(roundtrip.nodes[1]!.data).toEqual(ink.data);
-    expect(roundtrip.nodes[1]!.style).toEqual({ width: 450, height: 80 });
+    expect(roundtrip.nodes[0].data).toEqual(board.nodes[0].data);
+    expect(roundtrip.nodes[1].data).toEqual(ink.data);
+    expect(roundtrip.nodes[1].style).toEqual({ width: 450, height: 80 });
   });
   it("rejects grouped ink and connections to strokes", () => {
     const ink = line();
@@ -139,6 +135,6 @@ describe("freehand records and geometry", () => {
     ).toEqual({ x: -150, y: -80, zoom: 2 });
   });
   it("does not accept an arbitrary payload as a stroke", () => {
-    expect(validInk({ kind: "ink" } as InkData)).toBe(false);
+    expect(validInk({ kind: "ink" })).toBe(false);
   });
 });

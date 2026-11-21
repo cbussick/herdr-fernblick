@@ -1,16 +1,15 @@
-import { createRoot, type Root } from "react-dom/client";
+import { createRoot } from "react-dom/client";
+import type { Root } from "react-dom/client";
 import { flushSync } from "react-dom";
 import { getSmoothStepPath, Position } from "@xyflow/react";
-import type { BoardScene } from "../../../packages/pi-live-chat/boardProtocol";
-import {
-  boardImageLimits,
-  type BoardImageQuality,
-} from "../../../packages/pi-live-chat/boardImageExport";
+import { boardImageLimits } from "../../../packages/pi-live-chat/boardImageExport";
+import type { BoardImageQuality } from "../../../packages/pi-live-chat/boardImageExport";
 import {
   FLOW_CONNECTION_WIDTH,
   validateFlowGraph,
 } from "../../../packages/pi-live-chat/flowProtocol";
-import { ComponentContent, componentStyle } from "./Components";
+import { ComponentContent } from "./Components";
+import { componentStyle } from "./componentPresentation";
 import { PrimitiveSvg } from "./Primitives";
 import { outline, pathFromOutline } from "./ink";
 import { toDiagram, validateScene } from "./scene";
@@ -22,8 +21,9 @@ import "@fontsource/nunito/700.css";
 
 export type Bounds = { x: number; y: number; width: number; height: number };
 export function fittedOutput(bounds: Bounds, scale = 1, quality?: BoardImageQuality) {
-  if (!Number.isFinite(scale) || scale <= 0 || scale > 1)
+  if (!Number.isFinite(scale) || scale <= 0 || scale > 1) {
     throw new Error("Render scale must be greater than zero and at most one");
+  }
   const limits = boardImageLimits(quality);
   const width = Math.max(1, bounds.width + 64),
     height = Math.max(1, bounds.height + 64);
@@ -40,15 +40,19 @@ export function fittedOutput(bounds: Bounds, scale = 1, quality?: BoardImageQual
     zoom,
   };
 }
-const nextFrame = () => new Promise<void>((resolve) => requestAnimationFrame(() => resolve()));
+const nextFrame = () =>
+  new Promise<void>((resolve) => {
+    requestAnimationFrame(() => resolve());
+  });
 async function loadResources(host: HTMLElement) {
   for (const weight of [400, 600, 700]) {
     const faces = await document.fonts.load(
       `${weight} 16px Nunito`,
       `Board ${host.textContent || ""}`,
     );
-    if (!faces.length || faces.some((face) => face.status !== "loaded"))
+    if (!faces.length || faces.some((face) => face.status !== "loaded")) {
       throw new Error("Local Nunito font failed to load");
+    }
   }
   await document.fonts.ready;
   let pixels = 0;
@@ -62,33 +66,49 @@ async function loadResources(host: HTMLElement) {
       if (
         !img.naturalWidth ||
         !img.naturalHeight ||
-        img.naturalWidth > 32768 ||
-        img.naturalHeight > 32768
-      )
+        img.naturalWidth > 32_768 ||
+        img.naturalHeight > 32_768
+      ) {
         throw new Error("Invalid board image dimensions");
+      }
       pixels += img.naturalWidth * img.naturalHeight;
-      if (pixels > 32 * 1024 * 1024) throw new Error("Board images exceed decoded pixel budget");
+      if (pixels > 32 * 1024 * 1024) {
+        throw new Error("Board images exceed decoded pixel budget");
+      }
     }),
   );
 }
+const handlePositions = {
+  top: Position.Top,
+  right: Position.Right,
+  bottom: Position.Bottom,
+  left: Position.Left,
+};
 let root: Root | undefined;
 let busy = false;
 /** Isolated DOM screenshot entry. No editor/controller, APIs, storage or arbitrary markup. */
 export async function prepareFlowBoardScene(
-  input: BoardScene,
+  input: unknown,
   scale = 1,
   quality?: BoardImageQuality,
 ): Promise<{ width: number; height: number }> {
-  if (busy) throw new Error("A scene is already being prepared");
+  if (busy) {
+    throw new Error("A scene is already being prepared");
+  }
   busy = true;
   try {
     const scene = validateScene(input),
       diagram = toDiagram(scene),
       elements = validateFlowGraph(scene).filter((e) => !e.isDeleted);
     const host = document.getElementById("flow-render-root");
-    if (!host) throw new Error("Renderer root is missing");
-    const position = (id: string): { x: number; y: number } => {
-      const n = diagram.nodes.find((n) => n.id === id)!;
+    if (!host) {
+      throw new Error("Renderer root is missing");
+    }
+    const position = (id: string) => {
+      const n = diagram.nodes.find((n) => n.id === id);
+      if (!n) {
+        throw new Error("Render node is missing");
+      }
       const parent = n.parentId ? diagram.nodes.find((p) => p.id === n.parentId) : undefined;
       return {
         x: n.position.x + (parent?.position.x ?? 0),
@@ -101,9 +121,10 @@ export async function prepareFlowBoardScene(
       previousLayer.querySelectorAll("[data-render-connections]").forEach((el) => el.remove());
     }
     root ??= createRoot(host);
+    const renderRoot = root;
     const nodes = diagram.nodes.map((n) => {
       const p = position(n.id);
-      if (n.type === "primitive")
+      if (n.type === "primitive") {
         return (
           <div
             key={n.id}
@@ -114,7 +135,8 @@ export async function prepareFlowBoardScene(
             <PrimitiveSvg shape={n.data.shape} drawing={n.data.drawing} />
           </div>
         );
-      if (n.type === "ink")
+      }
+      if (n.type === "ink") {
         return (
           <svg
             key={n.id}
@@ -127,6 +149,7 @@ export async function prepareFlowBoardScene(
             <path d={pathFromOutline(outline(n.data))} fill={n.data.color} />
           </svg>
         );
+      }
       return (
         <div
           key={n.id}
@@ -148,7 +171,7 @@ export async function prepareFlowBoardScene(
       );
     });
     flushSync(() =>
-      root!.render(
+      renderRoot.render(
         <div
           className={`${styles["app"]} ${renderStyles.page}`}
           style={{ background: scene.background }}
@@ -161,16 +184,24 @@ export async function prepareFlowBoardScene(
     );
     await loadResources(host);
     await nextFrame();
-    const layer = host.querySelector<HTMLElement>("[data-render-layer]")!;
-    const boxes = new Map(
-      Array.from(layer.querySelectorAll<HTMLElement>("[data-render-node]")).map((el) => [
-        el.dataset.renderNode!,
-        el.getBoundingClientRect(),
-      ]),
-    );
+    const layer = host.querySelector<HTMLElement>("[data-render-layer]");
+    if (!layer) {
+      throw new Error("Render layer is missing");
+    }
+    const boxes = new Map<string, DOMRect>();
+    for (const el of layer.querySelectorAll<HTMLElement>("[data-render-node]")) {
+      const id = el.dataset.renderNode;
+      if (!id) {
+        throw new Error("Render node ID is missing");
+      }
+      boxes.set(id, el.getBoundingClientRect());
+    }
     const origin = layer.getBoundingClientRect();
     const point = (id: string, handle: string) => {
-      const box = boxes.get(id)!;
+      const box = boxes.get(id);
+      if (!box) {
+        throw new Error("Connection render node is missing");
+      }
       return {
         x:
           box.left -
@@ -186,7 +217,7 @@ export async function prepareFlowBoardScene(
     svg.classList.add(renderStyles.connections);
     svg.setAttribute("data-render-connections", "");
     // Build only trusted SVG primitives, never parse user markup or URLs.
-    for (const e of elements)
+    for (const e of elements) {
       if (e.type === "connection") {
         const a = point(e.source, e.sourceHandle),
           b = point(e.target, e.targetHandle);
@@ -195,8 +226,8 @@ export async function prepareFlowBoardScene(
           sourceY: a.y,
           targetX: b.x,
           targetY: b.y,
-          sourcePosition: e.sourceHandle as Position,
-          targetPosition: e.targetHandle as Position,
+          sourcePosition: handlePositions[e.sourceHandle],
+          targetPosition: handlePositions[e.targetHandle],
         });
         const path = document.createElementNS(svg.namespaceURI, "path");
         path.setAttribute("d", d);
@@ -220,6 +251,7 @@ export async function prepareFlowBoardScene(
           svg.append(text);
         }
       }
+    }
     layer.append(svg);
     await nextFrame();
     const rects = Array.from(

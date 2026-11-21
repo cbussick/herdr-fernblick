@@ -1,3 +1,4 @@
+import { report } from "../report.mjs";
 // Synthetic API fixtures only; never connects to a live Herdr session.
 // PLAYWRIGHT_MODULE=/path/to/playwright/index.mjs node tools/design/pane-context-menu.mjs URL
 import assert from "node:assert/strict";
@@ -47,7 +48,9 @@ async function assertVisibleMenu(page) {
 }
 
 for (const [name, engine] of Object.entries({ chromium, webkit })) {
-  if (process.env.DESIGN_BROWSER && process.env.DESIGN_BROWSER !== name) continue;
+  if (process.env.DESIGN_BROWSER && process.env.DESIGN_BROWSER !== name) {
+    continue;
+  }
   const browser = await engine.launch({ headless: true });
   try {
     for (const viewport of [
@@ -72,7 +75,9 @@ for (const [name, engine] of Object.entries({ chromium, webkit })) {
       await page.evaluate(() => document.fonts.ready);
       await page.getByTestId("workspace-disclosure").locator(":scope > summary").click();
       for (const grouped of [true, false]) {
-        if (!grouped) await page.getByRole("tab", { name: "Agents", exact: true }).click();
+        if (!grouped) {
+          await page.getByRole("tab", { name: "Agents", exact: true }).click();
+        }
         const row = page.getByTestId("pane-row").last();
         await row.scrollIntoViewIfNeeded();
         await row.dispatchEvent("pointerdown", { pointerType: "touch", pointerId: 1, button: 0 });
@@ -100,7 +105,7 @@ for (const [name, engine] of Object.entries({ chromium, webkit })) {
       }
       assert.deepEqual(errors, []);
       await page.close();
-      console.log(`${name} ${viewport.width}x${viewport.height}: PASS`);
+      report(`${name} ${viewport.width}x${viewport.height}: PASS`);
     }
   } finally {
     await browser.close();

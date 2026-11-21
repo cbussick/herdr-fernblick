@@ -5,10 +5,12 @@ const buildSchema = z.object({
   builtAt: z.string().datetime(),
 });
 export type BuildInfo = { revision: string; builtAt: string | null };
-declare const __FERNBLICK_BUILD__: BuildInfo;
+declare const __FERNBLICK_BUILD__: BuildInfo | undefined;
 
 // Storybook and non-Vite test consumers have no production build injected.
 export const runningBuild: BuildInfo =
+  // The Vite replacement is an undeclared identifier in non-Vite consumers: direct access throws.
+  // oxlint-disable-next-line unicorn/no-typeof-undefined
   typeof __FERNBLICK_BUILD__ === "undefined"
     ? { revision: "development", builtAt: null }
     : __FERNBLICK_BUILD__;
@@ -18,10 +20,13 @@ export async function fetchLatestBuild(): Promise<BuildInfo> {
     cache: "no-store",
     signal: AbortSignal.timeout(10_000),
   });
-  if (!response.ok)
+  if (!response.ok) {
     throw new Error("Could not reach the latest build. Check your tailnet connection.");
+  }
   const parsed = buildSchema.safeParse(await response.json());
-  if (!parsed.success) throw new Error("The server did not return valid build information.");
+  if (!parsed.success) {
+    throw new Error("The server did not return valid build information.");
+  }
   return parsed.data;
 }
 

@@ -1,3 +1,4 @@
+import { report } from "../report.mjs";
 // Synthetic-only browser coverage: no Herdr socket or real sessions are used.
 // PLAYWRIGHT_MODULE=/path/to/playwright/index.mjs node tools/design/chat-history.mjs URL
 import assert from "node:assert/strict";
@@ -96,22 +97,25 @@ for (const [engine, browserType] of [
         const url = new URL(route.request().url());
         const method = route.request().method();
         let body;
-        if (url.pathname === "/api/agents" && method === "GET")
+        if (url.pathname === "/api/agents" && method === "GET") {
           body = {
             agents: resumed ? [agent] : [],
             tabs: [],
             workspaces: [...existingWorkspaces, ...(createdWorkspace ? [createdWorkspace] : [])],
           };
-        else if (url.pathname === "/api/chats" && method === "GET") {
+        } else if (url.pathname === "/api/chats" && method === "GET") {
           await historyReady;
           body = {
-            chats: chats
-              .filter((chat) => !deleted || chat.id !== chats[1].id)
-              .map((chat) =>
+            chats: chats.flatMap((chat) => {
+              if (deleted && chat.id === chats[1].id) {
+                return [];
+              }
+              return [
                 resumed && chat.id === chats[0].id
                   ? { ...chat, activePaneId: agent.pane_id }
                   : chat,
-              ),
+              ];
+            }),
           };
         } else if (url.pathname === `/api/chats/${chats[1].id}` && method === "DELETE") {
           deletionAttempts++;
@@ -172,7 +176,7 @@ for (const [engine, browserType] of [
         .first()
         .evaluate((card) => ({
           background: getComputedStyle(card).backgroundColor,
-          radius: parseFloat(getComputedStyle(card).borderRadius),
+          radius: Number.parseFloat(getComputedStyle(card).borderRadius),
         }));
       assert.equal(cardStyle.background, "rgb(255, 255, 255)");
       assert(cardStyle.radius > 0, "Chat rows are rounded cards");
@@ -331,8 +335,9 @@ for (const [engine, browserType] of [
       await dialog.waitFor({ state: "hidden" });
       assert.deepEqual(mutations, []);
       await opener.click();
-      if (existingWorkspaces.length)
+      if (existingWorkspaces.length) {
         await dialog.getByLabel("Workspace", { exact: true }).selectOption("w2");
+      }
       await dialog.getByRole("button", { name: "Create new workspace", exact: true }).click();
       const creation = page.getByRole("dialog", { name: "New workspace", exact: true });
       await creation.waitFor();
@@ -355,8 +360,9 @@ for (const [engine, browserType] of [
       assert.equal(await page.locator("dialog:modal").count(), 1);
       assert.deepEqual(creations, []);
       assert.deepEqual(mutations, []);
-      if (existingWorkspaces.length)
+      if (existingWorkspaces.length) {
         assert.equal(await dialog.getByLabel("Workspace", { exact: true }).inputValue(), "w2");
+      }
       await dialog.getByRole("button", { name: "Create new workspace", exact: true }).click();
       await creation.waitFor();
       await creation.getByLabel("Workspace name", { exact: true }).fill("Resumed project");
@@ -389,7 +395,7 @@ for (const [engine, browserType] of [
       );
       assert.deepEqual(mutations, [{ workspaceId: "w3" }]);
       assert.deepEqual(errors, []);
-      console.log(
+      report(
         `${engine} ${device}: loading, reduced motion, history, search, session labels, delete, snackbar, local draft cleanup, resume, focus, overflow passed`,
       );
       await page.close();

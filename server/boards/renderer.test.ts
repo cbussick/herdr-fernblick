@@ -1,4 +1,4 @@
-import type { Browser, Request, Route } from "playwright";
+import { RenderRequests } from "./renderRequests.js";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { BoardRenderer } from "./renderer.js";
 import { emptyScene } from "./scene.js";
@@ -47,7 +47,7 @@ function fakeBrowser() {
   launch.mockResolvedValue(browser);
   return { page, context, browser };
 }
-const renderers: BoardRenderer[] = [];
+const renderers: Array<BoardRenderer> = [];
 function renderer() {
   const result = new BoardRenderer("http://127.0.0.1:9191");
   renderers.push(result);
@@ -75,8 +75,9 @@ describe("BoardRenderer", () => {
       "http://user:secret@localhost",
       "http://localhost/",
       "http://localhost/api",
-    ])
+    ]) {
       expect(() => new BoardRenderer(origin)).toThrow(/origin/);
+    }
     const value = renderer();
     expect(launch).not.toHaveBeenCalled();
     await expect(
@@ -191,17 +192,23 @@ describe("BoardRenderer", () => {
     const { context, page } = fakeBrowser();
     const value = renderer();
     await value.render(emptyScene());
-    const handle = context.route.mock.calls[0][1] as (route: Route) => Promise<void>;
-    async function request(url: string, type = "script", navigation = false, method = "GET") {
+    expect(context.route).toHaveBeenCalled();
+    const requests = new RenderRequests("http://127.0.0.1:9191");
+    async function request(
+      url: string,
+      type = "script",
+      navigation = false,
+      method = "GET",
+      mainFrame = true,
+    ) {
       const route = {
-        request: () =>
-          ({
-            url: () => url,
-            method: () => method,
-            resourceType: () => type,
-            isNavigationRequest: () => navigation,
-            frame: () => page.mainFrame(),
-          }) as unknown as Request,
+        request: () => ({
+          url: () => url,
+          method: () => method,
+          resourceType: () => type,
+          isNavigationRequest: () => navigation,
+          frame: () => page.mainFrame(),
+        }),
         fetch: vi.fn().mockResolvedValue({
           ok: () => !url.includes("redirect"),
           dispose: vi.fn().mockResolvedValue(undefined),
@@ -209,10 +216,13 @@ describe("BoardRenderer", () => {
         fulfill: vi.fn().mockResolvedValue(undefined),
         abort: vi.fn().mockResolvedValue(undefined),
       };
-      await handle(route as unknown as Route);
+      await requests.handle(route, mainFrame);
       return route;
     }
     const base = "http://127.0.0.1:9191";
+    expect(
+      (await request(`${base}/flow-board-render.html`, "document", true, "GET", false)).abort,
+    ).toHaveBeenCalled();
     expect(
       (await request(`${base}/flow-board-render.html`, "document", true)).fulfill,
     ).toHaveBeenCalled();
@@ -223,8 +233,9 @@ describe("BoardRenderer", () => {
       ["/assets/chunk-abc.js", "script"],
       ["/assets/flow-abc.css", "stylesheet"],
       ["/assets/Manrope-abc.woff2", "font"],
-    ])
+    ]) {
       expect((await request(`${base}${path}`, type)).fulfill).toHaveBeenCalled();
+    }
     const redirected = await request(`${base}/assets/redirect.js`);
     expect(redirected.fetch).toHaveBeenCalledWith({ maxRedirects: 0, timeout: 10_000 });
     expect(redirected.abort).toHaveBeenCalled();
@@ -240,8 +251,9 @@ describe("BoardRenderer", () => {
       `${base}/flow-board-render.html`,
       `${base}/assets/image.png`,
       `${base}/assets/bad.css?query=1`,
-    ])
+    ]) {
       expect((await request(url)).abort).toHaveBeenCalled();
+    }
     expect(
       (await request(`${base}/assets/a.js`, "script", false, "POST")).abort,
     ).toHaveBeenCalled();
@@ -255,7 +267,7 @@ describe("BoardRenderer", () => {
     browser.close.mockImplementation(async () => gate.reject(new Error("Target closed")));
     const value = renderer();
     const results = Array.from({ length: 4 }, () =>
-      value.render(emptyScene()).catch((error: Error) => error),
+      value.render(emptyScene()).catch((error: unknown) => error),
     );
     await expect(value.render(emptyScene())).rejects.toThrow("busy");
     await vi.waitFor(() => expect(page.evaluate).toHaveBeenCalledTimes(1));
@@ -280,7 +292,7 @@ describe("BoardRenderer", () => {
     browser.close.mockImplementation(async () => gate.reject(new Error("Target closed")));
     const value = renderer();
     const results = [value.render(emptyScene()), value.render(emptyScene())].map((result) =>
-      result.catch((error: Error) => error),
+      result.catch((error: unknown) => error),
     );
     await vi.advanceTimersByTimeAsync(30_000);
     expect(
@@ -295,12 +307,12 @@ describe("BoardRenderer", () => {
 
   it("does not leak a browser whose launch finishes after shutdown", async () => {
     const { browser } = fakeBrowser();
-    const gate = deferred<Browser>();
+    const gate = deferred<typeof browser>();
     launch.mockReturnValue(gate.promise);
     const value = renderer();
-    const result = value.render(emptyScene()).catch((error: Error) => error);
+    const result = value.render(emptyScene()).catch((error: unknown) => error);
     const closing = value.close();
-    gate.resolve(browser as unknown as Browser);
+    gate.resolve(browser);
     await closing;
     expect(await result).toBeInstanceOf(Error);
     expect(browser.newContext).not.toHaveBeenCalled();

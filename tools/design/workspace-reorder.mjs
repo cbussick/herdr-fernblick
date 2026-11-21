@@ -1,3 +1,4 @@
+import { report } from "../report.mjs";
 // Synthetic fixtures only; never connects to a Herdr/Pi socket.
 // node tools/design/workspace-reorder.mjs http://127.0.0.1:5218
 import assert from "node:assert/strict";
@@ -10,7 +11,9 @@ for (const [name, engine, mobile] of [
   ["webkit", webkit, false],
   ["touch", chromium, true],
 ]) {
-  if (process.env.REORDER_ENGINE && process.env.REORDER_ENGINE !== name) continue;
+  if (process.env.REORDER_ENGINE && process.env.REORDER_ENGINE !== name) {
+    continue;
+  }
   const browser = await engine.launch();
   try {
     const page = await browser.newPage({
@@ -31,14 +34,21 @@ for (const [name, engine, mobile] of [
     await page.route("**/api/**", async (route) => {
       const request = route.request();
       const pathname = new URL(request.url()).pathname;
-      if (!pathname.startsWith("/api/")) return route.continue();
-      if (pathname === "/api/agents" && request.method() === "GET")
+      if (!pathname.startsWith("/api/")) {
+        return route.continue();
+      }
+      if (pathname === "/api/agents" && request.method() === "GET") {
         return route.fulfill({ json: { agents: [], tabs: [], workspaces } });
+      }
       if (pathname === "/api/workspaces/move" && request.method() === "POST") {
         const body = request.postDataJSON();
         mutations.push(body);
-        await new Promise((resolve) => setTimeout(resolve, 150));
-        if (fail) return route.fulfill({ status: 502, json: { error: "Synthetic Herdr failure" } });
+        await new Promise((resolve) => {
+          setTimeout(resolve, 150);
+        });
+        if (fail) {
+          return route.fulfill({ status: 502, json: { error: "Synthetic Herdr failure" } });
+        }
         const moved = workspaces.find((w) => w.workspace_id === body.workspaceId);
         workspaces = workspaces.filter((w) => w !== moved);
         const index =
@@ -100,21 +110,22 @@ for (const [name, engine, mobile] of [
       await moveTouch(b.y + b.height / 4, b.y + (b.height * 3) / 4);
       const gap = await page.locator('[data-marker="after"]').evaluate((element) => {
         const style = getComputedStyle(element, "::after");
-        const top = element.getBoundingClientRect().top + parseFloat(style.top);
-        const bottom = top + parseFloat(style.height);
+        const top = element.getBoundingClientRect().top + Number.parseFloat(style.top);
+        const bottom = top + Number.parseFloat(style.height);
         const card = element.querySelector("details").getBoundingClientRect();
         const next = element.nextElementSibling.querySelector("details").getBoundingClientRect();
         return { top, bottom, cardBottom: card.bottom, nextTop: next.top };
       });
-      console.log(`${name}: early markers=${earlyMarkers}, gap=${JSON.stringify(gap)}`);
+      report(`${name}: early markers=${earlyMarkers}, gap=${JSON.stringify(gap)}`);
       assert.equal(earlyMarkers, 0, "downward reorder must wait until the next row's midpoint");
       assert.ok(gap.top > gap.cardBottom && gap.bottom < gap.nextTop, "line must be between cards");
       assert.ok(
         Math.abs((gap.top + gap.bottom - gap.cardBottom - gap.nextTop) / 2) <= 1,
         "line must be centered in the gap",
       );
-      if (process.env.REORDER_SCREENSHOTS)
+      if (process.env.REORDER_SCREENSHOTS) {
         await page.screenshot({ path: "design-gallery/workspace-reorder/touch-between-cards.png" });
+      }
       const preview = await page.getByTestId("workspace-drag-preview").boundingBox();
       const lastCard = await cards.last().boundingBox();
       const pointerY = b.y + (b.height * 3) / 4;
@@ -197,7 +208,7 @@ for (const [name, engine, mobile] of [
       false,
     );
     assert.deepEqual(errors, []);
-    console.log(
+    report(
       `${name}: PASS drag, persistence, keyboard, cancellation, click-only move, focus, expansion, rollback and search`,
     );
     await page.close();

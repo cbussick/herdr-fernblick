@@ -1,23 +1,23 @@
 import { randomUUID } from "node:crypto";
 import net from "node:net";
+import { z } from "zod";
 import type { ZodType } from "zod";
 
-const DEFAULT_TIMEOUT_MS = 5_000;
+const DEFAULT_TIMEOUT_MS = 5000;
 
-type HerdrResult = Record<string, unknown>;
+type HerdrParamValue =
+  | string
+  | number
+  | boolean
+  | null
+  | undefined
+  | ReadonlyArray<HerdrParamValue>
+  | { readonly [key: string]: HerdrParamValue };
+export type HerdrParams = Readonly<Record<string, HerdrParamValue>>;
 
-interface HerdrSuccessEnvelope {
-  id: string;
-  result: HerdrResult;
-}
-
-interface HerdrErrorEnvelope {
-  error: {
-    code: string;
-    message: string;
-  };
-  id: string;
-}
+const errorEnvelopeSchema = z.object({
+  error: z.object({ code: z.string(), message: z.string() }),
+});
 
 export class HerdrRequestError extends Error {
   constructor(
@@ -35,7 +35,7 @@ export class HerdrClient {
     private readonly timeoutMs = DEFAULT_TIMEOUT_MS,
   ) {}
 
-  request<T>(method: string, params: Record<string, unknown>, schema: ZodType<T>) {
+  request<T>(method: string, params: HerdrParams, schema: ZodType<T>) {
     const id = randomUUID();
 
     return new Promise<T>((resolve, reject) => {
@@ -44,7 +44,9 @@ export class HerdrClient {
       let settled = false;
 
       const finish = (callback: () => void) => {
-        if (settled) return;
+        if (settled) {
+          return;
+        }
         settled = true;
         clearTimeout(timeout);
         socket.destroy();
@@ -64,22 +66,28 @@ export class HerdrClient {
       socket.on("data", (chunk) => {
         buffer += chunk;
         const lineEnd = buffer.indexOf("\n");
-        if (lineEnd === -1) return;
+        if (lineEnd === -1) {
+          return;
+        }
 
         const line = buffer.slice(0, lineEnd);
 
         try {
-          const envelope = JSON.parse(line) as HerdrSuccessEnvelope | HerdrErrorEnvelope;
-          if (envelope.id !== id) return;
-
-          if ("error" in envelope) {
-            finish(() =>
-              reject(new HerdrRequestError(envelope.error.code, envelope.error.message)),
-            );
+          const envelope: unknown = JSON.parse(line);
+          if (envelope === null || typeof envelope !== "object") {
+            throw new Error("Invalid Herdr response envelope");
+          }
+          if (!("id" in envelope) || envelope.id !== id) {
             return;
           }
 
-          const parsed = schema.safeParse(envelope.result);
+          if ("error" in envelope) {
+            const { error } = errorEnvelopeSchema.parse(envelope);
+            finish(() => reject(new HerdrRequestError(error.code, error.message)));
+            return;
+          }
+
+          const parsed = schema.safeParse("result" in envelope ? envelope.result : undefined);
           if (!parsed.success) {
             finish(() =>
               reject(

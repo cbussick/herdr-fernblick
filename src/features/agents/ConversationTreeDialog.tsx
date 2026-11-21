@@ -15,7 +15,7 @@ interface ConversationTreeDialogProps {
   identity: Target;
   busy: boolean;
   onClose: () => void;
-  onRestorePrompt: (text: string, attachments: string[]) => void;
+  onRestorePrompt: (text: string, attachments: Array<string>) => void;
 }
 
 export function ConversationTreeDialog({
@@ -37,7 +37,9 @@ export function ConversationTreeDialog({
   const searchPending =
     search.trim() !== (request.query ?? "") || filter !== (request.filter ?? "all");
   useEffect(() => {
-    if (!searchPending) return;
+    if (!searchPending) {
+      return;
+    }
     const timer = setTimeout(() => {
       setRequest((current) => ({ query: search.trim(), filter, focusId: current.focusId }));
       setSelectedId(null);
@@ -82,7 +84,9 @@ export function ConversationTreeDialog({
     mutationFn: (row: TreePageRow) => navigateAgentTree(target, identity, row.id),
     retry: false,
     onSuccess: (result) => {
-      if (result.prompt) onRestorePrompt(result.prompt.text, result.prompt.attachments);
+      if (result.prompt) {
+        onRestorePrompt(result.prompt.text, result.prompt.attachments);
+      }
       onClose();
     },
   });
@@ -96,7 +100,9 @@ export function ConversationTreeDialog({
     setRequest(next);
   }
   function load(offset: number) {
-    if (!page) return;
+    if (!page) {
+      return;
+    }
     setSelectedId(null);
     setRequest({ ...request, offset, revision: page.revision });
   }
@@ -107,11 +113,17 @@ export function ConversationTreeDialog({
   }
   useEffect(() => {
     const dialog = dialogRef.current;
-    if (open && dialog && !dialog.open) dialog.showModal();
-    if (!open && dialog?.open) dialog.close();
+    if (open && dialog && !dialog.open) {
+      dialog.showModal();
+    }
+    if (!open && dialog?.open) {
+      dialog.close();
+    }
   }, [open]);
   useLayoutEffect(() => {
-    if (!page || treeQuery.isPlaceholderData || !bodyRef.current) return;
+    if (!page || treeQuery.isPlaceholderData || !bodyRef.current) {
+      return;
+    }
     bodyRef.current.scrollTop = 0;
     if (page.mode === "path") {
       const focus = Array.from(
@@ -127,7 +139,9 @@ export function ConversationTreeDialog({
       aria-labelledby="conversation-tree-title"
       onClose={onClose}
       onCancel={(event) => {
-        if (navigateMutation.isPending) event.preventDefault();
+        if (navigateMutation.isPending) {
+          event.preventDefault();
+        }
       }}
     >
       <div className={treeStyles["conversation-tree-dialog__layout"]}>
@@ -229,7 +243,11 @@ export function ConversationTreeDialog({
                     type="button"
                     className={treeStyles["conversation-tree__page"]}
                     disabled={locked}
-                    onClick={() => load(page.previousOffset!)}
+                    onClick={() => {
+                      if (page.previousOffset !== null) {
+                        load(page.previousOffset);
+                      }
+                    }}
                   >
                     {page.mode === "path" ? "Load earlier" : "Previous results"}
                   </button>
@@ -315,7 +333,11 @@ export function ConversationTreeDialog({
                     type="button"
                     className={treeStyles["conversation-tree__page"]}
                     disabled={locked}
-                    onClick={() => load(page.nextOffset!)}
+                    onClick={() => {
+                      if (page.nextOffset !== null) {
+                        load(page.nextOffset);
+                      }
+                    }}
                   >
                     {page.mode === "path" ? "Load later" : "More results"}
                   </button>

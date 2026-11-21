@@ -20,7 +20,7 @@ export const annotationGeneralPromptIntro =
 
 // Like Plannotator, keep the original passage next to its feedback. Message IDs and
 // offsets disambiguate repeated passages and comments on older assistant responses.
-export function annotationPrompt(annotations: Annotation[]) {
+export function annotationPrompt(annotations: Array<Annotation>) {
   return [
     annotations.some((entry) => entry.messageId === undefined)
       ? annotationGeneralPromptIntro
@@ -36,7 +36,7 @@ export function annotationPrompt(annotations: Annotation[]) {
   ].join("\n\n");
 }
 
-export function annotationHighlights(message: ChatMessage, annotations: Annotation[]) {
+export function annotationHighlights(message: ChatMessage, annotations: Array<Annotation>) {
   return annotations.filter(
     (entry): entry is Annotation & AnnotationSource =>
       entry.messageId !== undefined &&
@@ -53,22 +53,30 @@ function annotationRangeText(range: Range) {
   return fragment.textContent ?? "";
 }
 
+function isElement(node: Node): node is Element {
+  return node.nodeType === node.ELEMENT_NODE;
+}
+
+function clamp(value: number, min: number, max: number) {
+  return Math.max(min, Math.min(value, max));
+}
+
 export function readAnnotationSelection(
   selection: Selection | null,
   transcript: HTMLElement,
-  messages: ChatMessage[],
+  messages: Array<ChatMessage>,
 ): { source: AnnotationSource; range: Range } | null {
-  if (!selection || selection.isCollapsed || selection.rangeCount !== 1) return null;
+  if (!selection || selection.isCollapsed || selection.rangeCount !== 1) {
+    return null;
+  }
   const range = selection.getRangeAt(0);
-  const element =
-    range.startContainer.nodeType === 1
-      ? (range.startContainer as Element)
-      : range.startContainer.parentElement;
+  const element = isElement(range.startContainer)
+    ? range.startContainer
+    : range.startContainer.parentElement;
   const source = element?.closest<HTMLElement>("[data-annotation-source]");
-  const endElement =
-    range.endContainer.nodeType === 1
-      ? (range.endContainer as Element)
-      : range.endContainer.parentElement;
+  const endElement = isElement(range.endContainer)
+    ? range.endContainer
+    : range.endContainer.parentElement;
   // Never accept a selection crossing messages or including names, tool output,
   // thinking, user text, or controls, even if it starts in an assistant response.
   if (
@@ -78,21 +86,28 @@ export function readAnnotationSelection(
     !source.contains(range.endContainer) ||
     element?.closest("[data-message-control]") ||
     endElement?.closest("[data-message-control]")
-  )
+  ) {
     return null;
+  }
   const message = messages.find(
     (entry) => entry.id === source.dataset.annotationSource && entry.role === "assistant",
   );
-  if (!message) return null;
+  if (!message) {
+    return null;
+  }
   const raw = annotationRangeText(range);
   const quote = raw.trim();
-  if (!quote) return null;
+  if (!quote) {
+    return null;
+  }
   const prefix = range.cloneRange();
   prefix.selectNodeContents(source);
   prefix.setEnd(range.startContainer, range.startOffset);
   const start = annotationRangeText(prefix).length + raw.length - raw.trimStart().length;
   const end = start + quote.length;
-  if (message.text.slice(start, end) !== quote) return null;
+  if (message.text.slice(start, end) !== quote) {
+    return null;
+  }
   return { source: { messageId: message.id, quote, start, end }, range: range.cloneRange() };
 }
 
@@ -110,7 +125,6 @@ export function positionTouchAnnotationAction(
   const rightEdge = viewport.left + viewport.width - inset;
   const topEdge = viewport.top + inset;
   const bottomEdge = viewport.top + viewport.height - inset;
-  const clamp = (value: number, min: number, max: number) => Math.max(min, Math.min(value, max));
   const middle = clamp(
     (Math.max(anchor.top, topEdge) + Math.min(anchor.bottom, bottomEdge) - size.height) / 2,
     topEdge,
@@ -120,16 +134,22 @@ export function positionTouchAnnotationAction(
   // Beside a multiline selection, stay within its vertical band rather than
   // protruding into the native menu above/below it or covering selection handles.
   if (middle >= anchor.top && middle + size.height <= anchor.bottom) {
-    if (anchor.right >= leftEdge && anchor.right + handleGap + size.width <= rightEdge)
+    if (anchor.right >= leftEdge && anchor.right + handleGap + size.width <= rightEdge) {
       return { left: anchor.right + handleGap, top: middle };
-    if (anchor.left <= rightEdge && anchor.left - handleGap - size.width >= leftEdge)
+    }
+    if (anchor.left <= rightEdge && anchor.left - handleGap - size.width >= leftEdge) {
       return { left: anchor.left - handleGap - size.width, top: middle };
+    }
   }
   const left = clamp(anchor.left, leftEdge, rightEdge - size.width);
   const below = anchor.bottom + calloutGap;
-  if (below >= topEdge && below + size.height <= bottomEdge) return { left, top: below };
+  if (below >= topEdge && below + size.height <= bottomEdge) {
+    return { left, top: below };
+  }
   const above = anchor.top - calloutGap - size.height;
-  if (above >= topEdge && above + size.height <= bottomEdge) return { left, top: above };
+  if (above >= topEdge && above + size.height <= bottomEdge) {
+    return { left, top: above };
+  }
 
   // A viewport-filling selection may leave no exterior slot. Keep the action
   // inside its visible band, not clamped back into an estimated callout area.

@@ -1,57 +1,15 @@
-import { createContext, useContext, type CSSProperties } from "react";
-import { Handle, NodeResizer, Position, type NodeProps } from "@xyflow/react";
-import {
-  Box,
-  Cloud,
-  Code,
-  Database,
-  FileText,
-  Globe,
-  Heart,
-  Image,
-  Layout,
-  List,
-  Lock,
-  Mail,
-  MessageSquare,
-  Pencil,
-  Server,
-  Settings,
-  Table,
-  User,
-  Users,
-  Zap,
-  type LucideIcon,
-} from "lucide-react";
+import { useContext } from "react";
+import { Handle, NodeResizer, Position } from "@xyflow/react";
+import type { NodeProps } from "@xyflow/react";
+import { Box, Pencil } from "lucide-react";
 import type { ComponentData, ComponentNode } from "./model";
+import { componentStyle, EditContext, icons } from "./componentPresentation";
 import styles from "./Playground.module.css";
 
-export const icons: Record<string, { label: string; component: LucideIcon }> = {
-  user: { label: "User", component: User },
-  users: { label: "Users", component: Users },
-  server: { label: "Server", component: Server },
-  database: { label: "Database", component: Database },
-  cloud: { label: "Cloud", component: Cloud },
-  globe: { label: "Globe", component: Globe },
-  lock: { label: "Lock", component: Lock },
-  code: { label: "Code", component: Code },
-  settings: { label: "Settings", component: Settings },
-  zap: { label: "Activity", component: Zap },
-  mail: { label: "Mail", component: Mail },
-  heart: { label: "Heart", component: Heart },
-  box: { label: "Boundary", component: Box },
-  layout: { label: "Card", component: Layout },
-  list: { label: "Detail", component: List },
-  table: { label: "Table", component: Table },
-  message: { label: "Comment", component: MessageSquare },
-  file: { label: "Document", component: FileText },
-  image: { label: "Image", component: Image },
-};
 export function Icon({ name, size = 24 }: { name: string; size?: number }) {
-  const Glyph = icons[name]?.component ?? Box;
+  const Glyph = Object.entries(icons).find(([key]) => key === name)?.[1].component ?? Box;
   return <Glyph size={size} strokeWidth={1.7} aria-hidden="true" />;
 }
-export const EditContext = createContext<(id: string) => void>(() => {});
 
 function Picture({ data }: { data: ComponentData }) {
   return data.image ? (
@@ -62,14 +20,15 @@ function Picture({ data }: { data: ComponentData }) {
 }
 export function ComponentContent({ data }: { data: ComponentData }) {
   const showPicture = !!(data.image || data.icon);
-  if (data.kind === "boundary")
+  if (data.kind === "boundary") {
     return (
       <div className={styles["boundary-label"]}>
         {showPicture && <Picture data={data} />}
         <span>{data.title || "Boundary"}</span>
       </div>
     );
-  if (data.kind === "icon")
+  }
+  if (data.kind === "icon") {
     return (
       <div className={styles["icon-content"]}>
         <div className={styles["icon-tile"]}>{showPicture && <Picture data={data} />}</div>
@@ -77,6 +36,7 @@ export function ComponentContent({ data }: { data: ComponentData }) {
         {data.subtitle && <span className={styles["subtitle"]}>{data.subtitle}</span>}
       </div>
     );
+  }
   return (
     <>
       <header className={styles["node-heading"]}>
@@ -137,9 +97,6 @@ export function ComponentContent({ data }: { data: ComponentData }) {
     </>
   );
 }
-export function componentStyle(data: ComponentData): CSSProperties {
-  return { "--accent": data.color } as CSSProperties;
-}
 export function ComponentView({ id, data, selected }: NodeProps<ComponentNode>) {
   const edit = useContext(EditContext);
   return (
@@ -170,6 +127,7 @@ export function ComponentView({ id, data, selected }: NodeProps<ComponentNode>) 
       <ComponentContent data={data} />
       {selected && (
         <button
+          type="button"
           className={`${styles["edit-badge"]} ${styles["no-drag"]}`}
           aria-label={`Edit ${data.title || "component"}`}
           onClick={(event) => {

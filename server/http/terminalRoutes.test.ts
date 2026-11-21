@@ -1,7 +1,7 @@
 import type { Server } from "node:http";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
 import type { z } from "zod";
-import type { HerdrClient } from "../herdr/HerdrClient.js";
+import type { HerdrParams } from "../herdr/HerdrClient.js";
 import { HerdrService } from "../herdr/herdrService.js";
 import { LiveBridge } from "../pi/liveBridge.js";
 import { createHttpServer } from "./server.js";
@@ -22,40 +22,50 @@ beforeEach(async () => {
   status = "working";
   request
     .mockReset()
-    .mockImplementation(
-      async <T>(method: string, params: Record<string, unknown>, schema: z.ZodType<T>) => {
-        const current = { ...agent, agent_status: status };
-        if (method === "agent.get") return schema.parse({ type: "agent_info", agent: current });
-        if (method === "session.snapshot")
-          return schema.parse({
-            type: "session_snapshot",
-            snapshot: { agents: [current], panes: [], tabs: [], workspaces: [] },
-          });
+    .mockImplementation(async <T>(method: string, params: HerdrParams, schema: z.ZodType<T>) => {
+      const current = { ...agent, agent_status: status };
+      if (method === "agent.get") {
+        return schema.parse({ type: "agent_info", agent: current });
+      }
+      if (method === "session.snapshot") {
         return schema.parse({
-          type: "pane_read",
-          read: {
-            ...agent,
-            source: params.source,
-            format: "text",
-            text: "Screen",
-            truncated: false,
-          },
+          type: "session_snapshot",
+          snapshot: { agents: [current], panes: [], tabs: [], workspaces: [] },
         });
-      },
-    );
+      }
+      return schema.parse({
+        type: "pane_read",
+        read: {
+          ...agent,
+          source: params.source,
+          format: "text",
+          text: "Screen",
+          truncated: false,
+        },
+      });
+    });
   server = createHttpServer(
-    new HerdrService({ request } as unknown as HerdrClient),
+    new HerdrService({
+      request: async (method, params, schema) =>
+        schema.parse(await request(method, params, schema)),
+    }),
     "/unused",
     new LiveBridge("/unused/pi.sock", "/unused/herdr.sock"),
   );
-  await new Promise<void>((done) => server.listen(0, "127.0.0.1", done));
-  base = `http://127.0.0.1:${(server.address() as { port: number }).port}`;
+  await new Promise<void>((done) => {
+    server.listen(0, "127.0.0.1", done);
+  });
+  const address = server.address();
+  if (!address || typeof address === "string") {
+    throw new Error("Expected a listening TCP server");
+  }
+  base = `http://127.0.0.1:${address.port}`;
 });
 afterEach(async () => {
   server.closeAllConnections();
-  await new Promise<void>((done, reject) =>
-    server.close((error) => (error ? reject(error) : done())),
-  );
+  await new Promise<void>((done, reject) => {
+    server.close((error) => (error ? reject(error) : done()));
+  });
 });
 
 it.each(["agents", "panes"])(
@@ -79,7 +89,7 @@ it.each(["agents", "panes"])("allows explicit %s history only while idle", async
   const response = await fetch(url);
   expect(response.status).toBe(200);
   expect(await response.json()).toMatchObject({ source: "recent_unwrapped" });
-  expect(request.mock.calls.at(-1)![1]).toMatchObject({ source: "recent_unwrapped", lines: 600 });
+  expect(request.mock.calls.at(-1)?.[1]).toMatchObject({ source: "recent_unwrapped", lines: 600 });
 });
 
 it.each(["agents", "panes"])("rejects unsupported %s output sources", async (kind) => {

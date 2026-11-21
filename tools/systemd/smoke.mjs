@@ -1,3 +1,4 @@
+import { report, reportError } from "../report.mjs";
 import { execFile } from "node:child_process";
 import { randomUUID } from "node:crypto";
 import { access, mkdir, mkdtemp, rm } from "node:fs/promises";
@@ -20,9 +21,13 @@ const unit = `fernblick-smoke-${randomUUID()}.service`;
 const home = join(root, "home");
 const socket = join(root, "herdr.sock");
 const probe = createServer();
-await new Promise((done) => probe.listen(0, "127.0.0.1", done));
+await new Promise((done) => {
+  probe.listen(0, "127.0.0.1", done);
+});
 const port = probe.address().port;
-await new Promise((done) => probe.close(done));
+await new Promise((done) => {
+  probe.close(done);
+});
 let herdr;
 try {
   await mkdir(home, { mode: 0o700 });
@@ -67,8 +72,12 @@ try {
   async function waitFor(check) {
     const deadline = Date.now() + 25_000;
     while (Date.now() < deadline) {
-      if (await check().catch(() => false)) return;
-      await new Promise((done) => setTimeout(done, 200));
+      if (await check().catch(() => false)) {
+        return;
+      }
+      await new Promise((done) => {
+        setTimeout(done, 200);
+      });
     }
     throw new Error("Isolated service did not reach expected state; inspect only " + unit);
   }
@@ -81,7 +90,9 @@ try {
     let buffer = "";
     peer.on("data", (chunk) => {
       buffer += chunk;
-      if (!buffer.includes("\n")) return;
+      if (!buffer.includes("\n")) {
+        return;
+      }
       const request = JSON.parse(buffer.split("\n")[0]);
       if (request.method !== "session.snapshot") {
         peer.destroy();
@@ -99,7 +110,9 @@ try {
     });
     peer.on("error", () => {});
   });
-  await new Promise((done) => herdr.listen(socket, done));
+  await new Promise((done) => {
+    herdr.listen(socket, done);
+  });
   await waitFor(
     async () => (await fetch(url, { signal: AbortSignal.timeout(1000) })).status === 200,
   );
@@ -117,9 +130,10 @@ try {
     );
   });
   const journal = (await run("journalctl", ["-u", unit, "--no-pager", "-o", "cat"])).stdout;
-  if (!journal.includes("Fernblick listening"))
+  if (!journal.includes("Fernblick listening")) {
     throw new Error("Isolated startup log was not retrievable");
-  console.log(
+  }
+  report(
     "PASS: isolated backend starts; absent Herdr returns 503; fixture recovery returns 200; crash restarts; startup journal is retrievable. No production service changed.",
   );
 } finally {
@@ -132,11 +146,17 @@ try {
       return state?.stdout.trim() === "not-found";
     });
   if (!stopped) {
-    console.error(`Could not stop isolated unit ${unit}; retained fixture ${root} for recovery.`);
+    reportError(`Could not stop isolated unit ${unit}; retained fixture ${root} for recovery.`);
     process.exitCode = 1;
   } else {
     await run("systemctl", ["reset-failed", unit]).catch(() => {});
   }
-  if (herdr) await new Promise((done) => herdr.close(done));
-  if (stopped) await rm(root, { recursive: true, force: true });
+  if (herdr) {
+    await new Promise((done) => {
+      herdr.close(done);
+    });
+  }
+  if (stopped) {
+    await rm(root, { recursive: true, force: true });
+  }
 }

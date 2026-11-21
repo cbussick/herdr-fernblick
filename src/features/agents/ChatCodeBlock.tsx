@@ -1,4 +1,5 @@
-import { useEffect, useState, type ReactNode } from "react";
+import { useEffect, useState } from "react";
+import type { ReactNode } from "react";
 import styles from "./ChatMessageText.module.css";
 import a11yStyles from "../../styles/accessibility.module.css";
 
@@ -16,7 +17,9 @@ export function ChatCodeBlock({
   const [result, setResult] = useState<{ value: string; status: "copied" | "failed" }>();
   const status = result?.value === value ? result.status : undefined;
   useEffect(() => {
-    if (!result) return;
+    if (!result) {
+      return;
+    }
     const timer = window.setTimeout(() => setResult(undefined), 2500);
     return () => window.clearTimeout(timer);
   }, [result]);

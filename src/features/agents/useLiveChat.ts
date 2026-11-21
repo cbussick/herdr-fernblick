@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { type Snapshot } from "../../../packages/pi-live-chat/protocol";
+import type { Snapshot } from "../../../packages/pi-live-chat/protocol";
 import { readBrowserFrame } from "../../../packages/pi-live-chat/browserStream";
 
 export function useLiveChat(target: string, enabled: boolean, session: string | undefined) {
@@ -13,9 +13,13 @@ export function useLiveChat(target: string, enabled: boolean, session: string | 
   }>({ target, session });
   // Retain readable history, but synchronously revoke the old stream's command
   // authority. Re-enable cannot expose it as ready before a new baseline arrives.
-  if (!enabled && state.snapshot && !state.paused) setState({ ...state, paused: true });
+  if (!enabled && state.snapshot && !state.paused) {
+    setState({ ...state, paused: true });
+  }
   useEffect(() => {
-    if (!enabled) return;
+    if (!enabled) {
+      return;
+    }
     let disposed = false;
     let connected = false;
     let reconnecting = false;
@@ -33,19 +37,21 @@ export function useLiveChat(target: string, enabled: boolean, session: string | 
     let wasHidden = typeof document !== "undefined" && document.visibilityState !== "visible";
 
     function connectionError(reason: string) {
-      if (disposed) return;
-      setState((current) => ({
-        target,
-        session,
-        ...(current.target === target && current.session === session
-          ? { snapshot: current.snapshot }
-          : {}),
-        error: reason,
-        reconnecting,
-      }));
+      if (disposed) {
+        return;
+      }
+      setState((current) => {
+        const next: typeof current = { target, session, error: reason, reconnecting };
+        if (current.target === target && current.session === session) {
+          next.snapshot = current.snapshot;
+        }
+        return next;
+      });
     }
     function checkDeadline() {
-      if (deadline === undefined || deadlineExpired || Date.now() < deadline) return;
+      if (deadline === undefined || deadlineExpired || Date.now() < deadline) {
+        return;
+      }
       deadlineExpired = true;
       connectionError(
         connected
@@ -54,7 +60,9 @@ export function useLiveChat(target: string, enabled: boolean, session: string | 
       );
     }
     function startDeadline() {
-      if (deadline !== undefined) return;
+      if (deadline !== undefined) {
+        return;
+      }
       deadline = Date.now() + 30_000;
       deadlineTimer = setTimeout(checkDeadline, 30_000);
     }
@@ -67,15 +75,15 @@ export function useLiveChat(target: string, enabled: boolean, session: string | 
     function waitForStartup(reason: string) {
       startupReason = reason;
       startDeadline();
-      if (connected)
+      if (connected) {
         connectionError(
           deadlineExpired
             ? "Pi is taking too long to reconnect. Check your connection or switch to Terminal."
             : "Reconnecting to Pi…",
         );
-      else if (deadlineExpired)
+      } else if (deadlineExpired) {
         connectionError(`Pi is taking too long to connect. ${startupReason}`);
-      else {
+      } else {
         setState((current) =>
           current.target === target && current.session === session && current.snapshot
             ? { target, session, snapshot: current.snapshot, error: "Reconnecting to Pi…" }
@@ -95,7 +103,9 @@ export function useLiveChat(target: string, enabled: boolean, session: string | 
       reconnecting = true;
       waitForStartup(startupReason);
       retire();
-      if (retry !== undefined || disposed) return;
+      if (retry !== undefined || disposed) {
+        return;
+      }
       const delay = Math.min(30_000, retryDelay + Math.floor(Math.random() * 250));
       retryDelay = Math.min(30_000, retryDelay * 2);
       retry = setTimeout(() => {
@@ -104,7 +114,9 @@ export function useLiveChat(target: string, enabled: boolean, session: string | 
       }, delay);
     }
     function connect() {
-      if (disposed) return;
+      if (disposed) {
+        return;
+      }
       clearTimeout(retry);
       retry = undefined;
       retire();
@@ -117,20 +129,29 @@ export function useLiveChat(target: string, enabled: boolean, session: string | 
       events = source;
       const isCurrent = () => !disposed && currentGeneration === generation;
       function awaitBaseline() {
-        if (baselineTimer !== undefined) return;
+        if (baselineTimer !== undefined) {
+          return;
+        }
         // Neither a silent OPEN stream nor a stuck native CONNECTING retry is
         // guaranteed to emit another error. Bound the wait for a fresh baseline.
         baselineTimer = setTimeout(() => {
           baselineTimer = undefined;
-          if (!isCurrent()) return;
+          if (!isCurrent()) {
+            return;
+          }
           checkDeadline();
           scheduleRetry();
         }, 10_000);
       }
       awaitBaseline();
       source.onmessage = (event) => {
-        if (!isCurrent()) return;
+        if (!isCurrent()) {
+          return;
+        }
         try {
+          if (typeof event.data !== "string") {
+            throw new TypeError("Non-text live chat event");
+          }
           const value: unknown = JSON.parse(event.data);
           if (
             typeof value === "object" &&
@@ -157,7 +178,9 @@ export function useLiveChat(target: string, enabled: boolean, session: string | 
             return;
           }
           const snapshot = readBrowserFrame(previous, value);
-          if (previous?.epoch === snapshot.epoch && previous.seq > snapshot.seq) return;
+          if (previous?.epoch === snapshot.epoch && previous.seq > snapshot.seq) {
+            return;
+          }
           previous = snapshot;
           connected = true;
           reconnecting = false;
@@ -173,46 +196,62 @@ export function useLiveChat(target: string, enabled: boolean, session: string | 
         }
       };
       source.onerror = () => {
-        if (!isCurrent()) return;
+        if (!isCurrent()) {
+          return;
+        }
         previous = undefined;
         waitForStartup("Could not connect to Pi live chat. Check Pi or switch to Terminal.");
         awaitBaseline();
         // CONNECTING is retried natively. CLOSED is terminal and needs a new instance.
-        if (source.readyState === 2) scheduleRetry();
+        if (source.readyState === 2) {
+          scheduleRetry();
+        }
       };
     }
     function recover() {
-      if (disposed || (typeof document !== "undefined" && document.visibilityState !== "visible"))
+      if (disposed || (typeof document !== "undefined" && document.visibilityState !== "visible")) {
         return;
+      }
       checkDeadline();
-      if (recoveryRequested && !deadlineExpired) return;
+      if (recoveryRequested && !deadlineExpired) {
+        return;
+      }
       recoveryRequested = true;
       waitForStartup(startupReason);
       retire();
       // Coalesce browser lifecycle bursts and rate-limit rapid hide/show cycles.
-      if (retry !== undefined) return;
+      if (retry !== undefined) {
+        return;
+      }
       const delay = Math.max(0, lastRecovery + 1000 - Date.now());
       const resume = () => {
         retry = undefined;
         lastRecovery = Date.now();
         connect();
       };
-      if (delay) retry = setTimeout(resume, delay);
-      else resume();
+      if (delay) {
+        retry = setTimeout(resume, delay);
+      } else {
+        resume();
+      }
     }
     function visibilityChanged() {
-      if (document.visibilityState !== "visible") wasHidden = true;
-      else if (wasHidden) {
+      if (document.visibilityState !== "visible") {
+        wasHidden = true;
+      } else if (wasHidden) {
         wasHidden = false;
         recover();
       }
     }
     function pageShown(event: PageTransitionEvent) {
-      if (event.persisted) recover();
+      if (event.persisted) {
+        recover();
+      }
     }
     connect();
-    if (typeof document !== "undefined")
+    if (typeof document !== "undefined") {
       document.addEventListener("visibilitychange", visibilityChanged);
+    }
     if (typeof window !== "undefined") {
       window.addEventListener("online", recover);
       window.addEventListener("pageshow", pageShown);
@@ -222,8 +261,9 @@ export function useLiveChat(target: string, enabled: boolean, session: string | 
       clearDeadline();
       clearTimeout(retry);
       retire();
-      if (typeof document !== "undefined")
+      if (typeof document !== "undefined") {
         document.removeEventListener("visibilitychange", visibilityChanged);
+      }
       if (typeof window !== "undefined") {
         window.removeEventListener("online", recover);
         window.removeEventListener("pageshow", pageShown);

@@ -1,9 +1,11 @@
 import { expect, it, vi } from "vitest";
-import type { z } from "zod";
-import type { EditorTheme, TUI } from "@earendil-works/pi-tui";
-import type { HerdrClient } from "./HerdrClient.js";
+import { z } from "zod";
+import { Editor, TuiMainScreen } from "@earendil-works/pi-tui";
+import type { EditorTheme } from "@earendil-works/pi-tui";
 import { HerdrService } from "./herdrService.js";
 
+const identity = (text: string) => text;
+const inputSchema = z.object({ text: z.string().optional(), keys: z.array(z.string()).optional() });
 const agent = {
   agent: "pi",
   agent_status: "idle",
@@ -15,27 +17,36 @@ const agent = {
   workspace_id: "w1",
   agent_session: { agent: "pi", kind: "path", source: "fixture", value: "/fixture/session.jsonl" },
 };
-function fixture(input?: (params: { text?: string; keys?: string[] }) => void) {
+function fixture(input?: (params: { text?: string; keys?: Array<string> }) => void) {
   const request = vi.fn(async <T>(method: string, params: unknown, schema: z.ZodType<T>) => {
-    if (method === "agent.get") return schema.parse({ type: "agent_info", agent });
-    if (method === "pane.send_input") input?.(params as { text?: string; keys?: string[] });
-    if (method === "session.snapshot")
+    if (method === "agent.get") {
+      return schema.parse({ type: "agent_info", agent });
+    }
+    if (method === "pane.send_input") {
+      input?.(inputSchema.parse(params));
+    }
+    if (method === "session.snapshot") {
       return schema.parse({
         type: "session_snapshot",
         snapshot: { agents: [], panes: [], tabs: [], workspaces: [] },
       });
-    if (method === "agent.start") return schema.parse({ type: "agent_started", agent });
+    }
+    if (method === "agent.start") {
+      return schema.parse({ type: "agent_started", agent });
+    }
     return schema.parse({ type: "ok" });
   });
-  return { request, service: new HerdrService({ request } as unknown as HerdrClient) };
+  return {
+    request,
+    service: new HerdrService({
+      request: async (method, params, schema) =>
+        schema.parse(await request(method, params, schema)),
+    }),
+  };
 }
 it.each(["restartPiAgent", "exitPiAgent"] as const)(
   "never submits an existing Pi editor draft during %s",
   async (action) => {
-    const { Editor } = (await import(
-      process.env.PI_EDITOR_TEST_MODULE ?? "@earendil-works/pi-tui"
-    )) as typeof import("@earendil-works/pi-tui");
-    const identity = (text: string) => text;
     const theme: EditorTheme = {
       borderColor: identity,
       selectList: {
@@ -47,21 +58,44 @@ it.each(["restartPiAgent", "exitPiAgent"] as const)(
       },
     };
     const editor = new Editor(
-      { requestRender() {}, terminal: { rows: 24, columns: 80 } } as unknown as TUI,
+      new TuiMainScreen({
+        rows: 24,
+        columns: 80,
+        kittyProtocolActive: false,
+        start() {},
+        stop() {},
+        async drainInput() {},
+        write() {},
+        moveBy() {},
+        hideCursor() {},
+        showCursor() {},
+        clearLine() {},
+        clearFromCursor() {},
+        clearScreen() {},
+        setTitle() {},
+        setProgress() {},
+        setProgramStatus() {},
+      }),
       theme,
     );
     const draft = "An older unsent prompt";
     editor.setText(draft);
-    const submitted: string[] = [];
+    const submitted: Array<string> = [];
     editor.onSubmit = (text) => submitted.push(text);
     const { service, request } = fixture(({ text, keys }) => {
-      if (text) editor.handleInput(`\x1b[200~${text}\x1b[201~`);
-      for (const key of keys ?? []) if (key === "enter") editor.handleInput("\r");
+      if (text) {
+        editor.handleInput(`\u001b[200~${text}\u001b[201~`);
+      }
+      for (const key of keys ?? []) {
+        if (key === "enter") {
+          editor.handleInput("\r");
+        }
+      }
     });
     const shutdown = vi.fn(async () => {
       throw new Error("Pi terminal has an unsent draft");
     });
-    const result = await service[action]("fixture", shutdown).catch((error: Error) => error);
+    const result = await service[action]("fixture", shutdown).catch((error: unknown) => error);
     expect(submitted).toEqual([]);
     expect(editor.getText()).toBe(draft);
     expect(result).toBeInstanceOf(Error);
@@ -126,7 +160,10 @@ it.each(["working", "blocked", "unknown", "unsupported"])(
         },
       }),
     );
-    const service = new HerdrService({ request } as unknown as HerdrClient);
+    const service = new HerdrService({
+      request: async (method, params, schema) =>
+        schema.parse(await request(method, params, schema)),
+    });
     const shutdown = vi.fn();
     await expect(service.exitPiAgent("fixture", shutdown)).rejects.toThrow();
     expect(shutdown).not.toHaveBeenCalled();
@@ -152,16 +189,19 @@ it.each(["restartPiAgent", "exitPiAgent"] as const)(
       const { service, request } = fixture();
       request.mockImplementation(
         async <T>(method: string, _params: unknown, schema: z.ZodType<T>) => {
-          if (method === "agent.get") return schema.parse({ type: "agent_info", agent });
-          if (method === "session.snapshot")
+          if (method === "agent.get") {
+            return schema.parse({ type: "agent_info", agent });
+          }
+          if (method === "session.snapshot") {
             return schema.parse({
               type: "session_snapshot",
               snapshot: { agents: [agent], panes: [], tabs: [], workspaces: [] },
             });
+          }
           throw new Error(`Unexpected request: ${method}`);
         },
       );
-      const pending = service[action]("fixture", async () => {}).catch((error: Error) => error);
+      const pending = service[action]("fixture", async () => {}).catch((error: unknown) => error);
       await vi.advanceTimersByTimeAsync(10_100);
       expect(await pending).toMatchObject({ message: "Pi did not exit in time" });
       expect(

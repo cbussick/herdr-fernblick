@@ -1,12 +1,13 @@
 import { act, StrictMode, useEffect } from "react";
-import { create, type ReactTestRenderer } from "react-test-renderer";
+import { create } from "react-test-renderer";
+import type { ReactTestRenderer } from "react-test-renderer";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
 import { useLiveChat } from "./useLiveChat";
 import type { Snapshot } from "../../../packages/pi-live-chat/protocol";
 import { browserFrame } from "../../../packages/pi-live-chat/browserStream";
 
 class Events {
-  static instances: Events[] = [];
+  static instances: Array<Events> = [];
   onmessage?: (event: { data: string }) => void;
   onerror?: () => void;
   readyState = 1;
@@ -250,7 +251,7 @@ it("checks elapsed deadlines after suspended timers resume", async () => {
 
 it("caps terminal retry backoff at thirty seconds", async () => {
   await mount();
-  for (const delay of [1000, 2000, 4000, 8000, 16000, 30000, 30000]) {
+  for (const delay of [1000, 2000, 4000, 8000, 16_000, 30_000, 30_000]) {
     const source = Events.instances.at(-1)!;
     source.readyState = 2;
     await act(async () => source.onerror!());

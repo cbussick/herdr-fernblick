@@ -1,13 +1,32 @@
-import { act, type ReactNode } from "react";
-import { create, type ReactTestRenderer } from "react-test-renderer";
+import { dispatchTestEvent } from "../../shared/lib/dispatchTestEvent";
+import { act } from "react";
+import { Window } from "happy-dom";
+import type { ReactNode } from "react";
+import { create } from "react-test-renderer";
+import type { ReactTestRenderer } from "react-test-renderer";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { ChatMessageText } from "./ChatMessageText";
 
 vi.mock("react-dom", () => ({ createPortal: (children: ReactNode) => children }));
 
+const fixtureWindow = new Window();
+function click(src?: string) {
+  const target = fixtureWindow.document.createElement(src ? "img" : "a");
+  if (src) {
+    target.setAttribute("src", src);
+  }
+  return {
+    button: 0,
+    preventDefault: vi.fn(),
+    target,
+  };
+}
+
 describe("Markdown image previews", () => {
   let renderer: ReactTestRenderer;
-  const opener = { isConnected: true, focus: vi.fn() };
+  const opener = fixtureWindow.document.createElement("div");
+  fixtureWindow.document.body.append(opener);
+  const focusOpener = vi.spyOn(opener, "focus").mockImplementation(() => {});
   const dialog = {
     open: false,
     showModal: vi.fn(() => {
@@ -34,13 +53,6 @@ describe("Markdown image previews", () => {
       });
     });
   }
-  function click(src?: string) {
-    return {
-      button: 0,
-      preventDefault: vi.fn(),
-      target: { closest: () => (src ? { getAttribute: () => src } : null) },
-    };
-  }
 
   it.each([
     ["https://example.com/design.png", "https://example.com/design.png"],
@@ -49,7 +61,7 @@ describe("Markdown image previews", () => {
     await render(`![Design](${destination})`);
     expect(renderer.root.findAllByType("dialog")).toHaveLength(0);
     const event = click(src);
-    await act(async () => renderer.root.findByType("a").props.onClick(event));
+    await act(async () => dispatchTestEvent(renderer.root.findByType("a"), "onClick", event));
     expect(event.preventDefault).toHaveBeenCalledOnce();
     expect(dialog.showModal).toHaveBeenCalledOnce();
     const modal = renderer.root.findByType("dialog");
@@ -63,20 +75,20 @@ describe("Markdown image previews", () => {
     expect(link.props.rel).toBe("noopener noreferrer");
     expect(link.props.onClick).toBeUndefined();
     await act(async () =>
-      modal.findByProps({ "aria-label": "Close image preview" }).props.onClick(),
+      dispatchTestEvent(modal.findByProps({ "aria-label": "Close image preview" }), "onClick"),
     );
-    await act(async () => modal.props.onClose({ currentTarget: dialog }));
+    await act(async () => dispatchTestEvent(modal, "onClose", { currentTarget: dialog }));
     expect(renderer.root.findAllByType("dialog")).toHaveLength(0);
-    expect(opener.focus).toHaveBeenCalledOnce();
+    expect(focusOpener).toHaveBeenCalledOnce();
   });
 
   it("opens even unavailable images in the lightbox and keeps the external link after failure", async () => {
     await render("![Design](https://example.com/missing.png)");
-    await act(async () => renderer.root.findByType("img").props.onError());
+    await act(async () => dispatchTestEvent(renderer.root.findByType("img"), "onError"));
     // Keyboard activation has no image target and still opens the first image.
-    await act(async () => renderer.root.findByType("a").props.onClick(click()));
+    await act(async () => dispatchTestEvent(renderer.root.findByType("a"), "onClick", click()));
     const modal = renderer.root.findByType("dialog");
-    await act(async () => modal.findByType("img").props.onError());
+    await act(async () => dispatchTestEvent(modal.findByType("img"), "onError"));
     expect(modal.findByType("a").props.href).toBe("https://example.com/missing.png");
   });
 
@@ -86,7 +98,11 @@ describe("Markdown image previews", () => {
     );
     expect(renderer.root.findAllByType("a")).toHaveLength(1);
     await act(async () =>
-      renderer.root.findByType("a").props.onClick(click("https://example.com/two.png")),
+      dispatchTestEvent(
+        renderer.root.findByType("a"),
+        "onClick",
+        click("https://example.com/two.png"),
+      ),
     );
     const modal = renderer.root.findByType("dialog");
     expect(modal.findByType("img").props.src).toBe("https://example.com/two.png");
@@ -96,7 +112,7 @@ describe("Markdown image previews", () => {
   it("preserves modified-click browser navigation", async () => {
     await render("![Design](https://example.com/design.png)");
     const event = { ...click(), ctrlKey: true };
-    await act(async () => renderer.root.findByType("a").props.onClick(event));
+    await act(async () => dispatchTestEvent(renderer.root.findByType("a"), "onClick", event));
     expect(event.preventDefault).not.toHaveBeenCalled();
     expect(renderer.root.findAllByType("dialog")).toHaveLength(0);
   });

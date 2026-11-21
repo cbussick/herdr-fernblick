@@ -1,5 +1,8 @@
-import { act, type ReactElement } from "react";
-import { create as render, type ReactTestRenderer } from "react-test-renderer";
+import { dispatchTestEvent } from "../../shared/lib/dispatchTestEvent";
+import { act } from "react";
+import type { ReactElement } from "react";
+import { create as render } from "react-test-renderer";
+import type { ReactTestRenderer } from "react-test-renderer";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
 import { PastChats } from "./PastChats";
@@ -15,7 +18,7 @@ vi.mock("../../shared/api/apiClient", () => ({
   getSavedChats: vi.fn(),
   resumeChat: vi.fn(),
 }));
-const chats: SavedChat[] = [
+const chats: Array<SavedChat> = [
   {
     id: "a".repeat(64),
     title: "Fix authentication",
@@ -62,12 +65,14 @@ function create(element: ReactElement) {
   });
 }
 const dialog = () => renderer.root.findByType("dialog");
-const submit = () => dialog().findByType("form").props.onSubmit({ preventDefault: vi.fn() });
+const submit = () =>
+  dispatchTestEvent(dialog().findByType("form"), "onSubmit", { preventDefault: vi.fn() });
 async function openAndConfirm() {
   await act(async () =>
-    rows()[0]
-      .findByProps({ "aria-label": `Resume ${chats[0].title}` })
-      .props.onClick(),
+    dispatchTestEvent(
+      rows()[0].findByProps({ "aria-label": `Resume ${chats[0].title}` }),
+      "onClick",
+    ),
   );
   await act(async () => submit());
 }
@@ -93,7 +98,9 @@ function view(query = "", withWorkspaces = true, navigationKey?: string) {
 }
 async function settle() {
   await act(async () => {
-    await new Promise((resolve) => setTimeout(resolve, 20));
+    await new Promise((resolve) => {
+      setTimeout(resolve, 20);
+    });
   });
 }
 beforeEach(() => {
@@ -110,7 +117,9 @@ beforeEach(() => {
   vi.mocked(createWorkspace).mockResolvedValue(newWorkspace);
 });
 afterEach(async () => {
-  if (renderer) await act(async () => renderer.unmount());
+  if (renderer) {
+    await act(async () => renderer.unmount());
+  }
   client.clear();
   vi.unstubAllGlobals();
 });
@@ -121,11 +130,12 @@ const createWorkspaceButton = () =>
     .find((button) => button.children.includes("Create new workspace"))!;
 async function openCreation() {
   await act(async () =>
-    rows()[0]
-      .findByProps({ "aria-label": `Resume ${chats[0].title}` })
-      .props.onClick(),
+    dispatchTestEvent(
+      rows()[0].findByProps({ "aria-label": `Resume ${chats[0].title}` }),
+      "onClick",
+    ),
   );
-  await act(async () => createWorkspaceButton().props.onClick());
+  await act(async () => dispatchTestEvent(createWorkspaceButton(), "onClick"));
 }
 
 it.each([
@@ -134,7 +144,7 @@ it.each([
 ] as const)(
   "shows the shared loading state until the initial request resolves with %s",
   async (_description, result) => {
-    let complete!: (value: { chats: SavedChat[] }) => void;
+    let complete!: (value: { chats: Array<SavedChat> }) => void;
     vi.mocked(getSavedChats).mockImplementationOnce(
       () =>
         new Promise((resolve) => {
@@ -157,8 +167,9 @@ it.each([
     await settle();
     expect(renderer.root.findAllByProps({ role: "status" })).toHaveLength(0);
     expect(rows()).toHaveLength(result.length ? 1 : 0);
-    if (!result.length)
+    if (!result.length) {
       expect(JSON.stringify(renderer.toJSON())).toContain("No past sessions yet.");
+    }
   },
 );
 
@@ -198,7 +209,7 @@ it("shows indexing failures without a misleading empty state", async () => {
 
 it("keeps cached cards visible without a loading placeholder during background refresh", async () => {
   client.setQueryData(["saved-chats"], { chats });
-  let complete!: (value: { chats: SavedChat[] }) => void;
+  let complete!: (value: { chats: Array<SavedChat> }) => void;
   vi.mocked(getSavedChats).mockImplementationOnce(
     () =>
       new Promise((resolve) => {
@@ -261,9 +272,10 @@ it("resumes in the chosen workspace, disables duplicate actions and selects the 
   });
   await settle();
   await act(async () =>
-    rows()[0]
-      .findByProps({ "aria-label": `Resume ${chats[0].title}` })
-      .props.onClick(),
+    dispatchTestEvent(
+      rows()[0].findByProps({ "aria-label": `Resume ${chats[0].title}` }),
+      "onClick",
+    ),
   );
   expect(nativeDialog.showModal).toHaveBeenCalledOnce();
   expect(dialog().findByType("h2").children).toEqual(["Open in which workspace?"]);
@@ -272,9 +284,7 @@ it("resumes in the chosen workspace, disables duplicate actions and selects the 
   ]);
   expect(resumeChat).not.toHaveBeenCalled();
   await act(async () =>
-    dialog()
-      .findByType("select")
-      .props.onChange({ target: { value: "w2" } }),
+    dispatchTestEvent(dialog().findByType("select"), "onChange", { target: { value: "w2" } }),
   );
   await act(async () => submit());
   await settle();
@@ -287,7 +297,7 @@ it("resumes in the chosen workspace, disables duplicate actions and selects the 
   expect(dialog().findByType("select").props.disabled).toBe(true);
   expect(createWorkspaceButton().props.disabled).toBe(true);
   const preventDefault = vi.fn();
-  await act(async () => dialog().props.onCancel({ preventDefault }));
+  await act(async () => dispatchTestEvent(dialog(), "onCancel", { preventDefault }));
   expect(preventDefault).toHaveBeenCalledOnce();
   expect(renderer.root.findAllByType("dialog")).toHaveLength(1);
   await act(async () => submit());
@@ -325,7 +335,9 @@ it.each(["navigate", "return", "unmount"])(
         ),
       ),
     );
-    if (action === "return") await act(async () => renderer.update(view("", true, "original")));
+    if (action === "return") {
+      await act(async () => renderer.update(view("", true, "original")));
+    }
     await act(async () => finish(agent));
     await settle();
     expect(onResumed).not.toHaveBeenCalled();
@@ -343,14 +355,15 @@ it("keeps active chats hidden and explains how to add a missing workspace", asyn
     false,
   );
   await act(async () =>
-    rows()[0]
-      .findByProps({ "aria-label": `Resume ${chats[0].title}` })
-      .props.onClick(),
+    dispatchTestEvent(
+      rows()[0].findByProps({ "aria-label": `Resume ${chats[0].title}` }),
+      "onClick",
+    ),
   );
   expect(dialog().findByProps({ type: "submit" }).props.disabled).toBe(true);
   await act(async () => submit());
   expect(resumeChat).not.toHaveBeenCalled();
-  await act(async () => createWorkspaceButton().props.onClick());
+  await act(async () => dispatchTestEvent(createWorkspaceButton(), "onClick"));
   expect(dialog().findByType("h2").children).toEqual(["New workspace"]);
   expect(dialog().findByProps({ id: "new-workspace-cwd" }).props.value).toBe(chats[0].cwd);
   expect(createWorkspace).not.toHaveBeenCalled();
@@ -385,7 +398,7 @@ it("hides a resumed chat immediately while the next list refresh is pending", as
     renderer = create(view());
   });
   await settle();
-  let refreshed!: (value: { chats: SavedChat[] }) => void;
+  let refreshed!: (value: { chats: Array<SavedChat> }) => void;
   vi.mocked(getSavedChats).mockImplementation(
     () =>
       new Promise((resolve) => {
@@ -424,20 +437,25 @@ it.each(["Cancel", "Close", "Escape"])("dismisses with %s without resuming", asy
   });
   await settle();
   await act(async () =>
-    rows()[0]
-      .findByProps({ "aria-label": `Resume ${chats[0].title}` })
-      .props.onClick(),
+    dispatchTestEvent(
+      rows()[0].findByProps({ "aria-label": `Resume ${chats[0].title}` }),
+      "onClick",
+    ),
   );
   if (action === "Escape") {
-    await act(async () => dialog().props.onCancel({ preventDefault: vi.fn() }));
+    await act(async () => dispatchTestEvent(dialog(), "onCancel", { preventDefault: vi.fn() }));
   } else if (action === "Close") {
-    await act(async () => dialog().findByProps({ "aria-label": "Close" }).props.onClick());
+    await act(async () =>
+      dispatchTestEvent(dialog().findByProps({ "aria-label": "Close" }), "onClick"),
+    );
   } else {
     await act(async () =>
-      dialog()
-        .findAllByType("button")
-        .find((button) => button.children.includes("Cancel"))!
-        .props.onClick(),
+      dispatchTestEvent(
+        dialog()
+          .findAllByType("button")
+          .find((button) => button.children.includes("Cancel"))!,
+        "onClick",
+      ),
     );
   }
   expect(renderer.root.findAllByType("dialog")).toHaveLength(0);
@@ -454,11 +472,14 @@ it("clears old resume errors on reopening and blocks submission if workspaces di
   await openAndConfirm();
   await settle();
   expect(dialog().findAllByProps({ role: "alert" })).toHaveLength(1);
-  await act(async () => dialog().findByProps({ "aria-label": "Close" }).props.onClick());
   await act(async () =>
-    rows()[0]
-      .findByProps({ "aria-label": `Resume ${chats[0].title}` })
-      .props.onClick(),
+    dispatchTestEvent(dialog().findByProps({ "aria-label": "Close" }), "onClick"),
+  );
+  await act(async () =>
+    dispatchTestEvent(
+      rows()[0].findByProps({ "aria-label": `Resume ${chats[0].title}` }),
+      "onClick",
+    ),
   );
   expect(dialog().findAllByProps({ role: "alert" })).toHaveLength(0);
   await act(async () => renderer.update(view("", false)));
@@ -506,27 +527,31 @@ it.each(["Cancel", "Close", "Escape"])(
     });
     await settle();
     await act(async () =>
-      rows()[0]
-        .findByProps({ "aria-label": `Resume ${chats[0].title}` })
-        .props.onClick(),
+      dispatchTestEvent(
+        rows()[0].findByProps({ "aria-label": `Resume ${chats[0].title}` }),
+        "onClick",
+      ),
     );
     await act(async () =>
-      dialog()
-        .findByType("select")
-        .props.onChange({ target: { value: "w2" } }),
+      dispatchTestEvent(dialog().findByType("select"), "onChange", { target: { value: "w2" } }),
     );
-    await act(async () => createWorkspaceButton().props.onClick());
-    if (action === "Escape")
-      await act(async () => dialog().props.onCancel({ preventDefault: vi.fn() }));
-    else if (action === "Close")
-      await act(async () => dialog().findByProps({ "aria-label": "Close" }).props.onClick());
-    else
+    await act(async () => dispatchTestEvent(createWorkspaceButton(), "onClick"));
+    if (action === "Escape") {
+      await act(async () => dispatchTestEvent(dialog(), "onCancel", { preventDefault: vi.fn() }));
+    } else if (action === "Close") {
       await act(async () =>
-        dialog()
-          .findAllByType("button")
-          .find((button) => button.children.includes("Cancel"))!
-          .props.onClick(),
+        dispatchTestEvent(dialog().findByProps({ "aria-label": "Close" }), "onClick"),
       );
+    } else {
+      await act(async () =>
+        dispatchTestEvent(
+          dialog()
+            .findAllByType("button")
+            .find((button) => button.children.includes("Cancel"))!,
+          "onClick",
+        ),
+      );
+    }
     expect(dialog().findByType("select").props.value).toBe("w2");
     expect(dialog().findByProps({ id: "resume-chat-title" }).children).toEqual([chats[0].title]);
     expect(createWorkspace).not.toHaveBeenCalled();
@@ -542,14 +567,14 @@ it("retains editable defaults and creation errors without automatically retrying
   await settle();
   await openCreation();
   await act(async () =>
-    dialog()
-      .findByProps({ id: "new-workspace-label" })
-      .props.onChange({ target: { value: "Web project" } }),
+    dispatchTestEvent(dialog().findByProps({ id: "new-workspace-label" }), "onChange", {
+      target: { value: "Web project" },
+    }),
   );
   await act(async () =>
-    dialog()
-      .findByProps({ id: "new-workspace-cwd" })
-      .props.onChange({ target: { value: "/another/project" } }),
+    dispatchTestEvent(dialog().findByProps({ id: "new-workspace-cwd" }), "onChange", {
+      target: { value: "/another/project" },
+    }),
   );
   await act(async () => submit());
   await settle();
@@ -590,7 +615,7 @@ it("locks creation controls while pending and keeps the created workspace if res
       .every((button) => button.props.disabled),
   ).toBe(true);
   await act(async () => submit());
-  await act(async () => dialog().props.onCancel({ preventDefault: vi.fn() }));
+  await act(async () => dispatchTestEvent(dialog(), "onCancel", { preventDefault: vi.fn() }));
   expect(createWorkspace).toHaveBeenCalledOnce();
   expect(dialog().findByType("h2").children).toEqual(["New workspace"]);
   await act(async () => complete(newWorkspace));
@@ -628,16 +653,17 @@ it("offers a retry after a list failure and shows the empty state", async () => 
   const refresh = renderer.root
     .findAllByType("button")
     .find((button) => button.children.includes("Try again"))!;
-  await act(async () => refresh.props.onClick());
+  await act(async () => dispatchTestEvent(refresh, "onClick"));
   await settle();
   expect(JSON.stringify(renderer.toJSON())).toContain("No past sessions yet.");
 });
 
 async function openDelete() {
   await act(async () =>
-    rows()[0]
-      .findByProps({ "aria-label": `Delete ${chats[0].title}` })
-      .props.onClick(),
+    dispatchTestEvent(
+      rows()[0].findByProps({ "aria-label": `Delete ${chats[0].title}` }),
+      "onClick",
+    ),
   );
 }
 
@@ -652,9 +678,11 @@ it.each(["Cancel", "Escape"])(
     expect(dialog().findByType("h2").children).toEqual(["Delete session?"]);
     expect(JSON.stringify(dialog().findByType("p").children)).toContain(chats[0].title);
     expect(deleteChat).not.toHaveBeenCalled();
-    if (action === "Escape")
-      await act(async () => dialog().props.onCancel({ preventDefault: vi.fn() }));
-    else await act(async () => dialog().findByProps({ type: "button" }).props.onClick());
+    if (action === "Escape") {
+      await act(async () => dispatchTestEvent(dialog(), "onCancel", { preventDefault: vi.fn() }));
+    } else {
+      await act(async () => dispatchTestEvent(dialog().findByProps({ type: "button" }), "onClick"));
+    }
     expect(renderer.root.findAllByType("dialog")).toHaveLength(0);
     expect(rows()).toHaveLength(1);
     expect(deleteChat).not.toHaveBeenCalled();
@@ -690,7 +718,7 @@ it("waits for confirmed deletion, blocks duplicates and immediately removes the 
       .every((button) => button.props.disabled),
   ).toBe(true);
   await act(async () => submit());
-  await act(async () => dialog().props.onCancel({ preventDefault: vi.fn() }));
+  await act(async () => dispatchTestEvent(dialog(), "onCancel", { preventDefault: vi.fn() }));
   expect(deleteChat).toHaveBeenCalledOnce();
   expect(onRemoved).not.toHaveBeenCalled();
   expect(renderer.root.findAllByType("dialog")).toHaveLength(1);
@@ -718,7 +746,7 @@ it("keeps deletion errors visible, allows retry and clears old errors on reopeni
   expect(rows()).toHaveLength(1);
   expect(deleteChat).toHaveBeenCalledOnce();
   expect(onRemoved).not.toHaveBeenCalled();
-  await act(async () => dialog().findByProps({ type: "button" }).props.onClick());
+  await act(async () => dispatchTestEvent(dialog().findByProps({ type: "button" }), "onClick"));
   await openDelete();
   expect(dialog().findAllByProps({ role: "alert" })).toHaveLength(0);
   vi.mocked(getSavedChats).mockResolvedValue({ chats: [chats[1]] });

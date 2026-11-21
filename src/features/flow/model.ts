@@ -1,4 +1,5 @@
-import { MarkerType, type Edge, type Node } from "@xyflow/react";
+import { MarkerType } from "@xyflow/react";
+import type { Edge, Node } from "@xyflow/react";
 import {
   flowCatalog,
   FLOW_CONNECTION_COLOR,
@@ -6,9 +7,8 @@ import {
   flowKinds,
   defaultFlowProps,
   flowComponentPropsSchema,
-  type FlowComponentProps,
-  type FlowKind,
 } from "../../../packages/pi-live-chat/flowProtocol";
+import type { FlowComponentProps, FlowKind } from "../../../packages/pi-live-chat/flowProtocol";
 import type { InkNode } from "./ink";
 import type {
   PrimitiveKind,
@@ -16,9 +16,13 @@ import type {
 } from "../../../packages/pi-live-chat/primitiveProtocol";
 export const kinds = flowKinds;
 export type Kind = FlowKind;
-export const catalog = Object.fromEntries(
-  flowCatalog.map((item) => [item.id, { ...item, icon: defaultFlowProps(item.id).icon }]),
-) as unknown as Record<Kind, { name: string; description: string; icon: string }>;
+export function catalogEntry(kind: Kind) {
+  const item = flowCatalog.find((entry) => entry.id === kind);
+  if (!item) {
+    throw new Error(`Missing flow catalog entry: ${kind}`);
+  }
+  return { ...item, icon: defaultFlowProps(kind).icon };
+}
 export const colors = ["#f28b3c", "#e2bd35", "#429beb", "#43b879", "#eb6666", "#9170e8", "#596579"];
 // Image data is transient UI state only. scene.ts moves it to the asset map at the boundary.
 export type ComponentData = Omit<FlowComponentProps, "imageId"> & { kind: Kind; image: string };
@@ -28,13 +32,13 @@ export type PrimitiveNode = Node<
   "primitive"
 >;
 export type CanvasNode = ComponentNode | InkNode | PrimitiveNode;
-export type Diagram = { nodes: CanvasNode[]; edges: Edge[] };
+export type Diagram = { nodes: Array<CanvasNode>; edges: Array<Edge> };
 export function makeId() {
   return `flow-${Array.from(crypto.getRandomValues(new Uint32Array(4)), (n) => n.toString(16).padStart(8, "0")).join("")}`;
 }
 export function defaults(kind: Kind): ComponentData {
   const { imageId: _imageId, ...props } = defaultFlowProps(kind);
-  return { ...props, kind, image: "", color: colors[kinds.indexOf(kind)]! };
+  return { ...props, kind, image: "", color: colors[kinds.indexOf(kind)] };
 }
 export function validData(data: ComponentData): boolean {
   const { kind: _kind, image, ...props } = data;
@@ -50,15 +54,18 @@ export function makeNode(
   data = defaults(kind),
   id = makeId(),
 ): ComponentNode {
-  return {
+  const node: ComponentNode = {
     id,
     type: "component",
     position: { x, y },
     data,
     style:
       kind === "boundary" ? { width: 970, height: 460 } : { width: kind === "icon" ? 160 : 300 },
-    ...(kind === "boundary" ? { zIndex: -1 } : {}),
   };
+  if (kind === "boundary") {
+    node.zIndex = -1;
+  }
+  return node;
 }
 export const edgeOptions = {
   type: "smoothstep",

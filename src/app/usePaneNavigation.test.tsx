@@ -1,6 +1,8 @@
+import { dispatchTestEvent } from "../shared/lib/dispatchTestEvent";
 // @vitest-environment happy-dom
 import { act } from "react";
-import { create, type ReactTestRenderer } from "react-test-renderer";
+import { create } from "react-test-renderer";
+import type { ReactTestRenderer } from "react-test-renderer";
 import { createMemoryHistory, RouterProvider } from "@tanstack/react-router";
 import { afterEach, expect, it, vi } from "vitest";
 import { createAppRouter } from "./router";
@@ -11,12 +13,24 @@ import { StateIcon } from "../shared/ui/StateFeedback";
 vi.mock("./App", () => ({
   App: ({ navigation: n }: { navigation: ReturnType<typeof usePaneNavigation> }) => (
     <main data-pane={n.paneId} data-session={n.sessionId} data-view={n.view}>
-      <button onClick={() => n.selectPane("w1:p1")}>First</button>
-      <button onClick={() => n.selectPane("w1:p2")}>Second</button>
-      <button onClick={() => n.selectSession("s", "chat", true)}>Canonical</button>
-      <button onClick={() => n.selectSession("s", "whiteboard")}>Board</button>
-      <button onClick={() => n.selectSession("s", "chat")}>Chat</button>
-      <button onClick={() => n.selectPane(null)}>Overview</button>
+      <button type="button" onClick={() => n.selectPane("w1:p1")}>
+        First
+      </button>
+      <button type="button" onClick={() => n.selectPane("w1:p2")}>
+        Second
+      </button>
+      <button type="button" onClick={() => n.selectSession("s", "chat", true)}>
+        Canonical
+      </button>
+      <button type="button" onClick={() => n.selectSession("s", "whiteboard")}>
+        Board
+      </button>
+      <button type="button" onClick={() => n.selectSession("s", "chat")}>
+        Chat
+      </button>
+      <button type="button" onClick={() => n.selectPane(null)}>
+        Overview
+      </button>
     </main>
   ),
 }));
@@ -36,10 +50,10 @@ async function start(path = "/") {
 }
 async function click(label: string) {
   await act(async () => {
-    renderer.root
-      .findAllByType("button")
-      .find((b) => b.children.includes(label))!
-      .props.onClick();
+    await dispatchTestEvent(
+      renderer.root.findAllByType("button").find((b) => b.children.includes(label))!,
+      "onClick",
+    );
   });
 }
 async function go(delta: number) {

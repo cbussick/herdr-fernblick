@@ -1,4 +1,5 @@
-import { useState, type ReactNode } from "react";
+import { useState } from "react";
+import type { ReactNode } from "react";
 import overviewStyles from "./agentOverview.module.css";
 import uiStyles from "../../shared/ui/ui.module.css";
 import type { Agent, AgentStatus, ShellTab, Workspace } from "../../shared/api/contracts";
@@ -22,7 +23,7 @@ const priority: Record<AgentStatus, number> = {
   unknown: 2,
   idle: 1,
 };
-const getWorkspaceStatus = (agents: Agent[]): AgentStatus =>
+const getWorkspaceStatus = (agents: Array<Agent>): AgentStatus =>
   agents.reduce<AgentStatus>(
     (highest, agent) =>
       priority[agent.agent_status] > priority[highest] ? agent.agent_status : highest,
@@ -172,7 +173,9 @@ function WorkspaceTab({
       aria-label={tab.label}
       open={!!query || expanded}
       onToggle={(event) => {
-        if (!query) setExpanded(event.currentTarget.open);
+        if (!query) {
+          setExpanded(event.currentTarget.open);
+        }
       }}
     >
       <summary className={overviewStyles["tab-group__header"]}>{header}</summary>
@@ -230,7 +233,9 @@ function WorkspaceDisclosure({ forceOpen, children }: { forceOpen: boolean; chil
       data-testid="workspace-disclosure"
       open={forceOpen || expanded}
       onToggle={(event) => {
-        if (!forceOpen) setExpanded(event.currentTarget.open);
+        if (!forceOpen) {
+          setExpanded(event.currentTarget.open);
+        }
       }}
     >
       {children}
@@ -249,9 +254,9 @@ export function WorkspaceList({
   query,
   onClearSearch,
 }: {
-  agents: Agent[];
-  tabs: ShellTab[];
-  workspaces: Workspace[];
+  agents: Array<Agent>;
+  tabs: Array<ShellTab>;
+  workspaces: Array<Workspace>;
   selectedPaneId: string | null;
   onSelectAgent: (agent: Agent) => void;
   onSelectTab: (tab: ShellTab) => void;
@@ -274,9 +279,10 @@ export function WorkspaceList({
       return { ...group, visibleTabs, workspaceMatches };
     })
     .filter((group) => group.workspaceMatches || group.visibleTabs.length > 0);
-  if (groups.length === 0 && normalized)
+  if (groups.length === 0 && normalized) {
     return <SearchEmptyState message="No workspaces found." onClear={onClearSearch} />;
-  if (groups.length === 0)
+  }
+  if (groups.length === 0) {
     return (
       <div className={overviewStyles["overview-empty"]} data-testid="overview-empty">
         <span className={uiStyles["empty-state-icon"]} data-testid="empty-state-icon">
@@ -286,6 +292,7 @@ export function WorkspaceList({
         <p>{normalized ? "Try a different search." : "Use the create menu to add a workspace."}</p>
       </div>
     );
+  }
   return (
     <div className={overviewStyles["workspace-list"]}>
       <WorkspaceReorder workspaces={groups} disabled={!!normalized}>
@@ -326,7 +333,7 @@ export function FlatAgentList({
   query,
   onClearSearch,
 }: {
-  agents: Agent[];
+  agents: Array<Agent>;
   selectedPaneId: string | null;
   onSelect: (agent: Agent) => void;
   query: string;

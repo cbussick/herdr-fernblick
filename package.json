@@ -47,6 +47,7 @@
     "zod": "^4.3.6"
   },
   "devDependencies": {
+    "@cloudflare/oxlint-config": "0.1.0",
     "@earendil-works/pi-coding-agent": "1.1.0",
     "@earendil-works/pi-tui": "1.1.0",
     "@storybook/addon-a11y": "^10.5.10",
@@ -67,7 +68,7 @@
     "storybook-addon-pseudo-states": "^10.5.10",
     "stylelint": "^17.5.0",
     "stylelint-config-standard": "^40.0.0",
-    "tsrs": "7.1.0-beta.tsrs3",
+    "tsrs": "0.25.0-ts7.1.0-beta",
     "tsx": "^4.21.0",
     "typescript": "~6.0.2",
     "vite": "^8.3.7",

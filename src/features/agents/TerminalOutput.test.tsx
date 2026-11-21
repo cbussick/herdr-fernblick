@@ -1,5 +1,7 @@
+import { dispatchTestEvent } from "../../shared/lib/dispatchTestEvent";
 import { act } from "react";
-import { create, type ReactTestRenderer } from "react-test-renderer";
+import { create } from "react-test-renderer";
+import type { ReactTestRenderer } from "react-test-renderer";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
 import { TerminalOutput } from "./TerminalOutput";
@@ -15,12 +17,12 @@ const output: Output = {
   revision: 1,
   truncated: false,
 };
-const read = vi.fn();
+const read = vi.fn<(source: Output["source"], signal?: AbortSignal) => Promise<Output>>();
 let client: QueryClient;
 let renderer: ReactTestRenderer;
 let idle: boolean;
 let pane: string;
-let scroll: { scrollTop: number; scrollHeight: number; clientHeight: number };
+let scroll: Pick<HTMLElement, "scrollTop" | "scrollHeight" | "clientHeight">;
 function render() {
   return (
     <QueryClientProvider client={client}>
@@ -30,14 +32,16 @@ function render() {
 }
 async function flush() {
   await act(async () => {
-    await new Promise((resolve) => setTimeout(resolve, 15));
+    await new Promise((resolve) => {
+      setTimeout(resolve, 15);
+    });
   });
 }
 function button(label: string) {
   return renderer.root.findAllByType("button").find((node) => node.children.includes(label))!;
 }
 async function click(label: string) {
-  await act(async () => button(label).props.onClick());
+  await act(async () => dispatchTestEvent(button(label), "onClick"));
   await flush();
 }
 beforeEach(async () => {
@@ -86,7 +90,7 @@ it("loads history once, keeps it scrollable while working, and returns to live e
   scroll.scrollTop = 123;
   idle = false;
   await act(async () => {
-    renderer.root.findByType("pre").props.onScroll();
+    await dispatchTestEvent(renderer.root.findByType("pre"), "onScroll");
     renderer.update(render());
     await client.invalidateQueries({ queryKey: ["terminal", pane] });
   });
@@ -125,7 +129,7 @@ it("retains an existing history snapshot when refreshing it fails", async () => 
 
 it("does not pull a scrolled live screen back to the bottom on refresh", async () => {
   scroll.scrollTop = 100;
-  await act(async () => renderer.root.findByType("pre").props.onScroll());
+  await act(async () => dispatchTestEvent(renderer.root.findByType("pre"), "onScroll"));
   read.mockResolvedValueOnce({ ...output, revision: 2 });
   await act(async () => {
     await client.invalidateQueries({ queryKey: ["terminal", pane] });
@@ -138,6 +142,9 @@ it("discards history and ignores a late history response after switching panes",
   let resolve!: (value: Output) => void;
   let signal!: AbortSignal;
   read.mockImplementationOnce((_source, passedSignal) => {
+    if (!passedSignal) {
+      throw new Error("Expected a cancellable terminal read");
+    }
     signal = passedSignal;
     return new Promise<Output>((done) => {
       resolve = done;

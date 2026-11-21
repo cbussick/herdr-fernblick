@@ -1,3 +1,13 @@
+const addSkill = async (base: string, name: string, body = `Instructions for ${name}`) => {
+  const folder = join(base, name);
+  await mkdir(folder, { recursive: true });
+  await writeFile(
+    join(folder, "SKILL.md"),
+    `---\nname: ${name}\ndescription: Use ${name}\n---\n${body}`,
+  );
+  return join(folder, "SKILL.md");
+};
+
 import { execFile } from "node:child_process";
 import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { join, resolve } from "node:path";
@@ -13,15 +23,7 @@ it("uses real Pi discovery across folders, filters and trust, then expands a ski
   const agentDir = join(home, ".pi/agent");
   const repo = join(dir, "repo");
   const cwd = join(repo, "subproject");
-  const addSkill = async (base: string, name: string, body = `Instructions for ${name}`) => {
-    const folder = join(base, name);
-    await mkdir(folder, { recursive: true });
-    await writeFile(
-      join(folder, "SKILL.md"),
-      `---\nname: ${name}\ndescription: Use ${name}\n---\n${body}`,
-    );
-    return join(folder, "SKILL.md");
-  };
+
   try {
     await mkdir(join(repo, ".git"), { recursive: true });
     await mkdir(cwd, { recursive: true });

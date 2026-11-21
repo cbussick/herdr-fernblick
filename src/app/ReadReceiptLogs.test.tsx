@@ -1,4 +1,7 @@
-import { act, create, type ReactTestRenderer } from "react-test-renderer";
+import { testText } from "../shared/lib/testText";
+import { dispatchTestEvent } from "../shared/lib/dispatchTestEvent";
+import { act, create } from "react-test-renderer";
+import type { ReactTestRenderer } from "react-test-renderer";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
 import { ReadReceiptLogs } from "./ReadReceiptLogs";
 import { readReceiptRecordSchema } from "../shared/api/readReceiptDiagnostics";
@@ -34,7 +37,7 @@ async function click(label: string) {
     .findAllByType("button")
     .find((node) => node.children.includes(label))!;
   await act(async () => {
-    await button.props.onClick();
+    await dispatchTestEvent(button, "onClick");
   });
 }
 it("views/copies saved logs offline and clears the displayed snapshot", async () => {
@@ -66,20 +69,16 @@ it("opens selectable plain text when clipboard access fails", async () => {
   const output = renderer.root.findByType("textarea");
   expect(output.props.readOnly).toBe(true);
   const select = vi.fn();
-  output.props.onFocus({ currentTarget: { select } });
+  await dispatchTestEvent(output, "onFocus", { currentTarget: { select } });
   expect(select).toHaveBeenCalledOnce();
-  expect(renderer.root.findByProps({ role: "status" }).children.join("")).toContain(
-    "Select the text",
-  );
+  expect(testText(renderer.root.findByProps({ role: "status" }))).toContain("Select the text");
 });
 it("explains unavailable storage and failed clearing without pretending success", async () => {
   vi.mocked(getReadReceiptHistory).mockReturnValue({ available: false, records: [] });
   vi.mocked(clearReadReceiptHistory).mockReturnValue(false);
   await click("Copy logs");
   expect(writeText).not.toHaveBeenCalled();
-  expect(renderer.root.findByProps({ role: "status" }).children.join("")).toContain("unavailable");
+  expect(testText(renderer.root.findByProps({ role: "status" }))).toContain("unavailable");
   await click("Clear logs");
-  expect(renderer.root.findByProps({ role: "status" }).children.join("")).toContain(
-    "Could not clear",
-  );
+  expect(testText(renderer.root.findByProps({ role: "status" }))).toContain("Could not clear");
 });

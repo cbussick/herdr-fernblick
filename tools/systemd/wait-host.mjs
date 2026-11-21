@@ -19,15 +19,18 @@ try {
     !isIP(host) ||
     host === "0.0.0.0" ||
     host === "::"
-  )
+  ) {
     throw new Error("configuration");
+  }
   const deadline = Date.now() + timeout;
   while (
     !Object.values(networkInterfaces())
       .flat()
       .some((entry) => entry?.address === host)
   ) {
-    if (Date.now() >= deadline) throw new Error("address unavailable");
+    if (Date.now() >= deadline) {
+      throw new Error("address unavailable");
+    }
     await setTimeout(Math.min(500, Math.max(1, deadline - Date.now())));
   }
 } catch {
