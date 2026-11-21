@@ -21,6 +21,23 @@ import type { BoardGrant, BoardRequest, BoardTarget } from "./boardProtocol.js";
 import { writeFrame } from "./transport.js";
 import { sameTarget } from "./protocol.js";
 
+export interface BoardToolContext {
+  sessionManager: Pick<ExtensionContext["sessionManager"], "getSessionId" | "getSessionFile">;
+  signal?: AbortSignal;
+}
+type ToolExecuteArgs = Parameters<ToolDefinition["execute"]>;
+export type BoardToolDefinition = Omit<ToolDefinition, "execute"> & {
+  execute: (
+    id: ToolExecuteArgs[0],
+    params: ToolExecuteArgs[1],
+    signal: ToolExecuteArgs[2],
+    update: ToolExecuteArgs[3],
+    ctx: BoardToolContext,
+  ) => ReturnType<ToolDefinition["execute"]>;
+};
+interface BoardToolAPI extends Pick<ExtensionAPI, "getActiveTools" | "setActiveTools"> {
+  registerTool: (definition: BoardToolDefinition) => void;
+}
 const names = new Set(["board_read", "board_components", "board_apply"]);
 const catalogParameters = z.object({}).strict();
 const readParameters = boardRequestSchema
@@ -68,7 +85,7 @@ export class BoardTools {
   >();
 
   constructor(
-    private readonly pi: ExtensionAPI,
+    private readonly pi: BoardToolAPI,
     private readonly current: () => BoardConnection | undefined,
   ) {
     this.expose();
@@ -78,7 +95,7 @@ export class BoardTools {
     // Cached callables from a previous loadout must not borrow a later grant.
     const authorizedScope = mode === undefined ? undefined : this.scope;
     const active = this.pi.getActiveTools().filter((name) => !names.has(name));
-    const definitions: Array<ToolDefinition> = [
+    const definitions: Array<BoardToolDefinition> = [
       {
         name: "board_read",
         label: "Read whiteboard",
@@ -290,7 +307,7 @@ export class BoardTools {
 
   async beforeAgentStart(
     _prompt: string,
-    ctx: ExtensionContext,
+    ctx: BoardToolContext,
     event: Pick<BeforeAgentStartEvent, "systemPrompt" | "images"> = {
       systemPrompt: "",
     },
@@ -367,7 +384,7 @@ export class BoardTools {
     return { systemPrompt: `${event.systemPrompt}\n\n${guidance}` };
   }
 
-  agentStart(ctx: ExtensionContext) {
+  agentStart(ctx: BoardToolContext) {
     const scope = this.scope;
     if (!scope) {
       return;
@@ -399,7 +416,7 @@ export class BoardTools {
     };
   }
 
-  private sameConnection(connection: BoardConnection, ctx?: ExtensionContext): boolean {
+  private sameConnection(connection: BoardConnection, ctx?: BoardToolContext): boolean {
     try {
       const current = this.current();
       return (
@@ -419,7 +436,7 @@ export class BoardTools {
     }
   }
 
-  private valid(scope: Scope, ctx?: ExtensionContext): boolean {
+  private valid(scope: Scope, ctx?: BoardToolContext): boolean {
     return (
       this.scope === scope &&
       (scope.activeUntil === undefined || Date.now() < scope.activeUntil) &&
@@ -429,7 +446,7 @@ export class BoardTools {
 
   // A command is not input: opening the board does not change the draft, start
   // a model turn, or revoke an in-progress tool scope.
-  async open(ctx: ExtensionContext): Promise<string> {
+  async open(ctx: BoardToolContext): Promise<string> {
     const connection = this.current();
     if (!connection || !this.sameConnection(connection, ctx)) {
       throw new Error(
@@ -696,7 +713,7 @@ export class BoardTools {
     action: "read" | "catalog" | "apply",
     fields: Partial<BoardRequest>,
     signal: AbortSignal | undefined,
-    ctx: ExtensionContext,
+    ctx: BoardToolContext,
     authorizedScope: Scope | undefined,
   ) {
     const scope = this.scope;

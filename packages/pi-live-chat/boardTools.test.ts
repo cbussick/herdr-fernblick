@@ -1,13 +1,8 @@
 import { randomUUID } from "node:crypto";
-import type { Socket } from "node:net";
-import type {
-  ExtensionAPI,
-  ExtensionToolContext,
-  ToolDefinition,
-} from "@earendil-works/pi-coding-agent";
+import { Socket } from "node:net";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
 import { BoardTools } from "./boardTools.js";
-import type { BoardConnection } from "./boardTools.js";
+import type { BoardConnection, BoardToolDefinition } from "./boardTools.js";
 import { boardControlSchema, boardRequestSchema } from "./boardProtocol.js";
 import type { BoardGrant, BoardRequest, BoardControl } from "./boardProtocol.js";
 
@@ -16,22 +11,14 @@ afterEach(() => vi.useRealTimers());
 
 function setup(mode: BoardGrant["mode"] = "edit") {
   const frames: Array<BoardRequest | BoardControl> = [];
-  const client = {
-    destroyed: false,
-    connecting: false,
-    writable: true,
-    writableLength: 0,
-    write: vi.fn((frame: string) => {
-      const raw = JSON.parse(frame);
-      frames.push(
-        raw.type === "board-control"
-          ? boardControlSchema.parse(raw)
-          : boardRequestSchema.parse(raw),
-      );
-      return true;
-    }),
-    destroy: vi.fn(),
-  } as unknown as Socket;
+  const client = new Socket();
+  vi.spyOn(client, "write").mockImplementation((frame) => {
+    if (typeof frame !== "string") {
+      throw new TypeError("Board frames must be serialized text");
+    }
+    frames.push(boardControlSchema.or(boardRequestSchema).parse(JSON.parse(frame)));
+    return true;
+  });
   const target = {
     runtime: randomUUID(),
     epoch: randomUUID(),
@@ -48,10 +35,10 @@ function setup(mode: BoardGrant["mode"] = "edit") {
     mode,
     revision: 2,
   };
-  const definitions = new Map<string, ToolDefinition>();
+  const definitions = new Map<string, BoardToolDefinition>();
   let active = ["read", "bash", "unrelated"];
   const pi = {
-    registerTool: vi.fn((definition: ToolDefinition) =>
+    registerTool: vi.fn((definition: BoardToolDefinition) =>
       definitions.set(definition.name, definition),
     ),
     getActiveTools: () => [...active],
@@ -64,8 +51,8 @@ function setup(mode: BoardGrant["mode"] = "edit") {
       getSessionId: () => "session",
       getSessionFile: () => "/session.jsonl",
     },
-  } as unknown as ExtensionToolContext;
-  const tools = new BoardTools(pi as unknown as ExtensionAPI, () => connection);
+  };
+  const tools = new BoardTools(pi, () => connection);
   const stage = (text = "Draw a box") => tools.stage(grant, text, connection!);
   const input = (text = "Draw a box", source = "extension") => tools.input({ text, source });
   const reply = (request = frames.at(-1)!, data: unknown = { revision: 2 }, ok = true) =>
@@ -778,7 +765,7 @@ it.each(
       t.changeConnection(undefined);
     }
     if (change === "connection") {
-      connection.client = { ...t.client } as Socket;
+      connection.client = new Socket();
     }
     // A late reply rechecks the captured target and connection, not just the ID.
     t.reply();
@@ -809,7 +796,7 @@ it("ignores unknown/stale RPC IDs, stale sockets and unrelated revocations", asy
   });
   expect(t.tools.consume({ type: "command" }, t.client)).toBe(false);
   t.tools.consume({ type: "board-reply", id: randomUUID(), ok: true, data: {} }, t.client);
-  t.tools.consume({ type: "board-reply", id: request.id, ok: true, data: {} }, {} as Socket);
+  t.tools.consume({ type: "board-reply", id: request.id, ok: true, data: {} }, new Socket());
   t.tools.consume({ type: "board-revoke", grantId: randomUUID() }, t.client);
   t.reply(t.frames[0]);
   await Promise.resolve();
