@@ -331,10 +331,16 @@ it("keeps separate workspaces and tabs even when their titles match", async () =
   expect(workspaces[1].findAllByProps({ "data-testid": "pane-row" })).toHaveLength(2);
 });
 
+function workspace() {
+  const result = renderer.root.findAllByProps({ "data-testid": "workspace-disclosure" }).at(-1);
+  if (!result) {
+    throw new Error("Expected workspace disclosure");
+  }
+  return result;
+}
+
 it("preserves workspace/tab expansion across polling and a temporary search", async () => {
   await updateWorkspace(namedAgents, []);
-  const workspace = () =>
-    renderer.root.findAllByProps({ "data-testid": "workspace-disclosure" }).at(-1)!;
   await act(async () =>
     dispatchTestEvent(workspace(), "onToggle", { currentTarget: { open: true } }),
   );

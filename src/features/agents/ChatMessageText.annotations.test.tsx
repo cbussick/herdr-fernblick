@@ -6,12 +6,32 @@ import type { ReactTestRenderer } from "react-test-renderer";
 import { renderToStaticMarkup } from "react-dom/server";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { ChatMessageText } from "./ChatMessageText";
+import type { AnnotationEditHandler } from "./annotations";
 
 describe("editing highlighted passages", async () => {
   let renderer: ReactTestRenderer;
   let collapsed = true;
-  const edit = vi.fn();
-  const rect = { left: 10, top: 20, bottom: 40 } as DOMRect;
+  const edit = vi.fn<AnnotationEditHandler>();
+  const rect: DOMRect = {
+    x: 10,
+    y: 20,
+    width: 0,
+    height: 20,
+    left: 10,
+    right: 10,
+    top: 20,
+    bottom: 40,
+    toJSON: () => ({
+      x: 10,
+      y: 20,
+      width: 0,
+      height: 20,
+      left: 10,
+      right: 10,
+      top: 20,
+      bottom: 40,
+    }),
+  };
   const element = { getBoundingClientRect: () => rect };
   const highlights = [
     { id: "first", start: 0, end: 8 },
