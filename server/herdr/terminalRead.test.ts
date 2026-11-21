@@ -1,5 +1,6 @@
 import { expect, it, vi } from "vitest";
 import type { z } from "zod";
+import type { HerdrParams } from "./HerdrClient.js";
 import { HerdrRequestError } from "./HerdrClient.js";
 import { HerdrService } from "./herdrService.js";
 
@@ -25,21 +26,19 @@ const historyUnavailable =
   "cannot read 600 lines while w21:p9 is working: its alternate-screen history can only be captured by scrolling while idle. Wait and retry, or use --source visible";
 
 function fixture(status: string, shell = false) {
-  const request = vi.fn(
-    async <T>(method: string, params: Record<string, unknown>, schema: z.ZodType<T>) => {
-      const current = { ...agent, agent_status: status };
-      if (method === "agent.get") {
-        return schema.parse({ type: "agent_info", agent: current });
-      }
-      if (method === "session.snapshot") {
-        return schema.parse({
-          type: "session_snapshot",
-          snapshot: { agents: shell ? [] : [current], panes: [], tabs: [], workspaces: [] },
-        });
-      }
-      return schema.parse({ type: "pane_read", read: { ...output, source: params.source } });
-    },
-  );
+  const request = vi.fn(async <T>(method: string, params: HerdrParams, schema: z.ZodType<T>) => {
+    const current = { ...agent, agent_status: status };
+    if (method === "agent.get") {
+      return schema.parse({ type: "agent_info", agent: current });
+    }
+    if (method === "session.snapshot") {
+      return schema.parse({
+        type: "session_snapshot",
+        snapshot: { agents: shell ? [] : [current], panes: [], tabs: [], workspaces: [] },
+      });
+    }
+    return schema.parse({ type: "pane_read", read: { ...output, source: params.source } });
+  });
   return {
     request,
     service: new HerdrService({

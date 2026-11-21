@@ -258,7 +258,7 @@ describe("BoardRenderer", () => {
     browser.close.mockImplementation(async () => gate.reject(new Error("Target closed")));
     const value = renderer();
     const results = Array.from({ length: 4 }, () =>
-      value.render(emptyScene()).catch((error: Error) => error),
+      value.render(emptyScene()).catch((error: unknown) => error),
     );
     await expect(value.render(emptyScene())).rejects.toThrow("busy");
     await vi.waitFor(() => expect(page.evaluate).toHaveBeenCalledTimes(1));
@@ -283,7 +283,7 @@ describe("BoardRenderer", () => {
     browser.close.mockImplementation(async () => gate.reject(new Error("Target closed")));
     const value = renderer();
     const results = [value.render(emptyScene()), value.render(emptyScene())].map((result) =>
-      result.catch((error: Error) => error),
+      result.catch((error: unknown) => error),
     );
     await vi.advanceTimersByTimeAsync(30_000);
     expect(
@@ -301,7 +301,7 @@ describe("BoardRenderer", () => {
     const gate = deferred<Browser>();
     launch.mockReturnValue(gate.promise);
     const value = renderer();
-    const result = value.render(emptyScene()).catch((error: Error) => error);
+    const result = value.render(emptyScene()).catch((error: unknown) => error);
     const closing = value.close();
     gate.resolve(browser as unknown as Browser);
     await closing;

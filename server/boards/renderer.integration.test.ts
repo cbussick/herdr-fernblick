@@ -353,7 +353,7 @@ describe("structured browser board rendering", () => {
     const closingRenderer = new BoardRenderer(`http://127.0.0.1:${address.port}`);
     hostileScript = "window.prepareFlowBoardScene = () => new Promise(() => {});";
     requests.length = 0;
-    const result = closingRenderer.render(emptyScene()).catch((error: Error) => error);
+    const result = closingRenderer.render(emptyScene()).catch((error: unknown) => error);
     try {
       const deadline = Date.now() + 10_000;
       while (!requests.includes("/assets/probe.js")) {

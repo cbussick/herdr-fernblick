@@ -65,21 +65,28 @@ declare module "@tanstack/history" {
   }
 }
 
+function EmptyRoute() {
+  return null;
+}
+
 // The shell owns the live connection and composer across sibling view changes.
 export function createAppRouter(history?: RouterHistory) {
   const root = createRootRoute({ component: RouteShell });
-  const empty = () => null;
   const routes = [
-    createRoute({ getParentRoute: () => root, path: "/", component: empty }),
+    createRoute({ getParentRoute: () => root, path: "/", component: EmptyRoute }),
     ...(["chat", "terminal", "whiteboard"] as const).map((view) =>
       createRoute({
         getParentRoute: () => root,
         path: `/sessions/$sessionId/${view}`,
-        component: empty,
+        component: EmptyRoute,
       }),
     ),
     ...(["chat", "terminal"] as const).map((view) =>
-      createRoute({ getParentRoute: () => root, path: `/panes/$paneId/${view}`, component: empty }),
+      createRoute({
+        getParentRoute: () => root,
+        path: `/panes/$paneId/${view}`,
+        component: EmptyRoute,
+      }),
     ),
   ];
   return createRouter({

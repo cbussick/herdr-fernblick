@@ -119,6 +119,11 @@ function SortableWorkspace({
   );
 }
 
+function workspaceRank(order: Array<string>, id: string) {
+  const index = order.indexOf(id);
+  return index < 0 ? order.length : index;
+}
+
 /** Keeps server order authoritative outside a pending move; never persists browser-only ordering. */
 export function WorkspaceReorder<T extends Workspace>({
   workspaces,
@@ -147,9 +152,9 @@ export function WorkspaceReorder<T extends Workspace>({
   );
   const ordered = optimistic
     ? [...workspaces].sort((a, b) => {
-        const rank = (id: string) =>
-          optimistic.includes(id) ? optimistic.indexOf(id) : optimistic.length;
-        return rank(a.workspace_id) - rank(b.workspace_id);
+        return (
+          workspaceRank(optimistic, a.workspace_id) - workspaceRank(optimistic, b.workspace_id)
+        );
       })
     : workspaces;
   const ids = ordered.map((workspace) => workspace.workspace_id);
