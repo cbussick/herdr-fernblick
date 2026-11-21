@@ -1,11 +1,17 @@
-import type { BoardOperation, BoardScene } from "../../packages/pi-live-chat/boardProtocol.js";
+import type {
+  BoardOperation,
+  BoardScene,
+} from "../../packages/pi-live-chat/boardProtocol.js";
 import {
   defaultFlowProps,
   FLOW_CONNECTION_COLOR,
   flowKinds,
   validateFlowGraph,
 } from "../../packages/pi-live-chat/flowProtocol.js";
-import type { FlowElement, FlowKind } from "../../packages/pi-live-chat/flowProtocol.js";
+import type {
+  FlowElement,
+  FlowKind,
+} from "../../packages/pi-live-chat/flowProtocol.js";
 import { BoardError, requireBoard } from "./errors.js";
 import {
   defaultPrimitiveProps,
@@ -16,12 +22,19 @@ import type { PrimitiveKind } from "../../packages/pi-live-chat/primitiveProtoco
 /** Relationships are implicit dependencies, including both sides of existing relations.
  * New endpoints must already have been read; same-batch creation is deliberately not supported.
  */
-export function flowDependencies(scene: BoardScene, op: BoardOperation): Array<string> {
+export function flowDependencies(
+  scene: BoardScene,
+  op: BoardOperation,
+): Array<string> {
   const ids = new Set<string>();
-  const relation = (e: Record<string, unknown>) => {
-    for (const key of ["parentId", "source", "target"]) {
-      if (typeof e[key] === "string") {
-        ids.add(e[key]);
+  const relation = (e: BoardScene["elements"][number] | BoardOperation) => {
+    for (const value of [
+      "parentId" in e ? e.parentId : undefined,
+      "source" in e ? e.source : undefined,
+      "target" in e ? e.target : undefined,
+    ]) {
+      if (typeof value === "string") {
+        ids.add(value);
       }
     }
   };
@@ -55,11 +68,19 @@ export function applyFlowOperations(
   }
   const touched = new Set<string>();
   for (const op of operations) {
-    requireBoard(!touched.has(op.id), 400, "A shape may only be targeted once per operation batch");
+    requireBoard(
+      !touched.has(op.id),
+      400,
+      "A shape may only be targeted once per operation batch",
+    );
     touched.add(op.id);
     let element = elements.find((e) => e.id === op.id);
     if (op.op === "create") {
-      requireBoard(!element, 409, "Shape ID already exists (including deleted shapes)");
+      requireBoard(
+        !element,
+        409,
+        "Shape ID already exists (including deleted shapes)",
+      );
       const common = {
         id: op.id,
         x: op.x,
@@ -69,7 +90,11 @@ export function applyFlowOperations(
         version: 1,
       };
       if (op.kind === "connection") {
-        requireBoard(op.source && op.target, 400, "Connection requires source and target");
+        requireBoard(
+          op.source && op.target,
+          400,
+          "Connection requires source and target",
+        );
         element = {
           ...common,
           type: "connection",
@@ -80,31 +105,35 @@ export function applyFlowOperations(
           label: op.label ?? "",
           color: op.color ?? FLOW_CONNECTION_COLOR,
         };
-      } else if ((primitiveKinds as ReadonlyArray<string>).includes(op.kind)) {
+      } else if (isPrimitiveKind(op.kind)) {
         element = {
           ...common,
           type: "primitive",
-          kind: op.kind as PrimitiveKind,
+          kind: op.kind,
           props: defaultPrimitiveProps(),
         };
       } else {
         requireBoard(
-          (flowKinds as ReadonlyArray<string>).includes(op.kind),
+          isFlowKind(op.kind),
           400,
           "Unsupported flow component kind",
         );
         element = {
           ...common,
           type: "component",
-          kind: op.kind as FlowKind,
+          kind: op.kind,
           parentId: op.parentId ?? null,
-          props: defaultFlowProps(op.kind as FlowKind),
+          props: defaultFlowProps(op.kind),
         };
       }
       elements.push(element);
     } else {
       requireBoard(element && !element.isDeleted, 404, "Shape does not exist");
-      requireBoard(element.version < Number.MAX_SAFE_INTEGER, 400, "Invalid shape version");
+      requireBoard(
+        element.version < Number.MAX_SAFE_INTEGER,
+        400,
+        "Invalid shape version",
+      );
       element.version++;
     }
     if (op.op === "delete") {
@@ -125,9 +154,13 @@ export function applyFlowOperations(
     }
     if (element.type !== "connection") {
       requireBoard(
-        [op.source, op.target, op.sourceHandle, op.targetHandle, op.label].every(
-          (v) => v === undefined,
-        ),
+        [
+          op.source,
+          op.target,
+          op.sourceHandle,
+          op.targetHandle,
+          op.label,
+        ].every((v) => v === undefined),
         400,
         "Connection fields require a connection",
       );
@@ -141,14 +174,18 @@ export function applyFlowOperations(
       element.props = {
         ...element.props,
         ...op.drawing,
-        ...(op.color === undefined ? {} : { stroke: op.color }),
       };
+      if (op.color !== undefined) {
+        element.props.stroke = op.color;
+      }
     } else if (element.type === "component") {
       element.props = {
         ...element.props,
         ...op.props,
-        ...(op.color === undefined ? {} : { color: op.color }),
       };
+      if (op.color !== undefined) {
+        element.props.color = op.color;
+      }
       if (op.parentId !== undefined) {
         element.parentId = op.parentId;
       }
@@ -177,16 +214,28 @@ export function applyFlowOperations(
   return { ...scene, elements };
 }
 
-export function flowSummary(
-  element: FlowElement,
-  files: BoardScene["files"],
-): Record<string, unknown> {
+function isPrimitiveKind(kind: string): kind is PrimitiveKind {
+  return primitiveKinds.some((candidate) => candidate === kind);
+}
+
+function isFlowKind(kind: string): kind is FlowKind {
+  return flowKinds.some((candidate) => candidate === kind);
+}
+
+// Even JSON-escaped control characters fit one complete summary under 128 KiB.
+function short(s: string) {
+  return s.slice(0, 128);
+}
+
+interface ImageSummary {
+  imageAsset?: { id: string; mimeType: string; created: number };
+}
+
+export function flowSummary(element: FlowElement, files: BoardScene["files"]) {
   const { id, type, x, y, width, height, version } = element;
   const common = { id, type, x, y, width, height, version };
   if (element.type === "component") {
     const p = element.props;
-    // Even JSON-escaped control characters fit one complete summary under 128 KiB.
-    const short = (s: string) => s.slice(0, 128);
     // Ordinary cards/tables must be fully readable so agents can preserve existing
     // fields/rows. Only exceptionally large records need a marked partial summary.
     const complete = Buffer.byteLength(JSON.stringify(p)) <= 64 * 1024;
@@ -199,25 +248,30 @@ export function flowSummary(
           body: short(p.body),
           fields: p.fields
             .slice(0, 10)
-            .map((f) => ({ ...f, label: short(f.label), value: short(f.value) })),
+            .map((f) => ({
+              ...f,
+              label: short(f.label),
+              value: short(f.value),
+            })),
           columns: p.columns.map(short),
           rows: p.rows.slice(0, 5).map((row) => row.map(short)),
         };
+    const summary: ImageSummary = {};
+    const image = p.imageId ? files[p.imageId] : undefined;
+    if (image && p.imageId) {
+      summary.imageAsset = {
+        id: p.imageId,
+        mimeType: image.mimeType,
+        created: image.created,
+      };
+    }
     return {
       ...common,
       kind: element.kind,
       parentId: element.parentId,
       props,
       propsTruncated: !complete,
-      ...(p.imageId && files[p.imageId]
-        ? {
-            imageAsset: {
-              id: p.imageId,
-              mimeType: files[p.imageId].mimeType,
-              created: files[p.imageId].created,
-            },
-          }
-        : {}),
+      ...summary,
     };
   }
   if (element.type === "primitive") {
