@@ -1,12 +1,12 @@
 # Session navigation audit and fixes
 
-Audited baseline: `d2854f0`. **All ten findings and the additional history-helper invariant are fixed on `fix/session-navigation`**, based on `4f7e0d1`. The baseline reproduction details below are historical; their old line numbers refer to the audited commit, not the current implementation. The branch is not merged or deployed. No real agents were closed, restarted, resumed or sent prompts.
+Audited baseline: `d2854f0`. **All ten findings and the additional history-helper invariant were fixed in `6de7a65`, merged into `main`, pushed, and deployed as `c082747`.** The implementation and original audit branches/worktrees have been cleaned up. The baseline reproduction details below are historical; their old line numbers refer to the audited commit, not the current implementation. Verification did not close, restart, resume, or send prompts to real agents.
 
 ## Summary
 
 Ten user-visible cases were reproduced in both Chromium and WebKit with the actual frontend and synthetic HTTP/SSE. The same scenarios now pass as fixed-behavior acceptance tests, alongside the cross-session history invariant and additional lifecycle/authority regressions.
 
-The two recent patches fix their original cases, but the remaining problems share four causes:
+On the audited baseline, the problems shared four causes:
 
 1. A fresh agent is a local overlay over an unrelated URL, rather than a navigation destination.
 2. Board return history stores an unscoped numeric index, not a validated conversation destination.
@@ -145,7 +145,7 @@ Existing tests were also rerun for saved-chat Back/Forward, fresh-session promot
 ## Reproduction and test artifacts
 
 ```sh
-# Worktree: .worktrees/fix-session-navigation
+# Run from an isolated task worktree; the original fix worktree was removed.
 npm ci
 VITEST_MAX_WORKERS=2 npm run check
 
@@ -160,9 +160,9 @@ node tools/design/session-navigation-audit.mjs
 
 The audit assertions were first run as ordinary tests and failed on their intended URL/view/draft assertions (13 failing assertions covering ten cases plus duplicates and the helper invariant). Every expected failure has been converted to a normal passing regression test. Additional tests cover deferred shell creation, dismiss/reopen and unmounted dialogs, same-tab sibling closing, history-resume races, conversation-specific drafts, suspended attachments, fresh-baseline command gating, and runtime/epoch replacement.
 
-Full check result: **124 test files and 1,491 normal passing tests; no expected failures**. Formatting, lint, both Knip modes, typechecking and production build pass. Tests were limited to two workers to avoid the repository's documented large-upload fixture contention; an initial unrestricted run timed out in the unrelated ten-image upload test.
+The implementation branch passed **124 test files and 1,491 normal tests, with no expected failures**. After integration with latest `main` (which removed the standalone prototype tests), deployment verification passed **122 test files and 1,468 tests**, plus all 36 browser acceptance cases. Formatting, lint, both Knip modes, typechecking and production build passed. Tests were limited to two workers to avoid the repository's documented large-upload fixture contention; an initial unrestricted run timed out in the unrelated ten-image upload test.
 
-The browser tool now asserts **fixed behavior** and prints `PASS`. It covers all ten cases at desktop width in Chromium and WebKit, plus fresh-session reload, early mode switching, direct-board history, and restart-window draft retention at 390 px and 820 px. All **36 browser acceptance cases pass**, including text and attachment preservation through an inactive poll. All APIs are intercepted, SSE is synthetic, external requests are blocked, and API/page errors are checked separately. No physical iPad/phone or deployed-session restart was tested.
+The browser tool now asserts **fixed behavior** and prints `PASS`. It covers all ten cases at desktop width in Chromium and WebKit, plus fresh-session reload, early mode switching, direct-board history, and restart-window draft retention at 390 px and 820 px. All **36 browser acceptance cases pass**, including text and attachment preservation through an inactive poll. All APIs are intercepted, SSE is synthetic, external requests are blocked, and API/page errors are checked separately. No physical iPad/phone or real Pi-agent restart was used for these tests.
 
 ## Completed implementation groups
 
@@ -171,4 +171,4 @@ The browser tool now asserts **fixed behavior** and prints `PASS`. It covers all
 3. **Own drafts at conversation lifetime:** preserve through restart/inactive gaps without weakening replacement/exit handling (N5).
 4. **Revoke stale navigation intent:** late close/create/resume/new-tab completion can update data but cannot hijack newer selections (N7/N8); fix shell caching/mode in that pass (N10).
 
-The full transition matrix and real-browser fixtures have been rerun. Draft retention is limited to the selected conversation and is separate from live command authority. Reload-persistent composer drafts and survival across full browser/app unmounts are not added by this change; only the conversation URL survives reload. No physical iPad/phone or production restart was exercised.
+The full transition matrix and real-browser fixtures have been rerun. Draft retention is limited to the selected conversation and is separate from live command authority. Reload-persistent composer drafts and survival across full browser/app unmounts are not added by this change; only the conversation URL survives reload. Physical-device and real Pi-agent restart smoke tests remain optional follow-up checks. Backend redeployment and read-only HTTPS/API health checks succeeded; the rollback build was retained.
