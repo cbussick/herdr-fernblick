@@ -1,3 +1,4 @@
+import { report } from "../report.mjs";
 // Synthetic header-layout regression; no live Herdr/Pi sockets or commands.
 // Run after npm run build: node tools/design/safe-area.mjs
 import assert from "node:assert/strict";
@@ -144,9 +145,7 @@ try {
         assert.ok(diagnostics.headerLayout.overview);
         assert.ok(!JSON.stringify(diagnostics.headerLayout).includes(agent.name));
         assert.deepEqual(errors, []);
-        console.log(
-          `${name}: inset ${inset}px, overview and portrait/landscape/desktop headers PASS`,
-        );
+        report(`${name}: inset ${inset}px, overview and portrait/landscape/desktop headers PASS`);
         await page.close();
       }
     } finally {

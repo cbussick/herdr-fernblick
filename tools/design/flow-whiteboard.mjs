@@ -1,3 +1,4 @@
+import { report } from "../report.mjs";
 // Synthetic integration fixture: no Herdr/Pi sockets or production agents are contacted.
 // npm run build && node tools/design/flow-whiteboard.mjs
 import assert from "node:assert/strict";
@@ -651,7 +652,7 @@ try {
       await browser.close();
     }
   }
-  console.log(
+  report(
     "PASS: isolated Chromium/WebKit flow boards, independent JSON/PNG downloads of unsynced drafts, export failures, save-before-prompt, remote additions and paused recovery without write replay.",
   );
 } finally {

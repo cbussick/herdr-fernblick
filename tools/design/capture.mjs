@@ -1,3 +1,4 @@
+import { report, reportError } from "../report.mjs";
 import { appSelector } from "./selectors.mjs";
 // Run with PLAYWRIGHT_MODULE=/absolute/path/to/playwright/index.mjs node tools/design/capture.mjs before|after URL
 // All API traffic is intercepted. This never connects to or controls real agents.
@@ -734,7 +735,7 @@ for (const size of sizes) {
       }
       const overflow = await page.evaluate(() => document.documentElement.scrollWidth > innerWidth);
       if (overflow) {
-        console.warn(`Overflow: ${size.id}/${id}`);
+        reportError(`Overflow: ${size.id}/${id}`);
       }
       manifest.push({
         id,
@@ -744,9 +745,9 @@ for (const size of sizes) {
         width: size.width,
         height: size.height,
       });
-      console.log(`${phase}: ${size.id}/${id}`);
+      report(`${phase}: ${size.id}/${id}`);
     } catch (error) {
-      console.error(`FAILED ${size.id}/${id}: ${error}`);
+      reportError(`FAILED ${size.id}/${id}: ${error}`);
       await page.screenshot({ path: `${out}/failure.png` });
       process.exitCode = 1;
       break;
@@ -768,4 +769,4 @@ manifest.sort(
 );
 await fs.writeFile(`${out}/${phase}.json`, JSON.stringify(manifest, null, 2));
 await fs.copyFile("tools/design/gallery.html", `${out}/index.html`);
-console.log(`Captured ${manifest.length} screens for ${phase}.`);
+report(`Captured ${manifest.length} screens for ${phase}.`);

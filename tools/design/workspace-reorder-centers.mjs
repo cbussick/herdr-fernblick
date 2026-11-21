@@ -1,3 +1,4 @@
+import { report, reportError } from "../report.mjs";
 // Synthetic fixtures only; never connects to Herdr/Pi.
 // node tools/design/workspace-reorder-centers.mjs http://127.0.0.1:5243
 import assert from "node:assert/strict";
@@ -156,10 +157,10 @@ try {
           await cards.locator(":scope > summary strong").allTextContents(),
           direction === "down" ? ["Beta", "Alpha", "Gamma"] : ["Alpha", "Gamma", "Beta"],
         );
-        console.log(`${name}: PASS center crossing, reversal, indicator and saved order`);
+        report(`${name}: PASS center crossing, reversal, indicator and saved order`);
       } catch (error) {
         failures.push(`${name}: ${error.message}`);
-        console.error(`${name}: ${error.message}`);
+        reportError(`${name}: ${error.message}`);
       } finally {
         await page.close();
       }

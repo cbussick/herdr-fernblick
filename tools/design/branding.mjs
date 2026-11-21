@@ -1,3 +1,4 @@
+import { report } from "../report.mjs";
 // Sequential, synthetic browser checks: no real Herdr/Pi sockets or agent commands.
 // Run after building; see tools/design/README.md for external Playwright setup.
 import assert from "node:assert/strict";
@@ -285,7 +286,7 @@ try {
     }
   }
   await page.close();
-  console.log(
+  report(
     "PASS: Scout loading/header and plug/unplug connection states at five viewports; offline and failed-poll recovery; accessible wordmark without overlap; Manrope UI unchanged; transparent artwork; opaque icons; maskable safe circle; unchanged PWA identity.",
   );
 } finally {

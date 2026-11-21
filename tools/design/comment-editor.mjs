@@ -1,3 +1,4 @@
+import { report } from "../report.mjs";
 // Focused layout checks with synthetic API/SSE fixtures; never controls a real agent.
 import assert from "node:assert/strict";
 import fs from "node:fs/promises";
@@ -199,7 +200,7 @@ for (const engine of [chromium, webkit]) {
         await input.press("Escape");
         await dialog.waitFor({ state: "hidden" });
         assert.deepEqual(errors, []);
-        console.log(`${key}: comment editor passed`);
+        report(`${key}: comment editor passed`);
       } catch (error) {
         await page.screenshot({ path: `${out}/${key}-failure.png` });
         throw error;

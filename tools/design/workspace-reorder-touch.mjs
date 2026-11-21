@@ -1,3 +1,4 @@
+import { report, reportError } from "../report.mjs";
 // Synthetic fixtures only; no Herdr/Pi socket is used.
 // node tools/design/workspace-reorder-touch.mjs http://127.0.0.1:5237
 import assert from "node:assert/strict";
@@ -137,10 +138,10 @@ try {
         await cards.locator(":scope > summary strong").allTextContents(),
         shouldMove ? ["Gamma", "Alpha", "Beta"] : ["Alpha", "Beta", "Gamma"],
       );
-      console.log(`${destination}: PASS touch indicator and persisted order`);
+      report(`${destination}: PASS touch indicator and persisted order`);
     } catch (error) {
       failures.push(`${destination}: ${error.message}`);
-      console.error(`${destination}: ${error.message}`);
+      reportError(`${destination}: ${error.message}`);
     }
     await page.close();
   }

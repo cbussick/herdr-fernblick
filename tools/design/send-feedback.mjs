@@ -1,3 +1,4 @@
+import { report } from "../report.mjs";
 // Synthetic send regression: all API/SSE traffic is intercepted; no live agents are controlled.
 // PLAYWRIGHT_MODULE=/absolute/path/to/playwright/index.mjs node tools/design/send-feedback.mjs URL
 import assert from "node:assert/strict";
@@ -287,7 +288,7 @@ for (const [engine, browserType] of [
       await page.waitForFunction(() => document.querySelector("#agent-prompt").value === "");
       assert.deepEqual(errors, []);
       await page.close();
-      console.log(`${engine} ${name}: send feedback passed`);
+      report(`${engine} ${name}: send feedback passed`);
     }
   } finally {
     await browser.close();

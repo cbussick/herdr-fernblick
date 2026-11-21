@@ -1,3 +1,4 @@
+import { report } from "../report.mjs";
 // Reproduce the approved raster artwork's transparent masters and app exports.
 // Install Sharp outside the app: see design/branding/README.md.
 import { mkdir, readFile } from "node:fs/promises";
@@ -172,4 +173,4 @@ await icon("scout-maskable-512", 512, 0.74);
 await icon("scout-apple-touch", 180, 0.82);
 await icon("scout-favicon-32", 32, 0.94);
 await icon("scout-favicon-16", 16, 1);
-console.log("Exported Scout masters, transparent UI artwork, solid app icons and favicons.");
+report("Exported Scout masters, transparent UI artwork, solid app icons and favicons.");

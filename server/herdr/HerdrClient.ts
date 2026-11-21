@@ -5,6 +5,16 @@ import type { ZodType } from "zod";
 
 const DEFAULT_TIMEOUT_MS = 5000;
 
+type HerdrParamValue =
+  | string
+  | number
+  | boolean
+  | null
+  | undefined
+  | ReadonlyArray<HerdrParamValue>
+  | { readonly [key: string]: HerdrParamValue };
+export type HerdrParams = Readonly<Record<string, HerdrParamValue>>;
+
 const errorEnvelopeSchema = z.object({
   error: z.object({ code: z.string(), message: z.string() }),
 });
@@ -25,7 +35,7 @@ export class HerdrClient {
     private readonly timeoutMs = DEFAULT_TIMEOUT_MS,
   ) {}
 
-  request<T>(method: string, params: Record<string, unknown>, schema: ZodType<T>) {
+  request<T>(method: string, params: HerdrParams, schema: ZodType<T>) {
     const id = randomUUID();
 
     return new Promise<T>((resolve, reject) => {

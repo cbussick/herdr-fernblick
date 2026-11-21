@@ -1,3 +1,4 @@
+import { report } from "../report.mjs";
 // Isolated production UI fixture: no live agents, sockets, or model calls.
 import assert from "node:assert/strict";
 import { mkdir } from "node:fs/promises";
@@ -144,7 +145,7 @@ try {
     assert.deepEqual(navigations, ["a"]);
     await dialog.getByRole("button", { name: "Cancel" }).click();
     assert.deepEqual(errors, []);
-    console.log(
+    report(
       `${width}px: confirmation, cancellation, keyboard focus, reply navigation and errors passed`,
     );
     await page.close();

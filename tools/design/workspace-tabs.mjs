@@ -1,3 +1,4 @@
+import { report } from "../report.mjs";
 // Synthetic API fixtures only; no Herdr/Pi sockets or real agents are used.
 // PLAYWRIGHT_MODULE=/path/to/playwright/index.mjs node tools/design/workspace-tabs.mjs URL
 import assert from "node:assert/strict";
@@ -253,7 +254,7 @@ for (const [engine, browserType] of Object.entries({ chromium, webkit })) {
         false,
       );
       assert.deepEqual(errors, []);
-      console.log(
+      report(
         `${engine} ${width}x${height}: PASS grouping, search, collapse, identity, rename and shell target`,
       );
       await page.close();

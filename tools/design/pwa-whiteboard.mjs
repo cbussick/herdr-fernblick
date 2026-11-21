@@ -1,3 +1,4 @@
+import { report } from "../report.mjs";
 // Synthetic production browser regression. No real Herdr/Pi APIs or service workers.
 // PLAYWRIGHT_MODULE=/path/to/playwright/index.mjs node tools/design/pwa-whiteboard.mjs
 import assert from "node:assert/strict";
@@ -244,7 +245,7 @@ try {
           "background interactivity is restored",
         );
         assert.deepEqual(errors, []);
-        console.log(
+        report(
           `${name}/${timing}: touch dismissal, keyboard refresh, draft and inert restoration passed`,
         );
         await page.close();

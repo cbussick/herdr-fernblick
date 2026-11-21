@@ -1,3 +1,4 @@
+import { report } from "../report.mjs";
 // Synthetic browser check. All API/SSE traffic is intercepted; no live agent is controlled.
 // PLAYWRIGHT_MODULE=/absolute/path/to/playwright/index.mjs node tools/design/pi-footer.mjs URL
 import assert from "node:assert/strict";
@@ -157,7 +158,7 @@ for (const [engine, browserType] of [
       assert.ok(freshComposer && freshComposer.y + freshComposer.height <= height);
       assert.deepEqual(errors, []);
       await page.close();
-      console.log(`${engine} ${name}: passed`);
+      report(`${engine} ${name}: passed`);
     }
   } finally {
     await browser.close();

@@ -1,3 +1,4 @@
+import { report } from "../report.mjs";
 // All API/SSE traffic is synthetic. Never connects to or controls real agents.
 // PLAYWRIGHT_MODULE=/path/to/playwright/index.mjs node tools/design/read-agent-status.mjs URL
 import assert from "node:assert/strict";
@@ -133,7 +134,7 @@ for (const [engine, browserType] of [
       await row.getByText("New answer", { exact: true }).waitFor();
       assert((await workspaceSummary.textContent()).includes("New answer"));
       assert.deepEqual(errors, []);
-      console.log(
+      report(
         `${engine} ${width}x${height}: read/back stays Idle across polling and reload; next answer unread`,
       );
       await page.close();

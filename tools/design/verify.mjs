@@ -1,3 +1,4 @@
+import { report } from "../report.mjs";
 import { appSelector } from "./selectors.mjs";
 // Browser-level checks for the generated gallery and the responsive proposal.
 import assert from "node:assert/strict";
@@ -309,7 +310,7 @@ for (const [name, engine] of Object.entries({ chromium, webkit })) {
     await page.keyboard.press("Space");
     assert.equal(await tool.locator("pre").isVisible(), true);
     assert.deepEqual(errors, []);
-    console.log(
+    report(
       `${name}: ${width}×${height} gallery, layout, lightbox, filters, navigation and touch targets passed`,
     );
     await page.close();

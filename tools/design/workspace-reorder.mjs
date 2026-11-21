@@ -1,3 +1,4 @@
+import { report } from "../report.mjs";
 // Synthetic fixtures only; never connects to a Herdr/Pi socket.
 // node tools/design/workspace-reorder.mjs http://127.0.0.1:5218
 import assert from "node:assert/strict";
@@ -115,7 +116,7 @@ for (const [name, engine, mobile] of [
         const next = element.nextElementSibling.querySelector("details").getBoundingClientRect();
         return { top, bottom, cardBottom: card.bottom, nextTop: next.top };
       });
-      console.log(`${name}: early markers=${earlyMarkers}, gap=${JSON.stringify(gap)}`);
+      report(`${name}: early markers=${earlyMarkers}, gap=${JSON.stringify(gap)}`);
       assert.equal(earlyMarkers, 0, "downward reorder must wait until the next row's midpoint");
       assert.ok(gap.top > gap.cardBottom && gap.bottom < gap.nextTop, "line must be between cards");
       assert.ok(
@@ -207,7 +208,7 @@ for (const [name, engine, mobile] of [
       false,
     );
     assert.deepEqual(errors, []);
-    console.log(
+    report(
       `${name}: PASS drag, persistence, keyboard, cancellation, click-only move, focus, expansion, rollback and search`,
     );
     await page.close();

@@ -1,3 +1,4 @@
+import { report } from "../report.mjs";
 // All API/SSE traffic is intercepted. Never controls existing agents.
 // PLAYWRIGHT_MODULE=/path/to/playwright/index.mjs node tools/design/model-picker.mjs URL
 import assert from "node:assert/strict";
@@ -451,7 +452,7 @@ for (const [engine, type] of [
       assert.equal(unexpected, 0);
       assert.deepEqual(errors, []);
       await page.close();
-      console.log(
+      report(
         `${engine} ${name}: toolbar, icon menu, picker, keyboard, mutation, failure and stale-target checks passed`,
       );
     }

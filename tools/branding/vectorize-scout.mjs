@@ -1,3 +1,4 @@
+import { report } from "../report.mjs";
 // Preparation-only dependencies; no tracing library ships in the app.
 import { createRequire } from "node:module";
 import { readFile, writeFile } from "node:fs/promises";
@@ -119,6 +120,6 @@ const wordmarkPath = await trace(masks[0].map((on, i) => on && Math.floor(i / wi
 const wordmark = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 775 940 210" width="940" height="210" role="img" aria-labelledby="title"><title id="title">Fernblick</title><path fill="#17374f" fill-rule="evenodd" d="${wordmarkPath}"/></svg>\n`;
 await writeFile(new URL("public/icons/scout-head.svg", root), head);
 await writeFile(new URL("public/icons/scout-wordmark.svg", root), wordmark);
-console.log(
+report(
   `Vector artwork: ${layers.length} path layers and two independent pupils; exported logo, padded head and wordmark.`,
 );

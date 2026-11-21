@@ -1,3 +1,4 @@
+import { report } from "../report.mjs";
 // Synthetic API fixtures only; never connects to a live Herdr session.
 // PLAYWRIGHT_MODULE=/path/to/playwright/index.mjs node tools/design/pane-context-menu.mjs URL
 import assert from "node:assert/strict";
@@ -104,7 +105,7 @@ for (const [name, engine] of Object.entries({ chromium, webkit })) {
       }
       assert.deepEqual(errors, []);
       await page.close();
-      console.log(`${name} ${viewport.width}x${viewport.height}: PASS`);
+      report(`${name} ${viewport.width}x${viewport.height}: PASS`);
     }
   } finally {
     await browser.close();

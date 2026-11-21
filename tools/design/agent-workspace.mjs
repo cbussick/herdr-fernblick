@@ -1,3 +1,4 @@
+import { report } from "../report.mjs";
 // Synthetic-only regression: every API request is intercepted; no real agents are created.
 // PLAYWRIGHT_MODULE=/path/to/playwright/index.mjs node tools/design/agent-workspace.mjs URL
 import assert from "node:assert/strict";
@@ -116,7 +117,7 @@ for (const [engine, browserType] of [
       await agentForm.getByRole("button", { name: "Cancel", exact: true }).click();
       assert.equal(await agentDialog.evaluate((node) => node.open), false);
       assert.deepEqual(errors, []);
-      console.log(
+      report(
         `${engine} ${device}: cancel, Escape, retry, draft, selection, explicit confirmation passed`,
       );
       await page.close();

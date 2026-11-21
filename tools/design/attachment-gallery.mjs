@@ -1,3 +1,4 @@
+import { report } from "../report.mjs";
 // Synthetic draft/transcript gallery verification; every API/SSE request is intercepted.
 // PLAYWRIGHT_MODULE=/path/to/playwright/index.mjs node tools/design/attachment-gallery.mjs URL
 import assert from "node:assert/strict";
@@ -178,7 +179,7 @@ for (const [engine, type] of [
       assert.equal(unexpected, 0, "Preview must never upload or forward a prompt");
       assert.deepEqual(errors, []);
       await page.close();
-      console.log(
+      report(
         `${engine}: ${name} draft/chat galleries, wrap, keyboard, focus, failure fallback and draft retention passed`,
       );
     }

@@ -1,3 +1,4 @@
+import { report } from "../report.mjs";
 // Synthetic keyboard geometry through the real app. No live Herdr/Pi traffic.
 // Models visual-only resize and layout resize followed by focus panning; not a physical iPad keyboard.
 // Run after npm run build: node tools/design/visual-viewport.mjs
@@ -210,7 +211,7 @@ try {
         await page.screenshot({
           path: `design-gallery/visual-viewport/${name}-${mode}-restored.png`,
         });
-        console.log(
+        report(
           `${name}/${mode}: keyboard/pan, zoomed layout recovery, resume remeasurement and draft checks passed`,
         );
         await page.close();

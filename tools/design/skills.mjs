@@ -1,3 +1,4 @@
+import { report } from "../report.mjs";
 // Synthetic browser regression checks. Every API request is intercepted; no live agent is controlled.
 // PLAYWRIGHT_MODULE=/absolute/path/to/playwright/index.mjs node tools/design/skills.mjs URL
 import assert from "node:assert/strict";
@@ -233,9 +234,7 @@ for (const [engine, browserType] of [
             return r.top >= box.top && r.bottom <= box.bottom;
           }).length;
         });
-        console.log(
-          `${engine}/${name}: picker height ${picker.height}, ${visibleRows} complete rows`,
-        );
+        report(`${engine}/${name}: picker height ${picker.height}, ${visibleRows} complete rows`);
         assert.ok(
           visibleRows >= 3,
           "phone skills should show several complete rows above the keyboard",
@@ -389,7 +388,7 @@ for (const [engine, browserType] of [
         "session updates must not replace the editor DOM",
       );
       assert.deepEqual(errors, []);
-      console.log(
+      report(
         `${engine}/${name}: skills, draft, focus, keyboard, errors, disconnect, layout passed`,
       );
       await page.close();

@@ -1,3 +1,4 @@
+import { report } from "../report.mjs";
 // Synthetic-only inactive-session layout checks; no Herdr/Pi sockets or commands.
 // Run after npm run build: node tools/design/inactive-conversation.mjs
 import assert from "node:assert/strict";
@@ -126,7 +127,7 @@ try {
       await browser.close();
     }
   }
-  console.log(
+  report(
     "PASS: inactive/unavailable conversation and 404 layouts, shared actions, keyboard recovery and overview navigation across five widths in Chromium and WebKit.",
   );
 } finally {

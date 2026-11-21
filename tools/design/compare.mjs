@@ -1,3 +1,4 @@
+import { report, reportError } from "../report.mjs";
 // Compare finished application screenshots against a preserved proposal capture.
 // Allow only tiny rasterization/animation differences; do not update the reference to hide regressions.
 import fs from "node:fs/promises";
@@ -34,11 +35,11 @@ const report = {
   results,
 };
 await fs.writeFile("design-gallery/proposal-comparison.json", JSON.stringify(report, null, 2));
-console.log(
+report(
   `${report.passed}/${report.total} screenshots match the proposal (maximum allowed difference: ${allowedRatio * 100}%).`,
 );
 for (const result of results.filter((result) => !result.passed)) {
-  console.error(`${result.name}: ${(result.ratio * 100).toFixed(3)}% changed`);
+  reportError(`${result.name}: ${(result.ratio * 100).toFixed(3)}% changed`);
 }
 if (report.passed !== report.total) {
   process.exitCode = 1;

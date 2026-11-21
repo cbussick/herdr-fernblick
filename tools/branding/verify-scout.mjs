@@ -1,3 +1,4 @@
+import { report } from "../report.mjs";
 // Preparation-only raster check for internal gaps in the generated SVG.
 import assert from "node:assert/strict";
 import { createRequire } from "node:module";
@@ -21,7 +22,7 @@ for (let y = 360; y < 660; y++) {
   }
 }
 assert.equal(gaps, 0, `Found ${gaps} translucent pixels inside the goggles`);
-console.log("No internal gaps in the goggles at 2× resolution.");
+report("No internal gaps in the goggles at 2× resolution.");
 
 const closeup = await sharp(new URL("../../public/icons/scout-logo.svg", import.meta.url).pathname)
   .resize(2256, 2376)
@@ -41,4 +42,4 @@ for (const left of [280, 468]) {
   }
 }
 assert.equal(palePixels, 0, `Found ${palePixels} pale pixels at pupil/goggle boundaries`);
-console.log("No white fringe at pupil/goggle boundaries at 4× resolution.");
+report("No white fringe at pupil/goggle boundaries at 4× resolution.");

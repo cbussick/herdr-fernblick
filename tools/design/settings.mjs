@@ -1,3 +1,4 @@
+import { report } from "../report.mjs";
 // Real production worker + synthetic dashboard. No live agents or private data.
 // Run after npm run build: node tools/design/settings.mjs
 import assert from "node:assert/strict";
@@ -275,7 +276,7 @@ for (const [name, engine] of [
       modal.getByRole("button", { name: "Refresh app", exact: true }).click(),
     ]);
     assert.deepEqual(errors, []);
-    console.log(
+    report(
       `${name}: PASS running/latest identities, network metadata, manual worker update, retry/Later, explicit refresh, copy/privacy, modal focus, responsive layout`,
     );
   } finally {

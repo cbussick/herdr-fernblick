@@ -1,3 +1,4 @@
+import { report } from "../report.mjs";
 // Keyboard-height regression: intercept all API traffic; never control real agents.
 // PLAYWRIGHT_MODULE=/path/to/playwright/index.mjs node tools/design/keyboard-layout.mjs URL
 import assert from "node:assert/strict";
@@ -147,7 +148,7 @@ for (const [name, engine] of [
         singlePane: document.querySelector("[data-detail-open]")?.hasAttribute("data-single-pane"),
         chatWidth: document.querySelector('[data-testid="console"]').getBoundingClientRect().width,
       }));
-      console.log(name, JSON.stringify(state));
+      report(name, JSON.stringify(state));
       assert.equal(
         await sidebar.isVisible(),
         false,
@@ -216,7 +217,7 @@ for (const [name, engine] of [
         (await sidebar.boundingBox()).width >= width - 1,
         "overview search is full-width too",
       );
-      console.log(
+      report(
         `${name}/${width}: composer, skills search, keyboard close, rotation, draft and back navigation passed`,
       );
       await page.close();

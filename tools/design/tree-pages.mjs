@@ -1,3 +1,4 @@
+import { report } from "../report.mjs";
 // Production UI + real page projection, with synthetic session data only.
 // All API/SSE requests are intercepted; no live agent, Herdr socket or model.
 // PLAYWRIGHT_MODULE=/path/to/playwright/index.mjs node --import tsx tools/design/tree-pages.mjs URL
@@ -322,12 +323,12 @@ for (const [engine, browserType] of [
         assert.deepEqual(errors, []);
         assert.deepEqual(unexpected, []);
         results.push({ engine, device, passed: true, reads: reads.length });
-        console.log(
+        report(
           `PASS ${engine}/${device}: paging, global search, forks, stale/error recovery, cancel, full prompt restore`,
         );
       } catch (error) {
         results.push({ engine, device, passed: false, error: error.message });
-        console.log(`FAIL ${engine}/${device}: ${error.message}`);
+        report(`FAIL ${engine}/${device}: ${error.message}`);
         await page.screenshot({ path: `${output}/${engine}-${device}-failure.png` });
       } finally {
         await page.close();

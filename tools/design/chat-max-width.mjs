@@ -1,3 +1,4 @@
+import { report } from "../report.mjs";
 // Synthetic-only chat layout coverage. No real Herdr/Pi sessions are contacted.
 // Run after npm run build: node tools/design/chat-max-width.mjs
 import assert from "node:assert/strict";
@@ -204,7 +205,7 @@ try {
       await browser.close();
     }
   }
-  console.log(
+  report(
     "PASS: shared 1100px message/tool/composer column, seamless background, narrow screens, wide code, and unconstrained terminal in Chromium and WebKit.",
   );
 } finally {

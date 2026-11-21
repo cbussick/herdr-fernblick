@@ -1,3 +1,4 @@
+import { report } from "../report.mjs";
 // Production PWA check: ephemeral loopback server, synthetic dashboard, no Herdr/Pi sockets.
 // Uses the separately installed PLAYWRIGHT_MODULE described in tools/design/README.md.
 import assert from "node:assert/strict";
@@ -146,7 +147,7 @@ try {
   });
   await page.getByRole("heading", { name: "Fernblick", exact: true }).waitFor();
   assert.deepEqual(errors, []);
-  console.log(
+  report(
     "PASS: installability, icons, production worker, manual multi-window updates, draft preservation, offline startup, API cache exclusion, reconnect",
   );
 } finally {

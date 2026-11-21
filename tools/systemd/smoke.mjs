@@ -1,3 +1,4 @@
+import { report, reportError } from "../report.mjs";
 import { execFile } from "node:child_process";
 import { randomUUID } from "node:crypto";
 import { access, mkdir, mkdtemp, rm } from "node:fs/promises";
@@ -132,7 +133,7 @@ try {
   if (!journal.includes("Fernblick listening")) {
     throw new Error("Isolated startup log was not retrievable");
   }
-  console.log(
+  report(
     "PASS: isolated backend starts; absent Herdr returns 503; fixture recovery returns 200; crash restarts; startup journal is retrievable. No production service changed.",
   );
 } finally {
@@ -145,7 +146,7 @@ try {
       return state?.stdout.trim() === "not-found";
     });
   if (!stopped) {
-    console.error(`Could not stop isolated unit ${unit}; retained fixture ${root} for recovery.`);
+    reportError(`Could not stop isolated unit ${unit}; retained fixture ${root} for recovery.`);
     process.exitCode = 1;
   } else {
     await run("systemctl", ["reset-failed", unit]).catch(() => {});

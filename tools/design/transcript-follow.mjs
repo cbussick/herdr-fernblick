@@ -1,3 +1,4 @@
+import { report } from "../report.mjs";
 // Synthetic scroll regression: all API/SSE traffic is intercepted; no live agents are controlled.
 // PLAYWRIGHT_MODULE=/path/to/playwright/index.mjs node tools/design/transcript-follow.mjs URL
 import assert from "node:assert/strict";
@@ -368,7 +369,7 @@ for (const [engine, type] of [
         await cdp.detach();
       }
       assert.deepEqual(errors, []);
-      console.log(
+      report(
         `${engine}/${device}: resize, reader pause/resume, click/keyboard sends, multiline ACK, echo and keyboard dismissal passed`,
       );
       await page.close();

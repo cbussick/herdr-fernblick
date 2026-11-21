@@ -1,3 +1,4 @@
+import { report, reportError } from "./report.mjs";
 import { readdir, readFile } from "node:fs/promises";
 import ts from "typescript";
 
@@ -44,8 +45,8 @@ if (sourceLicense !== shippedLicense) {
   errors.push("The redistributed Manrope license must match the source license");
 }
 if (errors.length) {
-  console.error(errors.join("\n"));
+  reportError(errors.join("\n"));
   process.exitCode = 1;
 } else {
-  console.log("CSS Modules conventions and redistributed font license passed");
+  report("CSS Modules conventions and redistributed font license passed");
 }

@@ -1,3 +1,4 @@
+import { report } from "../report.mjs";
 // Synthetic-only browser coverage: no Herdr socket or real sessions are used.
 // PLAYWRIGHT_MODULE=/path/to/playwright/index.mjs node tools/design/chat-history.mjs URL
 import assert from "node:assert/strict";
@@ -391,7 +392,7 @@ for (const [engine, browserType] of [
       );
       assert.deepEqual(mutations, [{ workspaceId: "w3" }]);
       assert.deepEqual(errors, []);
-      console.log(
+      report(
         `${engine} ${device}: loading, reduced motion, history, search, session labels, delete, snackbar, local draft cleanup, resume, focus, overflow passed`,
       );
       await page.close();

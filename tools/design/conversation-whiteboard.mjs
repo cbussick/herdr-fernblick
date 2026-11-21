@@ -1,3 +1,4 @@
+import { report } from "../report.mjs";
 // Synthetic browser regression: intercept every agent API; never control live agents.
 // npm run build && node tools/design/conversation-whiteboard.mjs
 import assert from "node:assert/strict";
@@ -402,7 +403,7 @@ try {
       await browser.close();
     }
   }
-  console.log(
+  report(
     "Conversation whiteboard passed: Chromium/WebKit, mobile/portrait/desktop, deep links, stale session rejection, draft preservation and no automatic uploads.",
   );
 } finally {

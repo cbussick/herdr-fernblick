@@ -1,3 +1,4 @@
+import { report } from "../report.mjs";
 // Synthetic browser checks only. Every API request and SSE stream is replaced;
 // this script never sends a prompt to a real agent.
 import assert from "node:assert/strict";
@@ -930,7 +931,7 @@ for (const engine of [chromium, webkit]) {
       await label.waitFor();
       assert.equal(await label.count(), 1, "general feedback labels render in bold");
       assert.deepEqual(errors, []);
-      console.log(`${engine.name()} ${viewport.width}: annotation flow passed`);
+      report(`${engine.name()} ${viewport.width}: annotation flow passed`);
     } catch (error) {
       await page.screenshot({ path: `${out}/failure-${engine.name()}-${viewport.width}.png` });
       throw error;
