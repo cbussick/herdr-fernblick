@@ -1,18 +1,33 @@
-import type { ServerResponse } from "node:http";
 import type { Agent } from "../../src/shared/api/contracts.js";
 import { LiveChatError } from "./liveBridge.js";
-import type { LiveBridge } from "./liveBridge.js";
 import { browserFrame } from "../../packages/pi-live-chat/browserStream.js";
 import type { Snapshot } from "../../packages/pi-live-chat/protocol.js";
 import { MAX_FRAME } from "../../packages/pi-live-chat/protocol.js";
 
 // One Herdr lookup before subscription; no Herdr requests in the chat data loop.
 // Replacements require a fresh process check, but ordinary frames are direct.
-export function liveEvents(response: ServerResponse, agent: Agent, bridge: LiveBridge) {
+interface EventResponse {
+  writableLength: number;
+  writeHead(status: number, headers: Record<string, string>): void;
+  flushHeaders(): void;
+  write(frame: string): boolean;
+  destroy(): void;
+  on(event: "drain" | "close", listener: () => void): void;
+  off(event: "drain", listener: () => void): void;
+}
+interface SnapshotPeer {
+  snapshot: Snapshot;
+}
+interface EventBridge {
+  current(agent: Agent): SnapshotPeer;
+  resolve(agent: Agent): Promise<SnapshotPeer>;
+  subscribe(listener: () => void, pane: string): () => void;
+}
+export function liveEvents(response: EventResponse, agent: Agent, bridge: EventBridge) {
   let closed = false;
   let running = false;
   let dirty = false;
-  let bound: Awaited<ReturnType<LiveBridge["resolve"]>> | undefined;
+  let bound: SnapshotPeer | undefined;
   let last = "";
   let previous: Snapshot | undefined;
   let paused = false;
