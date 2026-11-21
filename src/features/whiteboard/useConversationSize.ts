@@ -1,6 +1,27 @@
 import { useEffect, useRef, useState } from "react";
-import type { KeyboardEvent, PointerEvent, RefObject } from "react";
+import type { RefObject } from "react";
 import { flushSync } from "react-dom";
+
+/** Input capabilities consumed by geometry; independent of React's event wrapper. */
+interface ResizePointer {
+  pointerId: number;
+  clientX: number;
+  clientY: number;
+  button: number;
+  isPrimary: boolean;
+  currentTarget: {
+    focus(): void;
+    setPointerCapture(pointerId: number): void;
+  };
+  preventDefault(): void;
+}
+interface ResizeKey {
+  key: string;
+  shiftKey: boolean;
+  nativeEvent: { isComposing: boolean };
+  preventDefault(): void;
+  stopPropagation(): void;
+}
 
 const widthKey = "fernblick:whiteboard-conversation-width";
 const desktopQuery = "(width >= 64rem) and (orientation: landscape)";
@@ -101,7 +122,7 @@ export function useConversationSize(dock: RefObject<HTMLElement | null>) {
     setFraction(start.fraction);
     setDragging(false);
   }
-  function onPointerDown(event: PointerEvent<HTMLDivElement>) {
+  function onPointerDown(event: ResizePointer) {
     if (!event.isPrimary || event.button !== 0 || gesture.current) {
       return;
     }
@@ -118,7 +139,7 @@ export function useConversationSize(dock: RefObject<HTMLElement | null>) {
     };
     setDragging(true);
   }
-  function resize(event: PointerEvent<HTMLDivElement>, finish: boolean) {
+  function resize(event: ResizePointer, finish: boolean) {
     const start = gesture.current;
     if (!start || start.id !== event.pointerId) {
       return;
@@ -161,7 +182,7 @@ export function useConversationSize(dock: RefObject<HTMLElement | null>) {
     gesture.current = null;
     setDragging(false);
   }
-  function onKeyDown(event: KeyboardEvent<HTMLDivElement>) {
+  function onKeyDown(event: ResizeKey) {
     if (event.nativeEvent.isComposing) {
       return;
     }
@@ -245,14 +266,14 @@ export function useConversationSize(dock: RefObject<HTMLElement | null>) {
         ? `${Math.round(actualWidth)} pixels wide`
         : `${Math.round(actualFraction * 100)} percent of workspace height`,
       onPointerDown,
-      onPointerMove: (event: PointerEvent<HTMLDivElement>) => resize(event, false),
-      onPointerUp: (event: PointerEvent<HTMLDivElement>) => resize(event, true),
-      onPointerCancel: (event: PointerEvent<HTMLDivElement>) => {
+      onPointerMove: (event: ResizePointer) => resize(event, false),
+      onPointerUp: (event: ResizePointer) => resize(event, true),
+      onPointerCancel: (event: Pick<ResizePointer, "pointerId">) => {
         if (gesture.current?.id === event.pointerId) {
           cancel();
         }
       },
-      onLostPointerCapture: (event: PointerEvent<HTMLDivElement>) => {
+      onLostPointerCapture: (event: Pick<ResizePointer, "pointerId">) => {
         if (gesture.current?.id === event.pointerId) {
           cancel();
         }
