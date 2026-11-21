@@ -15,7 +15,15 @@ import "@xyflow/react/dist/style.css";
 import "@fontsource/nunito/400.css";
 import "@fontsource/nunito/600.css";
 import "@fontsource/nunito/700.css";
-import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
+import {
+  useCallback,
+  useEffect,
+  useEffectEvent,
+  useLayoutEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
 import {
   addEdge,
   applyEdgeChanges,
@@ -48,18 +56,18 @@ import type { ComponentData, ComponentNode, CanvasNode, Kind } from "./model";
 import styles from "./Playground.module.css";
 
 const nodeTypes = { component: ComponentView, ink: InkView, primitive: PrimitiveView };
-type Editing = {
-  data: ComponentData;
-  id?: string;
-  position?: { x: number; y: number };
-  parentId?: string;
-};
+type Editing = { data: ComponentData } & (
+  | { id: string; position?: never; parentId?: never }
+  | { id?: never; position: { x: number; y: number }; parentId?: string }
+);
 function Playground(props: BoardEditorProps) {
   const { scene, generation, locked, onError } = props;
   const [initial] = useState(() => toDiagram(scene));
   const base = useRef(scene);
   const callbacks = useRef(props);
-  callbacks.current = props;
+  useLayoutEffect(() => {
+    callbacks.current = props;
+  }, [props]);
   const appliedGeneration = useRef(generation);
   const pointerIds = useRef(new Set<number>());
   const idleFrame = useRef<number | null>(null);
@@ -140,6 +148,42 @@ function Playground(props: BoardEditorProps) {
   const boundaries = nodes.filter(
     (node): node is ComponentNode => node.type === "component" && node.data.kind === "boundary",
   );
+  // External generations and lock transitions invalidate local editor UI before
+  // children render, rather than first committing a stale interactive canvas.
+  const incoming = useMemo(() => {
+    try {
+      return { diagram: toDiagram(scene), error: null };
+    } catch (error) {
+      return { diagram: null, error: String(error) };
+    }
+  }, [scene]);
+  const [renderedGeneration, setRenderedGeneration] = useState(generation);
+  const [renderedLocked, setRenderedLocked] = useState(locked);
+  if (renderedGeneration !== generation) {
+    setRenderedGeneration(generation);
+  }
+  if (renderedGeneration !== generation && incoming.diagram) {
+    const next = incoming.diagram;
+    setNodes(next.nodes);
+    setEdges(next.edges);
+    setHiddenInk(new Set());
+    setPicking(false);
+    setEditing(null);
+    setEdgeEditing(null);
+    setPendingImport(null);
+  }
+  if (renderedLocked !== locked) {
+    setRenderedLocked(locked);
+    if (locked) {
+      setPicking(false);
+      setTool("select");
+      setNodes((current) => current.map((node) => ({ ...node, selected: false })));
+      setEdges((current) => current.map((edge) => ({ ...edge, selected: false })));
+      setEditing(null);
+      setEdgeEditing(null);
+      setPendingImport(null);
+    }
+  }
   const modal = !!(picking || editing || edgeEditing || resetting || pendingImport);
   const modalRef = useRef(modal);
   useEffect(() => {
@@ -150,38 +194,39 @@ function Playground(props: BoardEditorProps) {
       pickerTrigger.current = null;
     }
   }, [modal, locked]);
-  useEffect(() => {
-    function key(event: KeyboardEvent) {
-      if (
-        locked ||
-        !(
-          isDomElement(document.activeElement) &&
-          document.activeElement.closest('[data-testid="flow-board-editor"]')
-        ) ||
-        modal ||
-        (isDomElement(event.target) &&
-          event.target.closest("input, textarea, select, [contenteditable=true]"))
-      ) {
-        return;
-      }
-      if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === "z") {
-        event.preventDefault();
-        if (event.shiftKey) {
-          history.redo();
-        } else {
-          history.undo();
-        }
-      } else if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === "y") {
-        event.preventDefault();
-        history.redo();
-      } else if (event.key === "Escape" && tool !== "select") {
-        event.stopPropagation();
-        chooseTool("select");
-      }
+  const handleKey = useEffectEvent((event: KeyboardEvent) => {
+    if (
+      locked ||
+      !(
+        isDomElement(document.activeElement) &&
+        document.activeElement.closest('[data-testid="flow-board-editor"]')
+      ) ||
+      modal ||
+      (isDomElement(event.target) &&
+        event.target.closest("input, textarea, select, [contenteditable=true]"))
+    ) {
+      return;
     }
+    if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === "z") {
+      event.preventDefault();
+      if (event.shiftKey) {
+        history.redo();
+      } else {
+        history.undo();
+      }
+    } else if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === "y") {
+      event.preventDefault();
+      history.redo();
+    } else if (event.key === "Escape" && tool !== "select") {
+      event.stopPropagation();
+      chooseTool("select");
+    }
+  });
+  useEffect(() => {
+    const key = (event: KeyboardEvent) => handleKey(event);
     window.addEventListener("keydown", key);
     return () => window.removeEventListener("keydown", key);
-  });
+  }, []);
   // Effects are ordered: publish final edits before announcing gesture/modal idle.
   useLayoutEffect(() => {
     if (!changed.current || appliedGeneration.current !== generation) {
@@ -204,24 +249,20 @@ function Playground(props: BoardEditorProps) {
     if (appliedGeneration.current === generation) {
       return;
     }
+    if (!incoming.diagram) {
+      onError(incoming.error);
+      return;
+    }
     try {
-      const next = toDiagram(scene);
       history.reconcile(base.current, scene);
       base.current = scene;
       changed.current = false;
-      setNodes(next.nodes);
-      setEdges(next.edges);
       historyGroup.current = undefined;
-      setHiddenInk(new Set());
-      setPicking(false);
-      setEditing(null);
-      setEdgeEditing(null);
-      setPendingImport(null);
       appliedGeneration.current = generation;
     } catch (error) {
       onError(String(error));
     }
-  }, [generation, scene, history, onError]);
+  }, [generation, scene, history, onError, incoming]);
   useEffect(() => {
     callbacks.current.onReady({
       fit: () => {
@@ -266,15 +307,6 @@ function Playground(props: BoardEditorProps) {
       document.removeEventListener("visibilitychange", visibility);
     };
   }, [modal]);
-  useEffect(() => {
-    if (locked) {
-      setPicking(false);
-      chooseTool("select");
-      setEditing(null);
-      setEdgeEditing(null);
-      setPendingImport(null);
-    }
-  }, [locked]);
   const edit = useCallback(
     (id: string) => {
       const node = flow.getNode(id);
@@ -293,7 +325,11 @@ function Playground(props: BoardEditorProps) {
       setMessage("This playground is limited to 300 components.");
       return;
     }
-    const rect = canvas.current!.getBoundingClientRect();
+    const element = canvas.current;
+    if (!element) {
+      return;
+    }
+    const rect = element.getBoundingClientRect();
     const center = flow.screenToFlowPosition({
       x: rect.left + rect.width / 2 - 140,
       y: rect.top + rect.height / 2 - 80,
@@ -310,14 +346,14 @@ function Playground(props: BoardEditorProps) {
     if (locked || !editing) {
       return;
     }
-    if (editing.id) {
+    if (editing.id !== undefined) {
       setNodes((current) =>
         current.map((node) =>
           node.id === editing.id && node.type === "component" ? { ...node, data } : node,
         ),
       );
     } else {
-      const node = makeNode(data.kind, editing.position!.x, editing.position!.y, data);
+      const node = makeNode(data.kind, editing.position.x, editing.position.y, data);
       node.selected = true;
       if (editing.parentId) {
         node.parentId = editing.parentId;
@@ -353,10 +389,11 @@ function Playground(props: BoardEditorProps) {
       setMessage("Not duplicated: the canvas would exceed 300 components.");
       return;
     }
-    const ids = new Map(originals.map((n) => [n.id, makeId()]));
-    const copies: Array<CanvasNode> = originals.map((n) => ({
+    const entries = originals.map((node) => ({ node, id: makeId() }));
+    const ids = new Map(entries.map(({ node, id }) => [node.id, id]));
+    const copies: Array<CanvasNode> = entries.map(({ node: n, id }) => ({
       ...structuredClone(n),
-      id: ids.get(n.id)!,
+      id,
       selected: true,
       position: {
         x: n.position.x + (n.parentId && ids.has(n.parentId) ? 0 : 35),
@@ -364,15 +401,11 @@ function Playground(props: BoardEditorProps) {
       },
       parentId: n.parentId ? ids.get(n.parentId) || n.parentId : undefined,
     }));
-    const copiedEdges = edges
-      .filter((e) => ids.has(e.source) && ids.has(e.target))
-      .map((e) => ({
-        ...e,
-        id: makeId(),
-        source: ids.get(e.source)!,
-        target: ids.get(e.target)!,
-        selected: false,
-      }));
+    const copiedEdges = edges.flatMap((edge) => {
+      const source = ids.get(edge.source);
+      const target = ids.get(edge.target);
+      return source && target ? [{ ...edge, id: makeId(), source, target, selected: false }] : [];
+    });
     if (edges.length + copiedEdges.length > 1000) {
       setMessage("Not duplicated: the canvas would exceed 1,000 connections.");
       return;

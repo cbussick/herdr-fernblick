@@ -10,6 +10,7 @@ import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { defaults, edgeOptions, makeNode } from "./model";
 import { makeInk } from "./ink";
 import { exportFlowScene, fromDiagram } from "./scene";
+import { boardSceneSchema } from "../../../packages/pi-live-chat/boardProtocol";
 import type { BoardScene } from "../../../packages/pi-live-chat/boardProtocol";
 import {
   defaultPrimitiveProps,
@@ -33,19 +34,17 @@ beforeAll(async () => {
   server = createServer((req, res) => {
     void (async () => {
       try {
-        const path = new URL(req.url!, "http://localhost").pathname;
+        const path = new URL(req.url ?? "/", "http://localhost").pathname;
         requests.push(path);
         const data = await readFile(join(directory, path));
         res.setHeader(
           "Content-Type",
-          (
-            {
-              ".html": "text/html",
-              ".js": "text/javascript",
-              ".css": "text/css",
-              ".woff2": "font/woff2",
-            } as Record<string, string>
-          )[extname(path)] ?? "application/octet-stream",
+          new Map([
+            [".html", "text/html"],
+            [".js", "text/javascript"],
+            [".css", "text/css"],
+            [".woff2", "font/woff2"],
+          ]).get(extname(path)) ?? "application/octet-stream",
         );
         res.end(data);
       } catch {
@@ -149,6 +148,28 @@ describe("isolated production editor and DOM renderer", { timeout: 30_000 }, () 
       await page.getByRole("button", { name: "Add a component", exact: true }).isDisabled(),
     ).toBe(true);
     expect(await page.getByRole("button", { name: "Draw", exact: true }).isDisabled()).toBe(true);
+    expect(await page.evaluate(() => window.flowTest.errors)).toEqual([]);
+  });
+  it("discards open drafts on lock and incoming generations without publishing them", async () => {
+    await loadEditor();
+    const openDraft = async () => {
+      await page.getByRole("button", { name: "Add a component", exact: true }).click();
+      await page.getByRole("button", { name: "Add Card", exact: true }).click();
+      await page.getByLabel("Title", { exact: true }).fill("Unsaved draft");
+    };
+    await openDraft();
+    await page.evaluate(() => window.flowTest.setLocked(true));
+    await page.waitForFunction(
+      () => !document.querySelector('dialog[data-ui="flow-component-editor"][open]'),
+    );
+    await page.evaluate(() => window.flowTest.setLocked(false));
+    expect(await page.locator('dialog[data-ui="flow-component-editor"][open]').count()).toBe(0);
+    await openDraft();
+    await page.evaluate((raw) => window.flowTest.setScene(JSON.parse(raw)), JSON.stringify(empty));
+    await page.waitForFunction(
+      () => !document.querySelector('dialog[data-ui="flow-component-editor"][open]'),
+    );
+    expect(await page.evaluate(() => window.flowTest.changes)).toEqual([]);
     expect(await page.evaluate(() => window.flowTest.errors)).toEqual([]);
   });
   it("returns from a new component to the picker without changing the board", async () => {
@@ -370,7 +391,10 @@ describe("isolated production editor and DOM renderer", { timeout: 30_000 }, () 
     await page.evaluate(() => {
       const next = structuredClone(window.flowTest.changes.at(-1)!);
       const element = next.elements.find((e) => e.id === "agent")!;
-      element.props = { ...(element.props as object), title: "Agent change" };
+      if (!element.props || typeof element.props !== "object" || Array.isArray(element.props)) {
+        throw new Error("Expected component props");
+      }
+      element.props = { ...element.props, title: "Agent change" };
       element.version = Number(element.version) + 1;
       window.flowTest.setScene(next);
     });
@@ -388,7 +412,10 @@ describe("isolated production editor and DOM renderer", { timeout: 30_000 }, () 
     await page.evaluate(() => {
       const next = structuredClone(window.flowTest.changes.at(-1)!);
       const element = next.elements.find((e) => e.id === "mine")!;
-      element.props = { ...(element.props as object), title: "Newer external edit" };
+      if (!element.props || typeof element.props !== "object" || Array.isArray(element.props)) {
+        throw new Error("Expected component props");
+      }
+      element.props = { ...element.props, title: "Newer external edit" };
       element.version = Number(element.version) + 1;
       window.flowTest.setScene(next);
     });
@@ -518,7 +545,7 @@ describe("isolated production editor and DOM renderer", { timeout: 30_000 }, () 
     await page.getByRole("button", { name: "Replace drawing", exact: true }).click();
     await page.waitForFunction(() => window.flowTest.changes.length === 1);
     const result = await page.evaluate(() => JSON.stringify(window.flowTest.changes[0]));
-    const parsed = JSON.parse(result) as BoardScene;
+    const parsed = boardSceneSchema.parse(JSON.parse(result));
     expect(parsed.elements.find((e) => e.id === "original")!.isDeleted).toBe(true);
     expect(parsed.elements.filter((e) => !e.isDeleted)).toHaveLength(1);
     expect(parsed.elements.filter((e) => !e.isDeleted)[0].id).not.toBe("imported");
