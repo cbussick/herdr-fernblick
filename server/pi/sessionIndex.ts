@@ -19,6 +19,12 @@ const indexSchema = z.object({
   entries: z.array(z.object({ stamp: z.string(), chat: metadataSchema })),
 });
 
+interface SessionIndexSnapshot {
+  chats: Array<z.infer<typeof metadataSchema>>;
+  indexing: boolean;
+  indexError?: string;
+}
+
 // This index is a disposable browsing aid. Resume/delete always resolve the real session
 // through SessionCatalog; cached paths and asset references never authorize mutations.
 export class SessionIndex {
@@ -63,14 +69,16 @@ export class SessionIndex {
   }
 
   snapshot() {
-    return {
+    const snapshot: SessionIndexSnapshot = {
       chats: [...this.cache.values()]
-        .map(({ chat }) => chat)
-        .filter((chat) => !this.removed.has(chat.id))
+        .flatMap(({ chat }) => (this.removed.has(chat.id) ? [] : [chat]))
         .sort((a, b) => b.updatedAt.localeCompare(a.updatedAt) || a.id.localeCompare(b.id)),
       indexing: this.pending !== undefined,
-      ...(this.indexError ? { indexError: this.indexError } : {}),
     };
+    if (this.indexError) {
+      snapshot.indexError = this.indexError;
+    }
+    return snapshot;
   }
 
   forget(id: string) {
