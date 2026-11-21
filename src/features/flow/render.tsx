@@ -1,9 +1,7 @@
 import { createRoot } from "react-dom/client";
 import type { Root } from "react-dom/client";
 import { flushSync } from "react-dom";
-import type { Position } from "@xyflow/react";
-import { getSmoothStepPath } from "@xyflow/react";
-import type { BoardScene } from "../../../packages/pi-live-chat/boardProtocol";
+import { getSmoothStepPath, Position } from "@xyflow/react";
 import { boardImageLimits } from "../../../packages/pi-live-chat/boardImageExport";
 import type { BoardImageQuality } from "../../../packages/pi-live-chat/boardImageExport";
 import {
@@ -80,11 +78,17 @@ async function loadResources(host: HTMLElement) {
     }),
   );
 }
+const handlePositions = {
+  top: Position.Top,
+  right: Position.Right,
+  bottom: Position.Bottom,
+  left: Position.Left,
+};
 let root: Root | undefined;
 let busy = false;
 /** Isolated DOM screenshot entry. No editor/controller, APIs, storage or arbitrary markup. */
 export async function prepareFlowBoardScene(
-  input: BoardScene,
+  input: unknown,
   scale = 1,
   quality?: BoardImageQuality,
 ): Promise<{ width: number; height: number }> {
@@ -100,8 +104,11 @@ export async function prepareFlowBoardScene(
     if (!host) {
       throw new Error("Renderer root is missing");
     }
-    const position = (id: string): { x: number; y: number } => {
-      const n = diagram.nodes.find((n) => n.id === id)!;
+    const position = (id: string) => {
+      const n = diagram.nodes.find((n) => n.id === id);
+      if (!n) {
+        throw new Error("Render node is missing");
+      }
       const parent = n.parentId ? diagram.nodes.find((p) => p.id === n.parentId) : undefined;
       return {
         x: n.position.x + (parent?.position.x ?? 0),
@@ -114,6 +121,7 @@ export async function prepareFlowBoardScene(
       previousLayer.querySelectorAll("[data-render-connections]").forEach((el) => el.remove());
     }
     root ??= createRoot(host);
+    const renderRoot = root;
     const nodes = diagram.nodes.map((n) => {
       const p = position(n.id);
       if (n.type === "primitive") {
@@ -163,7 +171,7 @@ export async function prepareFlowBoardScene(
       );
     });
     flushSync(() =>
-      root!.render(
+      renderRoot.render(
         <div
           className={`${styles["app"]} ${renderStyles.page}`}
           style={{ background: scene.background }}
@@ -176,16 +184,24 @@ export async function prepareFlowBoardScene(
     );
     await loadResources(host);
     await nextFrame();
-    const layer = host.querySelector<HTMLElement>("[data-render-layer]")!;
-    const boxes = new Map(
-      Array.from(layer.querySelectorAll<HTMLElement>("[data-render-node]")).map((el) => [
-        el.dataset.renderNode!,
-        el.getBoundingClientRect(),
-      ]),
-    );
+    const layer = host.querySelector<HTMLElement>("[data-render-layer]");
+    if (!layer) {
+      throw new Error("Render layer is missing");
+    }
+    const boxes = new Map<string, DOMRect>();
+    for (const el of layer.querySelectorAll<HTMLElement>("[data-render-node]")) {
+      const id = el.dataset.renderNode;
+      if (!id) {
+        throw new Error("Render node ID is missing");
+      }
+      boxes.set(id, el.getBoundingClientRect());
+    }
     const origin = layer.getBoundingClientRect();
     const point = (id: string, handle: string) => {
-      const box = boxes.get(id)!;
+      const box = boxes.get(id);
+      if (!box) {
+        throw new Error("Connection render node is missing");
+      }
       return {
         x:
           box.left -
@@ -210,8 +226,8 @@ export async function prepareFlowBoardScene(
           sourceY: a.y,
           targetX: b.x,
           targetY: b.y,
-          sourcePosition: e.sourceHandle as Position,
-          targetPosition: e.targetHandle as Position,
+          sourcePosition: handlePositions[e.sourceHandle],
+          targetPosition: handlePositions[e.targetHandle],
         });
         const path = document.createElementNS(svg.namespaceURI, "path");
         path.setAttribute("d", d);

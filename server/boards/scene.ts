@@ -5,8 +5,7 @@ import {
 } from "../../packages/pi-live-chat/boardProtocol.js";
 import type { BoardOperation, BoardScene } from "../../packages/pi-live-chat/boardProtocol.js";
 import { BoardError, requireBoard } from "./errors.js";
-import { validateFlowGraph } from "../../packages/pi-live-chat/flowProtocol.js";
-import type { FlowElement } from "../../packages/pi-live-chat/flowProtocol.js";
+import { validateFlowGraph, flowElementSchema } from "../../packages/pi-live-chat/flowProtocol.js";
 import { applyFlowOperations, flowSummary } from "./flowScene.js";
 import { validateRasterBudget } from "./rasterBudget.js";
 
@@ -114,10 +113,10 @@ export function applyOperations(scene: BoardScene, operations: Array<BoardOperat
 
 export function summarize(scene: BoardScene, revision: number, offset = 0, limit = 100) {
   const live = scene.elements.filter((e) => !e.isDeleted);
-  const elements: Array<Record<string, unknown>> = [];
+  const elements: Array<ReturnType<typeof flowSummary>> = [];
   let bytes = 0;
   for (const e of live.slice(offset, offset + limit)) {
-    const summary = flowSummary(e as FlowElement, scene.files);
+    const summary = flowSummary(flowElementSchema.parse(e), scene.files);
     const size = Buffer.byteLength(JSON.stringify(summary));
     if (bytes + size > 128 * 1024) {
       break;

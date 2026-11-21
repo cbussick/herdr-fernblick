@@ -1,6 +1,7 @@
 import { chromium } from "playwright";
 import type { Browser, Request } from "playwright";
 import type { BoardScene } from "../../packages/pi-live-chat/boardProtocol.js";
+import type {} from "../../packages/pi-live-chat/boardRenderContract.js";
 import { validateScene } from "./scene.js";
 
 import { boardImageLimits } from "../../packages/pi-live-chat/boardImageExport.js";
@@ -10,13 +11,6 @@ const TIMEOUT_MS = 30_000;
 const MAX_PENDING = 4; // Includes the active render.
 const pngMagic = Buffer.from([137, 80, 78, 71, 13, 10, 26, 10]);
 
-type FlowRenderFunction = {
-  prepareFlowBoardScene: (
-    scene: BoardScene,
-    scale?: number,
-    quality?: BoardImageQuality,
-  ) => Promise<{ width: number; height: number }>;
-};
 type Job = {
   scene: BoardScene;
   quality?: BoardImageQuality;
@@ -220,19 +214,14 @@ export class BoardRenderer {
       if (!response?.ok()) {
         throw new Error("Board renderer entry could not load");
       }
-      await page.waitForFunction(
-        () =>
-          typeof (globalThis as unknown as FlowRenderFunction).prepareFlowBoardScene === "function",
-      );
+      await page.waitForFunction(() => typeof window.prepareFlowBoardScene === "function");
       for (let attempt = 0, scale = 1; attempt < 8; attempt++) {
         signal.throwIfAborted();
         const size = await page.evaluate(
-          ({ json, scale, quality }) =>
-            (globalThis as unknown as FlowRenderFunction).prepareFlowBoardScene(
-              JSON.parse(json),
-              scale,
-              quality,
-            ),
+          ({ json, scale, quality }) => {
+            const scene: unknown = JSON.parse(json);
+            return window.prepareFlowBoardScene(scene, scale, quality);
+          },
           { json: JSON.stringify(job.scene), scale, quality: job.quality },
         );
         if (
