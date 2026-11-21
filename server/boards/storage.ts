@@ -32,6 +32,13 @@ export { BoardError } from "./errors.js";
 const storedStateSchema = boardStateSchema.extend({ sessionKey: z.string().optional() });
 type StoredState = z.infer<typeof storedStateSchema>;
 const sessionKeySchema = z.tuple([z.string(), z.string()]);
+const snapshotSchema = z.object({
+  id: z.string(),
+  revision: z.number(),
+  createdAt: z.number(),
+  png: z.string(),
+  scene: z.unknown(),
+});
 const PENDING_MS = 30_000;
 const ACTIVE_MS = 15 * 60_000;
 const MAX_SNAPSHOTS = 128;
@@ -69,11 +76,8 @@ function elementFingerprint(element: BoardScene["elements"][number]): string {
     if (!value || typeof value !== "object" || Array.isArray(value)) {
       return value;
     }
-    const object = value as Record<string, unknown>;
     return Object.fromEntries(
-      Object.keys(object)
-        .sort()
-        .map((key) => [key, object[key]]),
+      Object.entries(value).sort(([left], [right]) => (left < right ? -1 : Number(left > right))),
     );
   });
   return createHash("sha256").update(canonical).digest("hex");
@@ -143,8 +147,11 @@ export class BoardStore {
       return null;
     }
     try {
-      const raw = JSON.parse(bytes.toString("utf8"));
-      if (raw?.scene && raw.scene.engine !== "react-flow") {
+      const raw: unknown = JSON.parse(bytes.toString("utf8"));
+      const legacy = z
+        .object({ scene: z.object({ engine: z.unknown().optional() }) })
+        .safeParse(raw);
+      if (legacy.success && legacy.data.scene.engine !== "react-flow") {
         throw new BoardError(
           410,
           "Legacy Excalidraw boards are no longer supported. Stored data has not been changed.",
@@ -435,7 +442,7 @@ export class BoardStore {
       this.alive();
       requireBoard(bytes, 500, "Snapshot data is missing");
       try {
-        const data = JSON.parse(bytes.toString("utf8")) as Record<string, unknown>;
+        const data = snapshotSchema.parse(JSON.parse(bytes.toString("utf8")));
         requireBoard(
           data.id === ref.id &&
             data.revision === ref.revision &&
@@ -525,7 +532,7 @@ export class BoardStore {
     input: BoardRequest,
     validate: () => void,
     render?: (scene: BoardScene) => Promise<Buffer>,
-  ): Promise<unknown> {
+  ) {
     const checkTarget = this.guard(validate);
     checkTarget();
     let encoded: string;
@@ -642,11 +649,12 @@ export class BoardStore {
             }
           }
         }
-        const blockedGroups = new Set(
-          request.operations
-            .filter((op) => reasons.has(op.id) && op.groupId)
-            .map((op) => op.groupId!),
-        );
+        const blockedGroups = new Set<string>();
+        for (const op of request.operations) {
+          if (reasons.has(op.id) && op.groupId) {
+            blockedGroups.add(op.groupId);
+          }
+        }
         for (const op of request.operations) {
           if (op.groupId && blockedGroups.has(op.groupId) && !reasons.has(op.id)) {
             reasons.set(op.id, "related_group_conflict; read again and reconsider");
@@ -663,9 +671,10 @@ export class BoardStore {
           revision: next.revision,
           operationId: request.operationId,
           applied: eligible.map((op) => op.id),
-          skipped: request.operations
-            .filter((op) => reasons.has(op.id))
-            .map((op) => ({ id: op.id, reason: reasons.get(op.id)! })),
+          skipped: request.operations.flatMap((op) => {
+            const reason = reasons.get(op.id);
+            return reason === undefined ? [] : [{ id: op.id, reason }];
+          }),
         };
         record.results.set(request.operationId, { fingerprint, result });
         return structuredClone(result);
@@ -723,8 +732,11 @@ export class BoardStore {
         scene: request.includeImage ? structuredClone(state.scene) : undefined,
         liveIds: new Set(live.keys()),
         observations: summary.elements.map((element) => {
-          const id = element.id as string;
-          return [id, elementFingerprint(live.get(id)!)];
+          const id = element.id;
+          requireBoard(typeof id === "string", 500, "Invalid summary element ID");
+          const source = live.get(id);
+          requireBoard(source, 500, "Summary element missing from live scene");
+          return [id, elementFingerprint(source)];
         }),
       };
       return summary;
@@ -737,7 +749,8 @@ export class BoardStore {
     if (captured.scene) {
       // Render an immutable revision outside the serialized save/commit lane.
       // Opening/saving the board must not wait for a headless browser.
-      const png = await render!(captured.scene);
+      requireBoard(render, 503, "Whiteboard renderer unavailable; cannot read current image");
+      const png = await render(captured.scene);
       check();
       validatePng(png);
       requireBoard(png.length <= MAX_BOARD_PNG_BYTES, 413, "Rendered board PNG exceeds 2 MiB");
