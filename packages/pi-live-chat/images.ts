@@ -46,7 +46,13 @@ export function mimeTypeForUpload(id: string): ImageMimeType {
   return "image/webp";
 }
 export function validateImage(bytes: Buffer, mimeType: string) {
-  const type = imageTypes[mimeType as ImageMimeType];
+  const type =
+    mimeType === "image/png" ||
+    mimeType === "image/jpeg" ||
+    mimeType === "image/gif" ||
+    mimeType === "image/webp"
+      ? imageTypes[mimeType]
+      : undefined;
   if (!bytes.length || bytes.length > MAX_IMAGE_BYTES || !type?.matches(bytes)) {
     throw new Error("Image must be PNG, JPEG, GIF or WebP, at most 10 MiB, with matching content");
   }
@@ -103,7 +109,7 @@ export async function removeImageUpload(id: string) {
     await privateDirectory(join(uploadDirectory(), "guard"));
     await unlink(path);
   } catch (error) {
-    if ((error as NodeJS.ErrnoException).code !== "ENOENT") {
+    if (!(error instanceof Error && "code" in error && error.code === "ENOENT")) {
       throw error;
     }
   }

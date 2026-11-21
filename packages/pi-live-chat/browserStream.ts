@@ -27,13 +27,16 @@ export function browserFrame(previous: Snapshot | undefined, next: Snapshot) {
     order.length === previous.messages.length &&
     order.every((id, index) => previous.messages[index].id === id);
   const { messages: _messages, type: _type, ...metadata } = next;
-  return {
+  const patch: z.infer<typeof patchSchema> = {
     ...metadata,
-    type: "patch" as const,
+    type: "patch",
     baseSeq: previous.seq,
     upsert,
-    ...(sameOrder ? {} : { order }),
   };
+  if (!sameOrder) {
+    patch.order = order;
+  }
+  return patch;
 }
 export function readBrowserFrame(previous: Snapshot | undefined, value: unknown): Snapshot {
   if (typeof value === "object" && value && "type" in value && value.type === "snapshot") {

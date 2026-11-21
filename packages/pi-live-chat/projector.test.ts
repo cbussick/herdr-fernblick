@@ -13,6 +13,24 @@ const assistant = (text: string, timestamp = 2) => ({
 const entry = (id: string, message: unknown) => ({ id, type: "message", message });
 
 describe("shared history/live projector", () => {
+  it("ignores malformed records without discarding valid neighboring content", () => {
+    for (const value of [null, undefined, 42, "message", []]) {
+      expect(projectMessage(value, "bad")).toEqual([]);
+      expect(imageUrl(value)).toBeUndefined();
+    }
+    expect(
+      projectMessage(
+        {
+          role: "user",
+          content: [null, 7, { type: "text", text: "kept" }, { type: "text", text: 99 }],
+        },
+        "mixed",
+      ),
+    ).toEqual([
+      { id: "mixed", role: "user", text: "kept\n", timestamp: undefined, attachments: undefined },
+    ]);
+    expect(projectMessage({ role: "user", content: "plain" }, "plain")[0]?.text).toBe("plain");
+  });
   it("deduplicates calls, partial tools and persisted results by call id", () => {
     const p = new TranscriptProjector();
     const call = {

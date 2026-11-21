@@ -1,9 +1,37 @@
+import { z } from "zod";
 import { MAX_IMAGES, MAX_MESSAGES, MAX_SNAPSHOT, MAX_TEXT } from "./protocol.js";
 import type { ChatMessage } from "./protocol.js";
 
-type RecordValue = Record<string, unknown>;
-function record(value: unknown): RecordValue {
-  return value && typeof value === "object" ? (value as RecordValue) : {};
+// Project only the fields this boundary understands; malformed optional content
+// remains unknown until each consumer narrows it below.
+const projectionInput = z
+  .object({
+    role: z.unknown(),
+    toolCallId: z.unknown(),
+    timestamp: z.unknown(),
+    type: z.unknown(),
+    data: z.unknown(),
+    mimeType: z.unknown(),
+    content: z.unknown(),
+    text: z.unknown(),
+    thinking: z.unknown(),
+    redacted: z.unknown(),
+    id: z.unknown(),
+    name: z.unknown(),
+    toolName: z.unknown(),
+    isError: z.unknown(),
+    stopReason: z.unknown(),
+    errorMessage: z.unknown(),
+    message: z.unknown(),
+    usage: z.unknown(),
+    totalTokens: z.unknown(),
+    cost: z.unknown(),
+    total: z.unknown(),
+  })
+  .partial();
+function record(value: unknown): z.infer<typeof projectionInput> {
+  const result = projectionInput.safeParse(value);
+  return result.success ? result.data : {};
 }
 function messageKey(value: unknown) {
   const m = record(value);
@@ -40,7 +68,7 @@ export function imageUrl(value: unknown): string | undefined {
               bytes.subarray(8, 12).toString() === "WEBP"
             : false;
   if (valid) {
-    return `data:${b.mimeType};base64,${b.data}`;
+    return `data:${String(b.mimeType)};base64,${b.data}`;
   }
 }
 export function projectMessage(
@@ -52,7 +80,7 @@ export function projectMessage(
   if (m.role !== "user" && m.role !== "assistant" && m.role !== "toolResult") {
     return [];
   }
-  const blocks =
+  const blocks: Array<z.infer<typeof projectionInput>> =
     typeof m.content === "string"
       ? [{ type: "text", text: m.content }]
       : Array.isArray(m.content)
@@ -61,16 +89,10 @@ export function projectMessage(
   const timestamp =
     typeof m.timestamp === "number" && Number.isFinite(m.timestamp) ? m.timestamp : undefined;
   const rows: Array<ChatMessage> = [];
-  const body = text(
-    blocks
-      .filter((b) => b.type === "text")
-      .map((b) => text(b.text))
-      .join("\n"),
-  );
+  const body = text(blocks.flatMap((b) => (b.type === "text" ? [text(b.text)] : [])).join("\n"));
   const thinking = text(
     blocks
-      .filter((b) => b.type === "thinking" && !b.redacted)
-      .map((b) => text(b.thinking))
+      .flatMap((b) => (b.type === "thinking" && !b.redacted ? [text(b.thinking)] : []))
       .join("\n"),
   );
   if (thinking) {
@@ -89,20 +111,22 @@ export function projectMessage(
       }
     }
   }
-  const images = blocks.filter((b) => b.type === "image").map(resolveImage);
+  const images = blocks.flatMap((b) => (b.type === "image" ? [resolveImage(b)] : []));
   const attachments = images.filter((s): s is string => Boolean(s)).slice(0, MAX_IMAGES);
   const omitted = images.some((url) => !url);
   if (body || attachments.length || omitted || m.role === "toolResult") {
-    rows.push({
+    const row: ChatMessage = {
       id: m.role === "toolResult" ? messageKey(m).slice(0, 256) : id,
       role: m.role === "toolResult" ? "tool" : m.role,
       text: text(body + (omitted ? "\n[Image omitted: unsupported or over 128 KiB]" : "")),
       timestamp,
       attachments: attachments.length ? attachments : undefined,
-      ...(m.role === "toolResult"
-        ? { toolName: text(m.toolName).slice(0, 256), isError: m.isError === true }
-        : {}),
-    });
+    };
+    if (m.role === "toolResult") {
+      row.toolName = text(m.toolName).slice(0, 256);
+      row.isError = m.isError === true;
+    }
+    rows.push(row);
   }
   if (m.role === "assistant" && (m.stopReason === "aborted" || m.stopReason === "error")) {
     rows.push({
@@ -145,7 +169,11 @@ export class TranscriptProjector {
         this.history.push(row);
         historyBytes += Buffer.byteLength(JSON.stringify(row));
         while (historyBytes > MAX_SNAPSHOT || this.history.length > MAX_MESSAGES) {
-          historyBytes -= Buffer.byteLength(JSON.stringify(this.history.shift()!));
+          const removed = this.history.shift();
+          if (!removed) {
+            break;
+          }
+          historyBytes -= Buffer.byteLength(JSON.stringify(removed));
           this.truncated = true;
         }
       }
@@ -202,8 +230,12 @@ export class TranscriptProjector {
       0,
     );
     while (this.live.size > 64 || bytes > MAX_SNAPSHOT) {
-      const first = this.live.keys().next().value!;
-      bytes -= Buffer.byteLength(JSON.stringify(this.live.get(first)));
+      const oldest = this.live.entries().next();
+      if (oldest.done) {
+        break;
+      }
+      const [first, messages] = oldest.value;
+      bytes -= Buffer.byteLength(JSON.stringify(messages));
       this.live.delete(first);
       this.truncated = true;
     }

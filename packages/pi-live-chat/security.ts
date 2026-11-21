@@ -19,13 +19,15 @@ export async function privateDirectory(path: string, create = false) {
       try {
         info = await lstat(current);
       } catch (error) {
-        if ((error as NodeJS.ErrnoException).code !== "ENOENT") {
+        if (!(error instanceof Error && "code" in error && error.code === "ENOENT")) {
           throw error;
         }
         try {
           await mkdir(current, { mode: 0o700 });
         } catch (mkdirError) {
-          if ((mkdirError as NodeJS.ErrnoException).code !== "EEXIST") {
+          if (
+            !(mkdirError instanceof Error && "code" in mkdirError && mkdirError.code === "EEXIST")
+          ) {
             throw mkdirError;
           }
         }

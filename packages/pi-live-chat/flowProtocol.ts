@@ -1,4 +1,5 @@
 import { z } from "zod";
+import type { BoardScene } from "./boardProtocol.js";
 import { primitiveKinds, primitivePropsSchema } from "./primitiveProtocol.js";
 
 export const FLOW_CONNECTION_COLOR = "#000000";
@@ -151,8 +152,12 @@ export const flowCatalog = flowKinds.map((kind) => ({
   ],
 }));
 export function defaultFlowProps(kind: FlowKind): FlowComponentProps {
+  const catalogEntry = flowCatalog.find((item) => item.id === kind);
+  if (!catalogEntry) {
+    throw new Error("Unknown flow component kind");
+  }
   return {
-    title: flowCatalog.find((item) => item.id === kind)!.name,
+    title: catalogEntry.name,
     subtitle: "",
     body: "",
     color: "#429beb",
@@ -176,7 +181,7 @@ export function defaultFlowProps(kind: FlowKind): FlowComponentProps {
 /** Validate the entire relationship graph, not just individual JSON records. */
 export function validateFlowGraph(scene: {
   elements: Array<unknown>;
-  files: Record<string, unknown>;
+  files: BoardScene["files"];
 }): Array<FlowElement> {
   const elements = flowElementsSchema.parse(scene.elements);
   const records = new Map<string, FlowElement>();
