@@ -53,6 +53,14 @@ function annotationRangeText(range: Range) {
   return fragment.textContent ?? "";
 }
 
+function isElement(node: Node): node is Element {
+  return node.nodeType === node.ELEMENT_NODE;
+}
+
+function clamp(value: number, min: number, max: number) {
+  return Math.max(min, Math.min(value, max));
+}
+
 export function readAnnotationSelection(
   selection: Selection | null,
   transcript: HTMLElement,
@@ -62,15 +70,13 @@ export function readAnnotationSelection(
     return null;
   }
   const range = selection.getRangeAt(0);
-  const element =
-    range.startContainer.nodeType === 1
-      ? (range.startContainer as Element)
-      : range.startContainer.parentElement;
+  const element = isElement(range.startContainer)
+    ? range.startContainer
+    : range.startContainer.parentElement;
   const source = element?.closest<HTMLElement>("[data-annotation-source]");
-  const endElement =
-    range.endContainer.nodeType === 1
-      ? (range.endContainer as Element)
-      : range.endContainer.parentElement;
+  const endElement = isElement(range.endContainer)
+    ? range.endContainer
+    : range.endContainer.parentElement;
   // Never accept a selection crossing messages or including names, tool output,
   // thinking, user text, or controls, even if it starts in an assistant response.
   if (
@@ -119,7 +125,6 @@ export function positionTouchAnnotationAction(
   const rightEdge = viewport.left + viewport.width - inset;
   const topEdge = viewport.top + inset;
   const bottomEdge = viewport.top + viewport.height - inset;
-  const clamp = (value: number, min: number, max: number) => Math.max(min, Math.min(value, max));
   const middle = clamp(
     (Math.max(anchor.top, topEdge) + Math.min(anchor.bottom, bottomEdge) - size.height) / 2,
     topEdge,

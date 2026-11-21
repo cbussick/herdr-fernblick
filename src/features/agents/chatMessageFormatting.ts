@@ -59,6 +59,9 @@ function webDestination(value: string) {
   }
 }
 
+const literal = (start: number, end: number): TextPart => ({ kind: "text", start, end });
+const syntax = (start: number, end: number): TextPart => ({ kind: "syntax", start, end });
+
 // Every leaf covers an original source range, including non-visible syntax.
 // Capture container prefixes from the parser rather than guessing with regexes:
 // nested quotes/lists, lazy continuation lines and tabs all retain raw offsets.
@@ -88,8 +91,6 @@ export function formatMessageText(text: string, cwd?: string): Array<MessagePart
       },
     ],
   });
-  const literal = (start: number, end: number): TextPart => ({ kind: "text", start, end });
-  const syntax = (start: number, end: number): TextPart => ({ kind: "syntax", start, end });
 
   function sourceText(start: number, end: number, autolink = false): Array<MessagePart> {
     const parts: Array<MessagePart> = [];
@@ -235,8 +236,9 @@ export function formatMessageText(text: string, cwd?: string): Array<MessagePart
     }
     if (offset < end) {
       const gap = gaps === "text" ? literal(offset, end) : syntax(offset, end);
-      if (gaps === "inside" && parts.at(-1)) {
-        insertSyntax(parts.at(-1)!, gap, false);
+      const lastPart = parts.at(-1);
+      if (gaps === "inside" && lastPart) {
+        insertSyntax(lastPart, gap, false);
       } else {
         parts.push(gap);
       }
@@ -253,7 +255,10 @@ export function formatMessageText(text: string, cwd?: string): Array<MessagePart
       // response should stay literal until its closing delimiter arrives.
       if (node.type === "math" && text.startsWith("$$", start)) {
         const source = text.slice(start, end);
-        const opening = /^\$+/.exec(source)![0];
+        const opening = /^\$+/.exec(source)?.[0];
+        if (!opening) {
+          return [literal(start, end)];
+        }
         const closing = /(?:\r?\n)[\t ]*(\$+)[\t ]*$/.exec(source)?.[1];
         if (!closing || closing.length < opening.length) {
           return [literal(start, end)];
@@ -380,7 +385,11 @@ export function formatMessageText(text: string, cwd?: string): Array<MessagePart
       ];
     }
     if (node.type === "inlineCode") {
-      const delimiter = /^`+/.exec(text.slice(start, end))![0].length;
+      const opening = /^`+/.exec(text.slice(start, end))?.[0];
+      if (!opening) {
+        return [literal(start, end)];
+      }
+      const delimiter = opening.length;
       return [
         {
           kind: "code",

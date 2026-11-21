@@ -1,11 +1,11 @@
 const URL_PATTERN = /\b(?:https?:\/\/|www\.)[^\s<>"']+/giu;
 const TRAILING_PUNCTUATION = /[.,!?;:]+$/u;
 const MARKDOWN_DELIMITERS = ["***", "___", "**", "__", "~~", "``", "*", "_", "`"];
-const CLOSING_DELIMITERS: Record<string, string> = {
-  ")": "(",
-  "]": "[",
-  "}": "{",
-};
+const CLOSING_DELIMITERS = new Map([
+  [")", "("],
+  ["]", "["],
+  ["}", "{"],
+]);
 
 interface LinkPart {
   href: string;
@@ -25,13 +25,21 @@ function trimLinkEnd(candidate: string, precedingText: string) {
 
   while (url.length) {
     const closing = url.at(-1);
-    const opening = closing ? CLOSING_DELIMITERS[closing] : undefined;
+    const opening = closing ? CLOSING_DELIMITERS.get(closing) : undefined;
     if (!opening) {
       break;
     }
 
-    const openingCount = [...url].filter((character) => character === opening).length;
-    const closingCount = [...url].filter((character) => character === closing).length;
+    // Delimiters are ASCII; count them without splitting Unicode URL text.
+    let openingCount = 0;
+    let closingCount = 0;
+    for (const character of url) {
+      if (character === opening) {
+        openingCount++;
+      } else if (character === closing) {
+        closingCount++;
+      }
+    }
     if (closingCount <= openingCount) {
       break;
     }
