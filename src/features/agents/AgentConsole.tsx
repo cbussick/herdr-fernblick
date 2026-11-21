@@ -179,30 +179,45 @@ function PiAgentConsole({
       reportSession(liveSessionId);
     }
   }, [liveSessionId]);
-  useEffect(() => {
-    if (!onViewChange) {
-      return;
+  const [boardRoute, setBoardRoute] = useState<{
+    routeView: typeof routeView;
+    snapshot: typeof snapshot;
+    boardTarget: typeof boardTarget;
+    onViewChange: typeof onViewChange;
+  } | null>(null);
+  if (
+    boardRoute?.routeView !== routeView ||
+    boardRoute?.snapshot !== snapshot ||
+    boardRoute?.boardTarget !== boardTarget ||
+    boardRoute?.onViewChange !== onViewChange ||
+    boardRoute === null
+  ) {
+    setBoardRoute({ routeView, snapshot, boardTarget, onViewChange });
+    if (onViewChange) {
+      if (routeView === "whiteboard" && snapshot && !boardTarget) {
+        setBoardTarget(targetOf(snapshot));
+      } else if (routeView !== "whiteboard" && boardTarget) {
+        setBoardTarget(null);
+      }
     }
-    if (routeView === "whiteboard" && snapshot && !boardTarget) {
-      setBoardTarget(targetOf(snapshot));
-    } else if (routeView !== "whiteboard" && boardTarget) {
-      setBoardTarget(null);
-    }
-  }, [routeView, snapshot, boardTarget, onViewChange]);
-  useEffect(() => {
-    if (!boardLink || boardLink.pane !== agent.pane_id || !snapshot) {
-      return;
-    }
-    // A terminal URL is only a viewing hint: never open a reused pane's new board.
-    // oxlint-disable-next-line react/set-state-in-effect
+  }
+  const [consumedBoardLink, setConsumedBoardLink] = useState<typeof boardLink>(null);
+  if (boardLink && boardLink.pane === agent.pane_id && snapshot) {
+    // Resolve ownership before committing a board child. URL cleanup is external
+    // synchronization and belongs to the effect, not this render adjustment.
+    setConsumedBoardLink(boardLink);
     setBoardLink(null);
-    consumeWhiteboardLink();
     if (boardLink.session !== snapshot.identity.sessionId) {
       setBoardLinkError("This whiteboard link belongs to a different Pi conversation.");
-      return;
+    } else {
+      setBoardTarget(targetOf(snapshot));
     }
-    setBoardTarget(targetOf(snapshot));
-  }, [agent.pane_id, boardLink, snapshot]);
+  }
+  useEffect(() => {
+    if (consumedBoardLink) {
+      consumeWhiteboardLink();
+    }
+  }, [consumedBoardLink]);
   const compact = useConversationCompaction(
     agent.pane_id,
     snapshot,
@@ -271,14 +286,17 @@ function PiAgentConsole({
   const send = useMutation({
     mutationFn: async (draft: OutgoingDraft) => {
       if (draft.board) {
-        return boardApi.prompt(agent.pane_id, {
+        const request: Parameters<typeof boardApi.prompt>[1] = {
           target: draft.target,
           boardId: draft.board.boardId,
           revision: draft.board.revision,
-          ...(draft.board.uploadId ? { uploadId: draft.board.uploadId } : {}),
           text: draft.text,
           requestId: submissionId(),
-        });
+        };
+        if (draft.board.uploadId) {
+          request.uploadId = draft.board.uploadId;
+        }
+        return boardApi.prompt(agent.pane_id, request);
       }
       const ids: Array<string> = [];
       for (const [index, attachment] of draft.attachments.entries()) {

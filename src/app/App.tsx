@@ -1,7 +1,7 @@
 import appStyles from "./App.module.css";
 import { useEffect, useEffectEvent, useRef, useState } from "react";
 import { ResumeChatDialog } from "../features/agents/ResumeChatDialog";
-import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { skipToken, useQuery, useQueryClient } from "@tanstack/react-query";
 import type { Agent, ShellTab, Workspace } from "../shared/api/contracts";
 import { getAgents, getSession, resumeChat } from "../shared/api/apiClient";
 import { AgentList } from "../features/agents/AgentList";
@@ -46,12 +46,14 @@ export function App({
     setPendingPaneId(null);
     navigateToPane(paneId, terminal);
   }
-  useEffect(() => {
+  const [selectionRoute, setSelectionRoute] = useState({ sessionId, paneId: navigation.paneId });
+  if (selectionRoute.sessionId !== sessionId || selectionRoute.paneId !== navigation.paneId) {
+    setSelectionRoute({ sessionId, paneId: navigation.paneId });
     setPendingPaneId(null);
-  }, [sessionId, navigation.paneId]);
+  }
   const sessionQuery = useQuery({
     queryKey: ["session", sessionId],
-    queryFn: () => getSession(sessionId!),
+    queryFn: sessionId ? () => getSession(sessionId) : skipToken,
     enabled: Boolean(sessionId),
     refetchInterval: 2000,
   });
@@ -73,13 +75,11 @@ export function App({
   // Refetching without cached data resets the query to pending and clears its error.
   // Keep the last connection failure visible while automatic retries run.
   const [lastConnectionError, setLastConnectionError] = useState<Error | null>(null);
-  useEffect(() => {
-    if (agentsQuery.data) {
-      setLastConnectionError(null);
-    } else if (agentsQuery.error) {
-      setLastConnectionError(agentsQuery.error);
-    }
-  }, [agentsQuery.data, agentsQuery.error]);
+  if (agentsQuery.data && lastConnectionError !== null) {
+    setLastConnectionError(null);
+  } else if (!agentsQuery.data && agentsQuery.error && lastConnectionError !== agentsQuery.error) {
+    setLastConnectionError(agentsQuery.error);
+  }
   const connectionError = agentsQuery.data ? null : (agentsQuery.error ?? lastConnectionError);
 
   const {
@@ -141,19 +141,26 @@ export function App({
     }
   }, [agents, pendingPaneId]);
 
-  const closeMissingPendingAgent = useEffectEvent(() => setSelectedPaneId(null));
-  useEffect(() => {
-    // A pending selection refers to a live, unsaved agent, not the older session
-    // URL beneath it. Once a successful dashboard refresh removes that agent,
-    // leave the detail view instead of waiting forever or showing the old chat.
-    if (
-      pendingPaneId &&
-      agentsQuery.isSuccess &&
-      !agents.some((agent) => agent.pane_id === pendingPaneId)
-    ) {
-      closeMissingPendingAgent();
+  const [missingPendingPane, setMissingPendingPane] = useState<{ paneId: string } | null>(null);
+  if (
+    pendingPaneId &&
+    agentsQuery.isSuccess &&
+    !agents.some((agent) => agent.pane_id === pendingPaneId)
+  ) {
+    // Invalidate local selection before committing children for a removed agent.
+    // Only the external URL transition is deferred until commit.
+    setMissingPendingPane({ paneId: pendingPaneId });
+    setPendingPaneId(null);
+    if (!routeNavigation) {
+      setLocalPaneId(null);
     }
-  }, [agents, agentsQuery.isSuccess, pendingPaneId]);
+  }
+  const leaveMissingPendingRoute = useEffectEvent(() => routeNavigation?.selectPane(null));
+  useEffect(() => {
+    if (missingPendingPane) {
+      leaveMissingPendingRoute();
+    }
+  }, [missingPendingPane]);
 
   function handleWorkspaceCreated(workspace: Workspace) {
     queryClient.setQueryData(
@@ -174,6 +181,7 @@ export function App({
     void agentsQuery.refetch();
   }
 
+  const resumableChat = sessionQuery.data?.chat;
   return (
     <div
       ref={viewportRef}
@@ -396,9 +404,9 @@ export function App({
         </div>
       )}
 
-      {resumeOpen && sessionQuery.data?.chat && (
+      {resumeOpen && resumableChat && (
         <ResumeChatDialog
-          chat={sessionQuery.data.chat}
+          chat={resumableChat}
           workspaces={workspaces}
           pending={resuming}
           error={resumeError || undefined}
@@ -407,7 +415,7 @@ export function App({
             void (async () => {
               setResuming(true);
               try {
-                const agent = await resumeChat({ id: sessionQuery.data.chat!.id, workspaceId });
+                const agent = await resumeChat({ id: resumableChat.id, workspaceId });
                 queryClient.setQueryData(["session", sessionId], { ...sessionQuery.data, agent });
                 setResumeOpen(false);
                 void agentsQuery.refetch();
