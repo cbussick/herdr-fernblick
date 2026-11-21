@@ -210,7 +210,7 @@ export class BoardController {
       connected: true,
       error: "",
       dirty: canonical(scene) !== canonical(board.scene),
-      ...(changed ? { generation: this.state.generation + 1 } : {}),
+      generation: this.state.generation + Number(changed),
     });
     this.persist();
   }
@@ -555,7 +555,11 @@ export class BoardController {
       return;
     }
     await this.api.revoke(this.pane, this.target, board.id, this.abort.signal);
-    this.patch({ board: { ...this.state.board!, access: null } });
+    const current = this.state.board;
+    if (this.disposed || !current || current.id !== board.id) {
+      return;
+    }
+    this.patch({ board: { ...current, access: null } });
     await this.refresh();
   }
   dispose() {

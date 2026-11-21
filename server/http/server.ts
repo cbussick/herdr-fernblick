@@ -3,7 +3,8 @@ import { createReadStream, existsSync, statSync } from "node:fs";
 import { createServer } from "node:http";
 import type { IncomingMessage, ServerResponse } from "node:http";
 import { extname, resolve, sep } from "node:path";
-import { z } from "zod";
+import { z, ZodError } from "zod";
+import { isUint8Array } from "node:util/types";
 import {
   createAgentRequestSchema,
   markAgentReadRequestSchema,
@@ -67,19 +68,19 @@ const targetSchema = z
   .regex(/^[A-Za-z0-9:_-]+$/);
 const linesSchema = z.coerce.number().int().min(20).max(2000).default(400);
 
-const contentTypes: Record<string, string> = {
-  ".css": "text/css; charset=utf-8",
-  ".html": "text/html; charset=utf-8",
-  ".js": "text/javascript; charset=utf-8",
-  ".json": "application/json; charset=utf-8",
-  ".webmanifest": "application/manifest+json; charset=utf-8",
-  ".png": "image/png",
-  ".txt": "text/plain; charset=utf-8",
-  ".woff2": "font/woff2",
-  ".woff": "font/woff",
-  ".ttf": "font/ttf",
-  ".svg": "image/svg+xml",
-};
+const contentTypes = new Map([
+  [".css", "text/css; charset=utf-8"],
+  [".html", "text/html; charset=utf-8"],
+  [".js", "text/javascript; charset=utf-8"],
+  [".json", "application/json; charset=utf-8"],
+  [".webmanifest", "application/manifest+json; charset=utf-8"],
+  [".png", "image/png"],
+  [".txt", "text/plain; charset=utf-8"],
+  [".woff2", "font/woff2"],
+  [".woff", "font/woff"],
+  [".ttf", "font/ttf"],
+  [".svg", "image/svg+xml"],
+]);
 
 function setSecurityHeaders(response: ServerResponse) {
   response.setHeader(
@@ -95,12 +96,22 @@ function setSecurityHeaders(response: ServerResponse) {
   response.setHeader("X-Content-Type-Options", "nosniff");
 }
 
+interface HttpErrorBody {
+  error: string;
+  code?: string;
+}
 function sendJson(response: ServerResponse, status: number, body: unknown) {
   response.statusCode = status;
   response.setHeader("Content-Type", "application/json; charset=utf-8");
   response.end(JSON.stringify(body));
 }
 
+function requestBytes(chunk: unknown): Buffer<ArrayBufferLike> {
+  if (typeof chunk === "string" || isUint8Array(chunk)) {
+    return Buffer.from(chunk);
+  }
+  throw new HttpError(400, "Invalid request bytes");
+}
 async function readJson(request: IncomingMessage) {
   if (!request.headers["content-type"]?.startsWith("application/json")) {
     throw new HttpError(415, "Requests must use application/json");
@@ -110,7 +121,7 @@ async function readJson(request: IncomingMessage) {
   let size = 0;
 
   for await (const chunk of request) {
-    const buffer = Buffer.from(chunk);
+    const buffer = requestBytes(chunk);
     size += buffer.length;
     if (size > MAX_BODY_BYTES) {
       throw new HttpError(413, "Request is too large");
@@ -129,7 +140,7 @@ async function readBytes(request: IncomingMessage, limit: number) {
   const chunks: Array<Buffer> = [];
   let size = 0;
   for await (const chunk of request) {
-    const buffer = Buffer.from(chunk);
+    const buffer = requestBytes(chunk);
     size += buffer.length;
     if (size > limit) {
       throw new HttpError(413, "Image is too large");
@@ -243,7 +254,7 @@ async function handleApi(
     try {
       response.end(await readImageUpload(id));
     } catch (error) {
-      if ((error as NodeJS.ErrnoException).code === "ENOENT") {
+      if (error && typeof error === "object" && "code" in error && error.code === "ENOENT") {
         throw new HttpError(404, "Image no longer available");
       }
       throw error;
@@ -435,7 +446,7 @@ async function handleApi(
       category =
         error instanceof ReadStatusError && (error.status === 404 || error.status === 409)
           ? "stale"
-          : error instanceof z.ZodError
+          : error instanceof ZodError
             ? "request_validation"
             : error instanceof HerdrRequestError || error instanceof ReadStatusError
               ? "dependency"
@@ -550,13 +561,9 @@ async function handleApi(
         input = { action: "navigate", entryId: body.entryId };
       } else {
         input = {
-          action: route.action as
-            | "tree"
-            | "stop"
-            | "skills"
-            | "compact"
-            | "models"
-            | "thinking-levels",
+          action: z
+            .enum(["tree", "stop", "skills", "compact", "models", "thinking-levels"])
+            .parse(route.action),
         };
       }
     }
@@ -602,7 +609,10 @@ function serveStatic(request: IncomingMessage, response: ServerResponse, publicD
   response.statusCode = 200;
   // Revalidate the shell and worker so an installed app can discover releases.
   response.setHeader("Cache-Control", "no-cache");
-  response.setHeader("Content-Type", contentTypes[extname(filePath)] ?? "application/octet-stream");
+  response.setHeader(
+    "Content-Type",
+    contentTypes.get(extname(filePath)) ?? "application/octet-stream",
+  );
   if (request.method === "HEAD") {
     response.end();
   } else {
@@ -640,7 +650,7 @@ export function createHttpServer(
           sendJson(response, 404, { error: "Not found" });
         }
       } catch (error) {
-        if (error instanceof z.ZodError) {
+        if (error instanceof ZodError) {
           sendJson(response, 400, { error: "Invalid request" });
           return;
         }
@@ -652,10 +662,11 @@ export function createHttpServer(
           error instanceof SavedChatError ||
           error instanceof ReadStatusError
         ) {
-          sendJson(response, error.status, {
-            error: error.message,
-            ...(error instanceof BoardError && error.code ? { code: error.code } : {}),
-          });
+          const body: HttpErrorBody = { error: error.message };
+          if (error instanceof BoardError && error.code) {
+            body.code = error.code;
+          }
+          sendJson(response, error.status, body);
           return;
         }
         if (error instanceof HerdrRequestError) {

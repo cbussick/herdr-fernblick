@@ -48,6 +48,19 @@ function setup(local?: LocalDraft) {
     },
   };
 }
+it("does not refresh or mutate disposed state after a pending revoke completes", async () => {
+  const { owner, api } = setup();
+  await owner.start();
+  const pending = deferred<{ ok: boolean }>();
+  api.revoke.mockReturnValueOnce(pending.promise);
+  const revoking = owner.revoke();
+  owner.dispose();
+  const state = owner.state;
+  pending.resolve({ ok: true });
+  await revoking;
+  expect(owner.state).toBe(state);
+  expect(api.open).toHaveBeenCalledTimes(1);
+});
 it("reports initial read progress, ends it on failure, and retries without writing", async () => {
   const { owner, api } = setup();
   const pending = deferred<ReturnType<typeof board>>();
