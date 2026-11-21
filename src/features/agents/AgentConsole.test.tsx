@@ -1939,20 +1939,23 @@ it("uses routed board views without losing the shared draft", async () => {
   expect(renderer.root.findByType("textarea").props.value).toBe("Keep my draft");
 });
 
+function routedWhiteboard() {
+  return (
+    <QueryClientProvider client={client}>
+      <AgentConsole agent={agent} onBack={() => {}} routeView="whiteboard" onViewChange={vi.fn()} />
+    </QueryClientProvider>
+  );
+}
+
 it("opens a routed board on mount and reconciles replacement epochs before committing it", async () => {
   const initial = mocks.live.snapshot;
   if (!initial) {
     throw new Error("Expected initial live snapshot");
   }
-  const routed = () => (
-    <QueryClientProvider client={client}>
-      <AgentConsole agent={agent} onBack={() => {}} routeView="whiteboard" onViewChange={vi.fn()} />
-    </QueryClientProvider>
-  );
   await act(async () => renderer.unmount());
   mocks.whiteboard.mockClear();
   await act(async () => {
-    renderer = create(routed());
+    renderer = create(routedWhiteboard());
   });
   expect(mocks.whiteboard).toHaveBeenCalled();
   expect(mocks.whiteboard.mock.calls.every(([props]) => props.target.epoch === initial.epoch)).toBe(
@@ -1961,7 +1964,7 @@ it("opens a routed board on mount and reconciles replacement epochs before commi
   mocks.whiteboard.mockClear();
   const replacement = { ...initial, epoch: randomUUID() };
   mocks.live = { snapshot: replacement };
-  await act(async () => renderer.update(routed()));
+  await act(async () => renderer.update(routedWhiteboard()));
   expect(mocks.whiteboard).toHaveBeenCalled();
   expect(
     mocks.whiteboard.mock.calls.every(([props]) => props.target.epoch === replacement.epoch),

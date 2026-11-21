@@ -8,7 +8,12 @@ import { HerdrService } from "../herdr/herdrService.js";
 
 import { SessionCatalog } from "./sessionCatalog.js";
 import { ChatArtifacts } from "./chatArtifacts.js";
-import * as images from "../../packages/pi-live-chat/images.js";
+import { saveImageUpload, removeImageUpload } from "../../packages/pi-live-chat/images.js";
+
+vi.mock(import("../../packages/pi-live-chat/images.js"), async (importOriginal) => {
+  const original = await importOriginal();
+  return { ...original, removeImageUpload: vi.fn(original.removeImageUpload) };
+});
 import type { Agent } from "../../src/shared/api/contracts.js";
 
 const disconnectedClient = {
@@ -69,8 +74,8 @@ afterEach(async () => {
 });
 
 it("deletes the conversation, native board/assets, all snapshots and exclusive uploads only", async () => {
-  const upload = await images.saveImageUpload(png, "image/png");
-  const shared = await images.saveImageUpload(png, "image/png");
+  const upload = await saveImageUpload(png, "image/png");
+  const shared = await saveImageUpload(png, "image/png");
   const chat = await save("original", [header(), refs(upload.id, shared.id)]);
   const other = await save("fork", [header("fork"), refs(shared.id)]);
   const board = await boards.open(key("original"));
@@ -159,12 +164,10 @@ it("keeps boards and browser drafts belonging to another file for the same Pi se
 });
 
 it("restores the transcript after a cleanup failure and allows an idempotent retry", async () => {
-  const upload = await images.saveImageUpload(png, "image/png");
+  const upload = await saveImageUpload(png, "image/png");
   const chat = await save("original", [header(), refs(upload.id)]);
   const board = await boards.open(key("original"));
-  const remove = vi
-    .spyOn(images, "removeImageUpload")
-    .mockRejectedValueOnce(new Error("permission denied"));
+  const remove = vi.mocked(removeImageUpload).mockRejectedValueOnce(new Error("permission denied"));
   await expect(service.deleteChat(chat.id)).rejects.toMatchObject({ status: 503 });
   expect(await exists(chat.path)).toBe(true);
   expect(await exists(upload.path)).toBe(true);
@@ -211,7 +214,7 @@ it("preserves a different session replaced exactly between validation and the re
 });
 
 it("fails closed rather than deleting shared files when another saved chat is damaged", async () => {
-  const upload = await images.saveImageUpload(png, "image/png");
+  const upload = await saveImageUpload(png, "image/png");
   const chat = await save("original", [header(), refs(upload.id)]);
   const board = await boards.open(key("original"));
   await writeFile(join(root, "damaged.jsonl"), "unreadable session metadata\n");
@@ -224,7 +227,7 @@ it("fails closed rather than deleting shared files when another saved chat is da
 it("removes a retained shared board and uploads when their final conversation is deleted", async () => {
   const board = await boards.open(key("original"));
   const snapshot = await boards.capture(board.id, 0, png);
-  const upload = await images.saveImageUpload(png, "image/png");
+  const upload = await saveImageUpload(png, "image/png");
   const entry = {
     type: "message",
     message: {
@@ -276,8 +279,8 @@ it("replays the deletion result after a lost reply or backend restart without ke
 });
 
 it("deletes a closed chat alongside an empty session placeholder without weakening shared-file protection", async () => {
-  const ownUpload = await images.saveImageUpload(png, "image/png");
-  const sharedUpload = await images.saveImageUpload(png, "image/png");
+  const ownUpload = await saveImageUpload(png, "image/png");
+  const sharedUpload = await saveImageUpload(png, "image/png");
   const chat = await save("original", [header(), refs(ownUpload.id, sharedUpload.id)]);
   const other = await save("other", [header("other"), refs(sharedUpload.id)]);
   const placeholder = join(root, "empty.jsonl");

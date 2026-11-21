@@ -19,6 +19,9 @@ export class AppErrorBoundary extends Component<AppErrorBoundaryProps, AppErrorB
   }
 
   componentDidCatch(error: Error, errorInfo: ErrorInfo) {
+    // React catches render failures here; retain the original stack and component trace
+    // for browser diagnostics rather than silently swallowing an unrecoverable error.
+    // oxlint-disable-next-line no-console
     console.error("Unhandled application error", error, errorInfo);
   }
 

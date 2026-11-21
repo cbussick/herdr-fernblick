@@ -6,7 +6,6 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type {
   ExtensionAPI,
-  CompactOptions,
   ExtensionContext,
   ExtensionCommandContext,
   ExtensionToolContext,
@@ -24,12 +23,15 @@ import {
   footerUpdateEvent,
   snapshotSchema,
   treePageResponseSchema,
+  treeResponseSchema,
+  modelsResponseSchema,
   targetOf,
 } from "./protocol.js";
 import { receiveFrames, writeFrame } from "./transport.js";
 import { boardControlSchema, boardRequestSchema } from "./boardProtocol.js";
 import type { BoardGrant } from "./boardProtocol.js";
 import { z } from "zod";
+const frameIdSchema = z.object({ id: z.string().optional() });
 const footerRequestSchema = z.object({ sessionId: z.string(), sessionFile: z.string() });
 
 vi.mock("node:fs/promises", async (importOriginal) => {
@@ -230,16 +232,10 @@ async function setup(
     text = "hello",
   ) => {
     const id = randomUUID();
-    const frame: {
-      type: "command";
-      action: typeof action;
-      target: typeof target;
-      id: string;
-      text?: string;
-    } = { type: "command", action, target, id };
-    if (action === "send") {
-      frame.text = text;
-    }
+    const frame =
+      action === "send"
+        ? { type: "command", action, target, id, text }
+        : { type: "command", action, target, id };
     writeFrame(connections.at(-1)!, frame);
     return id;
   };
@@ -455,7 +451,7 @@ it("confirms only after persistence, serializes requests, rejects duplicates and
   );
   const id = defaultCommand(t);
   await vi.waitFor(() => expect(saveGlobalDefault).toHaveBeenCalledOnce());
-  expect(t.frames.some((frame) => (frame as { id?: string }).id === id)).toBe(false);
+  expect(t.frames.some((frame) => frameIdSchema.safeParse(frame).data?.id === id)).toBe(false);
   expect(await t.ack(defaultCommand(t))).toMatchObject({
     outcome: "rejected",
     reason: expect.stringContaining("in flight"),
@@ -495,7 +491,7 @@ it("does not confirm a default save after shutdown", async () => {
   await new Promise((resolve) => {
     setTimeout(resolve, 50);
   });
-  expect(t.frames.some((frame) => (frame as { id?: string }).id === id)).toBe(false);
+  expect(t.frames.some((frame) => frameIdSchema.safeParse(frame).data?.id === id)).toBe(false);
 });
 function modelCommand(
   t: Awaited<ReturnType<typeof setup>>,
@@ -651,10 +647,7 @@ it("lists bounded display-only model metadata from this session without invoking
     })) as unknown as ReturnType<typeof getAvailable>,
   );
   t.setIdle(false); // Discovery itself is read-only and allowed while busy.
-  const reply = (await t.ack(modelCommand(t, "models"))) as {
-    models: Array<unknown>;
-    truncated: boolean;
-  };
+  const reply = modelsResponseSchema.parse(await t.ack(modelCommand(t, "models")));
   expect(reply.models).toHaveLength(1000);
   expect(reply.models[0]).toEqual({ id: "model-0", provider: "provider", name: "Model 0" });
   expect(reply.truncated).toBe(true);
@@ -744,7 +737,9 @@ it("serializes asynchronous model switches and never confirms after shutdown", a
   await new Promise((resolve) => {
     setTimeout(resolve, 60);
   });
-  expect(t.frames.filter((frame) => (frame as { id?: string }).id === id)).toHaveLength(0);
+  expect(t.frames.filter((frame) => frameIdSchema.safeParse(frame).data?.id === id)).toHaveLength(
+    0,
+  );
 });
 it("does not confirm a model change when the native result differs", async () => {
   const t = await setup();
@@ -792,7 +787,7 @@ it("keeps compaction locked across disconnect, never replays, and cannot confirm
   await vi.waitFor(() => expect(t.connections).toHaveLength(2));
   await vi.waitFor(() => expect(t.latest()?.sendPending).toBe(true));
   expect(await t.ack(t.command("compact"))).toMatchObject({ outcome: "rejected" });
-  options.onComplete!({} as Parameters<NonNullable<CompactOptions["onComplete"]>>[0]);
+  options.onComplete!({ summary: "Compacted", firstKeptEntryId: "kept", tokensBefore: 100 });
   await vi.waitFor(() => expect(t.latest()?.sendPending).toBe(false));
   expect(t.frames.some((v) => typeof v === "object" && v && "id" in v && v.id === id)).toBe(false);
   expect(t.ctx.compact).toHaveBeenCalledOnce();
@@ -804,7 +799,7 @@ it("does not report compaction success after a target change or shutdown", async
   await vi.waitFor(() => expect(t.ctx.compact).toHaveBeenCalledOnce());
   const options = vi.mocked(t.ctx.compact).mock.calls[0][0]!;
   t.emit("session_tree");
-  options.onComplete!({} as Parameters<NonNullable<CompactOptions["onComplete"]>>[0]);
+  options.onComplete!({ summary: "Compacted", firstKeptEntryId: "kept", tokensBefore: 100 });
   expect(await t.ack(id)).toMatchObject({
     outcome: "rejected",
     reason: expect.stringContaining("uncertain"),
@@ -921,15 +916,7 @@ it("restores a root prompt through real Pi even when a tree hook appends extensi
       target: targetOf(t.latest()!),
       action: "tree",
     });
-    const tree = (await t.ack(treeId)) as {
-      tree: {
-        roots: Array<{
-          label?: string;
-          children: Array<{ id: string; isActivePath: boolean }>;
-        }>;
-        leafId: string;
-      };
-    };
+    const tree = treeResponseSchema.parse(await t.ack(treeId));
     expect(tree.tree.leafId).toBe(active);
     expect(tree.tree.roots[0].label).toBe("checkpoint");
     expect(tree.tree.roots[0].children).toEqual(
@@ -1323,9 +1310,13 @@ it("does not invoke Pi twice if a transport repeats the same request ID", async 
     text: "hello",
   });
   await vi.waitFor(() =>
-    expect(t.frames.filter((frame) => (frame as { id?: string }).id === id)).toHaveLength(2),
+    expect(t.frames.filter((frame) => frameIdSchema.safeParse(frame).data?.id === id)).toHaveLength(
+      2,
+    ),
   );
-  expect(t.frames.filter((frame) => (frame as { id?: string }).id === id).at(-1)).toMatchObject({
+  expect(
+    t.frames.filter((frame) => frameIdSchema.safeParse(frame).data?.id === id).at(-1),
+  ).toMatchObject({
     outcome: "rejected",
     reason: "Command already seen; never retried",
   });
@@ -1379,7 +1370,7 @@ it("navigates through its private command context and replies only after navigat
     entryId: "u",
   });
   await vi.waitFor(() => expect(navigateTree).toHaveBeenCalledWith("u", { summarize: false }));
-  expect(t.frames.some((v) => (v as { id?: string }).id === id)).toBe(false);
+  expect(t.frames.some((v) => frameIdSchema.safeParse(v).data?.id === id)).toBe(false);
   complete();
   expect(await t.ack(id)).toMatchObject({
     type: "navigated",
@@ -1487,19 +1478,14 @@ it.each(["epoch", "session", "busy", "input", "stop", "compact"] as const)(
     const fs = await vi.importActual<typeof import("node:fs/promises")>("node:fs/promises");
     vi.mocked(open).mockImplementationOnce(async (...args) => {
       const file = await fs.open(...args);
-      return new Proxy(file, {
-        get(target, prop) {
-          if (prop === "read") {
-            return async (...readArgs: Parameters<typeof file.read>) => {
-              entered();
-              await gate;
-              return file.read(...readArgs);
-            };
-          }
-          const value = Reflect.get(target, prop);
-          return typeof value === "function" ? value.bind(target) : value;
-        },
+      const read = vi.spyOn(file, "read");
+      read.mockImplementationOnce(async (...readArgs) => {
+        entered();
+        await gate;
+        read.mockRestore();
+        return file.read(...readArgs);
       });
+      return file;
     });
     const id = randomUUID();
     writeFrame(t.connections[0], {
@@ -1551,8 +1537,8 @@ it.each(["epoch", "session", "busy", "input", "stop", "compact"] as const)(
       // Hold that reply to prove tools stay hidden until the backend confirms it.
       await vi.waitFor(() => {
         const begins = t.frames.filter((frame) => {
-          const value = frame as Record<string, unknown>;
-          return value.type === "board-control" && value.action === "begin";
+          const parsed = boardControlSchema.safeParse(frame);
+          return parsed.success && parsed.data.action === "begin";
         });
         expect(begins).toHaveLength(2);
       });
