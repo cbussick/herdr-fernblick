@@ -6,7 +6,13 @@ const message = readFileSync(new URL("./ChatMessageText.module.css", import.meta
 const syntax = readFileSync(new URL("./ChatCodeText.module.css", import.meta.url), "utf8");
 
 function luminance(hex: string) {
-  const expanded = hex.length === 3 ? [...hex].map((digit) => digit.repeat(2)).join("") : hex;
+  const expanded =
+    hex.length === 3
+      ? hex
+          .split("")
+          .map((digit) => digit.repeat(2))
+          .join("")
+      : hex;
   const channels = expanded.match(/../g)!.map((channel) => {
     const value = Number.parseInt(channel, 16) / 255;
     return value <= 0.04045 ? value / 12.92 : ((value + 0.055) / 1.055) ** 2.4;

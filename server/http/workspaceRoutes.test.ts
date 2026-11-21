@@ -47,7 +47,11 @@ beforeEach(async () => {
   await new Promise<void>((done) => {
     httpServer.listen(0, "127.0.0.1", done);
   });
-  base = `http://127.0.0.1:${(httpServer.address() as { port: number }).port}`;
+  const address = httpServer.address();
+  if (!address || typeof address === "string") {
+    throw new Error("Expected TCP listener");
+  }
+  base = `http://127.0.0.1:${address.port}`;
 });
 
 afterEach(async () => {

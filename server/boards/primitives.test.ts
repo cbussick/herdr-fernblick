@@ -67,7 +67,7 @@ it("fails closed for cross-engine primitives and incompatible props/relationship
     { op: "update", id: "p", text: "use drawing.text" },
     { op: "create", id: "card", kind: "card", x: 0, y: 0, drawing: { text: "wrong type" } },
   ]) {
-    expect(() => applyOperations(scene, [operation as BoardOperation])).toThrow();
+    expect(() => applyOperations(scene, [operation])).toThrow();
   }
   expect(() =>
     validateScene({

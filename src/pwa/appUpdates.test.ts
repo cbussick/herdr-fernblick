@@ -11,7 +11,11 @@ let windowEvents: EventTarget & { location: { reload: ReturnType<typeof vi.fn> }
 let documentEvents: EventTarget & { visibilityState: string };
 let onAvailable: ReturnType<typeof vi.fn<() => void>>;
 let updater: ReturnType<typeof watchForAppUpdates>;
-let navigatorMock: { onLine: boolean; serviceWorker: typeof serviceWorker };
+interface NavigatorFixture {
+  onLine: boolean;
+  serviceWorker: typeof serviceWorker;
+}
+let navigatorMock: NavigatorFixture;
 
 beforeEach(() => {
   vi.useFakeTimers();

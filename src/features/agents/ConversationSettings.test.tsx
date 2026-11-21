@@ -124,12 +124,16 @@ it.each(["model", "thinking"])(
     expect(api.saveDefault).not.toHaveBeenCalled();
     expect(defaultButton().props.type).toBe("button");
     await act(async () => dispatchTestEvent(defaultButton(), "onClick"));
-    expect(api.saveDefault).toHaveBeenCalledExactlyOnceWith("w1:p1", target, {
+    const expected = {
       kind,
       provider: kind === "model" ? "openai" : "anthropic",
       modelId: kind === "model" ? "gpt" : "sonnet",
-      ...(kind === "thinking" ? { level: "low" } : {}),
-    });
+    };
+    expect(api.saveDefault).toHaveBeenCalledExactlyOnceWith(
+      "w1:p1",
+      target,
+      kind === "thinking" ? { ...expected, level: "low" } : expected,
+    );
     expect(testText(renderer.root.findByProps({ role: "status" }))).toContain(
       "saved as global default",
     );

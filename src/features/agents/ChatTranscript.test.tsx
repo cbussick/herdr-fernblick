@@ -62,10 +62,15 @@ beforeEach(async () => {
   };
   await act(async () => {
     renderer = create(<ChatTranscript {...props} />, {
-      createNodeMock: (element) =>
-        (element.props as Record<string, unknown>)["data-ui"] === "chat-transcript"
+      createNodeMock: (element) => {
+        const props: unknown = element.props;
+        return props !== null &&
+          typeof props === "object" &&
+          "data-ui" in props &&
+          props["data-ui"] === "chat-transcript"
           ? viewport
-          : null,
+          : null;
+      },
     });
   });
 });
@@ -73,6 +78,9 @@ afterEach(async () => {
   await act(async () => renderer.unmount());
   vi.unstubAllGlobals();
 });
+function modal() {
+  return renderer.root.findByProps({ "data-ui": "chat-image-preview" });
+}
 function output() {
   return renderer.root.findByProps({ "data-ui": "chat-transcript" });
 }
@@ -448,7 +456,6 @@ it("cycles only the selected message's gallery and keeps image-open state stable
       "onClick",
     ),
   );
-  const modal = () => renderer.root.findByProps({ "data-ui": "chat-image-preview" });
   expect(modal().findByType("img").props.src).toBe("/api/uploads/two.png");
   expect(onImageOpenChange).toHaveBeenLastCalledWith(true);
   onImageOpenChange.mockClear();

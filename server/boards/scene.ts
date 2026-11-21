@@ -3,7 +3,7 @@ import {
   boardSceneSchema,
   boardOperationSchema,
 } from "../../packages/pi-live-chat/boardProtocol.js";
-import type { BoardOperation, BoardScene } from "../../packages/pi-live-chat/boardProtocol.js";
+import type { BoardScene } from "../../packages/pi-live-chat/boardProtocol.js";
 import { BoardError, requireBoard } from "./errors.js";
 import { validateFlowGraph, flowElementSchema } from "../../packages/pi-live-chat/flowProtocol.js";
 import { applyFlowOperations, flowSummary } from "./flowScene.js";
@@ -102,7 +102,7 @@ export function validateScene(input: unknown): BoardScene {
   return scene;
 }
 
-export function applyOperations(scene: BoardScene, operations: Array<BoardOperation>): BoardScene {
+export function applyOperations(scene: BoardScene, operations: ReadonlyArray<unknown>): BoardScene {
   return validateScene(
     applyFlowOperations(
       validateScene(scene),

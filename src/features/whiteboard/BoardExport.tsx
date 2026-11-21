@@ -1,4 +1,4 @@
-import { isDomNode } from "../../shared/lib/dom";
+import { isDomNode, isHtmlElement } from "../../shared/lib/dom";
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import type { BoardScene } from "../../../packages/pi-live-chat/boardProtocol";
 import type { BoardImageQuality } from "../../../packages/pi-live-chat/boardImageExport";
@@ -122,11 +122,12 @@ export function BoardExport({
           return;
         }
         const items = Array.from(
-          event.currentTarget.querySelectorAll<HTMLButtonElement>(
+          event.currentTarget.querySelectorAll<HTMLElement>(
             'button[role="menuitem"]:not(:disabled)',
           ),
         );
-        const current = items.findIndex((item) => item === document.activeElement);
+        const active = document.activeElement;
+        const current = isHtmlElement(active) ? items.indexOf(active) : -1;
         const index =
           event.key === "Home"
             ? 0

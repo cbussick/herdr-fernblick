@@ -10,7 +10,11 @@ interface HeaderCapture {
   title: ReturnType<typeof surface> | null;
   ancestors: Array<ReturnType<typeof surface>>;
 }
-const latest: { console?: HeaderCapture; overview?: HeaderCapture } = {};
+interface HeaderCaptures {
+  console?: HeaderCapture;
+  overview?: HeaderCapture;
+}
+const latest: HeaderCaptures = {};
 
 function rectangle(element: Element) {
   const { x, y, width, height } = element.getBoundingClientRect();

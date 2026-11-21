@@ -61,7 +61,7 @@ it("retains visible conversation geometry through overview navigation without co
     overflow: "visible",
     getPropertyValue: () => "none",
   }));
-  let resized: () => void = () => {};
+  let resized: () => void = vi.fn();
   const disconnect = vi.fn();
   vi.stubGlobal(
     "ResizeObserver",
