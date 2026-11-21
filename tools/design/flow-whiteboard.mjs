@@ -99,17 +99,17 @@ await new Promise((resolve) => {
 const origin = `http://127.0.0.1:${server.address().port}`;
 await mkdir(".runtime/flow-board-evidence", { recursive: true });
 try {
-  for (const [name, engine] of [
-    ["chromium", chromium],
-    ["webkit", webkit],
+  for (const { name, engine } of [
+    { name: "chromium", engine: chromium },
+    { name: "webkit", engine: webkit },
   ]) {
     const browser = await engine.launch();
     try {
-      for (const [layout, viewport] of [
-        ["desktop", { width: 1440, height: 1000 }],
-        ["landscape", { width: 1194, height: 834 }],
-        ["portrait", { width: 834, height: 1194 }],
-        ["phone", { width: 390, height: 844 }],
+      for (const { layout, viewport } of [
+        { layout: "desktop", viewport: { width: 1440, height: 1000 } },
+        { layout: "landscape", viewport: { width: 1194, height: 834 } },
+        { layout: "portrait", viewport: { width: 834, height: 1194 } },
+        { layout: "phone", viewport: { width: 390, height: 844 } },
       ]) {
         const context = await browser.newContext({
           viewport,
