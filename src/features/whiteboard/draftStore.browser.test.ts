@@ -3,13 +3,26 @@ import { createServer } from "vite";
 import type { ViteDevServer } from "vite";
 import { chromium, webkit } from "playwright";
 import type { Browser, Page } from "playwright";
+import { z } from "zod";
+import type { LocalDraft } from "./draftStore";
+type JsonValue = z.infer<ReturnType<typeof z.json>>;
 
 let server: ViteDevServer;
 let origin: string;
-const browsers: Record<string, Browser> = {};
+const browsers = new Map<string, Browser>();
 const native = { elements: [], files: {}, background: "#ffffff" };
 const flow = { ...native, engine: "react-flow" };
-const draft = (scene: unknown, extra: Record<string, unknown> = {}): Record<string, unknown> => ({
+const draft = (
+  scene: JsonValue,
+  extra: Partial<{
+    recovery: JsonValue;
+    baseScene: JsonValue;
+    boardId: string;
+    baseRevision: number;
+    dirty: boolean;
+    paused: boolean;
+  }> = {},
+) => ({
   boardId: "a".repeat(64),
   baseRevision: 127,
   baseScene: scene,
@@ -21,7 +34,7 @@ const draft = (scene: unknown, extra: Record<string, unknown> = {}): Record<stri
 });
 type Harness = {
   draftTest: {
-    read(key: string): Promise<unknown>;
+    read(key: string): Promise<LocalDraft | undefined>;
     write(key: string, value: unknown): Promise<void>;
     remove(sessionId: string | null, boardIds: Array<string>): Promise<void>;
     start(): Promise<{ engine?: string; revision?: number; conflict: boolean }>;
@@ -66,21 +79,25 @@ beforeAll(async () => {
     throw new Error("No fixture listener");
   }
   origin = `http://127.0.0.1:${address.port}`;
-  browsers.chromium = await chromium.launch();
-  browsers.webkit = await webkit.launch();
+  browsers.set("chromium", await chromium.launch());
+  browsers.set("webkit", await webkit.launch());
 }, 60_000);
 afterAll(async () => {
-  await Promise.all(Object.values(browsers).map((b) => b.close()));
+  await Promise.all([...browsers.values()].map((b) => b.close()));
   await server?.close();
 });
 async function pageFor(browser: string) {
-  const context = await browsers[browser].newContext();
+  const instance = browsers.get(browser);
+  if (!instance) {
+    throw new Error(`Browser not launched: ${browser}`);
+  }
+  const context = await instance.newContext();
   const page = await context.newPage();
   await page.goto(origin + "/draft-cleanup");
   await page.waitForFunction(() => !!(window as Harness).draftTest);
   return { context, page };
 }
-async function seed(page: Page, records: Record<string, unknown>, version = 1) {
+async function seed(page: Page, records: { [key: string]: JsonValue }, version = 1) {
   await page.evaluate(
     async ({ raw, version }) => {
       await new Promise<void>((resolve, reject) => {
@@ -108,29 +125,35 @@ async function seed(page: Page, records: Record<string, unknown>, version = 1) {
   );
 }
 async function rawRecords(page: Page) {
-  return page.evaluate(
+  const raw = await page.evaluate(
     async () =>
-      new Promise<Record<string, unknown>>((resolve, reject) => {
+      new Promise<string>((resolve, reject) => {
         const request = indexedDB.open("fernblick-whiteboards");
         request.onerror = () => reject(request.error);
         request.onsuccess = () => {
           const db = request.result,
             tx = db.transaction("drafts", "readonly"),
-            records: Record<string, unknown> = {};
+            records = new Map<string, unknown>();
           const cursor = tx.objectStore("drafts").openCursor();
           cursor.onsuccess = () => {
             if (cursor.result) {
-              records[String(cursor.result.key)] = cursor.result.value;
+              const key = cursor.result.key;
+              if (typeof key !== "string") {
+                reject(new Error("Expected a string draft key"));
+                return;
+              }
+              records.set(key, cursor.result.value);
               cursor.result.continue();
             }
           };
           tx.oncomplete = () => {
             db.close();
-            resolve(records);
+            resolve(JSON.stringify(Object.fromEntries(records)));
           };
         };
       }),
   );
+  return z.record(z.string(), z.json()).parse(JSON.parse(raw));
 }
 
 describe.each(["chromium", "webkit"])(
