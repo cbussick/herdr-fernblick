@@ -76,7 +76,7 @@ describe("freehand records and geometry", () => {
       { points: [] },
       { points: [[0, 0, -1]] },
       { points: [[0, Infinity, 0.5]] },
-      { points: Array(10_001).fill([0, 0, 0.5]) },
+      { points: Array.from({ length: 10_001 }, () => [0, 0, 0.5]) },
       { size: 50 },
       { w: 0 },
       { color: "url(external)" },

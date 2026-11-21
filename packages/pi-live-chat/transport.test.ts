@@ -1,20 +1,13 @@
-import { EventEmitter } from "node:events";
-import type { Socket } from "node:net";
+import { Socket } from "node:net";
 import { expect, it, vi } from "vitest";
 import { receiveFrames, writeFrame } from "./transport.js";
 import { MAX_FRAME } from "./protocol.js";
 
 function socket() {
-  const s = Object.assign(new EventEmitter(), {
-    destroyed: false,
-    writable: true,
-    writableLength: 0,
-    write: vi.fn(),
-    destroy: vi.fn(() => {
-      s.destroyed = true;
-    }),
-  });
-  return { s, socket: s as unknown as Socket };
+  const s = new Socket();
+  vi.spyOn(s, "write").mockReturnValue(true);
+  vi.spyOn(s, "destroy");
+  return { s, socket: s };
 }
 it("frames split UTF-8 and several messages without corrupting content", () => {
   const { s, socket: sock } = socket();
@@ -35,9 +28,9 @@ it("drops invalid JSON and oversized incomplete frames", () => {
 });
 it("never waits for drain and disconnects bounded slow readers", () => {
   const { s, socket: sock } = socket();
-  s.write.mockReturnValue(false);
+  vi.mocked(s.write).mockReturnValue(false);
   expect(writeFrame(sock, { text: "hello" })).toBe(true);
-  s.writableLength = MAX_FRAME + 1;
+  vi.spyOn(s, "writableLength", "get").mockReturnValue(MAX_FRAME + 1);
   expect(writeFrame(sock, { text: "hello" })).toBe(false);
   expect(s.destroy).toHaveBeenCalled();
 });

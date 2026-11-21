@@ -76,9 +76,10 @@ function distance(p: Array<number>, a: Array<number>, b: Array<number>): number 
   );
   return Math.hypot(p[0] - a[0] - t * dx, p[1] - a[1] - t * dy);
 }
+function cross(p: Array<number>, q: Array<number>, r: Array<number>) {
+  return (q[0] - p[0]) * (r[1] - p[1]) - (q[1] - p[1]) * (r[0] - p[0]);
+}
 function segmentsCross(a: Array<number>, b: Array<number>, c: Array<number>, d: Array<number>) {
-  const cross = (p: Array<number>, q: Array<number>, r: Array<number>) =>
-    (q[0] - p[0]) * (r[1] - p[1]) - (q[1] - p[1]) * (r[0] - p[0]);
   return cross(a, b, c) * cross(a, b, d) < 0 && cross(c, d, a) * cross(c, d, b) < 0;
 }
 /** Test the rendered polygon, including resized strokes, against the complete eraser sweep. */

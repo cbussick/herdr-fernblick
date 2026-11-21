@@ -52,7 +52,7 @@ it.each(["oversized", "byte-budget", "invalid-page", "network"])(
           target,
           page:
             kind === "oversized"
-              ? { ...page, rows: Array(51).fill(row), total: 51 }
+              ? { ...page, rows: Array.from({ length: 51 }, () => ({ ...row })), total: 51 }
               : kind === "byte-budget"
                 ? {
                     ...page,

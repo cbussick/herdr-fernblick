@@ -955,9 +955,11 @@ function PiAgentConsole({
       {view === "chat" && snapshot && !live.error ? (
         <PiSessionStatus status={snapshot.status} />
       ) : null}
-      {annotations.selection ? <AnnotationSelectionAction annotations={annotations} /> : null}
+      {annotations.selection ? (
+        <AnnotationSelectionAction annotations={annotations} selection={annotations.selection} />
+      ) : null}
       {view === "chat" && annotations.editor ? (
-        <AnnotationPopover annotations={annotations} />
+        <AnnotationPopover annotations={annotations} editor={annotations.editor} />
       ) : null}
       {view === "chat" && !treeTarget && !boardTarget && attachmentPreviewIndex >= 0 ? (
         <ImageLightbox

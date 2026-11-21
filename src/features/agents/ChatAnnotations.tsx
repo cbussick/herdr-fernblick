@@ -46,8 +46,14 @@ function useAnchoredOverlay(anchor: () => DOMRect, touchAction = false) {
   return { ref, position };
 }
 
-export function AnnotationSelectionAction({ annotations }: { annotations: ChatAnnotations }) {
-  const { anchor, touch } = annotations.selection!;
+export function AnnotationSelectionAction({
+  annotations,
+  selection,
+}: {
+  annotations: ChatAnnotations;
+  selection: NonNullable<ChatAnnotations["selection"]>;
+}) {
+  const { anchor, touch } = selection;
   const { ref, position } = useAnchoredOverlay(anchor, touch);
   return createPortal(
     <div
@@ -201,8 +207,13 @@ export function AnnotationTray({
   );
 }
 
-export function AnnotationPopover({ annotations }: { annotations: ChatAnnotations }) {
-  const editor = annotations.editor!;
+export function AnnotationPopover({
+  annotations,
+  editor,
+}: {
+  annotations: ChatAnnotations;
+  editor: NonNullable<ChatAnnotations["editor"]>;
+}) {
   const { ref: popover, position } = useAnchoredOverlay(editor.anchor);
   const input = useRef<HTMLTextAreaElement>(null);
   const title = editor.id
@@ -275,7 +286,11 @@ export function AnnotationPopover({ annotations }: { annotations: ChatAnnotation
           <button
             type="button"
             className={styles.delete}
-            onClick={() => annotations.remove(editor.id!)}
+            onClick={() => {
+              if (editor.id) {
+                annotations.remove(editor.id);
+              }
+            }}
           >
             <TrashIcon /> Delete comment
           </button>
