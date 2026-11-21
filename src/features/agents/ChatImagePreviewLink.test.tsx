@@ -1,5 +1,6 @@
 import { dispatchTestEvent } from "../../shared/lib/dispatchTestEvent";
 import { act } from "react";
+import { Window } from "happy-dom";
 import type { ReactNode } from "react";
 import { create } from "react-test-renderer";
 import type { ReactTestRenderer } from "react-test-renderer";
@@ -8,17 +9,24 @@ import { ChatMessageText } from "./ChatMessageText";
 
 vi.mock("react-dom", () => ({ createPortal: (children: ReactNode) => children }));
 
+const fixtureWindow = new Window();
 function click(src?: string) {
+  const target = fixtureWindow.document.createElement(src ? "img" : "a");
+  if (src) {
+    target.setAttribute("src", src);
+  }
   return {
     button: 0,
     preventDefault: vi.fn(),
-    target: { closest: () => (src ? { getAttribute: () => src } : null) },
+    target,
   };
 }
 
 describe("Markdown image previews", () => {
   let renderer: ReactTestRenderer;
-  const opener = { isConnected: true, focus: vi.fn() };
+  const opener = fixtureWindow.document.createElement("div");
+  fixtureWindow.document.body.append(opener);
+  const focusOpener = vi.spyOn(opener, "focus").mockImplementation(() => {});
   const dialog = {
     open: false,
     showModal: vi.fn(() => {
@@ -71,7 +79,7 @@ describe("Markdown image previews", () => {
     );
     await act(async () => dispatchTestEvent(modal, "onClose", { currentTarget: dialog }));
     expect(renderer.root.findAllByType("dialog")).toHaveLength(0);
-    expect(opener.focus).toHaveBeenCalledOnce();
+    expect(focusOpener).toHaveBeenCalledOnce();
   });
 
   it("opens even unavailable images in the lightbox and keeps the external link after failure", async () => {

@@ -1,17 +1,11 @@
-import type {
-  BoardOperation,
-  BoardScene,
-} from "../../packages/pi-live-chat/boardProtocol.js";
+import type { BoardOperation, BoardScene } from "../../packages/pi-live-chat/boardProtocol.js";
 import {
   defaultFlowProps,
   FLOW_CONNECTION_COLOR,
   flowKinds,
   validateFlowGraph,
 } from "../../packages/pi-live-chat/flowProtocol.js";
-import type {
-  FlowElement,
-  FlowKind,
-} from "../../packages/pi-live-chat/flowProtocol.js";
+import type { FlowElement, FlowKind } from "../../packages/pi-live-chat/flowProtocol.js";
 import { BoardError, requireBoard } from "./errors.js";
 import {
   defaultPrimitiveProps,
@@ -22,10 +16,7 @@ import type { PrimitiveKind } from "../../packages/pi-live-chat/primitiveProtoco
 /** Relationships are implicit dependencies, including both sides of existing relations.
  * New endpoints must already have been read; same-batch creation is deliberately not supported.
  */
-export function flowDependencies(
-  scene: BoardScene,
-  op: BoardOperation,
-): Array<string> {
+export function flowDependencies(scene: BoardScene, op: BoardOperation): Array<string> {
   const ids = new Set<string>();
   const relation = (e: BoardScene["elements"][number] | BoardOperation) => {
     for (const value of [
@@ -68,19 +59,11 @@ export function applyFlowOperations(
   }
   const touched = new Set<string>();
   for (const op of operations) {
-    requireBoard(
-      !touched.has(op.id),
-      400,
-      "A shape may only be targeted once per operation batch",
-    );
+    requireBoard(!touched.has(op.id), 400, "A shape may only be targeted once per operation batch");
     touched.add(op.id);
     let element = elements.find((e) => e.id === op.id);
     if (op.op === "create") {
-      requireBoard(
-        !element,
-        409,
-        "Shape ID already exists (including deleted shapes)",
-      );
+      requireBoard(!element, 409, "Shape ID already exists (including deleted shapes)");
       const common = {
         id: op.id,
         x: op.x,
@@ -90,11 +73,7 @@ export function applyFlowOperations(
         version: 1,
       };
       if (op.kind === "connection") {
-        requireBoard(
-          op.source && op.target,
-          400,
-          "Connection requires source and target",
-        );
+        requireBoard(op.source && op.target, 400, "Connection requires source and target");
         element = {
           ...common,
           type: "connection",
@@ -113,11 +92,7 @@ export function applyFlowOperations(
           props: defaultPrimitiveProps(),
         };
       } else {
-        requireBoard(
-          isFlowKind(op.kind),
-          400,
-          "Unsupported flow component kind",
-        );
+        requireBoard(isFlowKind(op.kind), 400, "Unsupported flow component kind");
         element = {
           ...common,
           type: "component",
@@ -129,11 +104,7 @@ export function applyFlowOperations(
       elements.push(element);
     } else {
       requireBoard(element && !element.isDeleted, 404, "Shape does not exist");
-      requireBoard(
-        element.version < Number.MAX_SAFE_INTEGER,
-        400,
-        "Invalid shape version",
-      );
+      requireBoard(element.version < Number.MAX_SAFE_INTEGER, 400, "Invalid shape version");
       element.version++;
     }
     if (op.op === "delete") {
@@ -154,13 +125,9 @@ export function applyFlowOperations(
     }
     if (element.type !== "connection") {
       requireBoard(
-        [
-          op.source,
-          op.target,
-          op.sourceHandle,
-          op.targetHandle,
-          op.label,
-        ].every((v) => v === undefined),
+        [op.source, op.target, op.sourceHandle, op.targetHandle, op.label].every(
+          (v) => v === undefined,
+        ),
         400,
         "Connection fields require a connection",
       );
@@ -246,13 +213,11 @@ export function flowSummary(element: FlowElement, files: BoardScene["files"]) {
           title: short(p.title),
           subtitle: short(p.subtitle),
           body: short(p.body),
-          fields: p.fields
-            .slice(0, 10)
-            .map((f) => ({
-              ...f,
-              label: short(f.label),
-              value: short(f.value),
-            })),
+          fields: p.fields.slice(0, 10).map((f) => ({
+            ...f,
+            label: short(f.label),
+            value: short(f.value),
+          })),
           columns: p.columns.map(short),
           rows: p.rows.slice(0, 5).map((row) => row.map(short)),
         };

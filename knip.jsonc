@@ -30,6 +30,11 @@
         ".storybook/**/*.{ts,tsx}",
         "*.{ts,mjs}",
         "!src/features/whiteboard/testFixtures.ts!",
+        // Test-only capability adapters; never loaded by application entry points.
+        "!server/pi/liveEventFixtures.ts!",
+        "!src/shared/lib/dispatchTestEvent.ts!",
+        "!src/shared/lib/readTestProp.ts!",
+        "!src/shared/lib/testText.ts!",
         // Browser-only editor harness, served by the integration test's Vite instance.
         "!src/features/flow/editor.fixture.tsx!",
       ],

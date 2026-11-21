@@ -1,14 +1,20 @@
 import { randomUUID } from "node:crypto";
 import type { processIdentity } from "./security.js";
-import type {
+import {
   createAgentSession,
   DefaultResourceLoader,
   SessionManager,
   SettingsManager,
+  ModelRuntime,
+  ModelRegistry,
+  ExtensionRunner,
+  createExtensionRuntime,
+  createEventBus,
+  createSyntheticSourceInfo,
 } from "@earendil-works/pi-coding-agent";
 import { TuiMainScreen } from "@earendil-works/pi-tui";
-import type { Editor } from "@earendil-works/pi-tui";
-import type { Model, Api } from "@earendil-works/pi-ai";
+import { Editor } from "@earendil-works/pi-tui";
+import type { Model, Api, UserMessage } from "@earendil-works/pi-ai";
 import { mkdtemp, rm, writeFile, open } from "node:fs/promises";
 import { createServer } from "node:net";
 import type { Socket } from "node:net";
@@ -19,7 +25,8 @@ import type {
   ExtensionContext,
   ExtensionCommandContext,
   ExtensionToolContext,
-  ToolDefinition,
+  SessionMessageEntry,
+  SlashCommandInfo,
 } from "@earendil-works/pi-coding-agent";
 import { afterEach, expect, it, vi } from "vitest";
 import liveChat from "./index.js";
@@ -46,13 +53,6 @@ const footerRequestSchema = z.object({ sessionId: z.string(), sessionFile: z.str
 const identity = (text: string) => text;
 type FileSystemReads = { open: typeof open };
 type SecurityIdentity = { processIdentity: typeof processIdentity };
-type AgentRuntime = {
-  createAgentSession: typeof createAgentSession;
-  DefaultResourceLoader: typeof DefaultResourceLoader;
-  SessionManager: typeof SessionManager;
-  SettingsManager: typeof SettingsManager;
-};
-type EditorRuntime = { Editor: typeof Editor };
 
 vi.mock("node:fs/promises", async (importOriginal) => {
   const fs = await importOriginal<FileSystemReads>();
@@ -71,21 +71,30 @@ vi.mock("./security.js", async (importOriginal) => {
     })),
   };
 });
-type Handler = (event: Record<string, unknown>, ctx: ExtensionContext) => unknown;
+type FixtureEventData = {
+  message?: unknown;
+  source?: string;
+  text?: string;
+  prompt?: string;
+  toolCallId?: string;
+  toolName?: string;
+  partialResult?: unknown;
+  reason?: string;
+  systemPrompt?: string;
+  images?: unknown;
+};
 function unsupportedContextOperation(): never {
   throw new Error("This fixture does not support unrelated session operations");
 }
-function fakePi(session = "session") {
-  const handlers = new Map<string, Array<Handler>>();
-  const branch: Array<unknown> = [];
+async function fakePi(session = "session") {
+  const branch: ReturnType<ExtensionContext["sessionManager"]["getBranch"]> = [];
   const commands = new Map<
     string,
     { handler: (args: string, ctx: ExtensionCommandContext) => Promise<void> }
   >();
   let idle = true;
-  let thinkingLevel = "medium";
+  let thinkingLevel: ReturnType<ExtensionAPI["getThinkingLevel"]> = "medium";
   let activeTools = ["read", "bash"];
-  const tools = new Map<string, ToolDefinition>();
   const model: Model<Api> = {
     id: "model",
     provider: "provider",
@@ -106,29 +115,51 @@ function fakePi(session = "session") {
     getEditorText: vi.fn<ExtensionContext["ui"]["getEditorText"]>(() => ""),
     setEditorText: vi.fn<ExtensionContext["ui"]["setEditorText"]>(),
   };
-  const ctx = {
+  const runtime = createExtensionRuntime();
+  runtime.getThinkingLevel = () => "medium";
+  const registry = new ModelRegistry(
+    await ModelRuntime.create({
+      authPath: join(tmpdir(), `fb-no-auth-${randomUUID()}`),
+      modelsPath: null,
+      refreshOnCreate: false,
+    }),
+  );
+  registry.getAvailable = mocks.getAvailable;
+  const runner = new ExtensionRunner(
+    [],
+    runtime,
+    "/test",
+    SessionManager.inMemory("/test"),
+    registry,
+  );
+  const baseContext = runner.createContext();
+  const ctx: ExtensionContext = {
+    ...baseContext,
     mode: "tui",
     cwd: "/test",
     model,
-    modelRegistry: {
-      getAvailable: mocks.getAvailable,
-    },
+    modelRegistry: registry,
     isIdle: () => idle,
     hasPendingMessages: () => false,
     abort: mocks.abort,
     compact: mocks.compact,
     shutdown: mocks.shutdown,
-    ui: { getEditorText: mocks.getEditorText, setEditorText: mocks.setEditorText },
+    ui: {
+      ...baseContext.ui,
+      getEditorText: mocks.getEditorText,
+      setEditorText: mocks.setEditorText,
+    },
     sessionManager: {
+      ...baseContext.sessionManager,
       getBranch: () => branch,
       getEntries: () => branch,
       getTree: vi.fn(() => []),
-      getLeafId: () => (branch.at(-1) as { id?: string })?.id ?? null,
-      getEntry: (id: string) => branch.find((e) => (e as { id: string }).id === id),
+      getLeafId: () => branch.at(-1)?.id ?? null,
+      getEntry: (id: string) => branch.find((e) => e.id === id),
       getSessionId: () => session,
       getSessionFile: () => `/${session}.jsonl`,
     },
-  } as unknown as ExtensionContext;
+  };
   const eventHandlers = new Map<string, Array<(value: unknown) => void>>();
   const pi = {
     events: {
@@ -146,19 +177,17 @@ function fakePi(session = "session") {
         }
       },
     },
-    on: (event: string, handler: Handler) => {
-      handlers.set(event, [...(handlers.get(event) ?? []), handler]);
-    },
+
     sendUserMessage: vi.fn<ExtensionAPI["sendUserMessage"]>(),
-    getThinkingLevel: vi.fn(() => thinkingLevel),
-    setThinkingLevel: vi.fn((level: string) => {
+    getThinkingLevel: vi.fn<ExtensionAPI["getThinkingLevel"]>(() => thinkingLevel),
+    setThinkingLevel: vi.fn<ExtensionAPI["setThinkingLevel"]>((level) => {
       thinkingLevel = level;
     }),
     setModel: vi.fn(async (model: unknown) => {
       Object.assign(ctx, { model });
       return true;
     }),
-    registerTool: vi.fn((definition: ToolDefinition) => tools.set(definition.name, definition)),
+    registerTool: vi.fn<() => void>(),
     getActiveTools: () => [...activeTools],
     setActiveTools: vi.fn((names: Array<string>) => {
       activeTools = names;
@@ -169,18 +198,73 @@ function fakePi(session = "session") {
         handler: (args: string, ctx: ExtensionCommandContext) => Promise<void>;
       },
     ) => commands.set(name, command),
-    getCommands: vi.fn(() => [...commands.keys()].map((name) => ({ name }))),
+    getCommands: vi.fn<ExtensionAPI["getCommands"]>(() =>
+      [...commands.keys()].map((name) => ({
+        name,
+        source: "extension",
+        sourceInfo: createSyntheticSourceInfo("/test/extension.ts", { source: "inline" }),
+      })),
+    ),
     appendEntry: vi.fn((customType: string, data: unknown) => {
-      branch.push({ type: "custom", id: randomUUID(), customType, data });
+      branch.push({
+        type: "custom",
+        id: randomUUID(),
+        parentId: null,
+        timestamp: new Date().toISOString(),
+        customType,
+        data,
+      });
     }),
-  };
-  liveChat(pi as unknown as ExtensionAPI);
-  const emit = (event: string, data: Record<string, unknown> = {}) =>
-    (handlers.get(event) ?? []).map((handler) => handler({ type: event, ...data }, ctx));
+  } satisfies Pick<
+    ExtensionAPI,
+    | "events"
+    | "sendUserMessage"
+    | "getThinkingLevel"
+    | "setThinkingLevel"
+    | "setModel"
+    | "registerTool"
+    | "getActiveTools"
+    | "setActiveTools"
+    | "registerCommand"
+    | "getCommands"
+    | "appendEntry"
+  >;
+  const loader = new DefaultResourceLoader({
+    cwd: "/test",
+    agentDir: join(tmpdir(), `fb-no-agent-${randomUUID()}`),
+    settingsManager: SettingsManager.inMemory(),
+    noExtensions: true,
+    noSkills: true,
+    noPromptTemplates: true,
+    noThemes: true,
+    eventBus: createEventBus(),
+    extensionFactories: [
+      (api) => {
+        const registerTool = api.registerTool.bind(api);
+        Object.assign(api, pi);
+        api.registerTool = (definition) => {
+          pi.registerTool();
+          registerTool(definition);
+        };
+        liveChat(api);
+      },
+    ],
+  });
+  await loader.reload();
+  const extension = loader.getExtensions().extensions[0];
+  if (!extension) {
+    throw new Error("Fixture extension did not load");
+  }
+  const emit = (event: string, data: FixtureEventData = {}) =>
+    Promise.all(
+      (extension.handlers.get(event) ?? []).map((handler) =>
+        handler({ type: event, ...data }, ctx),
+      ),
+    );
   return {
     pi,
     commands,
-    tools,
+    tools: { get: (name: string) => extension.tools.get(name)?.definition },
     ctx,
     mocks,
     model,
@@ -216,7 +300,7 @@ afterEach(async () => {
   vi.useRealTimers();
 });
 async function setup(
-  beforeStart?: (pi: ReturnType<typeof fakePi>) => void,
+  beforeStart?: (pi: Awaited<ReturnType<typeof fakePi>>) => void,
   beforeBoardBeginReply?: () => Promise<void> | undefined,
 ) {
   const dir = await mkdtemp(join(tmpdir(), "fb-ext-"));
@@ -269,9 +353,9 @@ async function setup(
     .mockReturnValue({
       defaults: { model: null, thinkingLevel: null },
     });
-  const pi = fakePi();
-  cleanup.push(() => {
-    pi.emit("session_shutdown");
+  const pi = await fakePi();
+  cleanup.push(async () => {
+    await pi.emit("session_shutdown");
   });
   function latest() {
     for (let index = frames.length - 1; index >= 0; index--) {
@@ -283,7 +367,7 @@ async function setup(
     return undefined;
   }
   beforeStart?.(pi);
-  expect(pi.emit("session_start")).toEqual([undefined]);
+  expect(await pi.emit("session_start")).toEqual([undefined]);
   await vi.waitFor(() => expect(latest()).toBeDefined());
   await vi.waitFor(() => expect(pi.tools.get("board_read")?.exposure).toBe("direct"));
   const command = (
@@ -348,7 +432,10 @@ it("requests orderly shutdown once with correlated confirmation, never a prompt"
 it("delivers shutdown confirmation even when cleanup closes the socket immediately", async () => {
   const t = await setup();
   t.mocks.shutdown.mockImplementation(() => {
-    t.emit("session_shutdown");
+    const shutdown = t.emit("session_shutdown");
+    cleanup.push(async () => {
+      await shutdown;
+    });
   });
   expect(await t.ack(t.command("shutdown"))).toMatchObject({ type: "shutdown-requested" });
   expect(t.mocks.shutdown).toHaveBeenCalledOnce();
@@ -552,7 +639,7 @@ it("does not confirm a default save after shutdown", async () => {
   );
   const id = defaultCommand(t);
   await vi.waitFor(() => expect(saveGlobalDefault).toHaveBeenCalledOnce());
-  t.emit("session_shutdown");
+  await t.emit("session_shutdown");
   finish();
   await new Promise((resolve) => {
     setTimeout(resolve, 50);
@@ -726,7 +813,9 @@ it("changes only an available model using Pi and confirms its resulting session 
   t.branch.push({
     type: "message",
     id: "keep",
-    message: { role: "user", content: "Keep history" },
+    parentId: null,
+    timestamp: new Date().toISOString(),
+    message: { role: "user", content: "Keep history", timestamp: 1 },
   });
   const id = modelCommand(t, "set-model");
   expect(await t.ack(id)).toMatchObject({
@@ -799,7 +888,7 @@ it("serializes asynchronous model switches and never confirms after shutdown", a
     outcome: "rejected",
     reason: expect.stringContaining("in flight"),
   });
-  t.emit("session_shutdown");
+  await t.emit("session_shutdown");
   finish(true);
   await new Promise((resolve) => {
     setTimeout(resolve, 60);
@@ -865,7 +954,7 @@ it("does not report compaction success after a target change or shutdown", async
   const id = t.command("compact");
   await vi.waitFor(() => expect(t.mocks.compact).toHaveBeenCalledOnce());
   const options = t.mocks.compact.mock.calls[0][0]!;
-  t.emit("session_tree");
+  await t.emit("session_tree");
   options.onComplete!({ summary: "Compacted", firstKeptEntryId: "kept", tokensBefore: 100 });
   expect(await t.ack(id)).toMatchObject({
     outcome: "rejected",
@@ -873,7 +962,7 @@ it("does not report compaction success after a target change or shutdown", async
   });
   const second = t.command("compact");
   await vi.waitFor(() => expect(t.mocks.compact).toHaveBeenCalledTimes(2));
-  t.emit("session_shutdown");
+  await t.emit("session_shutdown");
   t.mocks.compact.mock.calls[1][0]!.onError!(new Error("cancelled"));
   expect(t.frames.some((v) => typeof v === "object" && v && "id" in v && v.id === second)).toBe(
     false,
@@ -882,17 +971,14 @@ it("does not report compaction success after a target change or shutdown", async
 
 it("restores a root prompt through real Pi even when a tree hook appends extension state", async () => {
   const t = await setup();
-  t.emit("session_shutdown");
+  await t.emit("session_shutdown");
   vi.stubEnv("PI_OFFLINE", "1");
   const extraExtension = process.env.PI_TREE_TEST_EXTENSION;
   if (extraExtension) {
     vi.stubEnv("HOME", t.dir);
   }
   const stateType = extraExtension ? "plannotator" : "tree-fixture-state";
-  const { createAgentSession, DefaultResourceLoader, SessionManager, SettingsManager } =
-    (await import(
-      process.env.PI_TREE_TEST_MODULE ?? "@earendil-works/pi-coding-agent"
-    )) as AgentRuntime;
+  // Exercise the SDK pinned by this checkout, not an unchecked alternate installation.
   const manager = SessionManager.create(t.dir, join(t.dir, "sessions"));
   const rootPrompt = "original root prompt ".repeat(100);
   const root = manager.appendMessage({
@@ -1039,15 +1125,8 @@ it("restores a root prompt through real Pi even when a tree hook appends extensi
 
 it("uses real Pi shutdown bindings without submitting or changing a terminal draft", async () => {
   const t = await setup();
-  t.emit("session_shutdown");
+  await t.emit("session_shutdown");
   vi.stubEnv("PI_OFFLINE", "1");
-  const { createAgentSession, DefaultResourceLoader, SessionManager, SettingsManager } =
-    (await import(
-      process.env.PI_TREE_TEST_MODULE ?? "@earendil-works/pi-coding-agent"
-    )) as AgentRuntime;
-  const { Editor } = (await import(
-    process.env.PI_EDITOR_TEST_MODULE ?? "@earendil-works/pi-tui"
-  )) as EditorRuntime;
   const editor = new Editor(
     new TuiMainScreen({
       rows: 24,
@@ -1151,7 +1230,7 @@ it.each(["UI", "terminal", "cancel", "abort", "failure"] as const)(
   "tracks real %s compaction through completion or failure",
   async (mode) => {
     const t = await setup();
-    t.emit("session_shutdown");
+    await t.emit("session_shutdown");
     vi.stubEnv("PI_OFFLINE", "1");
     const { createAgentSession, DefaultResourceLoader, SessionManager, SettingsManager } =
       await import("@earendil-works/pi-coding-agent");
@@ -1274,25 +1353,28 @@ it.each(["UI", "terminal", "cancel", "abort", "failure"] as const)(
 
 it("retains terminal/automatic compaction activity across reconnect and resets it on session replacement", async () => {
   const t = await setup();
-  t.emit("session_before_compact", { reason: "threshold" });
+  await t.emit("session_before_compact", { reason: "threshold" });
   await vi.waitFor(() => expect(t.latest()).toMatchObject({ compacting: true, busy: true }));
   const runtime = t.latest()!.identity.runtime;
   const epoch = t.latest()!.epoch;
   t.connections.at(-1)!.destroy();
   await vi.waitFor(() => expect(t.latest()!.epoch).not.toBe(epoch));
   expect(t.latest()).toMatchObject({ compacting: true, busy: true, identity: { runtime } });
-  t.emit("session_start");
+  await t.emit("session_start");
   await vi.waitFor(() => expect(t.latest()!.identity.runtime).not.toBe(runtime));
   expect(t.latest()).toMatchObject({ compacting: false, busy: false });
 });
 
 it("lists skills on demand while busy and revalidates selected skills before forwarding images", async () => {
   const t = await setup();
-  const command = {
+  const command: SlashCommandInfo = {
     name: "skill:review",
     description: "Review code",
     source: "skill",
-    sourceInfo: { path: "/home/.agents/skills/review/SKILL.md", scope: "user" },
+    sourceInfo: createSyntheticSourceInfo("/home/.agents/skills/review/SKILL.md", {
+      source: "skill",
+      scope: "user",
+    }),
   };
   t.pi.getCommands.mockReturnValue([command]);
   t.setIdle(false);
@@ -1359,8 +1441,8 @@ it("acknowledges forwarding without text matching and gates further sends using 
   await vi.waitFor(() => expect(t.latest()?.sendPending).toBe(true));
   expect(await t.ack(t.command("send"))).toMatchObject({ outcome: "rejected" });
   t.setIdle(false);
-  t.emit("agent_start");
-  t.emit("message_start", {
+  await t.emit("agent_start");
+  await t.emit("message_start", {
     message: {
       role: "user",
       content: "hello\n\n[Image dimension note or arbitrary transformation]",
@@ -1372,7 +1454,7 @@ it("acknowledges forwarding without text matching and gates further sends using 
   expect(t.latest()).not.toHaveProperty("receivedSendIds");
   expect(await t.ack(t.command("send"))).toMatchObject({ outcome: "rejected" });
   t.setIdle(true);
-  t.emit("agent_settled");
+  await t.emit("agent_settled");
   await vi.waitFor(() => expect(t.latest()?.busy).toBe(false));
   expect(await t.ack(t.command("send", targetOf(t.latest()!), "next"))).toMatchObject({
     outcome: "invoked",
@@ -1415,20 +1497,21 @@ it("bounds the handoff guard when Pi emits no run events, without retrying", asy
 
 it("navigates through its private command context and replies only after navigation completes", async () => {
   const t = await setup();
-  const entry = {
+  const entry: SessionMessageEntry = {
+    timestamp: new Date().toISOString(),
     type: "message",
     id: "u",
     parentId: null,
     message: { role: "user", content: "restore me", timestamp: 1 },
   };
   t.branch.push(entry);
-  let complete!: () => void;
+  let complete!: () => Promise<void>;
   const navigateTree = vi.fn(
     () =>
       new Promise<{ cancelled: boolean }>((done) => {
-        complete = () => {
+        complete = async () => {
           t.branch.length = 0;
-          t.emit("session_tree");
+          await t.emit("session_tree");
           done({ cancelled: false });
         };
       }),
@@ -1451,7 +1534,7 @@ it("navigates through its private command context and replies only after navigat
   });
   await vi.waitFor(() => expect(navigateTree).toHaveBeenCalledWith("u", { summarize: false }));
   expect(t.frames.some((v) => frameIdSchema.safeParse(v).data?.id === id)).toBe(false);
-  complete();
+  await complete();
   expect(await t.ack(id)).toMatchObject({
     type: "navigated",
     id,
@@ -1495,21 +1578,22 @@ it("sends ten 10 MiB image-only uploads as Pi ImageContent without putting base6
   }
   expect(boardRequests(t)).toEqual([]);
   expect(t.pi.getActiveTools()).not.toContain("board_read");
-  const message = { role: "user", timestamp: 55, content };
-  t.emit("message_start", { message });
+  const message: UserMessage = { role: "user", timestamp: 55, content };
+  await t.emit("message_start", { message });
   t.branch.push({
     type: "message",
     id: "persisted-images",
+    timestamp: new Date().toISOString(),
     parentId: null,
     message,
   });
-  t.emit("turn_end");
+  await t.emit("turn_end");
   await vi.waitFor(() =>
     expect(t.latest()?.messages.at(-1)?.attachments).toEqual(
       attachments.map((id) => `/api/uploads/${id}`),
     ),
   );
-  t.emit("agent_settled");
+  await t.emit("agent_settled");
   t.pi.sendUserMessage.mockImplementationOnce((text, options) => {
     expect(options).toEqual({ expandPromptTemplates: true });
     if (typeof text !== "string") {
@@ -1520,7 +1604,7 @@ it("sends ten 10 MiB image-only uploads as Pi ImageContent without putting base6
       nonce,
       t.commandContext(async () => {
         t.branch.length = 0;
-        t.emit("session_tree");
+        await t.emit("session_tree");
         return { cancelled: false };
       }),
     );
@@ -1589,14 +1673,14 @@ it.each(["epoch", "session", "busy", "input", "stop", "compact"] as const)(
       beginReply = new Promise<void>((resolve) => {
         releaseBeginReply = resolve;
       });
-      t.emit("session_tree");
+      await t.emit("session_tree");
     } else if (change === "compact") {
-      t.emit("session_before_compact");
-      t.emit("session_compact_failed");
+      await t.emit("session_before_compact");
+      await t.emit("session_compact_failed");
     } else if (change === "session") {
-      t.emit("session_shutdown");
+      await t.emit("session_shutdown");
     } else if (change === "input") {
-      t.emit("input", { text: "unrelated", source: "interactive" });
+      await t.emit("input", { text: "unrelated", source: "interactive" });
     } else if (change === "stop") {
       expect(await t.ack(t.command("stop"))).toMatchObject({
         outcome: "invoked",
@@ -1676,7 +1760,7 @@ it("rejects missing handlers, busy and missing entries without navigating or lea
   expect(t.pi.sendUserMessage).toHaveBeenCalledTimes(before);
   expect(navigateTree).not.toHaveBeenCalled();
   expect(
-    t.emit("input", {
+    await t.emit("input", {
       text: "/fernblick-bridge-expired nonce",
       source: "extension",
     }),
@@ -1690,12 +1774,12 @@ it("uses void send/abort, rejects busy and concurrent sends, and waits for settl
     expandPromptTemplates: false,
   });
   expect(await t.ack(t.command("send"))).toMatchObject({ outcome: "rejected" });
-  t.emit("agent_start");
-  t.emit("agent_end");
+  await t.emit("agent_start");
+  await t.emit("agent_end");
   expect(await t.ack(t.command("send"))).toMatchObject({ outcome: "rejected" });
   expect(await t.ack(t.command("stop"))).toMatchObject({ outcome: "invoked" });
   expect(t.mocks.abort).toHaveBeenCalledOnce();
-  t.emit("agent_settled");
+  await t.emit("agent_settled");
   t.setIdle(false);
   expect(await t.ack(t.command("send"))).toMatchObject({ outcome: "rejected" });
   t.setIdle(true);
@@ -1711,12 +1795,12 @@ it("streams provisional thinking/text/tools, then replaces from getBranch after 
       { type: "text", text: "partial" },
     ],
   };
-  expect(t.emit("message_update", { message })).toEqual([undefined]);
-  t.emit("message_end", { message });
+  expect(await t.emit("message_update", { message })).toEqual([undefined]);
+  await t.emit("message_end", { message });
   await vi.waitFor(() =>
     expect(t.latest()?.messages.map((m) => m.text)).toEqual(["reason", "partial"]),
   );
-  t.emit("tool_execution_update", {
+  await t.emit("tool_execution_update", {
     toolCallId: "t",
     toolName: "bash",
     partialResult: { content: [{ type: "text", text: "running output" }] },
@@ -1726,9 +1810,27 @@ it("streams provisional thinking/text/tools, then replaces from getBranch after 
   t.branch.push({
     type: "message",
     id: "persisted",
-    message: { ...message, content: [{ type: "text", text: "transformed" }] },
+    parentId: null,
+    timestamp: new Date().toISOString(),
+    message: {
+      role: "assistant",
+      content: [{ type: "text", text: "transformed" }],
+      timestamp: 2,
+      api: "openai-completions",
+      provider: "provider",
+      model: "model",
+      stopReason: "stop",
+      usage: {
+        input: 0,
+        output: 0,
+        cacheRead: 0,
+        cacheWrite: 0,
+        totalTokens: 0,
+        cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0 },
+      },
+    },
   });
-  t.emit("turn_end");
+  await t.emit("turn_end");
   await vi.waitFor(() =>
     expect(t.latest()?.messages).toEqual([
       expect.objectContaining({ id: "persisted", text: "transformed" }),
@@ -1741,6 +1843,8 @@ it("coalesces large transcript updates through a brief socket stall without reco
       branch.push({
         type: "message",
         id: `history-${i}`,
+        parentId: null,
+        timestamp: new Date().toISOString(),
         message: { role: "user", timestamp: i, content: "x".repeat(24_000) },
       });
     }
@@ -1751,7 +1855,7 @@ it("coalesces large transcript updates through a brief socket stall without reco
   reader.pause();
   try {
     for (let i = 0; i < 6; i++) {
-      t.emit("message_update", {
+      await t.emit("message_update", {
         message: { role: "assistant", timestamp: 999, content: `streaming-${i}` },
       });
       await new Promise((done) => {
@@ -1784,6 +1888,8 @@ it("disconnects a permanently stalled snapshot reader after a fixed deadline", a
       branch.push({
         type: "message",
         id: `history-${i}`,
+        parentId: null,
+        timestamp: new Date().toISOString(),
         message: { role: "user", timestamp: i, content: "x".repeat(24_000) },
       });
     }
@@ -1792,11 +1898,11 @@ it("disconnects a permanently stalled snapshot reader after a fixed deadline", a
   reader.pause();
   vi.useFakeTimers();
   try {
-    t.emit("agent_start");
+    await t.emit("agent_start");
     await vi.advanceTimersByTimeAsync(50);
     await vi.advanceTimersByTimeAsync(30_000);
     // A newer update does not extend the original stall deadline.
-    t.emit("message_update", {
+    await t.emit("message_update", {
       message: { role: "assistant", timestamp: 999, content: "still streaming" },
     });
     await vi.advanceTimersByTimeAsync(29_999);
@@ -1816,7 +1922,7 @@ it("disconnects a permanently stalled snapshot reader after a fixed deadline", a
 it("reconnects with a fresh epoch and live overlay, rejecting commands from the old epoch", async () => {
   const t = await setup();
   const initial = t.latest()!;
-  t.emit("message_update", {
+  await t.emit("message_update", {
     message: {
       role: "assistant",
       timestamp: 1,
@@ -1837,11 +1943,11 @@ it("reconnects with a fresh epoch and live overlay, rejecting commands from the 
 });
 it("cleans up shutdown, prevents duplicate package connections and uses only fresh replacement context", async () => {
   const t = await setup();
-  const duplicate = fakePi();
-  duplicate.emit("session_start");
+  const duplicate = await fakePi();
+  await duplicate.emit("session_start");
   expect(t.connections).toHaveLength(1);
-  duplicate.emit("session_shutdown");
-  t.emit("session_shutdown");
+  await duplicate.emit("session_shutdown");
+  await t.emit("session_shutdown");
   await vi.waitFor(() => expect(t.connections[0].destroyed).toBe(true));
   // Invalid old context must never be accessed by a reconnect timer.
   Object.defineProperty(t.ctx, "sessionManager", {
@@ -1849,11 +1955,11 @@ it("cleans up shutdown, prevents duplicate package connections and uses only fre
       throw new Error("old runtime");
     },
   });
-  const replacement = fakePi("replacement");
-  cleanup.push(() => {
-    replacement.emit("session_shutdown");
+  const replacement = await fakePi("replacement");
+  cleanup.push(async () => {
+    await replacement.emit("session_shutdown");
   });
-  replacement.emit("session_start");
+  await replacement.emit("session_start");
   await vi.waitFor(() => expect(t.latest()?.identity.sessionId).toBe("replacement"));
   await new Promise((done) => {
     setTimeout(done, 400);
@@ -1867,13 +1973,11 @@ it.each(["interactive", "extension"])(
     const t = await setup();
     expect(t.tools.get("board_read")?.exposure).toBe("direct");
     expect(boardRequests(t)).toEqual([]);
-    t.emit("input", { text: "An ordinary message", source });
-    const before = Promise.all(
-      t.emit("before_agent_start", {
-        prompt: "An expanded ordinary message",
-        systemPrompt: "Base",
-      }),
-    );
+    await t.emit("input", { text: "An ordinary message", source });
+    const before = t.emit("before_agent_start", {
+      prompt: "An expanded ordinary message",
+      systemPrompt: "Base",
+    });
     const controls = () =>
       t.frames.flatMap((frame) => {
         const parsed = boardControlSchema.safeParse(frame);
@@ -1896,7 +2000,7 @@ it.each(["interactive", "extension"])(
     ]);
     expect(boardRequests(t)).toEqual([]);
     expect(t.pi.sendUserMessage).not.toHaveBeenCalled();
-    t.emit("agent_start");
+    await t.emit("agent_start");
     const reading = t.tools
       .get("board_read")!
       .execute("read", {}, undefined, undefined, t.toolContext());
@@ -1958,16 +2062,14 @@ async function activateBoard(
   attachments: Array<string> = [],
 ) {
   const board = await stageBoard(t, mode, attachments);
-  t.emit("input", { text: "Update this board", source: "extension" });
-  const before = Promise.all(
-    t.emit("before_agent_start", {
-      prompt: "Update this board",
-      systemPrompt: "Base and other extension instructions",
-      images: attachments.length
-        ? [{ type: "image", mimeType: "image/png", data: "fixture" }]
-        : undefined,
-    }),
-  );
+  await t.emit("input", { text: "Update this board", source: "extension" });
+  const before = t.emit("before_agent_start", {
+    prompt: "Update this board",
+    systemPrompt: "Base and other extension instructions",
+    images: attachments.length
+      ? [{ type: "image", mimeType: "image/png", data: "fixture" }]
+      : undefined,
+  });
   await vi.waitFor(() => expect(boardRequests(t).at(-1)?.action).toBe("activate"));
   expect(t.pi.getActiveTools()).not.toContain("board_read");
   writeFrame(t.connections.at(-1)!, {
@@ -2017,8 +2119,8 @@ it("delivers visual board content to Pi while activating request-scoped edit too
     "board_components",
     "board_apply",
   ]);
-  t.emit("agent_start");
-  t.emit("agent_settled");
+  await t.emit("agent_start");
+  await t.emit("agent_settled");
   expect(t.pi.getActiveTools()).toEqual(["read", "bash"]);
 });
 it("advertises boards, dispatches private RPCs before commands, and gates read-only tools until matching activation", async () => {
@@ -2048,7 +2150,7 @@ it("advertises boards, dispatches private RPCs before commands, and gates read-o
   expect(t.pi.getActiveTools()).toEqual(["read", "bash", "board_read", "board_components"]);
   expect(t.tools.get("board_apply")?.exposure).toBe("hidden");
   expect(JSON.stringify(t.pi.sendUserMessage.mock.calls)).not.toContain(board.grantId);
-  t.emit("agent_start");
+  await t.emit("agent_start");
   const read = t.tools
     .get("board_read")!
     .execute("read", { limit: 4 }, undefined, undefined, t.toolContext());
@@ -2070,9 +2172,9 @@ it("advertises boards, dispatches private RPCs before commands, and gates read-o
   expect(await read).toMatchObject({
     content: [{ type: "text", text: expect.stringContaining("revision") }],
   });
-  t.emit("agent_end");
+  await t.emit("agent_end");
   expect(t.pi.getActiveTools()).toContain("board_read");
-  t.emit("agent_settled");
+  await t.emit("agent_settled");
   expect(t.pi.getActiveTools()).not.toContain("board_read");
   expect(t.tools.get("board_read")?.exposure).toBe("hidden");
   await vi.waitFor(() => expect(boardRequests(t).at(-1)?.action).toBe("revoke"));
@@ -2091,9 +2193,9 @@ it.each([
 ])("withdraws tools promptly on %s and does not await revoke replies", async (event) => {
   const t = await setup();
   const board = await activateBoard(t);
-  t.emit("agent_start");
+  await t.emit("agent_start");
   if (event === "input") {
-    t.emit("input", { text: "Update this board", source: "interactive" });
+    await t.emit("input", { text: "Update this board", source: "interactive" });
   } else if (event === "stop") {
     expect(await t.ack(t.command("stop"))).toMatchObject({
       outcome: "invoked",
@@ -2106,7 +2208,7 @@ it.each([
       grantId: board.grantId,
     });
   } else {
-    t.emit(event);
+    await t.emit(event);
   }
   await vi.waitFor(() => expect(t.pi.getActiveTools()).not.toContain("board_read"));
   expect(t.tools.get("board_apply")?.exposure).toBe("hidden");
@@ -2119,11 +2221,11 @@ it("a duplicate load neither registers replacements nor disables the active owne
   const t = await setup();
   await activateBoard(t);
   const count = t.pi.registerTool.mock.calls.length;
-  const duplicate = fakePi();
-  duplicate.emit("session_start");
-  duplicate.emit("input", { text: "unrelated", source: "interactive" });
-  duplicate.emit("agent_settled");
-  duplicate.emit("session_shutdown");
+  const duplicate = await fakePi();
+  await duplicate.emit("session_start");
+  await duplicate.emit("input", { text: "unrelated", source: "interactive" });
+  await duplicate.emit("agent_settled");
+  await duplicate.emit("session_shutdown");
   expect(duplicate.pi.registerTool).not.toHaveBeenCalled();
   expect(duplicate.pi.setActiveTools).not.toHaveBeenCalled();
   expect(t.pi.registerTool).toHaveBeenCalledTimes(count);
@@ -2175,7 +2277,7 @@ it("requests footer replay on startup/reconnect and forwards session-bound updat
     sessionFile: "/session.jsonl",
     lines: ["x".repeat(8193)],
   });
-  t.emit("message_update", { message: { role: "assistant", content: "new", id: "m" } });
+  await t.emit("message_update", { message: { role: "assistant", content: "new", id: "m" } });
   await new Promise((r) => {
     setTimeout(r, 100);
   });
@@ -2201,21 +2303,21 @@ it("falls back without a publisher, clears on withdrawal/context change, and nev
   await vi.waitFor(() => expect(t.latest()?.status.footerLines).toBeUndefined());
   t.pi.events.emit(footerUpdateEvent, publication);
   await vi.waitFor(() => expect(t.latest()?.status.footerLines).toEqual(["current"]));
-  t.emit("thinking_level_select");
+  await t.emit("thinking_level_select");
   await vi.waitFor(() => expect(t.latest()?.status.footerLines).toBeUndefined());
   t.pi.events.emit(footerUpdateEvent, publication);
   await vi.waitFor(() => expect(t.latest()?.status.footerLines).toEqual(["current"]));
-  t.emit("session_shutdown");
+  await t.emit("session_shutdown");
   t.pi.events.emit(footerUpdateEvent, publication);
-  const replacement = fakePi("replacement");
-  cleanup.push(() => {
-    replacement.emit("session_shutdown");
+  const replacement = await fakePi("replacement");
+  cleanup.push(async () => {
+    await replacement.emit("session_shutdown");
   });
-  replacement.emit("session_start");
+  await replacement.emit("session_start");
   await vi.waitFor(() => expect(t.latest()?.identity.sessionId).toBe("replacement"));
   expect(t.latest()?.status.footerLines).toBeUndefined();
   replacement.pi.events.emit(footerUpdateEvent, publication);
-  replacement.emit("model_select");
+  await replacement.emit("model_select");
   await new Promise((r) => {
     setTimeout(r, 100);
   });
