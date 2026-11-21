@@ -331,7 +331,7 @@ export class BoardStore {
   async save(
     boardId: string,
     baseRevision: number,
-    scene: BoardScene,
+    scene: unknown,
     authorize?: () => void,
   ): Promise<BoardState> {
     const check = this.guard(authorize);
@@ -529,7 +529,7 @@ export class BoardStore {
   }
 
   async handle(
-    input: BoardRequest,
+    input: unknown,
     validate: () => void,
     render?: (scene: BoardScene) => Promise<Buffer>,
   ) {
