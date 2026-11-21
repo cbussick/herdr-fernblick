@@ -1,3 +1,12 @@
+import { z } from "zod";
+import {
+  boardGrantSchema,
+  boardReplySchema,
+  boardRevokeSchema,
+  boardRunRevokeSchema,
+  boardSceneSchema,
+  boardStateSchema,
+} from "../../packages/pi-live-chat/boardProtocol.js";
 import { randomUUID } from "node:crypto";
 import { defaultPrimitiveProps } from "../../packages/pi-live-chat/primitiveProtocol.js";
 import { mkdtemp, rm, writeFile, readFile, readdir } from "node:fs/promises";
@@ -12,14 +21,26 @@ import type { HerdrService } from "../herdr/herdrService.js";
 import { boardSessionKey, LiveBridge } from "../pi/liveBridge.js";
 import { BoardStore } from "../boards/storage.js";
 import { createHttpServer } from "./server.js";
-import { targetOf } from "../../packages/pi-live-chat/protocol.js";
+import { commandSchema, targetOf } from "../../packages/pi-live-chat/protocol.js";
 import type { Snapshot } from "../../packages/pi-live-chat/protocol.js";
 import type {
   BoardGrant,
-  BoardRequest,
   BoardState,
+  BoardRequest,
 } from "../../packages/pi-live-chat/boardProtocol.js";
 import { receiveFrames, writeFrame } from "../../packages/pi-live-chat/transport.js";
+
+const frameSchema = z.union([commandSchema, boardReplySchema, boardRevokeSchema, boardRunRevokeSchema]);
+type FixtureFrame = z.infer<typeof frameSchema>;
+
+function requireValue<T>(value: T | undefined | null): T {
+  if (value === undefined || value === null) throw new Error("Missing expected fixture value");
+  return value;
+}
+
+const grantEnvelopeSchema = z.object({ grant: boardGrantSchema });
+const uploadReplySchema = z.object({ id: z.string() });
+const snapshotReplySchema = z.object({ scene: boardSceneSchema });
 
 const agent: Agent = {
   agent: "pi",
@@ -43,7 +64,7 @@ let server: Server;
 let socket: Socket;
 let base: string;
 let snapshot: Snapshot;
-let frames: Array<Record<string, unknown>>;
+let frames: FixtureFrame[];
 let acceptSend: boolean;
 let autoAcknowledge: boolean;
 let foreground: boolean;
@@ -77,7 +98,11 @@ beforeEach(async () => {
   await new Promise<void>((done) => {
     server.listen(0, "127.0.0.1", done);
   });
-  base = `http://127.0.0.1:${(server.address() as { port: number }).port}`;
+  const address = server.address();
+  if (!address || typeof address === "string") {
+    throw new Error("Missing HTTP fixture address");
+  }
+  base = `http://127.0.0.1:${address.port}`;
   snapshot = {
     type: "snapshot",
     version: 2,
@@ -104,7 +129,7 @@ beforeEach(async () => {
     socket.once("connect", done);
   });
   receiveFrames(socket, (raw) => {
-    const frame = raw as Record<string, unknown>;
+    const frame = frameSchema.parse(raw);
     frames.push(frame);
     if (frame.type === "command" && autoAcknowledge) {
       writeFrame(socket, {
@@ -131,7 +156,7 @@ afterEach(async () => {
   boards?.close();
   await rm(directory, { recursive: true, force: true });
 });
-async function post(action = "", extra: Record<string, unknown> = {}, origin = base) {
+async function post(action = "", extra: z.core.JSONSchema.JSONSchema = {}, origin = base) {
   return fetch(`${base}/api/agents/w1:p1/board${action ? `/${action}` : ""}`, {
     method: "POST",
     headers: { "Content-Type": "application/json", Origin: origin },
@@ -141,7 +166,7 @@ async function post(action = "", extra: Record<string, unknown> = {}, origin = b
 async function open() {
   const response = await post();
   expect(response.status).toBe(200);
-  return (await response.json()) as BoardState;
+  return boardStateSchema.parse(await response.json());
 }
 async function upload() {
   const response = await fetch(`${base}/api/uploads/images`, {
@@ -150,7 +175,7 @@ async function upload() {
     body: png,
   });
   expect(response.status).toBe(201);
-  return ((await response.json()) as { id: string }).id;
+  return uploadReplySchema.parse(await response.json()).id;
 }
 async function send(mode: "image" | "edit", state: BoardState) {
   const requestId = randomUUID();
@@ -190,7 +215,7 @@ async function rpc(
   await vi.waitFor(() =>
     expect(frames.some((f) => f.type === "board-reply" && f.id === id)).toBe(true),
   );
-  return frames.find((f) => f.type === "board-reply" && f.id === id)!;
+  return requireValue(frames.filter((f) => f.type === "board-reply").find((f) => f.id === id));
 }
 async function control(
   action: "begin" | "grant" | "end" | "open",
@@ -209,16 +234,16 @@ async function control(
   await vi.waitFor(() =>
     expect(frames.some((f) => f.type === "board-reply" && f.id === id)).toBe(true),
   );
-  return frames.find((f) => f.type === "board-reply" && f.id === id)!;
+  return requireValue(frames.filter((f) => f.type === "board-reply").find((f) => f.id === id));
 }
 
 it("defaults new conversations to React Flow without converting an existing board", async () => {
   const created = await post();
   expect(created.status).toBe(200);
-  const flow = (await created.json()) as BoardState;
+  const flow = boardStateSchema.parse(await created.json());
   expect(flow.scene).toMatchObject({ engine: "react-flow", elements: [] });
   const reopened = await post();
-  expect((await reopened.json()).scene.engine).toBe("react-flow");
+  expect(boardStateSchema.parse(await reopened.json()).scene.engine).toBe("react-flow");
 });
 
 it("exports unsynced drafts as a PNG without saving, granting tools or sending a prompt", async () => {
@@ -295,7 +320,7 @@ it.each([undefined, "excalidraw"])(
     await writeFile(path, bytes, { mode: 0o600 });
     const response = await post();
     expect(response.status).toBe(410);
-    expect((await response.json()).error).toContain("no longer supported");
+    expect(z.object({ error: z.string() }).parse(await response.json()).error).toContain("no longer supported");
     expect(await readFile(path, "utf8")).toBe(bytes);
   },
 );
@@ -304,7 +329,7 @@ it("discovers components and creates, edits and connects them through terminal t
   const run = randomUUID();
   await control("begin", run);
   const result = await control("grant", run);
-  const grant = (result.data as { grant: BoardGrant }).grant;
+  const grant = grantEnvelopeSchema.parse(result.data).grant;
   expect(await rpc(grant, "catalog")).toMatchObject({
     ok: true,
     data: {
@@ -382,7 +407,7 @@ it("does not let a late rejected web send revoke a newer native request", async 
     attachments: [],
   });
   await vi.waitFor(() => expect(frames.some((f) => f.type === "command")).toBe(true));
-  const command = frames.find((f) => f.type === "command")!;
+  const command = requireValue(frames.find((f) => f.type === "command"));
   const run = randomUUID();
   expect(await control("begin", run)).toMatchObject({ ok: true });
   writeFrame(socket, {
@@ -399,7 +424,7 @@ it("legacy reads without an image flag stay summary-only after backend upgrades"
   const run = randomUUID();
   await control("begin", run);
   const result = await control("grant", run);
-  const grant = (result.data as { grant: BoardGrant }).grant;
+  const grant = grantEnvelopeSchema.parse(result.data).grant;
   const render = vi.fn(async () => png);
   bridge.setBoardRenderer(render);
   const reply = await rpc(grant, "read", { includeImage: undefined });
@@ -412,7 +437,7 @@ it("slow rendering does not block opening or saving, and returns its captured re
   const run = randomUUID();
   await control("begin", run);
   const granted = await control("grant", run);
-  const grant = (granted.data as { grant: BoardGrant }).grant;
+  const grant = grantEnvelopeSchema.parse(granted.data).grant;
   let finish!: (value: Buffer) => void;
   const render = vi.fn(
     () =>
@@ -456,7 +481,7 @@ it("keeps connection-bound access through long preparation, settlement and idle,
     vi.setSystemTime(Date.now() + 24 * 60 * 60_000);
     const result = await control("grant", run);
     expect(result.ok).toBe(true);
-    const grant = (result.data as { grant: BoardGrant }).grant;
+    const grant = grantEnvelopeSchema.parse(result.data).grant;
     expect((await boards.read(grant.boardId)).access).toMatchObject({
       state: "active",
       expiresAt: null,
@@ -513,7 +538,7 @@ it("invalidates native request authority at an epoch boundary", async () => {
   const runId = randomUUID();
   await control("begin", runId);
   const result = await control("grant", runId);
-  const grant = (result.data as { grant: BoardGrant }).grant;
+  const grant = grantEnvelopeSchema.parse(result.data).grant;
   const next = { ...snapshot, seq: 2, epoch: randomUUID() };
   writeFrame(socket, next);
   await vi.waitFor(() => expect(bridge.current(agent).snapshot.seq).toBe(2));
@@ -533,7 +558,7 @@ it("requires validated foreground identity before native create, and again after
   const runId = randomUUID();
   expect(await control("begin", runId)).toMatchObject({ ok: true });
   const result = await control("grant", runId);
-  const grant = (result.data as { grant: BoardGrant }).grant;
+  const grant = grantEnvelopeSchema.parse(result.data).grant;
   bridge.setBoardRenderer(async () => {
     foreground = false;
     return png;
@@ -550,7 +575,7 @@ it("grants native requests lazily with no browser, returns fresh on-demand PNG a
   expect(await readdir(join(directory, "boards")).catch(() => [])).toEqual([]);
   const result = await control("grant", runId);
   expect(result.ok).toBe(true);
-  const grant = (result.data as { grant: BoardGrant }).grant;
+  const grant = grantEnvelopeSchema.parse(result.data).grant;
   expect(await control("grant", runId)).toMatchObject({ data: { grant } });
   const render = vi.fn(async (_scene: BoardState["scene"]) => png);
   bridge.setBoardRenderer(render);
@@ -594,7 +619,7 @@ it("a failed visual read does not authorize edits to unseen targets", async () =
   const run = randomUUID();
   await control("begin", run);
   const granted = await control("grant", run);
-  const grant = (granted.data as { grant: BoardGrant }).grant;
+  const grant = grantEnvelopeSchema.parse(granted.data).grant;
   expect(
     await rpc(grant, "apply", {
       baseRevision: 0,
@@ -625,7 +650,7 @@ it("revalidates grants after asynchronous rendering and fails explicitly on bad/
   const runId = randomUUID();
   await control("begin", runId);
   const granted = await control("grant", runId);
-  const grant = (granted.data as { grant: BoardGrant }).grant;
+  const grant = grantEnvelopeSchema.parse(granted.data).grant;
   for (const image of [
     Buffer.from("not PNG"),
     Buffer.concat([png, Buffer.alloc(2 * 1024 * 1024)]),
@@ -749,18 +774,18 @@ it("empty-board prompts grant editing without PNGs or snapshots, and each later 
       id: requestId,
       outcome: "invoked",
     });
-    return frames.filter((f) => f.type === "command").at(-1)!;
+    return requireValue(frames.filter((f) => f.type === "command").at(-1));
   }
   const first = await prompt("Draw an elephant");
   expect(first.attachments).toEqual([]);
   expect(first.text).toBe("Draw an elephant");
-  const grant = first.board as BoardGrant;
+  const grant = boardGrantSchema.parse(first.board);
   expect(grant.mode).toBe("edit");
   expect((await open()).snapshots).toHaveLength(0);
   expect(await rpc(grant, "activate")).toMatchObject({ ok: true });
   expect(await rpc(grant, "read")).toMatchObject({ ok: true });
   const second = await prompt("Add a trunk");
-  expect((second.board as BoardGrant).grantId).not.toBe(grant.grantId);
+  expect(boardGrantSchema.parse(second.board).grantId).not.toBe(grant.grantId);
   expect(await rpc(grant, "read")).toMatchObject({ ok: false });
   expect((await open()).access?.mode).toBe("edit");
 });
@@ -800,10 +825,10 @@ it("forwards a board PNG together with editing access, without creating a saved 
     uploadId,
   });
   expect(response.status).toBe(200);
-  const command = frames.filter((f) => f.type === "command").at(-1)!;
+  const command = requireValue(frames.filter((f) => f.type === "command").at(-1));
   expect(command.attachments).toEqual([uploadId]);
   expect(command.text).toBe("Finish the sentence");
-  const grant = command.board as BoardGrant;
+  const grant = boardGrantSchema.parse(command.board);
   expect(grant).toMatchObject({
     boardId: state.id,
     mode: "edit",
@@ -970,9 +995,7 @@ it("image sends retain immutable snapshots without granting tools", async () => 
     baseRevision: 0,
     scene: { ...state.scene, background: "#123456" },
   });
-  const json = (await (await fetch(base + url + ".json")).json()) as {
-    scene: { background: string };
-  };
+  const json = snapshotReplySchema.parse(await (await fetch(base + url + ".json")).json());
   expect(json.scene.background).toBe("#ffffff");
   const forged = {
     boardId: state.id,
@@ -986,7 +1009,7 @@ it("agent edits work without a browser and stale revisions/revoked grants fail c
   const state = await open();
   const sent = await send("edit", state);
   expect(sent.response.status).toBe(200);
-  const grant = sent.command!.board as BoardGrant;
+  const grant = boardGrantSchema.parse(sent.command!.board);
   expect((await open()).access).toMatchObject({
     state: "pending",
     mode: "edit",
@@ -1023,7 +1046,7 @@ it("agent edits work without a browser and stale revisions/revoked grants fail c
   expect(frames.some((f) => f.type === "board-revoke" && f.grantId === grant.grantId)).toBe(true);
   expect(await rpc(grant, "read")).toMatchObject({ ok: false });
   const next = await send("edit", await open());
-  const nextGrant = next.command!.board as BoardGrant;
+  const nextGrant = boardGrantSchema.parse(next.command!.board);
   expect(await rpc(nextGrant, "activate")).toMatchObject({ ok: true });
   expect(await rpc(nextGrant, "read")).toMatchObject({
     ok: true,
@@ -1057,7 +1080,7 @@ it("merges agent additions and unchanged-target edits after human saves, but rej
     ).status,
   ).toBe(200);
   const sent = await send("edit", await open());
-  const grant = sent.command!.board as BoardGrant;
+  const grant = boardGrantSchema.parse(sent.command!.board);
   expect(await rpc(grant, "activate")).toMatchObject({ ok: true });
   expect(await rpc(grant, "read")).toMatchObject({ ok: true, data: { revision: 1 } });
   const before = await open();
@@ -1148,7 +1171,7 @@ it("merges agent additions and unchanged-target edits after human saves, but rej
 
 it("revokes on settlement, epoch change and connection loss; old extensions cannot get grants", async () => {
   const first = await send("edit", await open());
-  const grant = first.command!.board as BoardGrant;
+  const grant = boardGrantSchema.parse(first.command!.board);
   await rpc(grant, "activate");
   writeFrame(socket, { ...snapshot, seq: 2, busy: true });
   await vi.waitFor(() => expect(bridge.current(agent).snapshot.busy).toBe(true));
@@ -1163,13 +1186,13 @@ it("revokes on settlement, epoch change and connection loss; old extensions cann
   writeFrame(socket, snapshot);
   await vi.waitFor(() => expect(bridge.current(agent).snapshot.seq).toBe(5));
   const next = await send("edit", await open());
-  const secondGrant = next.command!.board as BoardGrant;
+  const secondGrant = boardGrantSchema.parse(next.command!.board);
   await rpc(secondGrant, "activate");
   snapshot = { ...snapshot, seq: 1, epoch: randomUUID() };
   writeFrame(socket, snapshot);
   await vi.waitFor(async () => expect((await open()).access).toBeNull());
   const last = await send("edit", await open());
-  const lastGrant = last.command!.board as BoardGrant;
+  const lastGrant = boardGrantSchema.parse(last.command!.board);
   await rpc(lastGrant, "activate");
   socket.destroy();
   await vi.waitFor(async () => expect((await boards.read(lastGrant.boardId)).access).toBeNull());
@@ -1182,7 +1205,7 @@ it("rejects a failed forwarding ACK without retaining permission, and sends boar
     signal: abort.signal,
   });
   expect(events.headers.get("content-type")).toBe("text/event-stream");
-  const reader = events.body!.getReader();
+  const reader = requireValue(events.body).getReader();
   const first = await reader.read();
   expect(new TextDecoder().decode(first.value)).toContain('"type":"changed"');
   const save = await post("save", {

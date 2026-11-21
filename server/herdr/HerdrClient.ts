@@ -1,23 +1,13 @@
 import { randomUUID } from "node:crypto";
 import net from "node:net";
+import { z } from "zod";
 import type { ZodType } from "zod";
 
 const DEFAULT_TIMEOUT_MS = 5000;
 
-type HerdrResult = Record<string, unknown>;
-
-interface HerdrSuccessEnvelope {
-  id: string;
-  result: HerdrResult;
-}
-
-interface HerdrErrorEnvelope {
-  error: {
-    code: string;
-    message: string;
-  };
-  id: string;
-}
+const errorEnvelopeSchema = z.object({
+  error: z.object({ code: z.string(), message: z.string() }),
+});
 
 export class HerdrRequestError extends Error {
   constructor(
@@ -73,19 +63,21 @@ export class HerdrClient {
         const line = buffer.slice(0, lineEnd);
 
         try {
-          const envelope = JSON.parse(line) as HerdrSuccessEnvelope | HerdrErrorEnvelope;
-          if (envelope.id !== id) {
+          const envelope: unknown = JSON.parse(line);
+          if (envelope === null || typeof envelope !== "object") {
+            throw new Error("Invalid Herdr response envelope");
+          }
+          if (!("id" in envelope) || envelope.id !== id) {
             return;
           }
 
           if ("error" in envelope) {
-            finish(() =>
-              reject(new HerdrRequestError(envelope.error.code, envelope.error.message)),
-            );
+            const { error } = errorEnvelopeSchema.parse(envelope);
+            finish(() => reject(new HerdrRequestError(error.code, error.message)));
             return;
           }
 
-          const parsed = schema.safeParse(envelope.result);
+          const parsed = schema.safeParse("result" in envelope ? envelope.result : undefined);
           if (!parsed.success) {
             finish(() =>
               reject(
