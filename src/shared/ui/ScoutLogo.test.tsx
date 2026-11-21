@@ -1,3 +1,4 @@
+import { readTestProp } from "../lib/readTestProp.js";
 import { act } from "react";
 import { create } from "react-test-renderer";
 import type { ReactTestRenderer } from "react-test-renderer";
@@ -46,8 +47,10 @@ it("opts into animation and gives each instance its own outer goggle clipping ma
   expect(logos[1].props["data-animated"]).toBeUndefined();
   const clips = renderer.root.findAllByType("clipPath");
   expect(clips[0].props.id).not.toBe(clips[1].props.id);
-  const clippedGroups = renderer.root.findAllByType("g").filter((group) => group.props.clipPath);
-  expect(clippedGroups.map((group) => group.props.clipPath)).toEqual(
+  const clippedGroups = renderer.root
+    .findAllByType("g")
+    .filter((group) => readTestProp(group, "clipPath"));
+  expect(clippedGroups.map((group) => readTestProp(group, "clipPath"))).toEqual(
     clips.map((clip) => `url(#${clip.props.id})`),
   );
 });

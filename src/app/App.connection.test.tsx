@@ -1,3 +1,4 @@
+import { readTestProp } from "../shared/lib/readTestProp.js";
 import { act } from "react";
 import { create } from "react-test-renderer";
 import type { ReactTestRenderer } from "react-test-renderer";
@@ -48,7 +49,7 @@ afterEach(async () => {
   onlineManager.setOnline(true);
   vi.unstubAllGlobals();
 });
-const connected = () => renderer.root.findByType("nav").props["data-connected"];
+const connected = () => readTestProp(renderer.root.findByType("nav"), "data-connected");
 
 it("keeps the last overview on a failed poll, marks it disconnected, and recovers after success", async () => {
   expect(connected()).toBe(true);

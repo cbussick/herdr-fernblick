@@ -1,3 +1,4 @@
+import { readTestProp } from "../../shared/lib/readTestProp.js";
 import { dispatchTestEvent } from "../../shared/lib/dispatchTestEvent";
 import { act, createRef } from "react";
 import { create } from "react-test-renderer";
@@ -65,9 +66,9 @@ it("opens at the first/last action and implements roving Arrow/Home/End keyboard
   const up = key("ArrowUp");
   await act(async () => dispatchTestEvent(trigger(), "onKeyDown", up));
   expect(up.preventDefault).toHaveBeenCalledOnce();
-  expect(items().map((item) => item.props.tabIndex)).toEqual([-1, -1, 0]);
+  expect(items().map((item) => readTestProp(item, "tabIndex"))).toEqual([-1, -1, 0]);
   await act(async () => dispatchTestEvent(menu(), "onKeyDown", key("ArrowDown")));
-  expect(items().map((item) => item.props.tabIndex)).toEqual([0, -1, -1]);
+  expect(items().map((item) => readTestProp(item, "tabIndex"))).toEqual([0, -1, -1]);
   await act(async () => dispatchTestEvent(menu(), "onKeyDown", key("ArrowUp")));
   expect(items()[2].props.tabIndex).toBe(0);
   await act(async () => dispatchTestEvent(menu(), "onKeyDown", key("Home")));

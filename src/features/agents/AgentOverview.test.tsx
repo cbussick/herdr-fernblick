@@ -1,3 +1,4 @@
+import { readTestProp } from "../../shared/lib/readTestProp.js";
 import { testText } from "../../shared/lib/testText";
 import { dispatchOptionalTestEvent, dispatchTestEvent } from "../../shared/lib/dispatchTestEvent";
 import { act } from "react";
@@ -260,12 +261,18 @@ it("keeps headings and names stable when panes join or leave, including during s
 it("keeps agent rename targets separate from tab labels", async () => {
   await updateWorkspace(namedAgents, []);
   const actions = renderer.root.findAllByType(PaneContextActions);
-  expect(actions.map((action) => action.props.label)).toEqual([
+  expect(actions.map((action) => readTestProp(action, "label"))).toEqual([
     "Orchestrator overhaul",
     "Orchestrator overhaul",
   ]);
-  expect(actions.map((action) => action.props.agentTarget)).toEqual(["planner", "backend"]);
-  expect(actions.map((action) => action.props.tabId)).toEqual([agent.tab_id, agent.tab_id]);
+  expect(actions.map((action) => readTestProp(action, "agentTarget"))).toEqual([
+    "planner",
+    "backend",
+  ]);
+  expect(actions.map((action) => readTestProp(action, "tabId"))).toEqual([
+    agent.tab_id,
+    agent.tab_id,
+  ]);
 });
 
 it("groups mixed panes by tab and preserves every split shell's navigation", async () => {

@@ -1,3 +1,4 @@
+import { captureTestEvent } from "../../shared/lib/dispatchTestEvent";
 import { testText } from "../../shared/lib/testText";
 import { act } from "react";
 import { create } from "react-test-renderer";
@@ -80,12 +81,13 @@ it("streams the same response and retains it over a missing live snapshot", asyn
   expect(text()).toContain("some content is omitted");
 });
 it("does not present the previous turn as a reply to a newly received prompt", async () => {
+  const snapshot = conversation.snapshot;
+  if (!snapshot) {
+    throw new Error("Expected initial conversation snapshot");
+  }
   conversation.snapshot = {
-    ...conversation.snapshot!,
-    messages: [
-      ...conversation.snapshot!.messages,
-      { id: "u3", role: "user", text: "Next question" },
-    ],
+    ...snapshot,
+    messages: [...snapshot.messages, { id: "u3", role: "user", text: "Next question" }],
   };
   await act(async () => renderer.update(render()));
   expect(text()).not.toContain("Reply ready");
@@ -95,11 +97,21 @@ it("does not present the previous turn as a reply to a newly received prompt", a
 it("sends on Enter but leaves Shift+Enter and IME composition alone", async () => {
   conversation.draft = "A question";
   await act(async () => renderer.update(render()));
-  const keydown = renderer.root.findByType("textarea").props.onKeyDown;
+  const keydown = captureTestEvent(renderer.root.findByType("textarea"), "onKeyDown");
   const preventDefault = vi.fn();
   await act(async () => {
-    keydown({ key: "Enter", shiftKey: true, nativeEvent: { isComposing: false }, preventDefault });
-    keydown({ key: "Enter", metaKey: true, nativeEvent: { isComposing: true }, preventDefault });
+    await keydown({
+      key: "Enter",
+      shiftKey: true,
+      nativeEvent: { isComposing: false },
+      preventDefault,
+    });
+    await keydown({
+      key: "Enter",
+      metaKey: true,
+      nativeEvent: { isComposing: true },
+      preventDefault,
+    });
   });
   expect(conversation.onSend).not.toHaveBeenCalled();
   expect(preventDefault).not.toHaveBeenCalled();

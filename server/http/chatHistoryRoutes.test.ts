@@ -5,6 +5,7 @@ import { join } from "node:path";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
 import type { z } from "zod";
 import { HerdrService } from "../herdr/herdrService.js";
+import type { HerdrClient } from "../herdr/HerdrClient.js";
 import { LiveBridge } from "../pi/liveBridge.js";
 import { SessionCatalog } from "../pi/sessionCatalog.js";
 import { SessionIndex } from "../pi/sessionIndex.js";
@@ -33,7 +34,7 @@ const agent: Agent = {
   workspace_id: "w1",
   revision: 1,
 };
-const request = vi.fn();
+const request = vi.fn<HerdrClient["request"]>();
 
 beforeEach(async () => {
   directory = await mkdtemp(join(tmpdir(), "fernblick-history-routes-"));
@@ -102,7 +103,11 @@ beforeEach(async () => {
   await new Promise<void>((done) => {
     server.listen(0, "127.0.0.1", done);
   });
-  base = `http://127.0.0.1:${(server.address() as { port: number }).port}`;
+  const address = server.address();
+  if (address === null || typeof address === "string") {
+    throw new Error("Expected a listening TCP server");
+  }
+  base = `http://127.0.0.1:${address.port}`;
 });
 afterEach(async () => {
   await sessionIndex.close();

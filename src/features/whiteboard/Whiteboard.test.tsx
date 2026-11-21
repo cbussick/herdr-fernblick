@@ -9,13 +9,14 @@ import type { WhiteboardProps } from "./Whiteboard";
 import type { BoardEditorProps } from "./editorTypes";
 import type { BoardState } from "../../../packages/pi-live-chat/boardProtocol";
 import { board, deferred, target } from "./testFixtures";
+import type { boardApi } from "./boardApi";
 
 const mocks = vi.hoisted(() => ({
   open: vi.fn(),
   save: vi.fn(),
   revoke: vi.fn(),
   close: vi.fn(),
-  events: vi.fn(),
+  events: vi.fn<typeof boardApi.events>(),
   upload: vi.fn(),
   fit: vi.fn(),
   failEditor: false,

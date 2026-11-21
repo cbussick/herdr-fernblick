@@ -1,4 +1,6 @@
 import { testText } from "../../shared/lib/testText";
+import { readTestProp } from "../../shared/lib/readTestProp";
+import type { getAgentOutput } from "../../shared/api/apiClient";
 import { captureTestEvent, dispatchTestEvent } from "../../shared/lib/dispatchTestEvent";
 import { act } from "react";
 import type { ReactNode } from "react";
@@ -23,7 +25,7 @@ const mocks = vi.hoisted(() => ({
   boardPrompt: vi.fn(),
   upload: vi.fn(),
   skills: vi.fn(),
-  output: vi.fn(),
+  output: vi.fn<typeof getAgentOutput>(),
   paneInput: vi.fn(),
   paneKey: vi.fn(),
   liveChat: vi.fn(),
@@ -48,7 +50,16 @@ vi.mock("../../shared/api/apiClient", () => ({
 }));
 let renderer: ReactTestRenderer;
 let client: QueryClient;
-const agent = { agent: "pi", pane_id: "w1:p1", name: "test", agent_status: "idle" } as Agent;
+const agent: Agent = {
+  agent: "pi",
+  pane_id: "w1:p1",
+  name: "test",
+  agent_status: "idle",
+  tab_id: "w1:t1",
+  workspace_id: "w1",
+  revision: 1,
+  focused: false,
+};
 function render(currentAgent = agent) {
   return (
     <QueryClientProvider client={client}>
@@ -120,7 +131,7 @@ beforeEach(async () => {
     ],
     truncated: false,
   });
-  mocks.output.mockReset().mockImplementation(async (_pane, source) => ({
+  mocks.output.mockReset().mockImplementation(async (_pane, source = "visible") => ({
     pane_id: agent.pane_id,
     tab_id: "w1:t1",
     workspace_id: "w1",
@@ -967,7 +978,7 @@ it("accepts ten images across selections, caps overflow and restores capacity af
   await select(files.slice(0, 4));
   expect(renderer.root.findByProps({ "aria-label": "Attach images" }).props.disabled).toBe(false);
   await select(files.slice(4));
-  expect(previews().map((image) => image.props.alt)).toEqual(
+  expect(previews().map((image) => readTestProp(image, "alt"))).toEqual(
     files.slice(0, 10).map((file) => file.name),
   );
   expect(renderer.root.findByProps({ "aria-label": "Attach images" }).props.disabled).toBe(true);

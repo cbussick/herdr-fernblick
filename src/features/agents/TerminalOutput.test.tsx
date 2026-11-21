@@ -17,12 +17,12 @@ const output: Output = {
   revision: 1,
   truncated: false,
 };
-const read = vi.fn();
+const read = vi.fn<(source: Output["source"], signal?: AbortSignal) => Promise<Output>>();
 let client: QueryClient;
 let renderer: ReactTestRenderer;
 let idle: boolean;
 let pane: string;
-let scroll: { scrollTop: number; scrollHeight: number; clientHeight: number };
+let scroll: Pick<HTMLElement, "scrollTop" | "scrollHeight" | "clientHeight">;
 function render() {
   return (
     <QueryClientProvider client={client}>
@@ -142,6 +142,9 @@ it("discards history and ignores a late history response after switching panes",
   let resolve!: (value: Output) => void;
   let signal!: AbortSignal;
   read.mockImplementationOnce((_source, passedSignal) => {
+    if (!passedSignal) {
+      throw new Error("Expected a cancellable terminal read");
+    }
     signal = passedSignal;
     return new Promise<Output>((done) => {
       resolve = done;

@@ -1,3 +1,4 @@
+import { readTestProp } from "../../shared/lib/readTestProp.js";
 import { Window } from "happy-dom";
 import { testText } from "../../shared/lib/testText";
 import { dispatchTestEvent } from "../../shared/lib/dispatchTestEvent";
@@ -55,7 +56,7 @@ afterEach(async () => {
   vi.unstubAllGlobals();
 });
 const modal = () => renderer.root.findByType("dialog");
-const current = () => modal().findByType("img").props.src;
+const current = () => readTestProp(modal().findByType("img"), "src");
 it("opens a native modal once, cycles with buttons and arrows, wraps and restores opener focus", async () => {
   expect(nativeDialog.showModal).toHaveBeenCalledOnce();
   expect(current()).toBe("/two.png");

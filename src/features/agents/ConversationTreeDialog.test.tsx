@@ -1,3 +1,4 @@
+import { readTestProp } from "../../shared/lib/readTestProp.js";
 import { dispatchTestEvent } from "../../shared/lib/dispatchTestEvent";
 import { act } from "react";
 import { create } from "react-test-renderer";
@@ -135,7 +136,7 @@ it("offers actual branch choices and explores an alternate path without invoking
   await flush();
   await act(async () => dispatchTestEvent(button("2 branches"), "onClick"));
   await flush();
-  expect(rows().map((row) => row.props["data-entry-id"])).toEqual([ids[353], alternate]);
+  expect(rows().map((row) => readTestProp(row, "data-entry-id"))).toEqual([ids[353], alternate]);
   await act(async () =>
     dispatchTestEvent(
       rows()[0]

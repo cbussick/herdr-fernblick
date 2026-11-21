@@ -1,3 +1,4 @@
+import { readTestProp } from "../../shared/lib/readTestProp.js";
 import { dispatchTestEvent } from "../../shared/lib/dispatchTestEvent";
 import { act } from "react";
 import { create } from "react-test-renderer";
@@ -41,7 +42,7 @@ describe("editing highlighted passages", async () => {
   }
   it("opens the matching comment at the tapped passage, choosing the newest overlapping entry", async () => {
     const marks = renderer.root.findAllByType("mark");
-    expect(marks.map((mark) => mark.props["data-annotation-id"])).toEqual([
+    expect(marks.map((mark) => readTestProp(mark, "data-annotation-id"))).toEqual([
       "first",
       "second",
       "second",

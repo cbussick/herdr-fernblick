@@ -1,3 +1,4 @@
+import { readTestProp } from "../shared/lib/readTestProp.js";
 import { dispatchTestEvent } from "../shared/lib/dispatchTestEvent";
 // @vitest-environment happy-dom
 import { act, useEffect, useEffectEvent, useState } from "react";
@@ -432,7 +433,10 @@ it("does not resume an inactive conversation just by opening a link", async () =
   ]);
   const actions = renderer.root.findAllByType(Button);
   expect(
-    actions.map((button) => [button.props.children, button.props.variant ?? "primary"]),
+    actions.map((button) => [
+      readTestProp(button, "children"),
+      readTestProp(button, "variant") ?? "primary",
+    ]),
   ).toEqual([
     ["Resume conversation", "primary"],
     ["Back to overview", "secondary"],
@@ -455,9 +459,9 @@ it("shows missing conversations without falling back to another pane", async () 
   });
   expect(chat()).toHaveLength(0);
   expect(JSON.stringify(renderer.toJSON())).toContain("Conversation or pane unavailable");
-  expect(renderer.root.findAllByType(Button).map((button) => button.props.children)).toEqual([
-    "Back to overview",
-  ]);
+  expect(
+    renderer.root.findAllByType(Button).map((button) => readTestProp(button, "children")),
+  ).toEqual(["Back to overview"]);
 });
 it("uses shared primary and secondary buttons for a failed session lookup", async () => {
   vi.mocked(getSession).mockRejectedValue(new Error("Session lookup unavailable"));
@@ -471,7 +475,10 @@ it("uses shared primary and secondary buttons for a failed session lookup", asyn
   expect(
     renderer.root
       .findAllByType(Button)
-      .map((button) => [button.props.children, button.props.variant ?? "primary"]),
+      .map((button) => [
+        readTestProp(button, "children"),
+        readTestProp(button, "variant") ?? "primary",
+      ]),
   ).toEqual([
     ["Try again", "primary"],
     ["Back to overview", "secondary"],
