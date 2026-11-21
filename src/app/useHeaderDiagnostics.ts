@@ -2,7 +2,15 @@ import { useLayoutEffect } from "react";
 
 // Temporary iPad header investigation. Geometry only, held in memory until reload.
 // Keep the last visible console even after navigating back to open Settings.
-const latest: Record<string, unknown> = {};
+interface HeaderCapture {
+  capturedAt: string;
+  viewport: ReturnType<typeof viewport>;
+  header: ReturnType<typeof surface>;
+  contextLine: ReturnType<typeof surface> | null;
+  title: ReturnType<typeof surface> | null;
+  ancestors: Array<ReturnType<typeof surface>>;
+}
+const latest: { console?: HeaderCapture; overview?: HeaderCapture } = {};
 
 function rectangle(element: Element) {
   const { x, y, width, height } = element.getBoundingClientRect();
@@ -45,7 +53,7 @@ function viewport() {
 }
 
 function capture() {
-  for (const kind of ["console", "overview"]) {
+  for (const kind of ["console", "overview"] as const) {
     const header = document.querySelector(`[data-testid="${kind}-header"]`);
     if (!header) {
       continue;
@@ -59,13 +67,15 @@ function capture() {
     for (let node = header.parentElement; node && ancestors.length < 4; node = node.parentElement) {
       ancestors.push(surface(node));
     }
+    const contextLine = header.querySelector("p");
+    const title = header.querySelector("h2");
     latest[kind] = {
       capturedAt: new Date().toISOString(),
       viewport: viewport(),
       header: surface(header),
       // Fixed semantic roles only: never copy text, IDs, URLs, or input values.
-      contextLine: header.querySelector("p") ? surface(header.querySelector("p")!) : null,
-      title: header.querySelector("h2") ? surface(header.querySelector("h2")!) : null,
+      contextLine: contextLine ? surface(contextLine) : null,
+      title: title ? surface(title) : null,
       ancestors,
     };
   }

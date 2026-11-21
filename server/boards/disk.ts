@@ -178,7 +178,7 @@ export class BoardDisk {
 
   async removeSnapshot(name: string): Promise<void> {
     this.checkDirectory();
-    await unlink(this.path(name)).catch((error) => {
+    await unlink(this.path(name)).catch((error: unknown) => {
       if (!missing(error)) {
         throw error;
       }
