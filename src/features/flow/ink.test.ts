@@ -1,6 +1,5 @@
 import { describe, expect, it } from "vitest";
 import { applyInkCommand, gestureViewport, hitsInk, inkDimensions, makeInk, outline } from "./ink";
-import type { InkData } from "./ink";
 import { defaults, makeNode } from "./model";
 import type { Diagram } from "./model";
 import { flowInkPropsSchema } from "../../../packages/pi-live-chat/flowProtocol";
@@ -9,7 +8,7 @@ const validInk = (value: unknown) => {
   if (!value || typeof value !== "object") {
     return false;
   }
-  const { kind: _kind, ...props } = value as InkData;
+  const { kind: _kind, ...props } = { kind: undefined, ...value };
   return flowInkPropsSchema.safeParse(props).success;
 };
 const serialize = (diagram: Diagram) =>

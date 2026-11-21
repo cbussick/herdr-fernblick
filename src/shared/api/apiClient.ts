@@ -1,3 +1,4 @@
+import { z } from "zod";
 import type { TreePageRequest } from "../../../packages/pi-live-chat/treeProtocol";
 import {
   agentsResponseSchema,
@@ -63,10 +64,10 @@ export class ApiError extends Error {
   }
 }
 
-async function readResponse(response: Response): Promise<unknown> {
+async function readResponse(response: Response) {
   // Successful responses must be valid JSON. Error pages from proxies need not be.
   if (response.ok) {
-    return response.json();
+    return z.json().parse(await response.json());
   }
   const body: unknown = await response.json().catch(() => null);
   const message =

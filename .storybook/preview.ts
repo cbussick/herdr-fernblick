@@ -1,3 +1,4 @@
+/// <reference types="vite/client" />
 import type { Preview } from "@storybook/react-vite";
 import tokenStyles from "../src/styles/tokens.module.css";
 import baseStyles from "../src/styles/base.module.css";

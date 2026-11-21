@@ -34,15 +34,13 @@ export function useLiveChat(target: string, enabled: boolean, session: string | 
       if (disposed) {
         return;
       }
-      setState((current) => ({
-        target,
-        session,
-        ...(current.target === target && current.session === session
-          ? { snapshot: current.snapshot }
-          : {}),
-        error: reason,
-        reconnecting,
-      }));
+      setState((current) => {
+        const next: typeof current = { target, session, error: reason, reconnecting };
+        if (current.target === target && current.session === session) {
+          next.snapshot = current.snapshot;
+        }
+        return next;
+      });
     }
     function checkDeadline() {
       if (deadline === undefined || deadlineExpired || Date.now() < deadline) {
@@ -145,6 +143,9 @@ export function useLiveChat(target: string, enabled: boolean, session: string | 
           return;
         }
         try {
+          if (typeof event.data !== "string") {
+            throw new TypeError("Non-text live chat event");
+          }
           const value: unknown = JSON.parse(event.data);
           if (
             typeof value === "object" &&
