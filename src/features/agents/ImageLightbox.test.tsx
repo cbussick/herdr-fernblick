@@ -1,3 +1,4 @@
+import { testText } from "../../shared/lib/testText";
 import { dispatchTestEvent } from "../../shared/lib/dispatchTestEvent";
 import { act, StrictMode, useState } from "react";
 import type { ReactNode } from "react";
@@ -69,7 +70,7 @@ it("opens a native modal once, cycles with buttons and arrows, wraps and restore
   expect(event.stopPropagation).toHaveBeenCalledOnce();
   await act(async () => dispatchTestEvent(modal(), "onKeyDown", { ...event, key: "ArrowRight" }));
   expect(current()).toBe("/one.png");
-  expect(modal().findByProps({ role: "status" }).children.join("")).toBe("Image 1 of 3");
+  expect(testText(modal().findByProps({ role: "status" }))).toBe("Image 1 of 3");
   expect(nativeDialog.showModal).toHaveBeenCalledOnce();
   expect(onClose).not.toHaveBeenCalled();
   await act(async () => renderer.unmount());

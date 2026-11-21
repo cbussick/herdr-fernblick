@@ -1,3 +1,4 @@
+import { testText } from "../../shared/lib/testText";
 import { dispatchTestEvent } from "../../shared/lib/dispatchTestEvent";
 import { act } from "react";
 import { create } from "react-test-renderer";
@@ -37,7 +38,7 @@ it("reports failure and allows retry without claiming success", async () => {
   vi.mocked(copyCodeText).mockRejectedValueOnce(new Error("Clipboard unavailable"));
   await act(async () => dispatchTestEvent(renderer.root.findByType("button"), "onClick"));
   expect(renderer.root.findByType("button").props["aria-label"]).toBe("Retry copy message");
-  expect(renderer.root.findByProps({ role: "status" }).children.join("")).toContain("Copy failed");
+  expect(testText(renderer.root.findByProps({ role: "status" }))).toContain("Copy failed");
   await act(async () => dispatchTestEvent(renderer.root.findByType("button"), "onClick"));
   expect(renderer.root.findByType("button").props["data-copy-status"]).toBe("copied");
 });

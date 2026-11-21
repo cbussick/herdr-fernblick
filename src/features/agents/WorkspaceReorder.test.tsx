@@ -1,3 +1,4 @@
+import { testText } from "../../shared/lib/testText";
 import { dispatchTestEvent } from "../../shared/lib/dispatchTestEvent";
 import { act } from "react";
 import { create } from "react-test-renderer";
@@ -28,7 +29,7 @@ const render = (disabled = false, items = workspaces) => (
     </WorkspaceReorder>
   </QueryClientProvider>
 );
-const order = () => renderer.root.findAllByType("h3").map((node) => node.children.join(""));
+const order = () => renderer.root.findAllByType("h3").map((node) => testText(node));
 const context = () =>
   renderer.root.find((node) => !!node.props.onDragEnd && !!node.props.onDragStart);
 async function drag(from = "w1", to: string | null = "w3") {
@@ -77,7 +78,7 @@ it("shows the new order while saving, serializes moves, then reconciles server o
   expect(moveWorkspace).toHaveBeenCalledTimes(1);
   await act(async () => finish());
   expect(order()).toEqual(["Beta", "Gamma", "Alpha"]);
-  expect(renderer.root.findByType("p").children.join("")).toContain("position 3 of 3");
+  expect(testText(renderer.root.findByType("p"))).toContain("position 3 of 3");
 });
 
 it("rolls back errors and reports them without retrying", async () => {
@@ -85,9 +86,7 @@ it("rolls back errors and reports them without retrying", async () => {
   await drag("w3", "w1");
   expect(moveWorkspace).toHaveBeenCalledWith({ workspaceId: "w3", beforeWorkspaceId: "w1" });
   expect(order()).toEqual(["Alpha", "Beta", "Gamma"]);
-  expect(renderer.root.findByProps({ role: "alert" }).children.join("")).toContain(
-    "Herdr unavailable",
-  );
+  expect(testText(renderer.root.findByProps({ role: "alert" }))).toContain("Herdr unavailable");
   expect(moveWorkspace).toHaveBeenCalledTimes(1);
 });
 
@@ -291,7 +290,7 @@ it("rejects stale drops if another client changes the order", async () => {
     dispatchTestEvent(context(), "onDragEnd", { active: { id: "w1" }, over: { id: "w3" } }),
   );
   expect(moveWorkspace).not.toHaveBeenCalled();
-  expect(renderer.root.findByProps({ role: "alert" }).children.join("")).toContain(
+  expect(testText(renderer.root.findByProps({ role: "alert" }))).toContain(
     "changed while dragging",
   );
 });

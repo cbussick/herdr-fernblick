@@ -1,3 +1,4 @@
+import { testText } from "../../shared/lib/testText";
 import { dispatchTestEvent } from "../../shared/lib/dispatchTestEvent";
 import { act } from "react";
 import type { ReactNode } from "react";
@@ -153,7 +154,7 @@ it.each([
     expect(textarea.props.placeholder).toBe("Message…");
     expect(textarea.props.value).toBe("");
     expect(textarea.props.rows).toBe(1);
-    expect(renderer.root.findByType("label").children.join("")).toBe(`Message ${title}`);
+    expect(testText(renderer.root.findByType("label"))).toBe(`Message ${title}`);
   }
 });
 
@@ -335,9 +336,9 @@ it("keeps the tab title in the header and labels replies Agent", async () => {
     messages: [{ id: "reply", role: "assistant", text: "All done." }],
   };
   await act(async () => renderer.update(render({ ...agent, tab_label: title })));
-  expect(renderer.root.findByType("h2").children.join("")).toBe(title);
+  expect(testText(renderer.root.findByType("h2"))).toBe(title);
   const message = renderer.root.findByProps({ "data-message-id": "reply" });
-  expect(message.findAllByType("span")[0].children.join("")).toBe("Agent");
+  expect(testText(message.findAllByType("span")[0])).toBe("Agent");
 });
 
 async function openActions() {
@@ -597,7 +598,7 @@ it.each(["unsupported", "disconnected"])("disables compact when %s", async (mode
     "aria-label": "Compact conversation",
   });
   expect(button.props["aria-disabled"]).toBe(true);
-  expect(button.findByType("small").children.join("")).toMatch(/Connect|reload|idle/);
+  expect(testText(button.findByType("small"))).toMatch(/Connect|reload|idle/);
   await act(async () => dispatchTestEvent(button, "onClick"));
   expect(compactNow()).toBeUndefined();
   expect(mocks.compact).not.toHaveBeenCalled();
@@ -905,7 +906,7 @@ it("previews all ten local draft images without uploading, sending or discarding
     dispatchTestEvent(modal().findByProps({ "aria-label": "Next image" }), "onClick"),
   );
   expect(modal().findByType("img").props.src).toBe(previews[0].props.src);
-  expect(modal().findByProps({ role: "status" }).children.join("")).toBe("Image 1 of 10");
+  expect(testText(modal().findByProps({ role: "status" }))).toBe("Image 1 of 10");
   await act(async () => dispatchTestEvent(modal(), "onClose", { currentTarget: { open: false } }));
   expect(renderer.root.findAllByProps({ "data-ui": "chat-image-preview" })).toHaveLength(0);
   expect(renderer.root.findByType("textarea").props.value).toBe("Keep my draft");

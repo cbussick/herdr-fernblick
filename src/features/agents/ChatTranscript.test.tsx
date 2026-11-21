@@ -1,3 +1,4 @@
+import { testText } from "../../shared/lib/testText";
 import { dispatchTestEvent } from "../../shared/lib/dispatchTestEvent";
 import { act } from "react";
 import type { ReactNode } from "react";
@@ -84,7 +85,7 @@ async function readerScrollTo(value: number) {
 }
 it("labels replies Agent and user messages You", () => {
   const messages = renderer.root.findAllByType("article");
-  expect(messages.map((message) => message.findAllByType("span")[0].children.join(""))).toEqual([
+  expect(messages.map((message) => testText(message.findAllByType("span")[0]))).toEqual([
     "You",
     "Agent",
     "You",

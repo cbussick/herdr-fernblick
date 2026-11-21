@@ -1,3 +1,4 @@
+import { testText } from "../../shared/lib/testText";
 import { act } from "react";
 import { create } from "react-test-renderer";
 import type { ReactTestRenderer } from "react-test-renderer";
@@ -56,7 +57,7 @@ afterEach(async () => {
 it("uses Agent and You labels in the shared whiteboard transcript", () => {
   const labels = renderer.root
     .findAllByType("article")
-    .map((message) => message.findAllByType("span")[0].children.join(""));
+    .map((message) => testText(message.findAllByType("span")[0]));
   expect(labels).toEqual(["You", "Agent", "You", "Agent", "Agent"]);
 });
 

@@ -1,3 +1,4 @@
+import { testText } from "../../shared/lib/testText";
 import { dispatchTestEvent } from "../../shared/lib/dispatchTestEvent";
 import { act } from "react";
 import { create } from "react-test-renderer";
@@ -99,9 +100,7 @@ describe("copying code blocks", () => {
     });
     await act(async () => dispatchTestEvent(renderer!.root.findByType("button"), "onClick"));
     expect(renderer!.root.findByType("button").children).toEqual(["Retry copy"]);
-    expect(renderer!.root.findByProps({ role: "status" }).children.join("")).toContain(
-      "Copy failed",
-    );
+    expect(testText(renderer!.root.findByProps({ role: "status" }))).toContain("Copy failed");
     expect(legacy.textarea.remove).toHaveBeenCalledOnce();
     writeText.mockResolvedValue(undefined);
     await act(async () => dispatchTestEvent(renderer!.root.findByType("button"), "onClick"));

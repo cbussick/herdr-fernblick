@@ -1,3 +1,4 @@
+import { testText } from "../../shared/lib/testText";
 import { dispatchOptionalTestEvent, dispatchTestEvent } from "../../shared/lib/dispatchTestEvent";
 import { act } from "react";
 import { create } from "react-test-renderer";
@@ -88,9 +89,7 @@ it.each([
 ])("omits the status indicator for a workspace that is %s", async (_, tabs) => {
   await updateWorkspace([], tabs);
   expect(summary().findAllByProps({ "data-ui": "status-indicator" })).toHaveLength(0);
-  expect(summary().findByType("small").children.join("")).toBe(
-    tabs.length ? "1 shell" : "0 agents",
-  );
+  expect(testText(summary().findByType("small"))).toBe(tabs.length ? "1 shell" : "0 agents");
 });
 
 it.each([
@@ -159,8 +158,8 @@ it("shows one tab heading and distinct agent names, with pane-specific navigatio
   expect(tabGroups()[0].findByType("summary").findByType("strong").children).toEqual([
     "Orchestrator overhaul",
   ]);
-  expect(tabGroups()[0].findByType("small").children.join("")).toBe("Tab");
-  expect(paneRows().map((row) => row.findByType("strong").children.join(""))).toEqual([
+  expect(testText(tabGroups()[0].findByType("small"))).toBe("Tab");
+  expect(paneRows().map((row) => testText(row.findByType("strong")))).toEqual([
     "planner",
     "backend",
   ]);
@@ -168,7 +167,7 @@ it("shows one tab heading and distinct agent names, with pane-specific navigatio
   expect(paneRows()[1].props["aria-current"]).toBe("page");
   await dispatchTestEvent(paneRows()[1], "onClick");
   expect(onSelectAgent).toHaveBeenCalledExactlyOnceWith(namedAgents[1]);
-  expect(summary().findByType("small").children.join("")).toBe("2 agents");
+  expect(testText(summary().findByType("small"))).toBe("2 agents");
 });
 
 it("gives a single-agent tab the same heading, identity and collapse control", async () => {
@@ -180,7 +179,7 @@ it("gives a single-agent tab the same heading, identity and collapse control", a
   expect(
     tabGroups()[0]
       .findAllByType("strong")
-      .map((node) => node.children.join("")),
+      .map((node) => testText(node)),
   ).toEqual(["Orchestrator overhaul", "planner"]);
   expect(tabGroups()[0].findByType("small").children).toEqual(["Tab"]);
   expect(tabGroups()[0].findByType("summary").findAllByType("svg")).toHaveLength(1);
@@ -197,7 +196,7 @@ it("gives a single shell the same collapsible heading and an indented terminal r
   expect(
     tabGroups()[0]
       .findAllByType("strong")
-      .map((node) => node.children.join("")),
+      .map((node) => testText(node)),
   ).toEqual(["Terminal", "Shell terminal"]);
   expect(tabGroups()[0].findByType("small").children).toEqual(["Tab"]);
   expect(paneRows()[0].findAllByType("small")).toHaveLength(0);
@@ -274,7 +273,7 @@ it("groups mixed panes by tab and preserves every split shell's navigation", asy
   const splitShell = { ...mixedShell, pane_id: "w2:p4" };
   await updateWorkspace(namedAgents, [mixedShell, splitShell]);
   expect(tabGroups()).toHaveLength(1);
-  expect(tabGroups()[0].findByType("small").children.join("")).toBe("Tab");
+  expect(testText(tabGroups()[0].findByType("small"))).toBe("Tab");
   expect(paneRows()).toHaveLength(4);
   expect(paneRows()[2].findByType("strong").children).toEqual(["Shell w2:p1"]);
   expect(paneRows()[3].findByType("strong").children).toEqual(["Shell w2:p4"]);
@@ -290,7 +289,7 @@ it.each([
 ] as const)("searches %s while preserving tab context", async (query, names, count) => {
   await act(async () => renderer.update(workspaceList(namedAgents, [], query)));
   expect(tabGroups()).toHaveLength(count);
-  expect(paneRows().map((row) => row.findByType("strong").children.join(""))).toEqual(names);
+  expect(paneRows().map((row) => testText(row.findByType("strong")))).toEqual(names);
   if (count) {
     expect(tabGroups()[0].props.open).toBe(true);
     expect(tabGroups()[0].props["aria-label"]).toBe("Orchestrator overhaul");
@@ -300,7 +299,7 @@ it.each([
 it("keeps fallback identities stable when agents are reordered or the tab is renamed", async () => {
   const unnamed = namedAgents.map((item) => ({ ...item, name: null }));
   await updateWorkspace(unnamed, []);
-  expect(paneRows().map((row) => row.findByType("strong").children.join(""))).toEqual([
+  expect(paneRows().map((row) => testText(row.findByType("strong")))).toEqual([
     "Agent w2:p2",
     "Agent w2:p3",
   ]);
@@ -308,7 +307,7 @@ it("keeps fallback identities stable when agents are reordered or the tab is ren
     unnamed.toReversed().map((item) => ({ ...item, tab_label: "New title" })),
     [],
   );
-  expect(paneRows().map((row) => row.findByType("strong").children.join(""))).toEqual([
+  expect(paneRows().map((row) => testText(row.findByType("strong")))).toEqual([
     "Agent w2:p3",
     "Agent w2:p2",
   ]);

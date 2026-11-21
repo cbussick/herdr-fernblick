@@ -1,3 +1,4 @@
+import { testText } from "../../shared/lib/testText";
 import { dispatchTestEvent } from "../../shared/lib/dispatchTestEvent";
 import { act, createRef } from "react";
 import { create } from "react-test-renderer";
@@ -129,7 +130,7 @@ it.each(["model", "thinking"])(
       modelId: kind === "model" ? "gpt" : "sonnet",
       ...(kind === "thinking" ? { level: "low" } : {}),
     });
-    expect(renderer.root.findByProps({ role: "status" }).children.join("")).toContain(
+    expect(testText(renderer.root.findByProps({ role: "status" }))).toContain(
       "saved as global default",
     );
     const saved = defaultButtons().filter((button) => button.props["data-default"]);
@@ -138,7 +139,7 @@ it.each(["model", "thinking"])(
       kind === "model" ? "Global default: GPT (openai)" : "Global default: Low",
     );
     expect(
-      renderer.root.findByProps({ "aria-pressed": true }).findByType("strong").children.join(""),
+      testText(renderer.root.findByProps({ "aria-pressed": true }).findByType("strong")),
     ).toContain(kind === "model" ? "Sonnet" : "Medium");
     expect(renderer.root.findAllByType("footer")).toHaveLength(0);
     expect(JSON.stringify(renderer.toJSON())).not.toContain("For new Pi sessions");
@@ -177,11 +178,11 @@ it.each(["model", "thinking"])(
       defaultButtons().find((button) => button.props["data-default"])!.props["aria-label"],
     ).toBe(kind === "model" ? "Global default: Sonnet (anthropic)" : "Global default: Medium");
     expect(option.props.disabled).toBe(true);
-    expect(renderer.root.findByProps({ role: "status" }).children.join("")).toContain(
+    expect(testText(renderer.root.findByProps({ role: "status" }))).toContain(
       "Saving global default",
     );
     await act(async () => reject(new Error("Settings unavailable")));
-    expect(renderer.root.findByProps({ role: "alert" }).children.join("")).toContain(
+    expect(testText(renderer.root.findByProps({ role: "alert" }))).toContain(
       "Settings unavailable",
     );
     expect(defaultButton().props["aria-disabled"]).toBe(false);
@@ -239,7 +240,7 @@ it.each(["model", "thinking"])(
       await act(async () => dispatchTestEvent(saved[0], "onClick"));
       expect(api.saveDefault).not.toHaveBeenCalled();
       expect(
-        renderer.root.findByProps({ "aria-pressed": true }).findByType("strong").children.join(""),
+        testText(renderer.root.findByProps({ "aria-pressed": true }).findByType("strong")),
       ).toContain(kind === "model" ? "Sonnet" : "Medium");
       await act(async () => dispatchTestEvent(renderer.root.findByType("dialog"), "onClose"));
     }
@@ -296,7 +297,7 @@ it("keeps session selection available on defaults-read failure and supports expl
     defaultsError: "Global defaults unavailable",
   });
   await open();
-  expect(renderer.root.findByProps({ role: "alert" }).findByType("p").children.join("")).toContain(
+  expect(testText(renderer.root.findByProps({ role: "alert" }).findByType("p"))).toContain(
     "unavailable",
   );
   expect(defaultButton().props["aria-disabled"]).toBe(true);
@@ -379,11 +380,9 @@ it("retains errors for explicit retry and serializes double selection", async ()
     await dispatchTestEvent(option, "onClick");
   });
   expect(api.change).toHaveBeenCalledOnce();
-  expect(renderer.root.findByProps({ role: "status" }).children.join("")).toContain(
-    "Changing model",
-  );
+  expect(testText(renderer.root.findByProps({ role: "status" }))).toContain("Changing model");
   await act(async () => reject(new Error("Outcome uncertain. Check Pi.")));
-  expect(renderer.root.findByProps({ role: "alert" }).children.join("")).toContain("uncertain");
+  expect(testText(renderer.root.findByProps({ role: "alert" }))).toContain("uncertain");
   expect(renderer.root.findAllByType("dialog")).toHaveLength(1);
   expect(api.change).toHaveBeenCalledOnce();
 });
@@ -467,7 +466,7 @@ it("preserves thinking errors and prevents double invocation", async () => {
   });
   expect(api.changeThinking).toHaveBeenCalledOnce();
   await act(async () => reject(new Error("Outcome uncertain. Check Pi.")));
-  expect(renderer.root.findByProps({ role: "alert" }).children.join("")).toContain("uncertain");
+  expect(testText(renderer.root.findByProps({ role: "alert" }))).toContain("uncertain");
   expect(renderer.root.findAllByType("dialog")).toHaveLength(1);
   expect(api.changeThinking).toHaveBeenCalledOnce();
 });
