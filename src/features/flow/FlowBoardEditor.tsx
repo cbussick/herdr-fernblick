@@ -32,10 +32,12 @@ import {
 } from "@xyflow/react";
 import type { Connection, Edge, Viewport } from "@xyflow/react";
 import { Copy, Download, Pencil, RotateCcw, Search, Trash2, X } from "lucide-react";
-import { ComponentView, EditContext, Icon } from "./Components";
+import { ComponentView, Icon } from "./Components";
+import { EditContext } from "./componentPresentation";
 import { PrimitiveView } from "./Primitives";
 import { ColorPicker, ComponentEditor, Modal } from "./Editor";
-import { DrawingTools, InkContext, InkSurface, InkView } from "./Drawing";
+import { DrawingTools, InkSurface, InkView } from "./Drawing";
+import { InkContext } from "./inkContext";
 import type { Tool } from "./Drawing";
 import { applyInkCommand, isInk, maxBoardPoints } from "./ink";
 import type { InkNode } from "./ink";

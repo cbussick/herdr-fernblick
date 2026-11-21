@@ -1,7 +1,8 @@
 import { useEffect, useRef, useState } from "react";
 import type { FormEvent, ReactNode } from "react";
 import { ArrowLeft, Palette, Plus, Trash2, Upload, X } from "lucide-react";
-import { ComponentContent, componentStyle, Icon, icons } from "./Components";
+import { ComponentContent, Icon } from "./Components";
+import { componentStyle, icons } from "./componentPresentation";
 import { catalog, colors, validData } from "./model";
 import type { ComponentData } from "./model";
 import { flowIcons } from "../../../packages/pi-live-chat/flowProtocol";
@@ -258,12 +259,11 @@ export function ComponentEditor({
                 >
                   None
                 </button>
-                {flowIcons
-                  .filter(
-                    (key) =>
-                      key !== "" && icons[key].label.toLowerCase().includes(query.toLowerCase()),
-                  )
-                  .map((key) => (
+                {flowIcons.flatMap((key) => {
+                  if (key === "" || !icons[key].label.toLowerCase().includes(query.toLowerCase())) {
+                    return [];
+                  }
+                  return [
                     <button
                       key={key}
                       type="button"
@@ -273,8 +273,9 @@ export function ComponentEditor({
                       onClick={() => patch({ icon: key, image: "" })}
                     >
                       <Icon name={key} size={22} />
-                    </button>
-                  ))}
+                    </button>,
+                  ];
+                })}
               </div>
               <label className={styles["upload"]}>
                 <Upload size={16} />

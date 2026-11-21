@@ -1,4 +1,4 @@
-import { createContext, useContext, useEffect, useEffectEvent, useRef, useState } from "react";
+import { useContext, useEffect, useEffectEvent, useRef, useState } from "react";
 import type { PointerEvent as ReactPointerEvent } from "react";
 import { NodeResizer, useReactFlow, useViewport } from "@xyflow/react";
 import type { NodeProps, Viewport } from "@xyflow/react";
@@ -17,13 +17,10 @@ import type { InkData, InkNode, InkPoint } from "./ink";
 import { makeId } from "./model";
 import type { CanvasNode } from "./model";
 import styles from "./Playground.module.css";
+import { InkContext } from "./inkContext";
 
 export type Tool = "select" | "draw" | "erase" | "pan";
-export const InkContext = createContext({
-  hidden: new Set<string>(),
-  start: (_id: string) => {},
-  finish: (_id: string) => {},
-});
+
 export function InkView({ id, data, selected }: NodeProps<InkNode>) {
   const context = useContext(InkContext);
   return (

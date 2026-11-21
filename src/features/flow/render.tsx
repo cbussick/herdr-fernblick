@@ -10,7 +10,8 @@ import {
   FLOW_CONNECTION_WIDTH,
   validateFlowGraph,
 } from "../../../packages/pi-live-chat/flowProtocol";
-import { ComponentContent, componentStyle } from "./Components";
+import { ComponentContent } from "./Components";
+import { componentStyle } from "./componentPresentation";
 import { PrimitiveSvg } from "./Primitives";
 import { outline, pathFromOutline } from "./ink";
 import { toDiagram, validateScene } from "./scene";
