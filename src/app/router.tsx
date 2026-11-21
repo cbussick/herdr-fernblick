@@ -5,6 +5,7 @@ import {
   createRoute,
   createRouter,
 } from "@tanstack/react-router";
+import type { ChatReturn } from "./usePaneNavigation";
 import type { RouterHistory } from "@tanstack/react-router";
 import { EmptyRoute, NotFoundPage, RouteShell } from "./RouteComponents";
 
@@ -16,7 +17,7 @@ declare module "@tanstack/react-router" {
 declare module "@tanstack/history" {
   interface HistoryState {
     fernblickOverviewIndex?: number;
-    fernblickChatIndex?: number;
+    fernblickChatReturn?: ChatReturn;
   }
 }
 
@@ -32,7 +33,7 @@ export function createAppRouter(history?: RouterHistory) {
         component: EmptyRoute,
       }),
     ),
-    ...(["chat", "terminal"] as const).map((view) =>
+    ...(["chat", "terminal", "whiteboard"] as const).map((view) =>
       createRoute({
         getParentRoute: () => root,
         path: `/panes/$paneId/${view}`,

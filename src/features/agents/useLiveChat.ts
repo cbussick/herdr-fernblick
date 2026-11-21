@@ -9,7 +9,13 @@ export function useLiveChat(target: string, enabled: boolean, session: string | 
     snapshot?: Snapshot;
     error?: string;
     reconnecting?: boolean;
+    paused?: boolean;
   }>({ target, session });
+  // Retain readable history, but synchronously revoke the old stream's command
+  // authority. Re-enable cannot expose it as ready before a new baseline arrives.
+  if (!enabled && state.snapshot && !state.paused) {
+    setState({ ...state, paused: true });
+  }
   useEffect(() => {
     if (!enabled) {
       return;
@@ -265,6 +271,8 @@ export function useLiveChat(target: string, enabled: boolean, session: string | 
     };
   }, [target, enabled, session]);
   return enabled && state.target === target && state.session === session
-    ? state
+    ? state.paused
+      ? { ...state, error: "Reconnecting to Pi…" }
+      : state
     : { target, session };
 }

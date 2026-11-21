@@ -1906,6 +1906,73 @@ it("shows startup and failure states while keeping send disabled", async () => {
   expect(renderer.root.findByProps({ "aria-label": "Send message" }).props.disabled).toBe(true);
 });
 
+it("does not expose pinned terminal controls using a retained reconnecting baseline", async () => {
+  const initial = mocks.live.snapshot!;
+  mocks.live = { snapshot: initial, error: "Reconnecting to Pi…" };
+
+  await act(async () => renderer.update(renderPinnedRoute0()));
+  expect(renderer.root.findAllByProps({ "aria-label": "Terminal controls" })).toHaveLength(0);
+  expect(mocks.paneKey).not.toHaveBeenCalled();
+  expect(mocks.command).not.toHaveBeenCalled();
+  mocks.live = { snapshot: { ...initial, epoch: randomUUID() } };
+  await act(async () => renderer.update(renderPinnedRoute0()));
+  expect(renderer.root.findAllByProps({ "aria-label": "Terminal controls" })).toHaveLength(1);
+});
+
+it("suspends an inactive conversation without discarding text or attachments", async () => {
+  const file = new File(["image"], "keep.png", { type: "image/png" });
+  await act(async () => {
+    await dispatchTestEvent(renderer.root.findByType("textarea"), "onChange", {
+      target: { value: "Keep this" },
+    });
+    await dispatchTestEvent(renderer.root.findByProps({ type: "file" }), "onChange", {
+      target: { files: [file] },
+    });
+  });
+  const suspended = (value: boolean) => (
+    <QueryClientProvider client={client}>
+      <AgentConsole agent={agent} onBack={() => {}} expectedSessionId="s" suspended={value} />
+    </QueryClientProvider>
+  );
+  await act(async () => renderer.update(suspended(true)));
+  expect(renderer.root.findAllByType("textarea")).toHaveLength(0);
+  expect(mocks.liveChat).toHaveBeenLastCalledWith(agent.pane_id, false, undefined);
+  expect(mocks.command).not.toHaveBeenCalled();
+  await act(async () => renderer.update(suspended(false)));
+  expect(renderer.root.findByType("textarea").props.value).toBe("Keep this");
+  expect(renderer.root.findAllByProps({ "aria-label": "Image attachments" })).toHaveLength(1);
+  expect(mocks.upload).not.toHaveBeenCalled();
+});
+
+it.each(["runtime", "epoch"])(
+  "does not automatically reopen a routed board on confirmed %s replacement",
+  async (field) => {
+    await act(async () => renderer.update(renderPinnedRoute1()));
+    expect(renderer.root.findAllByType(Whiteboard)).toHaveLength(1);
+    const initial = mocks.live.snapshot!;
+    mocks.live = {
+      snapshot:
+        field === "epoch"
+          ? { ...initial, epoch: randomUUID() }
+          : { ...initial, identity: { ...initial.identity, runtime: randomUUID() } },
+    };
+    await act(async () => renderer.update(renderPinnedRoute1()));
+    expect(renderer.root.findAllByType(Whiteboard)).toHaveLength(0);
+    expect(mocks.boardPrompt).not.toHaveBeenCalled();
+  },
+);
+
+it("audit: an unsaved routed board does not silently follow a replacement conversation", async () => {
+  await act(async () => renderer.update(renderPinnedRoute2()));
+  expect(renderer.root.findAllByType(Whiteboard)).toHaveLength(1);
+  const initial = mocks.live.snapshot!;
+  mocks.live = {
+    snapshot: { ...initial, identity: { ...initial.identity, sessionId: "replacement" } },
+  };
+  await act(async () => renderer.update(renderPinnedRoute2()));
+  expect(renderer.root.findAllByType(Whiteboard)).toHaveLength(0);
+});
+
 it("uses routed board views without losing the shared draft", async () => {
   const onViewChange = vi.fn();
   const routed = (routeView: "chat" | "whiteboard") => (
@@ -1947,7 +2014,7 @@ function routedWhiteboard() {
   );
 }
 
-it("opens a routed board on mount and reconciles replacement epochs before committing it", async () => {
+it("opens a routed board on mount and retires replacement epochs before committing children", async () => {
   const initial = mocks.live.snapshot;
   if (!initial) {
     throw new Error("Expected initial live snapshot");
@@ -1965,10 +2032,10 @@ it("opens a routed board on mount and reconciles replacement epochs before commi
   const replacement = { ...initial, epoch: randomUUID() };
   mocks.live = { snapshot: replacement };
   await act(async () => renderer.update(routedWhiteboard()));
-  expect(mocks.whiteboard).toHaveBeenCalled();
-  expect(
-    mocks.whiteboard.mock.calls.every(([props]) => props.target.epoch === replacement.epoch),
-  ).toBe(true);
+  // A confirmed replacement retires the routed board rather than silently
+  // opening a new one. No obsolete OR replacement child may commit.
+  expect(mocks.whiteboard).not.toHaveBeenCalled();
+  expect(renderer.root.findAllByType(Whiteboard)).toHaveLength(0);
   expect(mocks.command).not.toHaveBeenCalled();
   expect(mocks.boardPrompt).not.toHaveBeenCalled();
 });
@@ -2029,4 +2096,20 @@ it.each([true, false])(
       expect(JSON.stringify(renderer.toJSON())).toContain("different Pi conversation");
     }
   },
+);
+
+const renderPinnedRoute2 = () => (
+  <QueryClientProvider client={client}>
+    <AgentConsole agent={agent} onBack={() => {}} routeView="whiteboard" onViewChange={vi.fn()} />
+  </QueryClientProvider>
+);
+const renderPinnedRoute1 = () => (
+  <QueryClientProvider client={client}>
+    <AgentConsole agent={agent} onBack={() => {}} routeView="whiteboard" onViewChange={vi.fn()} />
+  </QueryClientProvider>
+);
+const renderPinnedRoute0 = () => (
+  <QueryClientProvider client={client}>
+    <AgentConsole agent={agent} onBack={() => {}} routeView="terminal" expectedSessionId="s" />
+  </QueryClientProvider>
 );

@@ -1,5 +1,5 @@
 import appStyles from "./App.module.css";
-import { useEffect, useEffectEvent, useRef, useState } from "react";
+import { useEffect, useEffectEvent, useLayoutEffect, useRef, useState } from "react";
 import { ResumeChatDialog } from "../features/agents/ResumeChatDialog";
 import { skipToken, useQuery, useQueryClient } from "@tanstack/react-query";
 import type { Agent, ShellTab, Workspace } from "../shared/api/contracts";
@@ -15,7 +15,7 @@ import { StateIcon } from "../shared/ui/StateFeedback";
 import { Button } from "../shared/ui";
 import { useSinglePaneLayout } from "./useSinglePaneLayout";
 import { useReadAgentStatuses } from "./useReadAgentStatuses";
-import type { ConsoleView, usePaneNavigation } from "./usePaneNavigation";
+import type { usePaneNavigation } from "./usePaneNavigation";
 import { SettingsDialog } from "./SettingsDialog";
 import { useVisualViewport } from "./useVisualViewport";
 import { useHeaderDiagnostics } from "./useHeaderDiagnostics";
@@ -30,6 +30,7 @@ export function App({
     sessionId: null,
     view: "chat" as const,
     selectPane: setLocalPaneId,
+    selectPaneView: (id: string) => setLocalPaneId(id),
     selectSession: () => {},
     location: { pathname: "/", searchStr: "" },
   };
@@ -39,18 +40,13 @@ export function App({
   const queryClient = useQueryClient();
   const { sessionId, view, selectPane: navigateToPane } = navigation;
   const location = navigation.location;
-  const [pendingPaneId, setPendingPaneId] = useState<string | null>(null);
-  const [pendingView, setPendingView] = useState<ConsoleView>("chat");
-  const promotingPaneId = useRef<string | null>(null);
+  const locationKey = routeNavigation?.location.state.__TSR_key ?? location.pathname;
+  const [retained, setRetained] = useState<{ id: string; agent: Agent } | null>(null);
+  const retainedAgent = retained?.id === sessionId ? retained.agent : null;
   function setSelectedPaneId(paneId: string | null, terminal = false) {
-    setPendingPaneId(null);
     navigateToPane(paneId, terminal);
   }
-  const [selectionRoute, setSelectionRoute] = useState({ sessionId, paneId: navigation.paneId });
-  if (selectionRoute.sessionId !== sessionId || selectionRoute.paneId !== navigation.paneId) {
-    setSelectionRoute({ sessionId, paneId: navigation.paneId });
-    setPendingPaneId(null);
-  }
+
   const sessionQuery = useQuery({
     queryKey: ["session", sessionId],
     queryFn: sessionId ? () => getSession(sessionId) : skipToken,
@@ -58,14 +54,17 @@ export function App({
     refetchInterval: 2000,
   });
   const selectedPaneId =
-    pendingPaneId ?? navigation.paneId ?? sessionQuery.data?.agent?.pane_id ?? null;
+    navigation.paneId ?? sessionQuery.data?.agent?.pane_id ?? retainedAgent?.pane_id ?? null;
   const [resumeOpen, setResumeOpen] = useState(false);
   const [resumeError, setResumeError] = useState("");
   const [resuming, setResuming] = useState(false);
-  const [createDialog, setCreateDialog] = useState<{ workspaceId?: string } | null>(null);
+  const [createDialog, setCreateDialog] = useState<{
+    workspaceId?: string;
+    navigationVersion: number;
+  } | null>(null);
   const [workspaceDialogOpen, setWorkspaceDialogOpen] = useState(false);
   const [settingsOpen, setSettingsOpen] = useState(false);
-  const [tabDialogOpen, setTabDialogOpen] = useState(false);
+  const [tabDialogOpen, setTabDialogOpen] = useState<{ navigationVersion: number } | null>(null);
   const agentsQuery = useQuery({
     queryKey: ["agents"],
     queryFn: getAgents,
@@ -93,25 +92,81 @@ export function App({
   );
   const tabs = agentsQuery.data?.tabs ?? [];
   const workspaces = agentsQuery.data?.workspaces ?? [];
-  const selectedAgent =
-    sessionId && !pendingPaneId
-      ? (sessionQuery.data?.agent ?? null)
-      : (agents.find((agent) => agent.pane_id === selectedPaneId) ?? null);
-  const selectedTab =
-    sessionId || pendingPaneId
-      ? null
-      : (tabs.find((tab) => tab.pane_id === selectedPaneId) ?? null);
+  const selectedAgent = sessionId
+    ? (sessionQuery.data?.agent ?? null)
+    : (agents.find((agent) => agent.pane_id === selectedPaneId) ?? null);
+  const selectedTab = sessionId
+    ? null
+    : (tabs.find((tab) => tab.pane_id === selectedPaneId) ?? null);
+  const [observedPiPane, setObservedPiPane] = useState<string | null>(null);
+  const observed =
+    navigation.paneId && selectedAgent?.agent === "pi"
+      ? navigation.paneId
+      : observedPiPane === navigation.paneId
+        ? observedPiPane
+        : null;
+  if (observed !== observedPiPane) {
+    setObservedPiPane(observed);
+  }
+  const paneRetired = Boolean(
+    navigation.paneId &&
+    observedPiPane === navigation.paneId &&
+    selectedAgent?.agent !== "pi" &&
+    agentsQuery.isSuccess,
+  );
+  // Keep this conversation's component alive (but suspended) across a successful
+  // inactive poll. Never substitute the retained agent as live/command authority.
+  if (sessionId && selectedAgent && retainedAgent !== selectedAgent) {
+    setRetained({ id: sessionId, agent: selectedAgent });
+  } else if (retained && retained.id !== sessionId) {
+    setRetained(null);
+  }
+  const consoleAgent = selectedAgent ?? retainedAgent;
+  const [mount, setMount] = useState({ paneId: selectedPaneId, sessionId, version: 0 });
+  if (mount.paneId !== selectedPaneId || mount.sessionId !== sessionId) {
+    const sameSavedConversation = Boolean(sessionId && mount.sessionId === sessionId);
+    const replacement =
+      (!sameSavedConversation && mount.paneId !== selectedPaneId) ||
+      Boolean(mount.sessionId && mount.sessionId !== sessionId);
+    setMount({ paneId: selectedPaneId, sessionId, version: mount.version + Number(replacement) });
+  }
   const detailOpen = selectedAgent || selectedTab || sessionId || navigation.paneId;
+  // Async completions may update data, but only the initiating flow can navigate.
+  // A monotonic version also prevents Back/Forward from reviving an old intent.
+  const latest = useRef({
+    tabId: null as string | null,
+    navigationVersion: 0,
+    locationKey,
+    createDialog,
+    tabDialogOpen,
+    back: () => {},
+  });
+  useLayoutEffect(() => {
+    latest.current = {
+      tabId: consoleAgent?.tab_id ?? selectedTab?.tab_id ?? null,
+      navigationVersion:
+        latest.current.navigationVersion + Number(latest.current.locationKey !== locationKey),
+      locationKey,
+      createDialog,
+      tabDialogOpen,
+      back: () => setSelectedPaneId(null),
+    };
+  });
+
+  useLayoutEffect(
+    () => () => {
+      latest.current = {
+        ...latest.current,
+        tabId: null,
+        createDialog: null,
+        tabDialogOpen: null,
+        back: () => {},
+      };
+    },
+    [],
+  );
 
   function openAgent(agent: Agent) {
-    if (routeNavigation && agent.agent === "pi" && !agent.pi_session_id) {
-      // Fresh Pi sessions are only persisted after the conversation starts.
-      // Mount chat now; promote to a session URL once polling finds its saved ID.
-      promotingPaneId.current = null;
-      setPendingView("chat");
-      setPendingPaneId(agent.pane_id);
-      return;
-    }
     if (routeNavigation && agent.agent === "pi" && agent.pi_session_id) {
       // Keep the pending console mounted until the new location takes over,
       // otherwise a draft can be lost between scheduling and completing navigation.
@@ -122,45 +177,38 @@ export function App({
           chat: current?.chat ?? null,
         }),
       );
-      navigation.selectSession(
-        agent.pi_session_id,
-        pendingPaneId === agent.pane_id ? pendingView : "chat",
-        location.pathname !== "/",
-      );
+      navigation.selectSession(agent.pi_session_id, "chat", location.pathname !== "/");
     } else {
       setSelectedPaneId(agent.pane_id, agent.agent !== "pi");
     }
   }
 
-  const openPendingAgent = useEffectEvent(openAgent);
+  const livePane = useRef<{ paneId: string; sessionId: string } | null>(null);
+  useLayoutEffect(() => {
+    livePane.current = null;
+  }, [navigation.paneId]);
+  const reconcilePane = useEffectEvent(() => {
+    if (!routeNavigation || !navigation.paneId) {
+      return;
+    }
+    if (paneRetired) {
+      setSelectedPaneId(null);
+      return;
+    }
+    const id = selectedAgent?.pi_session_id;
+    if (selectedAgent?.agent === "pi" && id) {
+      if (livePane.current?.paneId === navigation.paneId && livePane.current.sessionId !== id) {
+        return;
+      }
+      queryClient.setQueryData(["session", id], { agent: selectedAgent, chat: null });
+      navigation.selectSession(id, view, true);
+    } else if (selectedAgent && selectedAgent.agent !== "pi" && view !== "terminal") {
+      navigation.selectPaneView(navigation.paneId, "terminal", true);
+    }
+  });
   useEffect(() => {
-    const ready = agents.find((agent) => agent.pane_id === pendingPaneId && agent.pi_session_id);
-    if (ready && promotingPaneId.current !== ready.pane_id) {
-      promotingPaneId.current = ready.pane_id;
-      openPendingAgent(ready);
-    }
-  }, [agents, pendingPaneId]);
-
-  const [missingPendingPane, setMissingPendingPane] = useState<{ paneId: string } | null>(null);
-  if (
-    pendingPaneId &&
-    agentsQuery.isSuccess &&
-    !agents.some((agent) => agent.pane_id === pendingPaneId)
-  ) {
-    // Invalidate local selection before committing children for a removed agent.
-    // Only the external URL transition is deferred until commit.
-    setMissingPendingPane({ paneId: pendingPaneId });
-    setPendingPaneId(null);
-    if (!routeNavigation) {
-      setLocalPaneId(null);
-    }
-  }
-  const leaveMissingPendingRoute = useEffectEvent(() => routeNavigation?.selectPane(null));
-  useEffect(() => {
-    if (missingPendingPane) {
-      leaveMissingPendingRoute();
-    }
-  }, [missingPendingPane]);
+    reconcilePane();
+  }, [selectedAgent, selectedTab, paneRetired, navigation.paneId, view]);
 
   function handleWorkspaceCreated(workspace: Workspace) {
     queryClient.setQueryData(
@@ -193,17 +241,6 @@ export function App({
         Skip to content
       </a>
 
-      {pendingPaneId && !selectedAgent && (
-        <div className={appStyles["read-error"]} role="status">
-          <p>Waiting for this agent’s conversation…</p>
-          <button type="button" onClick={() => setSelectedPaneId(pendingPaneId, true)}>
-            Open terminal
-          </button>
-          <button type="button" onClick={() => setSelectedPaneId(null)}>
-            Cancel
-          </button>
-        </div>
-      )}
       {sessionQuery.isError && sessionQuery.data?.agent && (
         <div className={appStyles["read-error"]} role="status">
           <p>Could not refresh this conversation. Your draft is retained.</p>
@@ -258,16 +295,20 @@ export function App({
       ) : (
         <div className={appStyles["workspace"]}>
           <AgentList
+            navigationKey={locationKey}
             onOpenSettings={() => setSettingsOpen(true)}
             onOpenSession={(id) => {
-              setPendingPaneId(null);
               navigation.selectSession(id, "chat", location.pathname !== "/");
             }}
             agents={agents}
             connected={!agentsQuery.isError && !agentsQuery.isPaused}
             tabs={tabs}
-            onCreate={(workspaceId) => setCreateDialog({ workspaceId })}
-            onCreateTab={() => setTabDialogOpen(true)}
+            onCreate={(workspaceId) =>
+              setCreateDialog({ workspaceId, navigationVersion: latest.current.navigationVersion })
+            }
+            onCreateTab={() =>
+              setTabDialogOpen({ navigationVersion: latest.current.navigationVersion })
+            }
             onCreateWorkspace={() => setWorkspaceDialogOpen(true)}
             selectedPaneId={selectedPaneId}
             workspaces={workspaces}
@@ -292,115 +333,116 @@ export function App({
             }}
             onSelectTab={(tab: ShellTab) => setSelectedPaneId(tab.pane_id, true)}
           />
-          {selectedAgent || selectedTab ? (
+          {!paneRetired && (consoleAgent || selectedTab) && (
             <PaneConsole
-              key={selectedPaneId}
-              agent={selectedAgent ?? undefined}
+              key={mount.version}
+              agent={consoleAgent ?? undefined}
+              suspended={!selectedAgent && !selectedTab}
               tab={selectedTab}
-              expectedSessionId={pendingPaneId ? undefined : (sessionId ?? undefined)}
-              routeView={routeNavigation ? (pendingPaneId ? pendingView : view) : undefined}
+              expectedSessionId={sessionId ?? undefined}
+              routeView={routeNavigation ? view : undefined}
               onSession={
                 routeNavigation
                   ? (id) => {
-                      if (selectedAgent && !sessionId && !pendingPaneId) {
-                        queryClient.setQueryData(["session", id], {
-                          agent: selectedAgent,
-                          chat: null,
-                        });
-                        navigation.selectSession(
-                          id,
-                          view === "terminal" ? "terminal" : "chat",
-                          true,
-                        );
+                      if (selectedAgent) {
+                        livePane.current = { paneId: selectedAgent.pane_id, sessionId: id };
                       }
                     }
                   : undefined
               }
               onViewChange={
                 routeNavigation
-                  ? (next, id) => {
-                      // An in-memory Pi ID is not resolvable by session routes yet.
-                      // Keep the live console (and its draft) mounted until promotion.
-                      if (pendingPaneId) {
-                        setPendingView(next);
-                      } else if (id) {
-                        navigation.selectSession(id, next);
-                      } else if (selectedAgent) {
-                        setSelectedPaneId(selectedAgent.pane_id, next === "terminal");
+                  ? (next) => {
+                      if (sessionId) {
+                        navigation.selectSession(sessionId, next);
+                      } else if (selectedPaneId) {
+                        navigation.selectPaneView(selectedPaneId, next);
                       }
                     }
                   : undefined
               }
-              onBack={() => setSelectedPaneId(null)}
+              onBack={() => {
+                const tabId = consoleAgent?.tab_id ?? selectedTab?.tab_id;
+                if (latest.current.tabId === tabId) {
+                  latest.current.back();
+                }
+              }}
             />
-          ) : !pendingPaneId && (sessionId || navigation.paneId) ? (
-            <main className={appStyles["console-empty"]} id="main-content">
-              <section
-                className={appStyles["conversation-state"]}
-                aria-labelledby="conversation-state-title"
-              >
-                <StateIcon
-                  kind={
-                    sessionId && sessionQuery.isPending
-                      ? "loading"
-                      : sessionQuery.isError || !sessionQuery.data?.chat
-                        ? "unavailable"
-                        : "empty"
-                  }
-                  spinning={Boolean(sessionId && sessionQuery.isPending)}
-                />
-                <h2 id="conversation-state-title">
-                  {sessionId && sessionQuery.isPending
-                    ? "Loading conversation…"
-                    : sessionQuery.isError
-                      ? "Cannot open conversation"
-                      : sessionQuery.data?.chat
-                        ? "This conversation is inactive"
-                        : "Conversation or pane unavailable"}
-                </h2>
-                <p>
-                  {sessionQuery.error?.message ??
-                    (sessionId && sessionQuery.isPending
-                      ? "Looking for your conversation…"
-                      : sessionQuery.data?.chat
-                        ? sessionQuery.data.chat.title
-                        : "It may have closed or been removed.")}
-                </p>
-                {sessionQuery.data?.chat && (
-                  <p className={appStyles["conversation-state__hint"]}>
-                    Resume to continue where you left off.
+          )}
+          {paneRetired || (!selectedAgent && !selectedTab) ? (
+            sessionId || navigation.paneId ? (
+              <main className={appStyles["console-empty"]} id="main-content">
+                <section
+                  className={appStyles["conversation-state"]}
+                  aria-labelledby="conversation-state-title"
+                >
+                  <StateIcon
+                    kind={
+                      sessionId && sessionQuery.isPending
+                        ? "loading"
+                        : sessionQuery.isError || !sessionQuery.data?.chat
+                          ? "unavailable"
+                          : "empty"
+                    }
+                    spinning={Boolean(sessionId && sessionQuery.isPending)}
+                  />
+                  <h2 id="conversation-state-title">
+                    {sessionId && sessionQuery.isPending
+                      ? "Loading conversation…"
+                      : sessionQuery.isError
+                        ? "Cannot open conversation"
+                        : sessionQuery.data?.chat
+                          ? "This conversation is inactive"
+                          : "Conversation or pane unavailable"}
+                  </h2>
+                  <p>
+                    {sessionQuery.error?.message ??
+                      (sessionId && sessionQuery.isPending
+                        ? "Looking for your conversation…"
+                        : sessionQuery.data?.chat
+                          ? sessionQuery.data.chat.title
+                          : "It may have closed or been removed.")}
                   </p>
-                )}
-                <div className={appStyles["conversation-state__actions"]}>
-                  {sessionQuery.isError && (
-                    <Button type="button" onClick={() => void sessionQuery.refetch()}>
-                      Try again
-                    </Button>
-                  )}
                   {sessionQuery.data?.chat && (
+                    <p className={appStyles["conversation-state__hint"]}>
+                      Resume to continue where you left off.
+                    </p>
+                  )}
+                  <div className={appStyles["conversation-state__actions"]}>
+                    {sessionQuery.isError && (
+                      <Button type="button" onClick={() => void sessionQuery.refetch()}>
+                        Try again
+                      </Button>
+                    )}
+                    {sessionQuery.data?.chat && (
+                      <Button
+                        type="button"
+                        onClick={() => {
+                          setResumeError("");
+                          setResumeOpen(true);
+                        }}
+                      >
+                        Resume conversation
+                      </Button>
+                    )}
                     <Button
                       type="button"
-                      onClick={() => {
-                        setResumeError("");
-                        setResumeOpen(true);
-                      }}
+                      variant="secondary"
+                      onClick={() => setSelectedPaneId(null)}
                     >
-                      Resume conversation
+                      Back to overview
                     </Button>
-                  )}
-                  <Button type="button" variant="secondary" onClick={() => setSelectedPaneId(null)}>
-                    Back to overview
-                  </Button>
-                </div>
-              </section>
-            </main>
-          ) : (
-            <main className={appStyles["console-empty"]} id="main-content">
-              <FernblickMark className={appStyles["console-empty__mark"]} />
-              <h2>Keep your agents in view.</h2>
-              <p>Choose an agent to pick up the conversation, or a shell to open its terminal.</p>
-            </main>
-          )}
+                  </div>
+                </section>
+              </main>
+            ) : (
+              <main className={appStyles["console-empty"]} id="main-content">
+                <FernblickMark className={appStyles["console-empty__mark"]} />
+                <h2>Keep your agents in view.</h2>
+                <p>Choose an agent to pick up the conversation, or a shell to open its terminal.</p>
+              </main>
+            )
+          ) : null}
         </div>
       )}
 
@@ -453,8 +495,12 @@ export function App({
                     }
                   : current,
             );
-            openAgent(agent);
-            setCreateDialog(null);
+            if (latest.current.createDialog === createDialog) {
+              if (latest.current.navigationVersion === createDialog.navigationVersion) {
+                openAgent(agent);
+              }
+              setCreateDialog(null);
+            }
             void agentsQuery.refetch();
           }}
         />
@@ -471,10 +517,24 @@ export function App({
       {tabDialogOpen && (
         <NewTabDialog
           workspaces={workspaces}
-          onClose={() => setTabDialogOpen(false)}
+          onClose={() => setTabDialogOpen(null)}
           onCreated={(tab) => {
-            setSelectedPaneId(tab.pane_id);
-            setTabDialogOpen(false);
+            queryClient.setQueryData(
+              ["agents"],
+              (current: Awaited<ReturnType<typeof getAgents>> | undefined) =>
+                current
+                  ? {
+                      ...current,
+                      tabs: [...current.tabs.filter((item) => item.pane_id !== tab.pane_id), tab],
+                    }
+                  : current,
+            );
+            if (latest.current.tabDialogOpen === tabDialogOpen) {
+              if (latest.current.navigationVersion === tabDialogOpen.navigationVersion) {
+                setSelectedPaneId(tab.pane_id, true);
+              }
+              setTabDialogOpen(null);
+            }
             void agentsQuery.refetch();
           }}
         />

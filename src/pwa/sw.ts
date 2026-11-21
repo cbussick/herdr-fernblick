@@ -14,7 +14,7 @@ registerRoute(
       /^\/(?:\?.*)?$/,
       /^\/index\.html(?:\?.*)?$/,
       /^\/sessions\/[^/]+\/(?:chat|terminal|whiteboard)\/?(?:\?.*)?$/,
-      /^\/panes\/[^/]+\/(?:chat|terminal)\/?(?:\?.*)?$/,
+      /^\/panes\/[^/]+\/(?:chat|terminal|whiteboard)\/?(?:\?.*)?$/,
     ],
   }),
 );

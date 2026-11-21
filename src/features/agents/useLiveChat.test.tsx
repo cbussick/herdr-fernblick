@@ -39,8 +39,8 @@ function readySnapshot(): Snapshot {
 }
 let renderer: ReactTestRenderer;
 let latest: ReturnType<typeof useLiveChat>;
-function Probe({ session = "s" }: { session?: string }) {
-  const state = useLiveChat("w1:p1", true, session);
+function Probe({ session = "s", enabled = true }: { session?: string; enabled?: boolean }) {
+  const state = useLiveChat("w1:p1", enabled, session);
   useEffect(() => {
     latest = state;
   }, [state]);
@@ -52,6 +52,28 @@ afterEach(async () => {
   Events.instances = [];
   vi.useRealTimers();
 });
+it("requires a new baseline after suspension instead of restoring old command authority", async () => {
+  vi.stubGlobal("IS_REACT_ACT_ENVIRONMENT", true);
+  vi.stubGlobal("EventSource", Events);
+  await act(async () => {
+    renderer = create(<Probe />);
+  });
+  const old = Events.instances.at(-1)!;
+  await act(async () => old.onmessage!({ data: JSON.stringify(readySnapshot()) }));
+  expect(latest.snapshot).toBeDefined();
+  await act(async () => renderer.update(<Probe enabled={false} />));
+  expect(old.close).toHaveBeenCalled();
+  expect(latest.snapshot).toBeUndefined();
+  await act(async () => old.onmessage!({ data: JSON.stringify(readySnapshot()) }));
+  await act(async () => renderer.update(<Probe />));
+  expect(latest.snapshot).toBeDefined();
+  expect(latest.error).toBeDefined();
+  const fresh = readySnapshot();
+  await act(async () => Events.instances.at(-1)!.onmessage!({ data: JSON.stringify(fresh) }));
+  expect(latest.snapshot).toEqual(fresh);
+  expect(latest.error).toBeUndefined();
+});
+
 it("waits quietly for initial registration but reports a bounded startup timeout", async () => {
   vi.useFakeTimers();
   vi.stubGlobal("IS_REACT_ACT_ENVIRONMENT", true);

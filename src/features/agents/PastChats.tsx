@@ -1,4 +1,4 @@
-import { useRef, useState } from "react";
+import { useLayoutEffect, useRef, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { deleteChat, getSavedChats, resumeChat } from "../../shared/api/apiClient";
 import type { Agent, SavedChat, Workspace } from "../../shared/api/contracts";
@@ -13,6 +13,7 @@ import { SearchEmptyState } from "../../shared/ui/SearchEmptyState";
 export function PastChats({
   query,
   onOpenSession,
+  navigationKey,
   workspaces,
   onResumed,
   onRemoved,
@@ -20,7 +21,9 @@ export function PastChats({
 }: {
   query: string;
   onOpenSession?: (sessionId: string) => void;
+  navigationKey?: string;
   workspaces: Array<Workspace>;
+
   onResumed: (agent: Agent) => void;
   onRemoved: () => void;
   onClearSearch?: () => void;
@@ -35,9 +38,30 @@ export function PastChats({
     queryFn: getSavedChats,
     refetchInterval: (query) => (query.state.data?.indexing ? 1000 : 30_000),
   });
+  const owner = useRef({ mounted: true, key: navigationKey, version: 0 });
+  useLayoutEffect(() => {
+    if (owner.current.key !== navigationKey) {
+      owner.current.key = navigationKey;
+      owner.current.version++;
+    }
+  }, [navigationKey]);
+  useLayoutEffect(() => {
+    const current = owner.current;
+    current.mounted = true;
+    return () => {
+      current.mounted = false;
+    };
+  }, []);
   const resume = useMutation({
-    mutationFn: resumeChat,
-    onSuccess: async (agent, { id }) => {
+    mutationFn: ({
+      id,
+      workspaceId,
+    }: {
+      id: string;
+      workspaceId: string;
+      navigationVersion: number;
+    }) => resumeChat({ id, workspaceId }),
+    onSuccess: async (agent, { id, navigationVersion: requestVersion }) => {
       await client.cancelQueries({ queryKey: ["saved-chats"] });
       client.setQueryData(
         ["saved-chats"],
@@ -52,8 +76,13 @@ export function PastChats({
             : current,
       );
       void client.invalidateQueries({ queryKey: ["saved-chats"] });
-      setSelectedChat(null);
-      onResumed(agent);
+      void client.invalidateQueries({ queryKey: ["agents"] });
+      if (owner.current.mounted) {
+        setSelectedChat((current) => (current?.id === id ? null : current));
+        if (owner.current.version === requestVersion) {
+          onResumed(agent);
+        }
+      }
     },
   });
   const deletion = useMutation({
@@ -202,7 +231,13 @@ export function PastChats({
           workspaces={workspaces}
           pending={resume.isPending}
           error={resume.isError ? resume.error.message : undefined}
-          onConfirm={(workspaceId) => resume.mutate({ id: selectedChat.id, workspaceId })}
+          onConfirm={(workspaceId) =>
+            resume.mutate({
+              id: selectedChat.id,
+              workspaceId,
+              navigationVersion: owner.current.version,
+            })
+          }
           onClose={() => setSelectedChat(null)}
         />
       )}
