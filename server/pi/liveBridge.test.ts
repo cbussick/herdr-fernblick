@@ -8,7 +8,6 @@ import { afterEach, beforeEach, expect, it, vi } from "vitest";
 import { LiveBridge } from "./liveBridge.js";
 import { createHttpServer } from "../http/server.js";
 import { HerdrService } from "../herdr/herdrService.js";
-import type { HerdrClient } from "../herdr/HerdrClient.js";
 import type { z } from "zod";
 import type { Agent } from "../../src/shared/api/contracts.js";
 import { targetOf } from "../../packages/pi-live-chat/protocol.js";
@@ -150,7 +149,10 @@ it.each(
       }
       throw new Error(`Unexpected Herdr call: ${method}`);
     });
-    const service = new HerdrService({ request } as unknown as HerdrClient);
+    const service = new HerdrService({
+      request: async (method, params, schema) =>
+        schema.parse(await request(method, params, schema)),
+    });
     const server = createHttpServer(service, dir, bridge);
     await new Promise<void>((done) => {
       server.listen(0, "127.0.0.1", done);

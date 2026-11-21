@@ -1,7 +1,6 @@
 import { expect, it, vi } from "vitest";
 import type { z } from "zod";
 import type { EditorTheme, TUI } from "@earendil-works/pi-tui";
-import type { HerdrClient } from "./HerdrClient.js";
 import { HerdrService } from "./herdrService.js";
 
 const agent = {
@@ -34,7 +33,13 @@ function fixture(input?: (params: { text?: string; keys?: Array<string> }) => vo
     }
     return schema.parse({ type: "ok" });
   });
-  return { request, service: new HerdrService({ request } as unknown as HerdrClient) };
+  return {
+    request,
+    service: new HerdrService({
+      request: async (method, params, schema) =>
+        schema.parse(await request(method, params, schema)),
+    }),
+  };
 }
 it.each(["restartPiAgent", "exitPiAgent"] as const)(
   "never submits an existing Pi editor draft during %s",
@@ -139,7 +144,10 @@ it.each(["working", "blocked", "unknown", "unsupported"])(
         },
       }),
     );
-    const service = new HerdrService({ request } as unknown as HerdrClient);
+    const service = new HerdrService({
+      request: async (method, params, schema) =>
+        schema.parse(await request(method, params, schema)),
+    });
     const shutdown = vi.fn();
     await expect(service.exitPiAgent("fixture", shutdown)).rejects.toThrow();
     expect(shutdown).not.toHaveBeenCalled();

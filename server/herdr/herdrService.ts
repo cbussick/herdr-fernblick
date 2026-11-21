@@ -112,7 +112,7 @@ export class HerdrService {
   private readonly recentlyResumed = new Map<string, { paneId: string; expires: number }>();
 
   constructor(
-    private readonly client: HerdrClient,
+    private readonly client: Pick<HerdrClient, "request">,
     private readonly sessions = new SessionCatalog(),
     private readonly artifacts?: ChatArtifacts,
     private readonly sessionIndex?: SessionIndex,

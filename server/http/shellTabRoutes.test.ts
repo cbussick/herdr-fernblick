@@ -4,7 +4,6 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
 import type { z } from "zod";
-import type { HerdrClient } from "../herdr/HerdrClient.js";
 import { HerdrService } from "../herdr/herdrService.js";
 import { LiveBridge } from "../pi/liveBridge.js";
 import { createHttpServer } from "./server.js";
@@ -27,7 +26,10 @@ beforeEach(async () => {
     },
   );
   server = createHttpServer(
-    new HerdrService({ request } as unknown as HerdrClient),
+    new HerdrService({
+      request: async (method, params, schema) =>
+        schema.parse(await request(method, params, schema)),
+    }),
     "/unused",
     new LiveBridge(join(directory, "pi.sock"), join(directory, "herdr.sock")),
   );

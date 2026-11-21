@@ -4,7 +4,6 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
 import type { z } from "zod";
-import type { HerdrClient } from "../herdr/HerdrClient.js";
 import { HerdrService } from "../herdr/herdrService.js";
 import { LiveBridge } from "../pi/liveBridge.js";
 import { SessionCatalog } from "../pi/sessionCatalog.js";
@@ -86,7 +85,10 @@ beforeEach(async () => {
   boards = new BoardStore(join(directory, "boards"));
   vi.stubEnv("FERNBLICK_UPLOAD_DIR", join(directory, "uploads"));
   service = new HerdrService(
-    { request } as unknown as HerdrClient,
+    {
+      request: async (method, params, schema) =>
+        schema.parse(await request(method, params, schema)),
+    },
     catalog,
     new ChatArtifacts(boards, join(directory, "herdr.sock")),
     sessionIndex,

@@ -5,11 +5,17 @@ import { join } from "node:path";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
 import { BoardStore } from "../boards/storage.js";
 import { HerdrService } from "../herdr/herdrService.js";
-import type { HerdrClient } from "../herdr/HerdrClient.js";
+
 import { SessionCatalog } from "./sessionCatalog.js";
 import { ChatArtifacts } from "./chatArtifacts.js";
 import * as images from "../../packages/pi-live-chat/images.js";
 import type { Agent } from "../../src/shared/api/contracts.js";
+
+const disconnectedClient = {
+  request(): Promise<never> {
+    throw new Error("Unexpected Herdr request in artifact-only test");
+  },
+};
 
 let root: string;
 let catalog: SessionCatalog;
@@ -40,7 +46,7 @@ beforeEach(async () => {
   catalog = new SessionCatalog(root);
   boards = new BoardStore(join(root, "boards"));
   service = new HerdrService(
-    {} as HerdrClient,
+    disconnectedClient,
     catalog,
     new ChatArtifacts(boards, "/fixture/herdr.sock"),
   );
@@ -116,7 +122,7 @@ it("cleans legacy boards in this Herdr namespace and owned boards from previous 
   boards.close();
   boards = new BoardStore(join(root, "boards"));
   service = new HerdrService(
-    {} as HerdrClient,
+    disconnectedClient,
     catalog,
     new ChatArtifacts(boards, "/fixture/herdr.sock"),
   );
@@ -261,7 +267,7 @@ it("replays the deletion result after a lost reply or backend restart without ke
   const chat = await save("original", [header()]);
   await boards.open(key("original"));
   const result = await service.deleteChat(chat.id);
-  const restarted = new HerdrService({} as HerdrClient, new SessionCatalog(root));
+  const restarted = new HerdrService(disconnectedClient, new SessionCatalog(root));
   expect(await restarted.deleteChat(chat.id)).toEqual(result);
   const receipt = await readFile(join(root, `.fernblick-deleted-${chat.id}.json`), "utf8");
   expect(JSON.parse(receipt)).toEqual(result);

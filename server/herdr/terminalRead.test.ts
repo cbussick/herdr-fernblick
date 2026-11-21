@@ -1,7 +1,6 @@
 import { expect, it, vi } from "vitest";
 import type { z } from "zod";
 import { HerdrRequestError } from "./HerdrClient.js";
-import type { HerdrClient } from "./HerdrClient.js";
 import { HerdrService } from "./herdrService.js";
 
 const agent = {
@@ -41,7 +40,13 @@ function fixture(status: string, shell = false) {
       return schema.parse({ type: "pane_read", read: { ...output, source: params.source } });
     },
   );
-  return { request, service: new HerdrService({ request } as unknown as HerdrClient) };
+  return {
+    request,
+    service: new HerdrService({
+      request: async (method, params, schema) =>
+        schema.parse(await request(method, params, schema)),
+    }),
+  };
 }
 
 it("loads history for a done agent using the resolved pane rather than its mutable name", async () => {
@@ -97,7 +102,9 @@ it("does not retry failed visible reads or attempt history", async () => {
   const request = vi
     .fn()
     .mockRejectedValue(new HerdrRequestError("unavailable", "socket unavailable"));
-  const service = new HerdrService({ request } as unknown as HerdrClient);
+  const service = new HerdrService({
+    request: async (method, params, schema) => schema.parse(await request(method, params, schema)),
+  });
   await expect(service.readAgent(agent.pane_id, 600)).rejects.toThrow("socket unavailable");
   expect(request).toHaveBeenCalledTimes(1);
 });
