@@ -67,8 +67,9 @@ export async function removeWhiteboardDrafts(sessionId: string | null, boardIds:
         } catch {
           /* Older/unrecognized keys can still be matched by board ID. */
         }
-        const value = cursor.value as { boardId?: unknown } | undefined;
-        if (sameSession || (typeof value?.boardId === "string" && ids.has(value.boardId))) {
+        const value: unknown = cursor.value;
+        const boardId = z.object({ boardId: z.string() }).safeParse(value);
+        if (sameSession || (boardId.success && ids.has(boardId.data.boardId))) {
           cursor.delete();
         }
         cursor.continue();

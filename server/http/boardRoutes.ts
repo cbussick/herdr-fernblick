@@ -45,8 +45,12 @@ async function body(request: IncomingMessage, max: number) {
   }
   let size = 0;
   const chunks: Array<Buffer> = [];
-  for await (const chunk of request) {
-    size += chunk.length;
+  for await (const raw of request) {
+    const chunk: unknown = raw;
+    if (!(chunk instanceof Uint8Array)) {
+      throw new BoardError(400, "Invalid board request encoding");
+    }
+    size += chunk.byteLength;
     if (size > max) {
       throw new BoardError(413, "Board request is too large");
     }

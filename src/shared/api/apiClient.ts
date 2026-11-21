@@ -124,7 +124,8 @@ export async function markAgentRead(input: { paneId: string; completionId: strin
     category = "success";
   } catch (error) {
     if (signal?.aborted) {
-      category = signal.reason?.name === "TimeoutError" ? "timeout" : "aborted";
+      const reason: unknown = signal.reason;
+      category = reason instanceof Error && reason.name === "TimeoutError" ? "timeout" : "aborted";
     } else if (error instanceof TypeError && category !== "request_validation") {
       category = "network";
     }

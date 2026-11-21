@@ -177,7 +177,11 @@ export const boardApi = {
     const source = new EventSource(`${endpoint(pane)}/events?${new URLSearchParams(target)}`);
     source.onmessage = (event) => {
       try {
-        onEvent(boardEventSchema.parse(JSON.parse(event.data)));
+        const text: unknown = event.data;
+        if (typeof text !== "string") {
+          throw new Error("Invalid board event encoding");
+        }
+        onEvent(boardEventSchema.parse(JSON.parse(text)));
       } catch {
         onDisconnect();
       }

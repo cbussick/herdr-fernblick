@@ -50,9 +50,10 @@ interface Scope extends BoardConnection {
   granting?: Promise<void>;
   removeAbort?: () => void;
 }
+type BoardReplyData = z.infer<typeof boardReplySchema>["data"];
 interface Pending {
   scope: Scope;
-  finish: (error?: Error, data?: unknown) => void;
+  finish: (error?: Error, data?: BoardReplyData) => void;
 }
 
 // Construct only after winning the bridge singleton. Registering even hidden tools
@@ -184,6 +185,7 @@ export class BoardTools {
       this.revoke("Stale board request");
       throw new Error("Stale board request");
     }
+    return scope;
   }
 
   // A connected conversation exposes tools without opening/creating its board.
@@ -265,18 +267,18 @@ export class BoardTools {
         return;
       }
       // The placeholder is local only. It is never sent as board authority.
-      this.stage(
+      const staged = this.stage(
         { boardId: "0".repeat(64), grantId: randomUUID(), mode: "edit", revision: 0 },
         event.text,
         connection,
       );
-      this.scope!.runId = randomUUID();
-      this.scope!.conversation = true;
+      staged.runId = randomUUID();
+      staged.conversation = true;
       // Automatic compaction can precede before_agent_start and take minutes.
       // Only legacy explicit handoffs have a short consumption deadline.
-      clearTimeout(this.scope!.expires);
-      this.scope!.expires = undefined;
-      this.scope!.phase = "start";
+      clearTimeout(staged.expires);
+      staged.expires = undefined;
+      staged.phase = "start";
       return;
     }
     if (!this.valid(scope)) {
@@ -595,14 +597,20 @@ export class BoardTools {
     fields: Partial<BoardRequest>,
   ) {
     if (action === "begin" || action === "grant" || action === "end") {
-      return boardControlSchema.parse({
+      if (!scope.runId) {
+        throw new Error("Conversation board control requires a run identity");
+      }
+      const control: z.input<typeof boardControlSchema> = {
         type: "board-control",
         id: randomUUID(),
         target: scope.target,
         runId: scope.runId,
         action,
-        ...(scope.conversation && action === "begin" ? { lifetime: "connection" } : {}),
-      });
+      };
+      if (scope.conversation && action === "begin") {
+        control.lifetime = "connection";
+      }
+      return boardControlSchema.parse(control);
     }
     return boardRequestSchema.parse({
       ...fields,
@@ -620,7 +628,7 @@ export class BoardTools {
     action: BoardRequest["action"] | "begin" | "grant" | "end",
     fields: Partial<BoardRequest>,
     signal?: AbortSignal,
-  ): Promise<unknown> {
+  ): Promise<BoardReplyData> {
     if (!this.valid(scope) || signal?.aborted) {
       if (this.scope === scope) {
         this.revoke("Whiteboard request cancelled or stale");
