@@ -1,3 +1,7 @@
+type DialogCloseHandler = (event: { target: unknown; currentTarget: unknown }) => void;
+function isDialogCloseHandler(value: unknown): value is DialogCloseHandler {
+  return typeof value === "function";
+}
 import { dispatchTestEvent } from "../shared/lib/dispatchTestEvent";
 import { act } from "react";
 import { create } from "react-test-renderer";
@@ -107,10 +111,14 @@ beforeEach(async () => {
           if (node.type !== "dialog") {
             return null;
           }
-          const props = node.props as {
-            "aria-labelledby"?: string;
-            onClose?: (event: { target: unknown; currentTarget: unknown }) => void;
-          };
+          const props: unknown = node.props;
+          if (typeof props !== "object" || props === null) {
+            throw new TypeError("Dialog fixture requires props");
+          }
+          const onClose = "onClose" in props ? props.onClose : undefined;
+          if (onClose !== undefined && !isDialogCloseHandler(onClose)) {
+            throw new TypeError("Dialog onClose must be callable");
+          }
           const native = {
             open: false,
             showModal() {
@@ -121,11 +129,17 @@ beforeEach(async () => {
                 return;
               }
               this.open = false;
-              queueMicrotask(() => props.onClose?.({ target: native, currentTarget: native }));
+              queueMicrotask(() => {
+                if (onClose) {
+                  onClose.call(props, { target: native, currentTarget: native });
+                }
+              });
             },
           };
           natives.set(
-            props["aria-labelledby"] === "new-workspace-heading" ? "workspace" : "agent",
+            "aria-labelledby" in props && props["aria-labelledby"] === "new-workspace-heading"
+              ? "workspace"
+              : "agent",
             native,
           );
           return native;

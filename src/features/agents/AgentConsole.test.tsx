@@ -1,9 +1,9 @@
 import { testText } from "../../shared/lib/testText";
 import { readTestProp } from "../../shared/lib/readTestProp";
-import type { getAgentOutput } from "../../shared/api/apiClient";
+import type { uploadImage, getAgentOutput } from "../../shared/api/apiClient";
 import { captureTestEvent, dispatchTestEvent } from "../../shared/lib/dispatchTestEvent";
 import { act } from "react";
-import type { ReactNode } from "react";
+import type { ComponentProps, ReactNode } from "react";
 import { create } from "react-test-renderer";
 import type { ReactTestRenderer } from "react-test-renderer";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
@@ -17,13 +17,29 @@ import { MessageBranchDialog } from "./MessageBranchDialog";
 import { ConversationTreeDialog } from "./ConversationTreeDialog";
 import { Whiteboard } from "../whiteboard/Whiteboard";
 import type { WhiteboardConversation } from "../whiteboard/ConversationDock";
+interface FocusOwner {
+  activeElement: unknown;
+}
+type UploadedImage = Awaited<ReturnType<typeof uploadImage>>;
+function uploadedImage(id = `${randomUUID()}.png`): UploadedImage {
+  return { id, path: `/uploads/${id}`, url: `/uploads/${id}` };
+}
+interface LiveFixture {
+  snapshot?: Snapshot;
+  error?: string;
+  reconnecting?: boolean;
+}
+function emptyLiveFixture(): LiveFixture {
+  return {};
+}
 const mocks = vi.hoisted(() => ({
-  live: {} as { snapshot?: Snapshot; error?: string; reconnecting?: boolean },
+  live: emptyLiveFixture(),
+  whiteboard: vi.fn<(props: ComponentProps<typeof Whiteboard>) => null>(() => null),
   command: vi.fn(),
   compact: vi.fn(),
   navigate: vi.fn(),
   boardPrompt: vi.fn(),
-  upload: vi.fn(),
+  upload: vi.fn<typeof uploadImage>(),
   skills: vi.fn(),
   output: vi.fn<typeof getAgentOutput>(),
   paneInput: vi.fn(),
@@ -35,7 +51,7 @@ vi.mock("../whiteboard/boardApi", () => ({ boardApi: { prompt: mocks.boardPrompt
 vi.mock("./useLiveChat", () => ({ useLiveChat: mocks.liveChat }));
 vi.mock("./CloseTabButton", () => ({ CloseTabButton: () => null }));
 vi.mock("./ConversationTreeDialog", () => ({ ConversationTreeDialog: () => null }));
-vi.mock("../whiteboard/Whiteboard", () => ({ Whiteboard: () => null }));
+vi.mock("../whiteboard/Whiteboard", () => ({ Whiteboard: mocks.whiteboard }));
 vi.mock("../../shared/api/apiClient", () => ({
   chatCommand: mocks.command,
   compactAgentConversation: mocks.compact,
@@ -119,7 +135,7 @@ beforeEach(async () => {
   mocks.compact.mockReset().mockResolvedValue({ type: "compacted" });
   mocks.navigate.mockReset();
   mocks.boardPrompt.mockReset().mockResolvedValue({ type: "ack", outcome: "invoked" });
-  mocks.upload.mockReset().mockResolvedValue({ id: `${randomUUID()}.png` });
+  mocks.upload.mockReset().mockResolvedValue(uploadedImage());
   mocks.skills.mockReset().mockResolvedValue({
     skills: [
       {
@@ -206,7 +222,7 @@ it.each([true, false])(
       label: "Starting",
       revision: 1,
     };
-    const ownerDocument = { activeElement: null as unknown };
+    const ownerDocument: FocusOwner = { activeElement: null };
     const editors: Array<{
       focus: ReturnType<typeof vi.fn<() => void>>;
       setSelectionRange: ReturnType<
@@ -1303,7 +1319,11 @@ async function openBoard() {
   );
 }
 function boardConversation(): WhiteboardConversation {
-  return renderer.root.findByType(Whiteboard).props.conversation;
+  const props = mocks.whiteboard.mock.lastCall?.[0];
+  if (!props) {
+    throw new Error("Whiteboard has not rendered");
+  }
+  return props.conversation;
 }
 it("shares the text draft and live conversation but never sends hidden chat images from the board", async () => {
   const file = new File(["image"], "image.png", { type: "image/png" });
@@ -1475,7 +1495,7 @@ it("locks the composer only through upload and forwarding, then uses Pi busy/idl
         acknowledge = done;
       }),
   );
-  let finishUpload!: (value: { id: string }) => void;
+  let finishUpload!: (value: UploadedImage) => void;
   mocks.upload.mockImplementationOnce(
     () =>
       new Promise((done) => {
@@ -1514,7 +1534,7 @@ it("locks the composer only through upload and forwarding, then uses Pi busy/idl
   expect(activity.findAllByType("button")).toHaveLength(0);
   expect(JSON.stringify(renderer.toJSON())).toContain("Uploading image 1 of 1…");
   expect(mocks.command).not.toHaveBeenCalled();
-  await act(async () => finishUpload({ id: `${randomUUID()}.png` }));
+  await act(async () => finishUpload(uploadedImage()));
   await flush();
   mocks.live.snapshot = { ...mocks.live.snapshot!, seq: 2, sendPending: true };
   await act(async () => renderer.update(render()));
@@ -1561,10 +1581,15 @@ it.each(["text", "image"])(
     await act(async () => {
       renderer.unmount();
       renderer = create(render(), {
-        createNodeMock: (node) =>
-          (node.props as Record<string, unknown>)["data-ui"] === "chat-transcript"
+        createNodeMock: (node) => {
+          const props: unknown = node.props;
+          return typeof props === "object" &&
+            props !== null &&
+            "data-ui" in props &&
+            props["data-ui"] === "chat-transcript"
             ? viewport
-            : null,
+            : null;
+        },
       });
     });
     const transcript = () => renderer.root.findByProps({ "data-ui": "chat-transcript" });
@@ -1577,19 +1602,19 @@ it.each(["text", "image"])(
       dispatchTestEvent(renderer.root.findByType("form"), "onSubmit", { preventDefault() {} }),
     );
     expect(viewport.scrollTop).toBe(300);
-    let resolve!: (value: unknown) => void;
-    const pending = new Promise((done) => {
+    let resolve!: () => void;
+    const pending = new Promise<void>((done) => {
       resolve = done;
     });
     if (kind === "image") {
-      mocks.upload.mockReturnValueOnce(pending);
+      mocks.upload.mockReturnValueOnce(pending.then(() => uploadedImage()));
       await act(async () =>
         dispatchTestEvent(renderer.root.findByProps({ type: "file" }), "onChange", {
           target: { files: [new File(["image"], "image.png", { type: "image/png" })] },
         }),
       );
     } else {
-      mocks.command.mockReturnValueOnce(pending);
+      mocks.command.mockReturnValueOnce(pending.then(() => ({ type: "ack", outcome: "invoked" })));
       await act(async () =>
         dispatchTestEvent(renderer.root.findByType("textarea"), "onChange", {
           target: { value: "New turn" },
@@ -1615,11 +1640,7 @@ it.each(["text", "image"])(
     // A stale repeated submission is guarded and must not resume following again.
     await act(async () => submit({ preventDefault() {} }));
     expect(viewport.scrollTop).toBe(988);
-    await act(async () =>
-      resolve(
-        kind === "image" ? { id: `${randomUUID()}.png` } : { type: "ack", outcome: "invoked" },
-      ),
-    );
+    await act(async () => resolve());
     await flush();
     viewport.scrollHeight = 1400;
     await act(async () => renderer.update(render()));
@@ -1769,7 +1790,7 @@ it.each(["disconnect", "busy", "replacement", "handoff"])(
 );
 
 it("updates multi-image progress and retains attachments after upload failure for manual retry", async () => {
-  let finishFirst!: (value: { id: string }) => void;
+  let finishFirst!: (value: UploadedImage) => void;
   let failSecond!: (error: Error) => void;
   mocks.upload
     .mockImplementationOnce(
@@ -1801,7 +1822,7 @@ it("updates multi-image progress and retains attachments after upload failure fo
   await flush();
   expect(JSON.stringify(renderer.toJSON())).toContain("Uploading image 1 of 2…");
   const firstId = `${randomUUID()}.png`;
-  await act(async () => finishFirst({ id: firstId }));
+  await act(async () => finishFirst(uploadedImage(firstId)));
   await flush();
   expect(JSON.stringify(renderer.toJSON())).toContain("Uploading image 2 of 2…");
   await act(async () => failSecond(new Error("Upload failed")));

@@ -1,3 +1,4 @@
+import { testText } from "../shared/lib/testText";
 import { dispatchTestEvent } from "../shared/lib/dispatchTestEvent";
 import { createHash } from "node:crypto";
 import { act as reactAct } from "react";
@@ -52,7 +53,7 @@ let notifications: Array<() => void>;
 // Query and mutation observers notify asynchronously. Deliver every queued batch
 // inside React act, including notifications scheduled by effects/receipt promises,
 // instead of assuming a 20 ms sleep is enough before asserting on the warning.
-async function act(callback: () => unknown) {
+async function act(callback: () => void | Promise<void>) {
   await reactAct(async () => {
     await callback();
   });
@@ -187,7 +188,7 @@ it("keeps a failed receipt unread and lets the user retry saving it", async () =
   vi.mocked(markAgentRead).mockRejectedValueOnce(new Error("Disk unavailable"));
   await openAndBack();
   expect(status()).toBe("New answer");
-  expect(renderer.root.findByProps({ role: "alert" }).findByType("p").children.join(" ")).toContain(
+  expect(testText(renderer.root.findByProps({ role: "alert" }).findByType("p"))).toContain(
     "Could not save read status",
   );
   await act(async () =>
