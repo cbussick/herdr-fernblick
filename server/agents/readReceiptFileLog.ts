@@ -120,13 +120,13 @@ export class ReadReceiptFileLog {
     this.warningAt = Date.now();
     try {
       // No recursion into the file logger, no messages/paths, at most once a minute.
-      console.warn(
+      process.stderr.write(
         JSON.stringify({
           event: "read_receipt_log_unavailable",
           category: "storage",
           timestamp: new Date().toISOString(),
           errorCode: safeReadReceiptErrorCode(error),
-        }),
+        }) + "\n",
       );
     } catch {
       /* No effect on application behavior. */

@@ -1,4 +1,5 @@
 import type { IncomingMessage, ServerResponse } from "node:http";
+import { isUint8Array } from "node:util/types";
 import { z } from "zod";
 import { BoardStore, BoardError } from "../boards/storage.js";
 import type { LiveBridge } from "../pi/liveBridge.js";
@@ -47,7 +48,7 @@ async function body(request: IncomingMessage, max: number) {
   const chunks: Array<Buffer> = [];
   for await (const raw of request) {
     const chunk: unknown = raw;
-    if (!(chunk instanceof Uint8Array)) {
+    if (!isUint8Array(chunk)) {
       throw new BoardError(400, "Invalid board request encoding");
     }
     size += chunk.byteLength;

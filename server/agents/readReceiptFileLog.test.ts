@@ -24,11 +24,13 @@ vi.mock(import("node:fs/promises"), async (importOriginal) => {
 let directory: string;
 let writer: ReadReceiptFileLog;
 let now: number;
+const warningOutput = vi.fn<typeof process.stderr.write>(() => true);
 beforeEach(async () => {
   directory = await mkdtemp(join(tmpdir(), "fernblick-log-"));
   now = Date.now();
   vi.spyOn(Date, "now").mockImplementation(() => now);
-  vi.spyOn(console, "warn").mockImplementation(() => {});
+  warningOutput.mockClear();
+  vi.spyOn(process.stderr, "write").mockImplementation(warningOutput);
 });
 afterEach(async () => {
   await writer?.close();
@@ -127,8 +129,8 @@ it("does not follow directory or managed-file symlinks or touch unrelated files"
   expect(() => writer.write(record())).not.toThrow();
   await writer.flush();
   expect(await readFile(outside, "utf8")).toBe("keep me");
-  expect(vi.mocked(console.warn)).toHaveBeenCalledTimes(1);
-  expect(JSON.stringify(vi.mocked(console.warn).mock.calls)).not.toContain(directory);
+  expect(warningOutput).toHaveBeenCalledTimes(1);
+  expect(JSON.stringify(warningOutput.mock.calls)).not.toContain(directory);
   await writer.close();
   const directoryLink = join(directory, "alias");
   await symlink(directory, directoryLink);
@@ -158,8 +160,8 @@ it("survives a full disk and emits only a safe error code before recovering", as
   writer = new ReadReceiptFileLog({ directory });
   writer.write(record());
   await writer.flush();
-  expect(JSON.stringify(vi.mocked(console.warn).mock.calls)).toContain("ENOSPC");
-  expect(JSON.stringify(vi.mocked(console.warn).mock.calls)).not.toMatch(/credential|private/);
+  expect(JSON.stringify(warningOutput.mock.calls)).toContain("ENOSPC");
+  expect(JSON.stringify(warningOutput.mock.calls)).not.toMatch(/credential|private/);
   writer.write(record());
   await writer.flush();
   expect((await records())[0]).toMatchObject({ dropped: 1 });
