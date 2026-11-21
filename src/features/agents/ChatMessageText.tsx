@@ -16,7 +16,7 @@ import styles from "./ChatMessageText.module.css";
 
 function previewImages(part: MessagePart): Array<PreviewImage> {
   if (part.kind === "image") {
-    return [{ url: part.href!, alt: part.alt ?? "" }];
+    return [{ url: part.href, alt: part.alt ?? "" }];
   }
   return "children" in part ? part.children.flatMap(previewImages) : [];
 }
@@ -180,7 +180,7 @@ export function ChatMessageText({
           <Fragment key={index}>
             {content}
             <ChatMarkdownImage
-              src={part.href!}
+              src={part.href}
               alt={part.alt ?? ""}
               title={part.title}
               linked={linked}
@@ -274,7 +274,7 @@ export function ChatMessageText({
         const images = previewImages(part);
         if (images.length) {
           return (
-            <ChatImagePreviewLink key={index} href={part.href!} images={images}>
+            <ChatImagePreviewLink key={index} href={part.href} images={images}>
               {content}
             </ChatImagePreviewLink>
           );

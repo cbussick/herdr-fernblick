@@ -13,14 +13,12 @@ import { localImageSource, resolveLocalPath } from "../../shared/localImages.js"
 type TextPart =
   | { kind: "text"; start: number; end: number }
   | { kind: "syntax"; start: number; end: number };
-type FormattedPart = {
+type ContainerPart = {
   kind:
     | "math"
     | "strong"
     | "emphasis"
     | "code"
-    | "link"
-    | "image"
     | "paragraph"
     | "heading"
     | "blockquote"
@@ -47,6 +45,9 @@ type FormattedPart = {
   align?: "left" | "right" | "center" | null;
   children: Array<MessagePart>;
 };
+type FormattedPart =
+  | ContainerPart
+  | (Omit<ContainerPart, "kind"> & { kind: "link" | "image"; href: string });
 export type MessagePart = TextPart | FormattedPart;
 
 function webDestination(value: string) {
@@ -410,19 +411,17 @@ export function formatMessageText(text: string, cwd?: string): Array<MessagePart
       }
       const contentStart = node.children[0]?.position?.start.offset ?? start;
       const contentEnd = node.children.at(-1)?.position?.end.offset ?? end;
-      return [
-        {
-          kind: node.type,
-          start,
-          end,
-          href,
-          children: [
-            syntax(start, contentStart),
-            ...children(node.children, contentStart, contentEnd, autolink && node.type !== "link"),
-            syntax(contentEnd, end),
-          ],
-        },
+      const content = [
+        syntax(start, contentStart),
+        ...children(node.children, contentStart, contentEnd, autolink && node.type !== "link"),
+        syntax(contentEnd, end),
       ];
+      if (node.type === "link") {
+        return href
+          ? [{ kind: "link", start, end, href, children: content }]
+          : [literal(start, end)];
+      }
+      return [{ kind: node.type, start, end, children: content }];
     }
     // Never autolink code examples, HTML or unresolved references.
     if ("children" in node && node.type !== "linkReference") {
