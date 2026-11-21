@@ -15,6 +15,37 @@ import type { ReactTestRenderer } from "react-test-renderer";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
 import { WorkspaceReorder } from "./WorkspaceReorder";
+import { workspaceCollision } from "./workspaceCollision";
+import type { CollisionDetection, UniqueIdentifier } from "@dnd-kit/core";
+
+type CollisionInput = Parameters<CollisionDetection>[0];
+type PreviewInput = {
+  active?: Pick<CollisionInput["active"], "id">;
+  collisionRect?: CollisionInput["collisionRect"];
+  droppableRects: CollisionInput["droppableRects"];
+  droppableContainers?: Array<Pick<CollisionInput["droppableContainers"][number], "id">>;
+  pointerCoordinates?: CollisionInput["pointerCoordinates"];
+};
+function detectCollision(input: PreviewInput) {
+  return workspaceCollision({
+    active: {
+      id: input.active?.id ?? "w1",
+      data: { current: undefined },
+      rect: { current: { initial: null, translated: null } },
+    },
+    collisionRect: input.collisionRect ?? rect(0, 80),
+    droppableRects: input.droppableRects,
+    droppableContainers: (input.droppableContainers ?? []).map(({ id }) => ({
+      id,
+      key: id,
+      data: { current: undefined },
+      disabled: false,
+      node: { current: null },
+      rect: { current: input.droppableRects.get(id) ?? null },
+    })),
+    pointerCoordinates: input.pointerCoordinates ?? null,
+  });
+}
 import { moveWorkspace } from "../../shared/api/apiClient";
 
 vi.mock("../../shared/api/apiClient", () => ({ moveWorkspace: vi.fn() }));
@@ -41,7 +72,7 @@ const render = (disabled = false, items = workspaces) => (
 const order = () => renderer.root.findAllByType("h3").map((node) => testText(node));
 const context = () =>
   renderer.root.find((node) => !!node.props.onDragEnd && !!node.props.onDragStart);
-async function drag(from = "w1", to: string | null = "w3") {
+async function drag(from = "w1", to: UniqueIdentifier | null = "w3") {
   await act(async () => dispatchTestEvent(context(), "onDragStart", { active: { id: from } }));
   await act(async () =>
     dispatchTestEvent(context(), "onDragEnd", {
@@ -107,7 +138,7 @@ it.each([140, 92, 56, 20, 0])(
       ["w2", rect(200, 800)],
       ["w3", rect(1020, 80)],
     ]);
-    const collisions = context().props.collisionDetection({
+    const collisions = detectCollision({
       active: { id: "w2" },
       pointerCoordinates: { x: 40, y },
       collisionRect: rect(y - 27, 54),
@@ -141,7 +172,7 @@ it.each([
       return [id, { left: 10, right: 300, top, bottom: top + 80, width: 290, height: 80 }];
     }),
   );
-  const collisions = context().props.collisionDetection({
+  const collisions = detectCollision({
     active: { id: "w1" },
     pointerCoordinates: { x: 40, y },
     collisionRect: { left: 10, right: 300, top: y - 40, bottom: y + 40, width: 290, height: 80 },
@@ -178,7 +209,7 @@ it.each([
       return [id, { left: 10, right: 300, top, bottom: top + 80, width: 290, height: 80 }];
     }),
   );
-  const collisions = context().props.collisionDetection({
+  const collisions = detectCollision({
     active: { id: "w3" },
     pointerCoordinates: { x: 40, y },
     collisionRect: { left: 10, right: 300, top: y - 40, bottom: y + 40, width: 290, height: 80 },
@@ -210,7 +241,7 @@ it.each([
         return [id, { left: 10, right: 300, top, bottom: top + 80, width: 290, height: 80 }];
       }),
     );
-    const collisions = context().props.collisionDetection({
+    const collisions = detectCollision({
       active: { id: from },
       pointerCoordinates: { x: 40, y: pointer },
       collisionRect: {
@@ -248,7 +279,7 @@ it("targets expanded rows, keeps gaps droppable and preserves keyboard detection
     droppableRects,
     droppableContainers: [...droppableRects.keys()].map((id) => ({ id })),
   };
-  const collisionDetection = context().props.collisionDetection;
+  const collisionDetection = detectCollision;
   const atCenter = (center: number) =>
     collisionDetection({
       ...args,
@@ -264,14 +295,16 @@ it("targets expanded rows, keeps gaps droppable and preserves keyboard detection
 });
 
 it("does not consider the rest of the page a drop destination", () => {
-  const droppableRects = new Map([["w1", { left: 10, right: 300, top: 100, bottom: 170 }]]);
+  const droppableRects = new Map([
+    ["w1", { left: 10, right: 300, top: 100, bottom: 170, width: 290, height: 70 }],
+  ]);
   for (const pointerCoordinates of [
     { x: 900, y: 120 },
     { x: 20, y: -1 },
     { x: 20, y: 215 },
     { x: 20, y: 500 },
   ]) {
-    expect(context().props.collisionDetection({ pointerCoordinates, droppableRects })).toEqual([]);
+    expect(detectCollision({ pointerCoordinates, droppableRects })).toEqual([]);
   }
 });
 
