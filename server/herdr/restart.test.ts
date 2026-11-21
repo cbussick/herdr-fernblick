@@ -1,8 +1,11 @@
 import { expect, it, vi } from "vitest";
-import type { z } from "zod";
-import type { EditorTheme, TUI } from "@earendil-works/pi-tui";
+import { z } from "zod";
+import { Editor, TuiMainScreen } from "@earendil-works/pi-tui";
+import type { EditorTheme } from "@earendil-works/pi-tui";
 import { HerdrService } from "./herdrService.js";
 
+const identity = (text: string) => text;
+const inputSchema = z.object({ text: z.string().optional(), keys: z.array(z.string()).optional() });
 const agent = {
   agent: "pi",
   agent_status: "idle",
@@ -20,7 +23,7 @@ function fixture(input?: (params: { text?: string; keys?: Array<string> }) => vo
       return schema.parse({ type: "agent_info", agent });
     }
     if (method === "pane.send_input") {
-      input?.(params as { text?: string; keys?: Array<string> });
+      input?.(inputSchema.parse(params));
     }
     if (method === "session.snapshot") {
       return schema.parse({
@@ -44,10 +47,6 @@ function fixture(input?: (params: { text?: string; keys?: Array<string> }) => vo
 it.each(["restartPiAgent", "exitPiAgent"] as const)(
   "never submits an existing Pi editor draft during %s",
   async (action) => {
-    const { Editor } = (await import(
-      process.env.PI_EDITOR_TEST_MODULE ?? "@earendil-works/pi-tui"
-    )) as typeof import("@earendil-works/pi-tui");
-    const identity = (text: string) => text;
     const theme: EditorTheme = {
       borderColor: identity,
       selectList: {
@@ -59,7 +58,24 @@ it.each(["restartPiAgent", "exitPiAgent"] as const)(
       },
     };
     const editor = new Editor(
-      { requestRender() {}, terminal: { rows: 24, columns: 80 } } as unknown as TUI,
+      new TuiMainScreen({
+        rows: 24,
+        columns: 80,
+        kittyProtocolActive: false,
+        start() {},
+        stop() {},
+        async drainInput() {},
+        write() {},
+        moveBy() {},
+        hideCursor() {},
+        showCursor() {},
+        clearLine() {},
+        clearFromCursor() {},
+        clearScreen() {},
+        setTitle() {},
+        setProgress() {},
+        setProgramStatus() {},
+      }),
       theme,
     );
     const draft = "An older unsent prompt";
@@ -79,7 +95,7 @@ it.each(["restartPiAgent", "exitPiAgent"] as const)(
     const shutdown = vi.fn(async () => {
       throw new Error("Pi terminal has an unsent draft");
     });
-    const result = await service[action]("fixture", shutdown).catch((error: Error) => error);
+    const result = await service[action]("fixture", shutdown).catch((error: unknown) => error);
     expect(submitted).toEqual([]);
     expect(editor.getText()).toBe(draft);
     expect(result).toBeInstanceOf(Error);
@@ -185,7 +201,7 @@ it.each(["restartPiAgent", "exitPiAgent"] as const)(
           throw new Error(`Unexpected request: ${method}`);
         },
       );
-      const pending = service[action]("fixture", async () => {}).catch((error: Error) => error);
+      const pending = service[action]("fixture", async () => {}).catch((error: unknown) => error);
       await vi.advanceTimersByTimeAsync(10_100);
       expect(await pending).toMatchObject({ message: "Pi did not exit in time" });
       expect(
